@@ -18,6 +18,49 @@ Prefer sources in this order, adjusted to the task:
 
 A lower-tier source may be excellent for intuition. It should not become the sole evidentiary basis for a scientific claim when a primary or authoritative source is available.
 
+## Bias control for source discovery
+
+For hypothesis-sensitive, model-selection, or implementation-defining questions, separate **discovery** from **reconciliation**.
+
+### Independent discovery pass
+
+Before using the project's preferred model, code, existing citations, or desired conclusion as a search prior:
+
+1. Formulate the scientific question neutrally.
+2. Search from the physical/mathematical/statistical problem itself.
+3. Seek competing models, contradictory evidence, null results, and regime limitations.
+4. Do not search only for terms copied from the current implementation when those terms encode an assumption under test.
+5. Record which important sources were found independently and which were inherited from the project.
+
+Repository context may be used initially only when it is genuinely necessary to define the system or scope, such as detector identity, material, geometry, energy range, or measured observable. Do not expose implementation choices that are not needed for discovery.
+
+### Verification pass
+
+For an important claim, an independent verifier should receive the claim and strongest source(s), but should not inherit the scout's conclusion or the implementation author's reasoning when avoidable.
+
+Verification asks what the source actually establishes, in what regime, and with what caveats.
+
+### Reconciliation pass
+
+Only after the independent evidence landscape is mapped should it be compared with:
+
+- the existing implementation,
+- project assumptions,
+- previously preferred parameterizations,
+- current hypotheses.
+
+A mismatch between external evidence and the codebase is a research finding. Do not silently reinterpret the literature to preserve the implementation.
+
+For material model choices, label the provenance as one of:
+
+- externally established in the relevant regime,
+- experiment/detector-specific evidence,
+- transferred approximation from another regime/system,
+- project phenomenological assumption,
+- unresolved.
+
+Cross-validation means independent reconstruction or verification, not agreement checking.
+
 ## Minimum source record
 
 For important claims record, when available:
