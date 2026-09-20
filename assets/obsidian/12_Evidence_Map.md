@@ -56,6 +56,19 @@ which therefore cannot count as independently discovered.
 |---|---|---|---|---|---|---|---|---|
 | 1 |  | paper / review / official / textbook / preprint | independent discovery / user-supplied library / citation chain / inherited project citation | material, energy, detector | | yes / abstract only | page / section / eq / fig | DOI / URL / local path |
 
+### 3a. Claim envelopes
+
+Record important claims on the source's own terms before synthesizing them. A sourced ingredient and
+a scout inference are different evidence objects.
+
+| Claim | Source | Evidence type | System / process / material | Regime | Observable | Origin / model convention | Source value + units | Verification status |
+|---|---|---|---|---|---|---|---|---|
+|  |  | explicit / derived / interpretation / hypothesis |  |  |  |  |  | unverified / verified / contradicted / reconciled / unresolved |
+
+For derived values, keep the source-stated value and units in the row and put the conversion or
+derivation in the source note. Do not silently transfer values across materials, processes,
+observables, regimes, or coordinate conventions.
+
 ---
 
 ## 4. Evidence landscape
@@ -65,6 +78,10 @@ which therefore cannot count as independently discovered.
 -
 
 **Where they genuinely disagree:**
+
+-
+
+**Where apparent conflicts were reconciled by matching the correct observable/model/convention:**
 
 -
 
@@ -87,11 +104,12 @@ For every claim that would affect an implementation, classify it. Per `RESEARCH_
 ## 6. Verification status
 
 Verification is a **separate pass** with its own context. Do not mark a claim verified because a
-second reader agreed with the first.
+second reader agreed with the first. Atomize compound claims when their components can receive
+different verdicts.
 
-| Claim | Verifier saw | Verdict | Caveats |
+| Claim / subclaim | Verifier saw | Verdict | Identity / mechanism / portability caveats |
 |---|---|---|---|
-|  | claim + source only / inherited reasoning | supports / partially supports / contradicts / does not address | regime limits, citation drift, portability gaps |
+|  | claim + source only / inherited reasoning | supports / partially supports / contradicts / does not address / reconciled | system, process, material, regime, observable, origin/model, causal-vs-correlational, portability |
 
 ---
 
@@ -116,6 +134,12 @@ Only after discovery and verification are complete.
 -
 
 **Assumptions the repository is making that the literature does not support:**
+
+-
+
+**For proposed stochastic simulation variables:** does this variable represent a genuinely new
+degree of freedom, or could its variation already be absorbed by another fitted/fluctuated
+parameter? Record coordinate/origin conventions and any double-counting risk.
 
 -
 

@@ -38,7 +38,11 @@ Repository context may be used initially only when it is genuinely necessary to 
 
 For an important claim, an independent verifier should receive the claim and strongest source(s), but should not inherit the scout's conclusion or the implementation author's reasoning when avoidable.
 
-Verification asks what the source actually establishes, in what regime, and with what caveats.
+Verification asks what the source actually establishes, in what regime, for which observable and convention, and with what caveats.
+
+Atomize compound claims before verification. If one sentence contains several causal, quantitative, or logical propositions, verify each proposition separately rather than hiding the result inside a single partially-supported label.
+
+Do not infer a causal mechanism merely from correlation, covariance, or a shared trend. Mechanistic claims require explicit derivation, isolation, or testing.
 
 ### Reconciliation pass
 
@@ -61,6 +65,24 @@ For material model choices, label the provenance as one of:
 
 Cross-validation means independent reconstruction or verification, not agreement checking.
 
+## Claim envelope
+
+For every important claim, preserve enough context to know what the source actually establishes:
+
+- evidence type: explicit, derived, interpretation, or hypothesis;
+- system/population;
+- particle/process when relevant;
+- material/detector;
+- energy/parameter regime;
+- observable;
+- coordinate/origin convention;
+- model/approximation;
+- exact source-stated value and units for quantitative claims.
+
+Do not silently generalize from one material, process, observable, regime, or coordinate convention to another. Such transfers must be labeled and justified.
+
+For numerical claims, copy the source-stated value and units exactly. Record conversions, compositions, and derived quantities separately with their formula or derivation.
+
 ## Minimum source record
 
 For important claims record, when available:
@@ -70,7 +92,8 @@ For important claims record, when available:
 - year,
 - DOI / ISBN / stable URL,
 - page / section / equation / figure,
-- video timestamp for audiovisual material.
+- video timestamp for audiovisual material,
+- the claim envelope needed to interpret the cited passage correctly.
 
 ## Claim labels
 
@@ -82,15 +105,32 @@ Always distinguish:
 - **Open question** — unresolved by current evidence.
 - **Speculation** — plausible idea without adequate evidence yet.
 
+A literature scout's structural synthesis is an **interpretation** or **hypothesis** unless a source explicitly establishes it. Sourced ingredients do not automatically make the synthesis itself a sourced fact.
+
 ## Source conflict
 
 When sources disagree:
 
-1. Verify that they address the same population/system/regime.
-2. Prefer primary evidence over summaries.
-3. Check dates and whether one source supersedes another.
-4. State the disagreement explicitly.
-5. Do not average contradictory claims into a fake consensus.
+1. Verify that they address the same population/system, process, material/detector, regime, observable, coordinate/origin convention, and model treatment.
+2. Check whether a single source contains multiple historical, analytic, fitted, or simulation-based treatments of the phenomenon.
+3. Prefer primary evidence over summaries.
+4. Check dates and whether one source supersedes another.
+5. State a genuine disagreement explicitly.
+6. Do not average contradictory claims into a fake consensus.
+
+An apparent conflict that disappears after matching the correct observable or convention should be recorded as **reconciled**, while preserving any implementation risk from mixing constants or formulas across treatments.
+
+## Simulation variables and double counting
+
+When literature is used to justify a stochastic simulation variable:
+
+1. identify the physical variation the variable represents;
+2. record the source's coordinate/origin convention;
+3. determine whether another fitted or fluctuated parameter already absorbs the same event-to-event variation;
+4. look for evidence that the variables are separable, conditionally modeled, or jointly distributed;
+5. if separability is unresolved, support the variable architecturally without treating an additional independent fluctuation as established.
+
+This is especially important when parameters are referenced to different origins such as detector entry, first interaction, or shower maximum.
 
 ## Videos
 
