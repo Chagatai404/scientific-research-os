@@ -23,3 +23,8 @@
 21. Cross-validation means independent reconstruction, reproduction, or verification; it does not mean asking a second agent whether it agrees with the first.
 22. For consequential scientific choices, actively seek credible counterevidence, alternative models, failed/null results, and boundary conditions that could invalidate the preferred interpretation.
 23. Record when a model or parameter is transferred across detector, material, energy, population, or simulation regimes rather than directly supported in the target regime.
+24. Preserve source-stated numerical values and units exactly; record unit conversions and other derived quantities separately with dimensional checks.
+25. Before treating evidence as direct support, match the claim's system/population, particle/process, material/detector, energy/parameter regime, observable, coordinate/origin convention, and model/approximation when scientifically relevant.
+26. Atomize compound claims before verification. Do not hide unsupported causal or quantitative components inside a single `partially supported` verdict when the pieces can be judged separately.
+27. Correlation or covariance does not by itself establish the proposed causal mechanism. Label mechanistic explanations as interpretations or hypotheses until directly derived, isolated, or tested.
+28. Before adding a stochastic simulation variable, check whether its variance is already absorbed by another fitted or fluctuated parameter. Do not introduce independent latent variables without considering double counting and coordinate/origin conventions.
