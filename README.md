@@ -7,36 +7,47 @@ The system separates two loops:
 - **Learning:** probe → dependency map → teach → retrieve → promote.
 - **Research:** question → evidence → hypothesis → experiment → audit → decision.
 
-The human researcher is always the final authority. AI agents may search, explain, implement, critique, and propose changes, but they do not silently promote claims into permanent knowledge or accepted research conclusions.
+The human researcher is always the final authority. AI agents may search, explain, implement, critique, reproduce, verify, and propose changes, but they do not silently promote claims into permanent knowledge or accepted research conclusions.
 
 ## Core design
 
 ```text
-Obsidian vault          Git research repo
-(understanding)         (evidence)
-      │                       │
-      ├─ concepts             ├─ src/
-      ├─ derivations          ├─ tests/
-      ├─ quizbook             ├─ notebooks/
-      ├─ literature notes     ├─ configs/
-      └─ learning maps        └─ results/
-              \               /
-               \             /
+Obsidian vault                 Git research repo
+(understanding)                (evidence)
+      │                              │
+      ├─ concepts                    ├─ src/
+      ├─ derivations                 ├─ tests/
+      ├─ quizbook                    ├─ notebooks/
+      ├─ literature notes            ├─ configs/
+      └─ learning maps               └─ results/
+              \                      /
+               \                    /
                 human researcher
-                      │
-          ┌───────────┴───────────┐
-          │                       │
-       Claude                   Codex
-     explanation              implementation
-     literature               experiments
-     derivation               reproducibility
+                       │
+              assigns the task/role
+                       │
+        ┌──────────────┼──────────────┐
+        │              │              │
+      Claude         Codex          other AI
+        │              │              │
+        └─────── interchangeable tools ┘
+                       │
+          tutoring / literature / coding
+          experiments / review / audit
+          verification / reproducibility
 ```
+
+The user decides which tool performs which task. A project may choose conventions—for example, using one tool more often for tutoring and another for implementation—but those conventions belong to the project or user workflow, not to Scientific Research OS itself.
+
+For substantial work, prefer **one primary agent at a time**. A second agent can later be used for independent verification, reproduction, adversarial review, or implementation review.
+
+Cross-validation means independent reconstruction or verification, not asking a second agent whether it agrees with the first.
 
 ## Repository layout
 
 ```text
 skills/                 Canonical model-independent skills
-agents/                 Canonical subagent role definitions
+agents/                 Canonical specialist/subagent role definitions
 references/             Shared scientific policies
 assets/obsidian/        Obsidian templates
 scripts/                Portable local tooling
@@ -58,6 +69,8 @@ tests/                   Lightweight self-checks
 - `research-review` — adversarial review of claims and evidence.
 - `research-session` — orchestrate a complete human-led research session.
 
+Skills describe workflows and capabilities. They are not tied to a particular model or provider.
+
 ## Initial specialist agents
 
 - literature-scout
@@ -68,7 +81,33 @@ tests/                   Lightweight self-checks
 - adversarial-reviewer
 - visualizer
 
-Use subagents when work can be isolated or parallelized. Do not spawn them for trivial tasks.
+These are **task roles**, not provider identities. Any compatible AI system may perform them if it has the required capabilities.
+
+Use specialist agents when work benefits from isolated context, independent verification, or parallelizable evidence gathering. Do not spawn them for trivial tasks.
+
+## Research independence and bias control
+
+For hypothesis-sensitive, model-selection, or implementation-defining questions, separate:
+
+```text
+neutral research question
+        ↓
+independent literature discovery
+        ↓
+independent source verification
+        ↓
+adversarial counterevidence search
+        ↓
+reconciliation with current project/code
+        ↓
+human decision
+```
+
+The initial literature search should not be shaped by the project's preferred implementation, equations, existing citations, or desired conclusion unless those details are genuinely necessary to define the system or regime.
+
+A disagreement between external evidence and the current codebase is a research finding, not something to smooth over.
+
+When practical, an independent reviewer should receive the claim, source, artifact, experiment, or acceptance criteria without being given the authoring agent's full reasoning first.
 
 ## Quick start
 
@@ -105,8 +144,10 @@ python scripts/install.py --target all
 This installs:
 
 - skills to `~/.claude/skills/` and `~/.agents/skills/`
-- Claude subagents to `~/.claude/agents/`
+- Claude-compatible subagents to `~/.claude/agents/`
 - Codex custom agents to `~/.codex/agents/`
+
+The installed definitions are the same scientific roles expressed through provider-specific adapter formats. Installing them does **not** assign Claude or Codex permanent responsibilities.
 
 ### 4. Install Obsidian templates
 
@@ -143,16 +184,50 @@ python scripts/vault.py open \
 
 ## Tool independence
 
-The skills describe capabilities rather than hard-coding a provider.
+Scientific Research OS is model- and provider-independent.
 
-For example, `literature-scout` requires:
+The framework defines:
+
+- scientific workflows,
+- evidence standards,
+- specialist task roles,
+- review boundaries,
+- human authority points.
+
+It does **not** prescribe that a particular provider must perform a particular type of work.
+
+For example, `literature-scout` requires capabilities such as:
 
 - scholarly/web search,
 - source retrieval,
 - citation metadata,
 - optional citation-context search.
 
-Claude, Codex, ChatGPT, MCP servers, or connectors may satisfy those capabilities differently.
+Claude, Codex, ChatGPT, MCP servers, connectors, or future tools may satisfy those capabilities differently.
+
+Likewise, `tutor`, `physics-reviewer`, `reproducibility-auditor`, and other roles can be assigned to whichever tool the user chooses.
+
+A project may define its own preferred tool conventions in project-local instructions such as `CLAUDE.md`, `AGENTS.md`, or equivalent files.
+
+## Suggested coordination pattern
+
+A simple default for substantial work is:
+
+```text
+human defines question
+        ↓
+primary agent performs task
+        ↓
+human inspects result
+        ↓
+independent agent verifies/reproduces if warranted
+        ↓
+human accepts, rejects, or revises
+```
+
+Use simultaneous agents only when true parallelism adds value and their contexts can remain independent.
+
+Git is the coordination layer for reproducible artifacts. Obsidian is the learning/understanding layer. The human researcher is the convergence point.
 
 ## Security
 
@@ -165,10 +240,12 @@ Claude, Codex, ChatGPT, MCP servers, or connectors may satisfy those capabilitie
 ## Status
 
 v0.1 focuses on:
+
 1. source-grounded learning,
 2. scientific reasoning,
 3. reproducible research,
 4. Obsidian live logging,
-5. Claude/Codex portability.
+5. provider-independent AI collaboration,
+6. independent literature discovery and review.
 
 Future extensions should be added only after a recurring workflow proves it is needed.
