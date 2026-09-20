@@ -84,6 +84,25 @@ Create:
 
 This turns an interesting idea into a falsifiable scientific workflow.
 
+### When a literature pass finishes
+
+Use:
+
+`12_Evidence_Map.md`
+
+`04_Source_Note.md` and `05_Paper_Note.md` describe **one** source each. The evidence map records a
+whole **pass**: the neutral question that was asked, what was deliberately withheld from the search
+to keep it independent, every source found, where the literature genuinely disagrees, and what is
+still missing.
+
+Keeping the withheld-context section honest is the point of the note. Without it, nobody can later
+tell whether the evidence was *discovered* or merely *confirmed* — which is the difference between
+independent discovery and circular reasoning. The template also keeps discovery, verification,
+counterevidence and repository reconciliation as separate sections, because collapsing them is how
+a literature review quietly becomes a justification of what was already implemented.
+
+One map per pass. A second pass on the same question gets its own note.
+
 ## Suggested source trust hierarchy
 
 For scientific claims:
