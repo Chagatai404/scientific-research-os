@@ -5,7 +5,7 @@
 path = "C:/Users/<username>/Obsidian/Knowledge"
 templates_dir = "90 Templates"
 default_session_dir = "00 Tutor Sessions"
-research_session_dir = "40 Research/AMS ECAL QML/Sessions"
+research_session_dir = "40 Research/<project-name>/Sessions"
 
 [install]
 claude_skills = "~/.claude/skills"
