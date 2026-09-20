@@ -11,6 +11,24 @@ tags:
 
 # {{title}}
 
+> [!info] Tutor status: **LISTENING**
+> Write your answer in the answer slot, then **tick the `Send this answer` checkbox**
+> underneath it. That is what wakes the tutor — there is no timer, so think for as long as
+> you want before ticking. The reply and the next question appear in this note.
+>
+> To pause or redirect, say so in chat.
+
+## How to use this note
+
+1. Scroll to **§3** and find the question marked `ACTIVE`.
+2. Write inside the `**My answer:**` block underneath it.
+3. **Tick the `Send this answer` checkbox.** Response arrives within a few seconds.
+4. The assessment and the next `ACTIVE` question appear below.
+5. Say "I don't know" or "I recognise this but can't derive it" freely — that is a more
+   useful signal than a guess, and it is what the probe phase is for.
+
+---
+
 ## 1. Learning goal
 
 **What I want to be able to do by the end:**
@@ -59,6 +77,35 @@ The AI tutor must:
 ---
 
 ## 3. Prerequisite probe
+
+Questions are posted here **one at a time**, newest last. Exactly one carries `ACTIVE`.
+
+Pattern for each question — the tutor appends this, the learner fills the answer slot and
+ticks the box:
+
+```markdown
+### Qn — <short topic> — `ACTIVE`
+
+<question text, split into parts (a)/(b)/(c) when it probes more than one thing>
+
+**My answer:**
+
+>
+
+- [ ] **Send this answer**
+```
+
+After the answer is submitted the tutor rewrites `ACTIVE` to `ANSWERED`, appends a
+`#### Tutor assessment of Qn` block classifying the answer (reconstructed / recognised but
+not derivable / misunderstanding / forgotten / gap — **not** a numeric score), and posts the
+next question with a fresh unticked checkbox.
+
+While probing, the tutor classifies but does **not** reveal answers. Teaching starts only
+once the boundary is mapped.
+
+### Live questions
+
+
 
 ### Things I already understand
 
@@ -183,4 +230,7 @@ Write this **without copying the tutor**.
 ---
 
 ## Live transcript
+
+_Oldest first. **Append** new entries at the bottom — never prepend. Times approximate to the
+minute._
 

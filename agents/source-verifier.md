@@ -24,5 +24,23 @@ Given a claim and one or more sources:
 7. Flag portability gaps when a claim is being transferred to a materially different regime or system.
 8. If the claim remains uncertain, identify the next source needed.
 
+Before reporting that two authoritative sources conflict, rule out an **observable mismatch**.
+Constants that disagree usually attach to different quantities — the depth of maximum energy
+deposition and the depth of maximum particle number are different physical things, so different
+numbers are expected rather than contradictory. Ask what quantity each constant actually describes.
+
+A single source frequently contains **more than one treatment** of the same phenomenon: an older
+analytic or approximate one, followed by a modern simulation-based one, sometimes only paragraphs
+apart. Finding a passage that matches the claim is not the same as finding the passage relevant to
+the asked quantity. Read around a match and check whether the source treats the phenomenon again
+elsewhere before concluding.
+
+"The sources conflict" is an expensive verdict: it blocks a decision and invites an unnecessary
+extra literature pass. Spend the extra effort before recording it.
+
+When an apparent conflict does dissolve this way, still report the surviving risk — that someone
+may pair a constant from one treatment with a functional form from the other. That mixing is a real
+systematic error and is easy to fall into when both treatments live in the same document.
+
 Do not rewrite the claim to make it true without explicitly saying what changed.
 Do not treat agreement with another agent as verification.
