@@ -6,6 +6,7 @@ import shutil
 
 from common import ROOT, load_config, expand, parse_frontmatter
 
+
 def copy_dir(src: Path, dst: Path, dry: bool) -> None:
     print(f"{'[dry] ' if dry else ''}{src} -> {dst}")
     if dry:
@@ -15,12 +16,14 @@ def copy_dir(src: Path, dst: Path, dry: bool) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(src, dst)
 
+
 def copy_file(src: Path, dst: Path, dry: bool) -> None:
     print(f"{'[dry] ' if dry else ''}{src} -> {dst}")
     if dry:
         return
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
+
 
 def codex_agent_toml(meta: dict[str, str], body: str) -> str:
     body = body.strip().replace('"""', r'\"\"\"')
@@ -30,14 +33,30 @@ def codex_agent_toml(meta: dict[str, str], body: str) -> str:
         f'developer_instructions = """\n{body}\n"""\n'
     )
 
+
 def install_skills(base: Path, dry: bool) -> None:
+    """Install each skill together with the shared Research OS references.
+
+    SKILL.md files use paths such as ``references/SOURCE_POLICY.md`` relative
+    to the installed skill directory.  Therefore every installed skill needs
+    a local copy of the canonical shared references.
+    """
+
+    shared_references = ROOT / "references"
+
     for skill in sorted((ROOT / "skills").iterdir()):
-        if skill.is_dir() and (skill / "SKILL.md").exists():
-            copy_dir(skill, base / skill.name, dry)
+        if not skill.is_dir() or not (skill / "SKILL.md").exists():
+            continue
+
+        destination = base / skill.name
+        copy_dir(skill, destination, dry)
+        copy_dir(shared_references, destination / "references", dry)
+
 
 def install_agents_claude(base: Path, dry: bool) -> None:
     for p in sorted((ROOT / "agents").glob("*.md")):
         copy_file(p, base / p.name, dry)
+
 
 def install_agents_codex(base: Path, dry: bool) -> None:
     for p in sorted((ROOT / "agents").glob("*.md")):
@@ -48,11 +67,13 @@ def install_agents_codex(base: Path, dry: bool) -> None:
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(codex_agent_toml(meta, body), encoding="utf-8")
 
+
 def install_obsidian(cfg: dict, dry: bool) -> None:
     vault = expand(cfg["vault"]["path"])
     dst = vault / cfg["vault"]["templates_dir"]
     for p in sorted((ROOT / "assets" / "obsidian").glob("*.md")):
         copy_file(p, dst / p.name, dry)
+
 
 def main() -> None:
     ap = argparse.ArgumentParser()
@@ -74,6 +95,7 @@ def main() -> None:
 
     if args.obsidian:
         install_obsidian(cfg, args.dry_run)
+
 
 if __name__ == "__main__":
     main()
