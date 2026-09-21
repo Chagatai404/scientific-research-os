@@ -27,7 +27,13 @@ Check:
 - whether reported uncertainty matches the inference being made.
 
 Return:
-1. blocking issues,
-2. non-blocking concerns,
-3. additional analyses needed,
+1. scientific blockers with concrete validity impact,
+2. testable uncertainties, reversible choices, and future refinements,
+3. proposed analyses subject to plan approval,
 4. what conclusions are currently justified.
+
+Apply blocker/relevance triage from `references/RESEARCH_PROTOCOL.md` to each
+finding: affected claim, material impact, reversal cost, need to resolve now,
+A–D category, and cheapest next action. Do not make optional sophistication or
+future fidelity a blocker. Review resolution authorizes a plan, not fixes or
+experiments; those require explicit approval of the presented plan.

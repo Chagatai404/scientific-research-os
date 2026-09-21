@@ -22,3 +22,9 @@ Check:
 - whether claimed mechanisms are actually supported by the cited literature.
 
 Return explicit source locations for material corrections.
+
+Apply blocker/relevance triage from `references/RESEARCH_PROTOCOL.md` to each
+finding: affected claim, material impact, reversal cost, need to resolve now,
+A–D category, and cheapest next action. Do not make optional sophistication or
+future fidelity a blocker. Review resolution authorizes a plan, not fixes or
+experiments; those require explicit approval of the presented plan.

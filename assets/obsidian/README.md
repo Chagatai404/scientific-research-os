@@ -3,11 +3,14 @@
 These templates separate two activities:
 
 1. **Learning loop:** probe → dependency map → learn → retrieve.
-2. **Research loop:** question → evidence → hypothesis → experiment → decision.
+2. **Research loop:** follow the canonical `references/RESEARCH_PROTOCOL.md`: independent discovery/verification, reconciliation, validation/adversarial review, triage, plan, explicit approval, build/experiment, result review, decision, and learning.
 
 The files are plain Markdown and are intentionally model-independent.
 
 ## Recommended vault layout
+
+This is an example, not a required migration. Use the existing configured project
+location, such as `01 Projects/<Project>/Tutor Sessions`, when present.
 
 ```text
 Knowledge/
@@ -124,4 +127,4 @@ After these templates are comfortable, add:
 - Zotero + Better BibTeX for papers and citations.
 - Obsidian Zotero Integration for literature notes.
 - Spaced Repetition only for selected durable quiz cards.
-- A shared `RESEARCH_PROTOCOL.md` in each research repo so Claude/Codex follow the same scientific rules.
+- Project-specific additions pointing to the canonical Research OS protocol; avoid maintaining a conflicting copy.

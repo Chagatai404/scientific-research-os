@@ -5,7 +5,7 @@ description: Source-grounded tutoring for mathematics, statistics, physics, quan
 
 # Tutor
 
-Read `references/LEARNING_PROTOCOL.md` and `references/SOURCE_POLICY.md` when available.
+Read `references/LEARNING_PROTOCOL.md` and `references/SOURCE_POLICY.md` before setup; do not reread them after every probe answer. In this repository, shared references live at `../../references/`; the installer copies them into each installed skill's `references/` directory.
 
 ## Workflow
 
@@ -25,6 +25,16 @@ Read `references/LEARNING_PROTOCOL.md` and `references/SOURCE_POLICY.md` when av
    tutoring interface" below.
 9. End a unit by asking the learner to reconstruct the central idea in their own words.
 10. Propose permanent concept/derivation/quiz notes, but do not silently promote them.
+
+## Active probing
+
+Use the fast active-probe contract in the learning protocol. Prepare concepts,
+acceptable answers, misconceptions, hints, and progression criteria internally
+before the block. Each answer gets only a lightweight verdict/hint and the next
+question; defer analysis, source retrieval, re-teaching, and note synthesis until
+the block ends. Pause only when needed to correct/verify a point that prevents
+continuation or when the learner requests explanation. End with the protocol's
+synthesis and reinforce prerequisites needed for the current task.
 
 ## Question format
 
@@ -75,28 +85,26 @@ When a vault is configured, the session note is the UI. Chat carries only contro
 
 Setup:
 
-1. Create the note from `90 Templates/00_Tutor_Session.md` under
-   `01 Projects/<Project>/Tutor Sessions/<date> <topic>.md`. Preserve the template's frontmatter
+1. Use the configured template directory and project/session location (for example,
+   `90 Templates/00_Tutor_Session.md` and
+   `01 Projects/<Project>/Tutor Sessions/<date> <topic>.md`). Fall back to the
+   bundled tutor-session template if it has not been installed. Preserve its frontmatter
    and section numbering so the note can be promoted later.
 2. Fill the learning goal and tutor contract from the actual task.
 3. Post **one** question at a time, with an answer slot and an unticked
    `- [ ] **Send this answer**` checkbox. Never post a batch.
-4. Write assessments, the dependency map, the source table, the lesson log, and quizzes into the
-   note as the session proceeds. The note, not the chat scrollback, is the record.
+4. During active probing append only the short verdict/hint and next question. At block end,
+   write the assessment synthesis and update the map, sources, and lesson log as needed.
 
 Answer submission is an explicit checkbox, never an idle timer:
 
-```bash
-while true; do
-  if [ ! -f "$note" ]; then echo "TUTOR NOTE MISSING"; exit 1; fi
-  if grep -qF -- '- [x]' "$note"; then echo "ANSWER SUBMITTED"; exit 0; fi
-  sleep 3
-done
-```
-
-Run it with Bash `run_in_background`; it fires once, then re-arm after each reply. When posting the
-next question, clear or untick the previous checkbox, otherwise the watcher fires immediately on
-the stale tick.
+Use an available file watcher or bounded polling in the host's shell. Watch only
+the current ACTIVE question's exact `- [x] **Send this answer**` submission marker,
+not arbitrary checked boxes elsewhere in the note. On submission read the answer
+once, mark it ANSWERED, clear its submission marker, append the lightweight reply,
+and post the next ACTIVE question with an unticked marker. Stop watching on pause,
+stop, or a missing note. Do not assume Bash or a provider-specific background API.
+If file watching is unavailable, let the learner explicitly submit through chat.
 
 Do **not** infer "finished" from file modification time going quiet. Composing an answer involves
 pauses for thought that are indistinguishable from completion, so no debounce threshold separates

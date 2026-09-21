@@ -5,7 +5,7 @@ A model-independent research and learning workflow for human-led scientific work
 The system separates two loops:
 
 - **Learning:** probe → dependency map → teach → retrieve → promote.
-- **Research:** question → evidence → hypothesis → experiment → audit → decision.
+- **Research:** question → learn → independent discovery → separate verification → reconcile → synthesize → specialist validation → adversarial review → triage → plan → explicit human approval → build → experiment → validate/attack results → decision → learn again → persist.
 
 The human researcher is always the final authority. AI agents may search, explain, implement, critique, reproduce, verify, and propose changes, but they do not silently promote claims into permanent knowledge or accepted research conclusions.
 
@@ -39,7 +39,7 @@ Obsidian vault                 Git research repo
 
 The user decides which tool performs which task. A project may choose conventions—for example, using one tool more often for tutoring and another for implementation—but those conventions belong to the project or user workflow, not to Scientific Research OS itself.
 
-For substantial work, prefer **one primary agent at a time**. A second agent can later be used for independent verification, reproduction, adversarial review, or implementation review.
+For substantial work, prefer **one coordinating primary agent at a time**, with separate literature discovery and source-verification agents and relevant independent reviewers. Follow the canonical [research protocol](references/RESEARCH_PROTOCOL.md); the summaries here do not replace its gates.
 
 Cross-validation means independent reconstruction or verification, not asking a second agent whether it agrees with the first.
 
@@ -96,11 +96,13 @@ independent literature discovery
         ↓
 independent source verification
         ↓
-adversarial counterevidence search
+reconciliation → synthesis → relevant specialist validation
         ↓
-reconciliation with current project/code
+adversarial review → blocker/relevance triage
         ↓
-human decision
+plan → explicit human approval → build/experiment
+        ↓
+result validation/attack → human decision → learning → persist
 ```
 
 The initial literature search should not be shaped by the project's preferred implementation, equations, existing citations, or desired conclusion unless those details are genuinely necessary to define the system or regime.
@@ -125,6 +127,7 @@ Edit the vault path.
 
 ```bash
 python scripts/validate.py
+python -m unittest discover -s tests -v
 ```
 
 ### 3. Install skills and agents globally
@@ -146,6 +149,8 @@ This installs:
 - skills to `~/.claude/skills/` and `~/.agents/skills/`
 - Claude-compatible subagents to `~/.claude/agents/`
 - Codex custom agents to `~/.codex/agents/`
+
+Each installed skill receives copies of the canonical `references/` documents. In the source tree, resolve skill `references/` paths against the repository root. Installed standalone agents receive the shared agent policy, triage, and approval boundary in their generated instructions; edit canonical sources and reinstall, rather than editing generated copies.
 
 The installed definitions are the same scientific roles expressed through provider-specific adapter formats. Installing them does **not** assign Claude or Codex permanent responsibilities.
 
@@ -216,11 +221,11 @@ A simple default for substantial work is:
 ```text
 human defines question
         ↓
-primary agent performs task
+primary agent coordinates the canonical research cycle
         ↓
 human inspects result
         ↓
-independent agent verifies/reproduces if warranted
+independent result reviewers verify/reproduce as warranted
         ↓
 human accepts, rejects, or revises
 ```
@@ -239,13 +244,15 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
-v0.1 focuses on:
+v0.2 focuses on:
 
 1. source-grounded learning,
 2. scientific reasoning,
 3. reproducible research,
 4. Obsidian live logging,
 5. provider-independent AI collaboration,
-6. independent literature discovery and review.
+6. independent literature discovery and review,
+7. explicit plan approval before builds and experiments,
+8. fast probing, concern triage, and post-build learning.
 
 Future extensions should be added only after a recurring workflow proves it is needed.

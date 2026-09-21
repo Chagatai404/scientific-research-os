@@ -55,7 +55,28 @@ def install_skills(base: Path, dry: bool) -> None:
 
 def install_agents_claude(base: Path, dry: bool) -> None:
     for p in sorted((ROOT / "agents").glob("*.md")):
-        copy_file(p, base / p.name, dry)
+        out = base / p.name
+        print(f"{'[dry] ' if dry else ''}{p} -> {out}")
+        if not dry:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(p.read_text(encoding="utf-8") + agent_policy(p.stem), encoding="utf-8")
+
+
+def agent_policy(role: str) -> str:
+    """Bundle canonical boundaries so standalone agents need no relative lookup."""
+    research = (ROOT / "references" / "RESEARCH_PROTOCOL.md").read_text(encoding="utf-8")
+    triage_and_gate = research.split("## Blocker / relevance triage\n", 1)[1].split(
+        "## Scientific invariants\n", 1
+    )[0]
+    source_policy = ""
+    if role in {"literature-scout", "source-verifier"}:
+        source_policy = "\n" + (ROOT / "references" / "SOURCE_POLICY.md").read_text(encoding="utf-8")
+    return (
+        "\n\n# Shared Research OS policy (generated from canonical references)\n\n"
+        + (ROOT / "references" / "AGENT_POLICY.md").read_text(encoding="utf-8")
+        + "\n## Blocker / relevance triage\n" + triage_and_gate
+        + source_policy
+    )
 
 
 def install_agents_codex(base: Path, dry: bool) -> None:
@@ -65,7 +86,7 @@ def install_agents_codex(base: Path, dry: bool) -> None:
         print(f"{'[dry] ' if dry else ''}{p} -> {out}")
         if not dry:
             out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(codex_agent_toml(meta, body), encoding="utf-8")
+            out.write_text(codex_agent_toml(meta, body + agent_policy(meta["name"])), encoding="utf-8")
 
 
 def install_obsidian(cfg: dict, dry: bool) -> None:

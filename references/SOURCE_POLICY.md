@@ -46,7 +46,7 @@ Do not infer a causal mechanism merely from correlation, covariance, or a shared
 
 ### Reconciliation pass
 
-Only after the independent evidence landscape is mapped should it be compared with:
+Only after independent discovery and source verification should the evidence be compared with:
 
 - the existing implementation,
 - project assumptions,
@@ -128,7 +128,7 @@ When literature is used to justify a stochastic simulation variable:
 2. record the source's coordinate/origin convention;
 3. determine whether another fitted or fluctuated parameter already absorbs the same event-to-event variation;
 4. look for evidence that the variables are separable, conditionally modeled, or jointly distributed;
-5. if separability is unresolved, support the variable architecturally without treating an additional independent fluctuation as established.
+5. if separability is unresolved, triage its effect on the active experiment; propose a replaceable/configurable treatment only when useful in an approved plan, without treating an additional independent fluctuation as established.
 
 This is especially important when parameters are referenced to different origins such as detector entry, first interaction, or shower maximum.
 

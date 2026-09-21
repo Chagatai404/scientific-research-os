@@ -22,7 +22,7 @@ tags:
 
 1. Scroll to **§3** and find the question marked `ACTIVE`.
 2. Write inside the `**My answer:**` block underneath it.
-3. **Tick the `Send this answer` checkbox.** Response arrives within a few seconds.
+3. **Tick the `Send this answer` checkbox.** The tutor responds when submission is detected.
 4. The assessment and the next `ACTIVE` question appear below.
 5. Say "I don't know" or "I recognise this but can't derive it" freely — that is a more
    useful signal than a guess, and it is what the probe phase is for.
@@ -96,12 +96,14 @@ ticks the box:
 ```
 
 After the answer is submitted the tutor rewrites `ACTIVE` to `ANSWERED`, appends a
-`#### Tutor assessment of Qn` block classifying the answer (reconstructed / recognised but
-not derivable / misunderstanding / forgotten / gap — **not** a numeric score), and posts the
-next question with a fresh unticked checkbox.
+short verdict/hint (for example, `Correct.` or `Partially correct. Hint: ...`),
+and posts the next question with a fresh unticked checkbox. Clear the old submission
+marker. Defer detailed analysis, source lookup, and map/log updates until block end.
+Give a minimal correction or pause for teaching only if meaningful continuation is
+blocked. Multiple choice is encouraged when it reduces typing or tests intuition.
 
-While probing, the tutor classifies but does **not** reveal answers. Teaching starts only
-once the boundary is mapped.
+At block end synthesize understood/partly understood concepts, misconceptions,
+corrections, connections, and reinforcement needed before progression.
 
 ### Live questions
 
