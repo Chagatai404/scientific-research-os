@@ -24,3 +24,12 @@ Before running anything, define:
 13. Failure criteria: what makes the experiment invalid.
 
 Implementation belongs in tested code where reusable; notebooks should orchestrate and explain.
+
+Use the canonical plan contents and authorization boundary in the research
+protocol. Include validated literature, carried assumptions, controls/baselines,
+ablations, support/refutation/inconclusive outcomes, likely files, configurable
+choices, and expected outputs. In a research cycle, complete independent evidence
+verification, relevant specialist validation, adversarial review, and A–D triage
+before finalizing the build plan. Present it and explicitly ask the researcher to
+approve, modify, or reject it; STOP before coding, build agents, or execution.
+An isolated planning request does not authorize running the plan.

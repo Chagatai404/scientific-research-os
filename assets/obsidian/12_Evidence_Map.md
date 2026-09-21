@@ -93,7 +93,7 @@ observables, regimes, or coordinate conventions.
 
 ## 5. Provenance labels
 
-For every claim that would affect an implementation, classify it. Per `RESEARCH_PROTOCOL.md`:
+For every claim that would affect an implementation, classify it. Per `SOURCE_POLICY.md`:
 
 | Claim | Label |
 |---|---|

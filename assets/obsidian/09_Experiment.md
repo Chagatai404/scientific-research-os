@@ -29,6 +29,26 @@ tags:
 
 **If H0 is true:**
 
+## Plan and authorization
+
+**Validated sources / carried assumptions:**
+
+**Proposed implementation / files / configurable choices:**
+
+**Controls / baselines / ablations / sensitivity tests:**
+
+**Expected outputs / failure conditions / inconclusive outcomes:**
+
+**Review reports / A–D concern triage / resolved scientific blockers:**
+
+**Presented plan version:**
+
+**Approval status:** awaiting / approved / modification requested / rejected
+
+**Explicit human approval reference and build/run scope:**
+
+**Deviations / revised approval if needed:**
+
 ## Variables
 
 ### Independent
@@ -113,6 +133,14 @@ tags:
 ## Failure analysis
 
 -
+
+## Post-result validation and learning
+
+**Independent reviewer findings / adversarial alternatives / A–D triage:**
+
+**What was built and learned / code-to-theory explanation:**
+
+**Probe synthesis / remaining learning gaps:**
 
 ## Decision
 
