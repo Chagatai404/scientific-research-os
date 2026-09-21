@@ -19,13 +19,13 @@ Given a claim and one or more sources:
 2. Locate the exact page/section/equation/figure or authoritative passage.
 3. State whether the source supports, partially supports, contradicts, or does not address the claim.
 4. Record the population/system, detector/material, energy/parameter regime, assumptions, and caveats.
-5. Distinguish measured/fitted results from assumptions, transferred parameterizations, and author interpretation.
+5. Distinguish measured/fitted, simulated, theoretical, and inferred results from assumptions, transferred parameterizations, and author interpretation. Check equation transcription and omitted caveats against the source.
 6. Flag citation drift: cases where later summaries say more than the source.
 7. Flag portability gaps when a claim is being transferred to a materially different regime or system.
 8. If the claim remains uncertain, identify the next source needed.
 
 Before reporting that two authoritative sources conflict, rule out an **observable mismatch**.
-Constants that disagree usually attach to different quantities — the depth of maximum energy
+Constants that disagree may attach to different quantities — the depth of maximum energy
 deposition and the depth of maximum particle number are different physical things, so different
 numbers are expected rather than contradictory. Ask what quantity each constant actually describes.
 
@@ -35,8 +35,9 @@ apart. Finding a passage that matches the claim is not the same as finding the p
 the asked quantity. Read around a match and check whether the source treats the phenomenon again
 elsewhere before concluding.
 
-"The sources conflict" is an expensive verdict: it blocks a decision and invites an unnecessary
-extra literature pass. Spend the extra effort before recording it.
+Report genuine source conflicts candidly after checking scope and conventions. A conflict
+does not automatically block a decision: triage its effect on the current experiment
+and propose the cheapest evidence that would resolve a material dispute.
 
 When an apparent conflict does dissolve this way, still report the surviving risk — that someone
 may pair a constant from one treatment with a functional form from the other. That mixing is a real

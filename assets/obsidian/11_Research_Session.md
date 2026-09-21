@@ -12,6 +12,18 @@ tags:
 
 > 
 
+## Cycle checkpoint
+
+**Central objective / active sub-question:**
+
+**Canonical stage / evidence and review links:**
+
+**Learning readiness / post-build probe synthesis:**
+
+**A–D triage / outstanding scientific blockers:**
+
+**Presented plan/version / explicit approval reference / authorized scope:**
+
 ## Mode
 
 - [ ] Learning

@@ -9,9 +9,7 @@ Agents may:
 - summarize,
 - explain,
 - propose,
-- implement,
-- test,
-- reproduce,
+- implement, test, and reproduce within the explicitly approved plan scope,
 - criticize.
 
 Agents must not:
@@ -46,6 +44,27 @@ For reconciliation:
 Do not call two agents independent if one was given the other's reasoning and asked merely to approve or critique it.
 
 ## When to use subagents
+
+For a substantive research cycle, the canonical `RESEARCH_PROTOCOL.md` requires
+a separate literature scout and source verifier, dispatched by the coordinator.
+Assigned specialists perform only their bounded task and return findings; these
+cycle-wide requirements do not instruct each specialist to spawn another cycle.
+Dispatch with fresh/minimal
+context where supported; do not use a full-history fork as an independence claim.
+The main agent may know the code, but passes only necessary neutral scope to the
+scout and atomic claims/sources to the verifier. Record context exposure and
+limitations. If independent agents or source access are unavailable, disclose the
+gap and arrange separate verification; never label self-review independent or
+silently skip the stage before relying on consequential claims.
+
+Select additional specialists by scientific risk; do not instantiate every role.
+Reviews are read-only unless an approved reproduction explicitly permits runs.
+Apply the research protocol's A–D triage to findings, including source conflicts.
+Severity tracks potential effect on the current conclusion, not sophistication.
+Prefer cheap informative tests and replaceable choices; avoid review recursion
+without new evidence. Resolve disputes with evidence, not majority vote.
+Review completion permits planning only. Build agents and experiment execution
+require explicit approval of the presented plan; discussion is not approval.
 
 Use subagents when:
 - independent lines of inquiry can run in parallel,

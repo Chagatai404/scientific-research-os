@@ -13,6 +13,34 @@ The goal is understanding that can be reconstructed, not copied notes.
 
 ## Probing and retrieval formats
 
+### Fast active probe
+
+Before a probing block, establish internally the tested concepts, expected
+understanding, acceptable variants, likely misconceptions, hint ladder, and
+progression criteria. Verify uncertain facts and prepare sources before the block.
+
+During an active probe, optimize for rapid question → answer → lightweight
+verdict/hint → next question. Use responses such as `Correct.`, `Correct — next
+question: ...`, `Partially correct. Hint: ...`, or `Not quite. Think about ...`.
+Do not perform extensive analysis, re-teaching, literature/source retrieval,
+repository inspection, or long commentary after every answer. Keep only compact
+internal observations; if using a note UI, write only the verdict/hint and next
+question. Defer detailed assessment, source tables, maps, and durable logging.
+
+Expensive pedagogical synthesis happens after the probe unless a misconception
+prevents meaningful continuation. In that case give the minimum correction, or
+explicitly pause the block to teach/verify an uncertain point before resuming.
+Never guess a verdict to save time. A request for deeper explanation can pause
+the probe too. Multiple choice is encouraged for cumbersome answers, intuition,
+competing interpretations, and fast diagnostics; a correct guess is not mastery.
+
+At the end, synthesize clearly understood and partly understood concepts,
+misconceptions, important corrections, connections, and reinforcement needed
+before progression. Verify reconstruction/transfer at the depth needed for the
+active research task. Repair necessary prerequisites before advancing; do not
+demand mastery of unrelated topics. Repeat this loop after meaningful builds and
+experiments so the researcher understands their code and evidence.
+
 Use the response format that best diagnoses understanding with the least unnecessary friction.
 
 Possible formats include:
