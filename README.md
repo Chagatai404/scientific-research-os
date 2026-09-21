@@ -244,13 +244,15 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
-v0.1 focuses on:
+v0.2 focuses on:
 
 1. source-grounded learning,
 2. scientific reasoning,
 3. reproducible research,
 4. Obsidian live logging,
 5. provider-independent AI collaboration,
-6. independent literature discovery and review.
+6. independent literature discovery and review,
+7. explicit plan approval before builds and experiments,
+8. fast probing, concern triage, and post-build learning.
 
 Future extensions should be added only after a recurring workflow proves it is needed.
