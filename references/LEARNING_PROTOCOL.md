@@ -4,20 +4,98 @@ The goal is understanding that can be reconstructed, not copied notes.
 
 ## Loop
 
-1. **Probe** — find the edge of current understanding.
-2. **Map** — build a small dependency graph from known foundations to the target.
-3. **Teach** — one dependency node at a time.
-4. **Connect** — state how each node follows from established knowledge.
-5. **Retrieve** — quiz recall, explanation, derivation, transfer, and implementation.
-6. **Promote** — the human rewrites durable understanding into permanent notes.
+1. **Prepare** — define the target capability, map likely dependencies, and verify
+   the facts needed for the lesson before live questioning.
+2. **Check prior retention** — inspect relevant retrieval evidence and check due
+   or uncertain prerequisites before reteaching them.
+3. **Probe and map** — use a bounded diagnostic block to locate the learner's
+   boundary, then refine the dependency map from the answers.
+4. **Teach and connect** — one dependency node at a time, connected to established
+   foundations; use a visual when it materially helps understanding.
+5. **Retrieve** — test reconstruction, explanation, derivation, transfer, or use.
+6. **Record and revisit** — preserve retrieval evidence, summarize learning state,
+   and suggest a delayed check; reinforce weak areas when needed.
+7. **Promote by choice** — the human chooses whether to rewrite demonstrated
+   understanding into permanent notes. Promotion does not establish retention.
+
+This is the learning loop, not a replacement for research stage order or approval
+gates in `RESEARCH_PROTOCOL.md`. An isolated lesson does not require a full
+research cycle. Use verified material already available when sufficient.
+
+## Learning state and retention
+
+Track evidence for a specific capability, not mastery of an entire subject.
+
+| State | Meaning |
+|---|---|
+| `unknown` | The capability has not yet been demonstrated. |
+| `learning` | The capability is currently being developed. |
+| `demonstrated` | The learner successfully reconstructed or used it during the current learning period. |
+| `retained` | The learner passed a delayed retrieval check after the original learning period. |
+| `fragile` | Previously demonstrated understanding recently failed or only partly survived retrieval. |
+| `stale` | Previously demonstrated or retained understanding lacks sufficiently recent retention evidence. |
+
+These labels summarize evidence, not certainty. `stale` means missing recent
+evidence, **not proven forgetting**. A note's existence, confidence rating,
+creation date, or reading/review timestamp is not evidence of retrieval. With no
+retrieval history, do not infer either mastery or forgetting from an old label.
+
+Keep the retrieval history rather than replacing it with only the latest state.
+At block end, record the capability, date/learning period, prompt or attempt
+reference, method, outcome, assistance used, and suggested next review with its
+rationale. Distinguish same-period reconstruction from delayed retrieval. Preserve
+earlier failures and successes; record corrections explicitly. Use working
+learning/session records within the authorized note workflow, without silently
+creating or rewriting permanent concept notes.
+
+### Delayed retrieval
+
+Check recall or reconstruction before showing the explanation or solution.
+Successful unassisted explanation, derivation, transfer, or application can support
+`demonstrated`; a qualifying delayed check can support `retained`. Delayed means
+retrieval after time away from instruction, not merely opening a new chat or
+repeating a just-revealed answer. Multiple-choice
+recognition alone is normally insufficient for `retained`; follow it with meaningful
+reconstruction or transfer. Record hints and open-note assistance rather than
+treating assisted success as equivalent to unassisted retrieval.
+
+A simple starting schedule is same-session reconstruction, then about one day,
+one week, one month, and a longer interval. These are adaptable defaults, not an
+optimal spacing algorithm or scientific laws. Choose the next interval according
+to the capability, learner, evidence, and upcoming use. Strong delayed retrieval
+can lengthen it; partial retrieval shortens it; failure calls for reinforcement
+and an earlier check. A successful retry immediately after reteaching establishes
+current demonstration, not a new delayed retention success.
+
+For previously demonstrated knowledge, partial or failed retrieval supports
+`fragile`; failure on a never-demonstrated concept leaves it `unknown` or
+`learning`. When a previously agreed review horizon passes without a new check,
+mark freshness as `stale` while preserving the last evidenced state and history.
+An overdue date must not erase a recorded failure or replace `fragile` with a
+mere absence-of-evidence label.
+If no review horizon was recorded, report freshness as unknown and propose a check;
+do not invent an expiry date. Retention checks are learner/session driven, not a
+requirement for a background scheduler.
 
 ## Probing and retrieval formats
 
 ### Fast active probe
 
-Before a probing block, establish internally the tested concepts, expected
-understanding, acceptable variants, likely misconceptions, hint ladder, and
-progression criteria. Verify uncertain facts and prepare sources before the block.
+Before a probing block, prepare internally the target capability, likely
+dependency map, relevant retention evidence, verified scientific facts and sources,
+question bank, expected answers and acceptable variants, likely misconceptions,
+hint ladder, progression/stopping criteria, and useful visual candidates. Keep
+answers and diagnostic plans out of the learner-facing question. Prepare enough
+to run the block without repeated expensive research; do not exhaustively research
+unrelated prerequisite branches.
+
+Default to **3–5 diagnostic questions**, asked **one at a time**. Stop earlier when
+there is enough evidence to choose the next teaching step. Normally do not exceed
+roughly **8 questions** unless the learner requests deeper testing, genuinely
+independent prerequisite branches need resolution, or answers reveal a contradiction
+that materially changes the learning path. Explain the reason for extending the
+block. Count prior-retention questions used diagnostically toward this budget;
+do not evade it through multipart questions or consecutive renamed blocks.
 
 During an active probe, optimize for rapid question → answer → lightweight
 verdict/hint → next question. Use responses such as `Correct.`, `Correct — next
@@ -30,6 +108,9 @@ question. Defer detailed assessment, source tables, maps, and durable logging.
 Expensive pedagogical synthesis happens after the probe unless a misconception
 prevents meaningful continuation. In that case give the minimum correction, or
 explicitly pause the block to teach/verify an uncertain point before resuming.
+If an answer exposes a genuine inconsistency or insufficient prepared evidence,
+pause, verify the disputed scientific point, and correct the preparation before
+continuing. Fresh research is an exception, not a routine step between answers.
 Never guess a verdict to save time. A request for deeper explanation can pause
 the probe too. Multiple choice is encouraged for cumbersome answers, intuition,
 competing interpretations, and fast diagnostics; a correct guess is not mastery.
@@ -70,15 +151,31 @@ Good multiple-choice questions should:
 
 1. test a concept rather than trivia;
 2. use plausible distractors that correspond to real misconceptions;
-3. avoid making the correct answer obvious through wording or length;
+3. inspect option symmetry: length, detail, grammatical form, precision, qualifiers,
+   terminology, and tone must not identify the correct answer;
 4. avoid introducing information that gives away a later question;
 5. ask for a brief reason when the reasoning matters;
 6. optionally ask for confidence when distinguishing understanding from guessing.
 
+Before an MCQ block, prepare a **hidden answer-position plan**. For four-option
+questions, allocate A/B/C/D counts differing by at most one across the planned
+block, then shuffle or deliberately permute those positions without an obvious
+cycle. For example, `C A D B B C A D` is balanced for eight questions;
+`A B C D A B C D` is predictably cyclic. Do not always assign the remainder to
+the same letters in shorter blocks. Reorder options to fit the plan and recheck
+the answer key and scientific meaning. For an extended block, balance the total
+planned counts; do not add questions merely to complete a quota after an early stop.
+Do not reveal the position plan or reuse a fixed sequence across sessions.
+
+Inspect each question before presenting it: the correct option should not
+routinely be the longest or most scientifically detailed. Repair weak distractors
+or use free response when plausible symmetric alternatives are unavailable. The
+position plan never takes priority over an unambiguous, scientifically valid question.
+
 A useful compact response format is:
 
 ```text
-Answer: B
+Answer: <letter>
 Reason: ...
 Confidence: low / medium / high
 ```
