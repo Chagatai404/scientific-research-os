@@ -2,6 +2,14 @@
 type: quizbook
 topic: ""
 domain: ""
+learning_schema: 1
+learning_id: ""
+projects: []
+prerequisites: []
+learning_state: unknown
+first_learned: ""
+last_retrieval: ""
+next_review: ""
 status: active
 created: "{{date}}"
 tags:
@@ -9,6 +17,19 @@ tags:
 ---
 
 # {{title}}
+
+This is a working learning record, not a permanent explanation. For graph tracking,
+use one record per capability: fill `learning_id` and `domain`, then confirm the
+required prerequisites (`[]` explicitly means none). Leave evidence dates blank
+until supported by an attempt. See the template README for the metadata contract.
+
+## Target capability
+
+**What I should be able to reconstruct or do:**
+
+-
+
+**Permanent explanation, if the human has chosen to create one:** [[ ]]
 
 ## Level 1 — Recall
 
@@ -106,8 +127,18 @@ $$
 
 ---
 
-## Review log
+## Retrieval history
 
-| Date | Score / confidence | Weakest area | Next review |
-|---|---:|---|---|
-| {{date}} |  |  |  |
+Append attempts in chronological order after the block. Link the actual answer and
+assessment; do not fill a success row merely because the note exists. Keep solutions
+hidden until the attempt. State and scheduling rules live in `LEARNING_PROTOCOL.md`.
+
+| Date | Learning period | Timing | Method | Outcome | Assistance | Evidence | Next review |
+|---|---|---|---|---|---|---|---|
+
+## Review rationale and corrections
+
+Explain interval choices or evidence corrections here, referring to the relevant
+attempt. Preserve earlier attempts; do not delete failures after a successful retry.
+
+-

@@ -2,15 +2,20 @@
 type: concept
 domain: ""
 project: ""
+learning_ref: ""
 status: learning
 confidence: low
 created: "{{date}}"
-last_reviewed: "{{date}}"
+last_reviewed: ""
 tags:
   - knowledge/concept
 ---
 
 # {{title}}
+
+Permanent understanding is written or reviewed by the human. `learning_ref` points
+to the stable ID of the working quizbook record; keep retrieval history there.
+`status`, `confidence`, checkboxes, and `last_reviewed` are not retrieval evidence.
 
 ## Why did I need this concept?
 
