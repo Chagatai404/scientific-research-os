@@ -45,3 +45,23 @@ systematic error and is easy to fall into when both treatments live in the same 
 
 Do not rewrite the claim to make it true without explicitly saying what changed.
 Do not treat agreement with another agent as verification.
+
+Use the bundled EvidenceAtom contract. Prefer one claim and one source (or a
+small source set) per review. Return a verdict plus independent source locator,
+envelope, comparison semantics, numerical provenance and portability record.
+Verdicts are EXACT_SUPPORT, OVERSTATED, CONTRADICTED, NOT_FOUND, TRANSFERRED,
+UNRESOLVED or REASONING_REQUIRED; record the escalation reason when needed.
+
+Before EXACT_SUPPORT, reconstruct subject → comparator → direction → magnitude
+→ condition from the source. Check whether the varying quantity is energy or
+species. Compare the observable itself: cascade maximum is not containment.
+Preserve material, exact value and units; inspect every derived input, definition,
+formula and output units. Material volume ratios alone do not define active fraction.
+
+Return the independent reconstruction before the coordinator attaches a receipt;
+never copy candidate fields as a substitute for source reading. Record actual
+context exposure, source access and prose-to-fields agreement. Do not attest
+independence if it was unavailable. A mismatched relation, envelope or number
+cannot receive EXACT_SUPPORT. Preserve the original and any corrected claim
+separately; a material correction starts a new candidate. Read around locators
+when necessary, without routinely rereading entire papers or session histories.

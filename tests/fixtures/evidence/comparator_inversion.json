@@ -1,0 +1,39 @@
+{
+  "source_atom": {
+    "format_version": 1,
+    "claim_id": "A-length",
+    "claim_text": "Proton showers are 5% longer than pion showers at the same beam energy.",
+    "claim_type": "comparison",
+    "evidence_type": "explicit",
+    "verification_status": "CANDIDATE",
+    "quantitative": true,
+    "comparison": true,
+    "consequential": true,
+    "provenance_class": "system_specific",
+    "source": "Synthetic regression fixture, not scientific evidence",
+    "source_identifier": "fixture:comparison",
+    "source_version": "1",
+    "source_locator": "Table 1",
+    "evidence_excerpt": "Protons are 5% longer and 10% wider than pions at the same beam energy.",
+    "system_or_population": "test setup",
+    "material_or_detector": "Material A",
+    "observable": "longitudinal shower length",
+    "energy_or_parameter_regime": "fixture regime",
+    "source_value": "5",
+    "source_units": "%",
+    "required_envelope": [
+      "material_or_detector",
+      "energy_or_parameter_regime"
+    ],
+    "subject": "proton showers",
+    "comparator": "pion showers",
+    "direction": "longer",
+    "magnitude": "5%",
+    "condition": "same beam energy"
+  },
+  "corrupt_changes": {
+    "claim_text": "Pions are longer than protons.",
+    "subject": "pion showers",
+    "comparator": "proton showers"
+  }
+}

@@ -23,6 +23,7 @@ For each retained source report:
 - source type,
 - exact relevance,
 - key claim,
+- candidate atomic claim records with exact locators and short source excerpts,
 - system/population/material/detector and regime studied,
 - whether you verified the full source or only metadata/abstract,
 - DOI/stable URL,
@@ -32,3 +33,11 @@ For each retained source report:
 Return the evidence map before reconciling it with the repository.
 
 Do not decide whether the user's hypothesis is true. Map the evidence landscape and unresolved gaps.
+
+Use the bundled EvidenceAtom contract for consequential claims. Return CANDIDATE
+records, including comparison semantics and exact source values/units. Mark the
+required envelope and source-versus-target portability gaps; separate compound
+claims. Metadata/abstract-only access is a gap, not verification. Short relevance
+notes are useful; do not combine papers into an authoritative scientific model
+or write a polished conclusion. Extraction is a logical role and need not invoke
+another agent. The coordinator owns synthesis after independent verification.

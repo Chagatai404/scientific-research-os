@@ -105,6 +105,19 @@ Do not use subagents for:
 - single-file straightforward edits,
 - tightly sequential reasoning where state must remain shared.
 
+## Bounded evidence work and selective escalation
+
+Discovery, extraction, deterministic validation, source verification and synthesis
+are logical contracts; they need not each use a separate model call. Preserve the
+independent verification boundary. Small agents can handle retrieval, metadata,
+candidate extraction, locators and simple atomic verification when evaluated for
+that task. Use deterministic tooling for structure, provenance and receipt checks.
+Escalate conflicts, ambiguous terms, nontrivial regime transfer, complex derivation,
+causal interpretation and model selection as REASONING_REQUIRED. The coordinator
+chooses reasoning capability and synthesizes compact verified atoms. Reuse unchanged
+records; do not pass full histories or repeat full-source reading by ceremony.
+See the EvidenceAtom contract for receipt and cache invalidation requirements.
+
 ## Convergence
 
 Specialists return reports to the main agent.

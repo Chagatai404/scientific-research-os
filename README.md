@@ -317,7 +317,36 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
-**v0.3.0 — Retention, Knowledge Frontier & Visual Teaching** adds:
+**v0.4.0 — Evidence integrity and low-token verification** adds a small reliability
+layer over the v0.3 research workflow:
+
+- JSON EvidenceAtoms with claim envelopes, comparison semantics and numerical provenance;
+- deterministic validation, independent verification receipts and stale-record checks;
+- bounded scouting/verification, labelled adversarial reasoning and selective escalation;
+- reusable project-local evidence and Markdown rendering;
+- regression fixtures for all five motivating scientific failure categories.
+
+```sh
+python scripts/validate_evidence.py examples/evidence
+python scripts/validate_evidence.py examples/evidence --markdown --facts-only
+python -m unittest discover -s tests -v
+python scripts/validate.py
+python scripts/install.py --target all --dry-run
+```
+
+See [EvidenceAtom format and lifecycle](references/EVIDENCE_FORMAT.md), the
+[synthetic example](examples/evidence/README.md), and the
+[architecture decision](references/V0.4_IMPLEMENTATION.md). Existing Markdown-only
+projects continue to work; adopt structured records for consequential claims as
+they are reused. Installed research-session/research-review skills include the
+standalone validator. No dependency installation is needed.
+
+Validation checks recorded structure and attestations, not scientific truth.
+Independent source reading, scientific interpretation and human acceptance remain
+necessary. Compact handoffs and reusable evidence are intended to reduce repeated
+context; token savings and small-model reliability require actual workflow evaluation.
+
+**v0.3.0 — Retention, Knowledge Frontier & Visual Teaching** introduced:
 
 1. evidence-based long-term retention records;
 2. subject/project knowledge graphs and derived frontier;

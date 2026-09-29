@@ -51,6 +51,9 @@ def install_skills(base: Path, dry: bool) -> None:
         destination = base / skill.name
         copy_dir(skill, destination, dry)
         copy_dir(shared_references, destination / "references", dry)
+        if skill.name in {"research-session", "research-review"}:
+            copy_file(ROOT / "scripts" / "validate_evidence.py",
+                      destination / "scripts" / "validate_evidence.py", dry)
 
 
 def install_agents_claude(base: Path, dry: bool) -> None:
@@ -72,6 +75,10 @@ def agent_policy(role: str) -> str:
     if role in {"literature-scout", "source-verifier", "visualizer"}:
         source_policy = "\n" + (ROOT / "references" / "SOURCE_POLICY.md").read_text(encoding="utf-8")
     visualization_policy = ""
+    evidence_policy = ""
+    if role in {"literature-scout", "source-verifier", "adversarial-reviewer"}:
+        evidence = (ROOT / "references" / "EVIDENCE_FORMAT.md").read_text(encoding="utf-8")
+        evidence_policy = "\n" + evidence.split("## Storage and tooling", 1)[0]
     if role == "visualizer":
         visualization_policy = "\n" + (ROOT / "references" / "VISUALIZATION_PROTOCOL.md").read_text(encoding="utf-8")
     return (
@@ -80,6 +87,7 @@ def agent_policy(role: str) -> str:
         + "\n## Blocker / relevance triage\n" + triage_and_gate
         + source_policy
         + visualization_policy
+        + evidence_policy
     )
 
 
