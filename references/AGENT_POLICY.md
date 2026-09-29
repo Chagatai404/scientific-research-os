@@ -118,6 +118,26 @@ chooses reasoning capability and synthesizes compact verified atoms. Reuse uncha
 records; do not pass full histories or repeat full-source reading by ceremony.
 See the EvidenceAtom contract for receipt and cache invalidation requirements.
 
+## Computational specialists
+
+Computational specialists use the same independence model:
+
+- **simulation-reviewer:** geometry, physics, generation, scoring and simulation
+  provenance under GEANT4_PROTOCOL and COMPUTATIONAL_PROTOCOL.
+- **ml-reviewer:** data/split lineage, preprocessing, selection and fair evaluation
+  under ML_PROTOCOL and COMPUTATIONAL_PROTOCOL.
+- **qml-reviewer:** inherited ML rigor, quantum regimes/circuit semantics and
+  evidence-proportionate claims under ML_PROTOCOL, QML_PROTOCOL and
+  COMPUTATIONAL_PROTOCOL.
+
+Give each only the claim, necessary sources/configuration/raw artifacts and
+acceptance criteria needed for its assessment. Disclose prior context and sharing;
+different role names are not proof of independence. Select by scientific risk,
+coordinate with existing physics/statistics/reproducibility reviewers and avoid
+duplicated reviews without a reason. They remain advisory, cannot accept research
+conclusions or authorize implementation, and may run reproductions only within
+explicitly approved scope.
+
 ## Convergence
 
 Specialists return reports to the main agent.

@@ -6,6 +6,8 @@ This protocol owns research stage order, blocker triage, and build authorization
 `LEARNING_PROTOCOL.md` owns teaching/probing and retention; `SOURCE_POLICY.md` owns
 evidence standards; `AGENT_POLICY.md` owns role independence;
 `VISUALIZATION_PROTOCOL.md` owns scientific visuals. Skills route to these policies.
+`COMPUTATIONAL_PROTOCOL.md` extends relevant stages for computational experiments;
+Geant4, ML and QML protocols specialize it without adding a second lifecycle.
 Apply the cycle to substantive research, not as a requirement to conduct research
 while maintaining the OS itself or answering an isolated teaching question.
 Resume from recorded evidence and approval when still applicable; do not repeat
@@ -72,6 +74,9 @@ being prepared. Do not require the learner to complete the full subject first.
    evidence with physics, geometry, preprocessing, simulation, parameterizations,
    features, statistical/ML/QML assumptions, and prior decisions. Record mismatches;
    never reinterpret literature to fit the implementation.
+   For computation, inspect software versions, configuration and environment along
+   with the scientific model. Separate observed runtime facts from declared choices
+   and reconcile both with the implementation using `COMPUTATIONAL_PROTOCOL.md`.
 8. **Synthesize.** Combine learner understanding, verified literature, current code,
    and prior experiments into the best-supported interpretation, assumptions,
    uncertainties, competing explanations, candidate hypotheses, and falsifiable
@@ -80,6 +85,8 @@ being prepared. Do not require the learner to complete the full subject first.
    methodology/ML, simulation, or reproducibility reviewers relevant to the question.
    Record why a specialist is needed or why none adds value. Review the reasoning
    and proposed design independently, rather than polishing the author's argument.
+   Select simulation-reviewer, ml-reviewer or qml-reviewer only when the corresponding
+   scientific risk warrants it; do not instantiate every role for every project.
 10. **Adversarial review.** After synthesis and specialist validation, attempt
     falsification: seek confounders, artifacts, leakage, circularity, identifiability
     failures, simulation/preprocessing bias, detector resolution, finite samples,
@@ -91,22 +98,34 @@ being prepared. Do not require the learner to complete the full subject first.
     narrowing the question. A proposed new discriminating experiment still needs
     a plan and approval; review resolution authorizes planning only.
 12. **Plan.** Present a concrete experiment/build plan (contents below).
+    Computational plans specify toolchain, environment assumptions, configuration,
+    seeds, resource budget, controls/baselines, execution scale, expected artifacts
+    and reproduction command as relevant under `COMPUTATIONAL_PROTOCOL.md`.
 13. **Human approval.** STOP and explicitly ask the researcher to approve, modify,
     or reject the presented plan. Wait for explicit approval before implementation.
 14. **Build.** Implement only the approved scope. Keep uncertain components
     replaceable/configurable where useful; avoid speculative abstractions. Record
     deviations. A new scientific blocker returns to the appropriate earlier stage.
+    Probe capability does not authorize build; explicit approval remains required.
 15. **Experiment.** Execute the approved experiment and collect evidence answering
     the active question. Persist configuration, seeds, dataset/simulation provenance,
     metrics, outputs, assumptions, failures, environment, commit, and reproduction
     commands. Successful execution alone does not complete research.
+    A standard computational manifest may structure this provenance; UNKNOWN fields
+    remain explicit and manifest validity does not establish scientific validity.
 16. **Validate results.** Use relevant independent specialists on actual outputs,
     proportional to the importance of the claims, including reproduction when useful.
+    For computational outputs include configuration verification, output inspection,
+    seed/variance analysis and relevant scientific-methodology validation.
 17. **Attack results.** Seek alternative explanations through relevant robustness
     checks, sensitivity tests, negative controls, ablations, alternative estimators,
     preprocessing/models, simulation variation, or uncertainty analysis. Reapply
     triage; avoid endless robustness work. New runs outside approved scope return
     to planning and approval.
+    Computational checks may include alternative seeds/preprocessing, model ablation,
+    estimator or simulation variation, noise/shot sensitivity and backend variation
+    only where scientifically relevant and authorized. Avoid exhaustive robustness
+    theatre unrelated to the claim.
 18. **Research decision.** State what was learned, supported, weakened, unresolved,
     whether the hypothesis survives, whether direction changes, and the next question.
     The human accepts conclusions and direction changes; do not overstate evidence.

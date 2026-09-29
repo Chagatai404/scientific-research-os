@@ -5,6 +5,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ComputeContracts(unittest.TestCase):
+    def test_canonical_cycle_routes_compute_without_changing_approval(self):
+        text = " ".join((ROOT / "references/RESEARCH_PROTOCOL.md").read_text(encoding="utf-8").split())
+        for phrase in ("COMPUTATIONAL_PROTOCOL.md", "Probe capability does not authorize build",
+                       "explicit approval remains required", "seed/variance analysis",
+                       "noise/shot sensitivity", "UNKNOWN", "resource budget"):
+            self.assertIn(phrase, text)
+        policy = (ROOT / "references/AGENT_POLICY.md").read_text(encoding="utf-8")
+        for name in ("simulation-reviewer", "ml-reviewer", "qml-reviewer"):
+            self.assertIn(name, policy)
+        self.assertIn("different role names are not proof of independence", policy)
+
     def test_qml_inherits_ml_and_distinguishes_regimes(self):
         import sys
         sys.path.insert(0, str(ROOT / "scripts"))
