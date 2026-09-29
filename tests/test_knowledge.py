@@ -359,6 +359,38 @@ class KnowledgeTests(unittest.TestCase):
         self.assertTrue(k.discover(self.root, AS_OF).diagnostics)
 
 
+    def test_course_context_reuses_one_node_and_cross_course_prerequisites(self):
+        self.put("base.md", record("base", rows=attempt(), extra='courses: ["foundation-course"]\n'))
+        self.put("target.md", record("target", prerequisites=["base"], projects=["demo"],
+                                     extra='courses: ["stat-xxx", "math-yyy"]\ngoals: ["long-term"]\n'))
+        self.put("other.md", record("other"))
+        c = k.discover(self.root, AS_OF)
+        self.assertFalse(c.diagnostics)
+        for scope, value in (("course", "stat-xxx"), ("course", "math-yyy"),
+                             ("project", "demo"), ("goal", "long-term")):
+            self.assertEqual(k.select(c.nodes, scope, value), ({"target"}, {"base", "target"}))
+        self.assertIn("target", k.select(c.nodes, "subject", "math")[0])
+        self.assertEqual(len(c.nodes), 3)
+        args = ["--root", str(self.root), "--course", "stat-xxx", "--as-of", AS_OF.isoformat()]
+        outputs = []
+        for _ in range(2):
+            with redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(k.main(args), 0)
+            outputs.append(out.getvalue())
+        self.assertEqual(*outputs)
+        self.assertIn("n0 --> n1", outputs[0])
+        self.assertIn("external", outputs[0])
+        self.assertTrue(k.frontier(c.nodes["target"], k.ready_nodes(c.nodes)))
+        self.assertEqual(k.select(c.nodes, "course", "missing"), (set(), set()))
+
+    def test_invalid_course_membership(self):
+        for value in ('"course"', '["UPPER"]', '["a", "a"]', '{}', '[1]', 'null'):
+            with self.assertRaises(ValueError):
+                self.node(record(extra=f"courses: {value}\n"))
+        self.put("draft.md", '---\nlearning_schema: 1\nlearning_id: ""\ncourses: ["a"]\n---\n')
+        self.assertTrue(k.discover(self.root, AS_OF).diagnostics)
+
+
 
 if __name__ == "__main__":
     unittest.main()

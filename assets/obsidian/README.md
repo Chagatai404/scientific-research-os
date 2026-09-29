@@ -106,6 +106,7 @@ can retain their defaults until evidence exists.
 | `domain` | Yes for tracking | Subject ID, e.g. `probability`; reused from existing templates. |
 | `prerequisites` | Yes for tracking | List of required learning IDs; `[]` explicitly declares no prerequisites. Missing is not equivalent to an empty list. |
 | `retention_target` | No | `core`, `working`, or `reference`; omission means unspecified. It does not change evidence. |
+| `courses` | No | Explicit course IDs; default `[]`; same ID syntax as projects. |
 | `goals` | No | Explicit long-term goal IDs; default `[]`; same ID syntax as projects. |
 | `projects` | No | Project IDs for membership; default `[]`. |
 | `learning_state` | No | Summary: `unknown`, `learning`, `demonstrated`, `retained`, `fragile`, or `stale`; default `unknown`. |
@@ -401,3 +402,31 @@ closure as external foundations. State, retention target, freshness and frontier
 remain separate. Missing IDs, cycles and diagnostics use the same conservative
 rules as subject/project views. Choose next learning using explicit prerequisites,
 evidence, relevance and human goals, never an opaque ranking formula.
+
+### University course study
+
+Use `course-study` and `COURSE_LEARNING_PROTOCOL.md` for syllabus mapping, lecture
+preparation/review, practice, homework, exams, cumulative review and prerequisite
+repair. Ordinary coursework follows the learning loop without research machinery.
+The optional `15_Course.md` and `16_Course_Session.md` templates keep an overview and
+working session. They are not required; the workflow also works without Obsidian.
+
+```yaml
+courses: ["stat-xxx"]
+projects: ["example-project"]
+goals: ["particle-physics-research"]
+retention_target: working
+```
+
+These optional fields can coexist on one schema-1 capability record. Do not create
+course-specific copies of general capabilities. Course membership is explicit.
+
+```bash
+python scripts/knowledge.py --root "<learning-notes-directory>" --course stat-xxx --as-of 2026-09-29
+```
+
+The course view answers what knowledge this class needs, what evidence exists,
+which prerequisites are weak, and what is currently ready to learn. External
+prerequisites and diagnostics follow the same conservative rules as other views.
+Course sources generally start with official course material, the assigned text
+and instructor notes; ordinary coursework does not require literature agents.

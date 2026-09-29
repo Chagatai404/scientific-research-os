@@ -4,6 +4,7 @@ retention_target: working
 learning_id: probability.gamma-density
 domain: probability
 projects: ["demo"]
+courses: ["stat-xxx", "math-yyy"]
 goals: ["research-foundations", "applied-probability"]
 prerequisites: ["probability.density"]
 learning_state: learning

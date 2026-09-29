@@ -4,6 +4,7 @@ scope: subject
 domain: ""
 project: ""
 goal: ""
+course: ""
 as_of: ""
 created: "{{date}}"
 tags:
@@ -13,7 +14,7 @@ tags:
 # {{title}}
 
 This is an evidence view, not a learning record. Choose `scope: subject` with a
-`domain`, `scope: project` with a `project`, or `scope: goal` with a `goal`. Record the as-of date when assessing
+`domain`, `scope: project` with a `project`, `scope: goal` with a `goal`, or `scope: course` with a `course`. Record the as-of date when assessing
 freshness. Source records remain authoritative; no note's existence implies mastery.
 
 ## Scope and provenance

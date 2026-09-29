@@ -248,3 +248,8 @@ requires fluent recall rather than lookup, handle that explicitly in learning
 design and the capability definition; never claim false mastery from its target.
 Missing/failed evidence can warrant a contextual check for actual use, regardless
 of target. Do not destroy old evidence or invent an expiry date.
+
+## Course routing
+
+For university coursework use `COURSE_LEARNING_PROTOCOL.md`, which builds on this
+learning loop without requiring the research cycle. Course details belong there.

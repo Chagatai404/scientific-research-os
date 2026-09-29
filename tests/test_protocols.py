@@ -74,6 +74,16 @@ class ReleaseContracts(unittest.TestCase):
         self.assertIn(b"external", results[0].stdout)
         self.assertIn(b"blocked by probability.gamma-density", results[0].stdout)
 
+    def test_course_contract_routes_routine_study_to_learning(self):
+        text = (ROOT / "references/COURSE_LEARNING_PROTOCOL.md").read_text(encoding="utf-8")
+        for required in ("LEARNING_PROTOCOL.md", "Do not invoke the full", "explicit transition",
+                         "Do not require literature-scout or source-verifier", "one",
+                         "Obsidian", "assigned textbook", "courses:"):
+            self.assertIn(required, text)
+        skill = (ROOT / "skills/course-study/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("references/COURSE_LEARNING_PROTOCOL.md", skill)
+
+
 
 if __name__ == "__main__":
     unittest.main()

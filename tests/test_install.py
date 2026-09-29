@@ -108,6 +108,11 @@ class InstallationTests(unittest.TestCase):
             skill = self.tmp_path / f"{target}-skills/visualize"
             self.assertEqual((skill / "SKILL.md").read_bytes(), (ROOT / "skills/visualize/SKILL.md").read_bytes())
             self.assertEqual((skill / "references/VISUALIZATION_PROTOCOL.md").read_text(encoding="utf-8"), canonical)
+            course = self.tmp_path / f"{target}-skills/course-study"
+            self.assertEqual((course / "SKILL.md").read_bytes(), (ROOT / "skills/course-study/SKILL.md").read_bytes())
+            for name in ("COURSE_LEARNING_PROTOCOL.md", "LEARNING_PROTOCOL.md"):
+                self.assertEqual((course / "references" / name).read_bytes(), (ROOT / "references" / name).read_bytes())
+
         result = subprocess.run(
             [sys.executable, "-S", "-B", str(ROOT / "scripts/validate.py")],
             cwd=ROOT, capture_output=True, text=True,
@@ -144,4 +149,5 @@ class InstallationTests(unittest.TestCase):
         for key in ("learning_id", "first_learned", "last_retrieval", "next_review"):
             self.assertEqual(quiz[key], "")
         self.assertEqual(quiz["learning_state"], "unknown")
-        self.assertTrue((vault / "Templates/13_Knowledge_Graph.md").exists())
+        for name in ("13_Knowledge_Graph.md", "14_Learning_Goal.md", "15_Course.md", "16_Course_Session.md"):
+            self.assertTrue((vault / "Templates" / name).exists())

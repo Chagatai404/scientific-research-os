@@ -3,6 +3,7 @@ learning_schema: 1
 retention_target: core
 learning_id: probability.density
 domain: probability
+courses: ["math-foundations"]
 prerequisites: []
 learning_state: retained
 ---

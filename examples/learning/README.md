@@ -30,3 +30,13 @@ choices do not change their evidence. Density intentionally has no goal metadata
 ```bash
 python scripts/knowledge.py --root examples/learning --goal research-foundations --as-of 2026-09-29
 ```
+
+## Course example
+
+Gamma-density belongs to `stat-xxx` and `math-yyy`, project `demo`, two goals and
+subject probability, all through one evidence record. Its density prerequisite
+belongs to `math-foundations` and is included as an external course foundation.
+
+```bash
+python scripts/knowledge.py --root examples/learning --course stat-xxx --as-of 2026-09-29
+```

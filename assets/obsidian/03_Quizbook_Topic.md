@@ -6,6 +6,7 @@ learning_schema: 1
 learning_id: ""
 projects: []
 goals: []
+courses: []
 prerequisites: []
 learning_state: unknown
 first_learned: ""
