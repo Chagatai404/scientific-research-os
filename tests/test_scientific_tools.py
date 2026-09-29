@@ -1,4 +1,7 @@
 from copy import deepcopy
+from contextlib import redirect_stdout, redirect_stderr
+import io
+import json
 from pathlib import Path
 import importlib.metadata as metadata
 import subprocess
@@ -18,6 +21,70 @@ def profile():
 
 
 class ToolTests(unittest.TestCase):
+    def test_all_optional_software_can_be_absent(self):
+        with patch.object(tools.metadata, "version", side_effect=metadata.PackageNotFoundError), \
+                patch.object(tools.shutil, "which", return_value=None), \
+                patch.dict(tools.os.environ, {}, clear=True), patch.object(tools, "_run") as run:
+            for p in tools.load_profiles().values():
+                self.assertFalse(tools.probe(p)["available"])
+            run.assert_not_called()
+
+    def test_profile_validation_is_read_only_and_rejects_additional_injection_forms(self):
+        with patch.object(tools.metadata, "version") as version, patch.object(tools, "_run") as run:
+            tools.load_profiles()
+            version.assert_not_called()
+            run.assert_not_called()
+        for command in (["geant4-config", "--version;echo x"], ["geant4-config", "$(whoami)"],
+                        ["geant4-config", "--version", "&&", "id"],
+                        ["python.exe", "-m", "evil"], ["cmd.exe", "/c", "echo x"]):
+            p = deepcopy(tools.load_profiles()["geant4"])
+            p["probe"]["commands"] = [command]
+            with self.assertRaises(ValueError):
+                tools.validate_profile(p)
+        for key in ("script", "module", "import", "eval"):
+            p = profile()
+            p[key] = "payload"
+            with self.assertRaises(ValueError):
+                tools.validate_profile(p)
+
+    def test_cli_manifest_preserves_explicit_configuration_and_reports_errors(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = Path(tmp) / "choices.json"
+            config.write_text('{"seed":123,"execution_regime":"exact-simulator"}', encoding="utf-8")
+            output = io.StringIO()
+            with patch.object(sys, "argv", ["tools", "manifest", "--experiment", "RQ-1",
+                                           "--declared", str(config), "--tool", "qiskit"]), \
+                    patch.object(tools.metadata, "version", side_effect=metadata.PackageNotFoundError), \
+                    patch.object(tools, "git_state", return_value={"commit": None, "dirty": None}), \
+                    redirect_stdout(output):
+                tools.main()
+            record = tools.manifest.loads(output.getvalue())
+            self.assertEqual(record["declared"], json.loads(config.read_text(encoding="utf-8")))
+            self.assertNotIn("seed", record["observed"])
+            self.assertFalse(record["observed"]["tools"]["qiskit"]["available"])
+        for arguments in (["probe"], ["probe", "geant4", "--all"], ["probe", "missing"],
+                          ["manifest", "--experiment", "RQ", "--tool", "missing"]):
+            with patch.object(sys, "argv", ["tools", *arguments]), \
+                    patch.object(tools, "git_state", return_value={}), redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    tools.main()
+                self.assertEqual(error.exception.code, 2)
+
+    def test_missing_malformed_and_mismatched_profiles(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            directory = root / "wrong-name"
+            directory.mkdir()
+            with self.assertRaisesRegex(ValueError, "PROFILE.toml"):
+                tools.load_profiles(root)
+            (directory / "PROFILE.toml").write_text("[broken", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                tools.load_profiles(root)
+            source = tools.PACKS / "geant4/PROFILE.toml"
+            (directory / "PROFILE.toml").write_bytes(source.read_bytes())
+            with self.assertRaisesRegex(ValueError, "directory name"):
+                tools.load_profiles(root)
+
     def test_hep_partial_ecosystem_is_useful_without_root(self):
         def version(name):
             if name in {"uproot", "awkward"}:

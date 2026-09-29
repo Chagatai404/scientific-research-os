@@ -187,7 +187,7 @@ def git_state(repo: Path) -> dict:
     try:
         commit = _run([executable, "-C", str(repo.resolve()), "rev-parse", "HEAD"])
         status = _run([executable, "-C", str(repo.resolve()), "status", "--porcelain", "--untracked-files=normal"])
-        if commit.returncode == 0 and re.fullmatch(r"[0-9a-f]{40,64}", commit.stdout.strip()):
+        if commit.returncode == 0 and re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", commit.stdout.strip()):
             state["commit"] = commit.stdout.strip()
         if status.returncode == 0:
             state["dirty"] = bool(status.stdout.strip())
