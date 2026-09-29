@@ -35,6 +35,7 @@ For source verification:
 
 For adversarial review:
 - do not begin from an assumption that the preferred interpretation is correct;
+- provide the claim/design, relevant sources or raw artifacts, and acceptance criteria with minimal authoring rationale; do not pass the full tutoring/coordinator conversation as an independence claim;
 - actively search for plausible competing explanations and evidence that would change the decision.
 
 For reconciliation:
@@ -42,6 +43,33 @@ For reconciliation:
 - treat disagreement as information rather than something to smooth over.
 
 Do not call two agents independent if one was given the other's reasoning and asked merely to approve or critique it.
+
+## Lesson preparation contexts
+
+The research protocol distinguishes standalone tutoring, research-linked tutoring,
+and a full substantive research cycle. Ordinary isolated teaching does not require
+a research-agent team. For research-linked teaching, keep important source
+verification separate before relying on the claims; reuse applicable recorded
+independent evidence rather than repeating agents by ceremony.
+
+The coordinator/tutor may receive learner history, dependency maps, and the verified
+evidence pack. Keep preferred implementation details and learner guesses out of
+neutral discovery; give the verifier atomic claims and sources rather than the
+scout's reasoning. Record actual context exposure, including unavoidable prior
+knowledge, instead of assuming different agent names establish independence.
+
+The pre-tutor sanity check is an integration/readiness check owned by the
+coordinator, not a new reviewer role. It may use verified results, but is not
+independent corroboration or the full post-synthesis adversarial review.
+Question preparation and visual planning may share the verified pack without
+claiming independence. Parallel work starts only when its evidence inputs exist;
+pending verification is not permission to present a claim as established.
+
+Later specialist reviewers should receive the specific scientific claim, sources,
+artifacts, or design criteria needed to reconstruct their assessment, without the
+authoring agent's full reasoning when practical. Record any necessary context
+sharing and remaining limitations. Review findings return to the coordinator;
+neither lesson readiness nor reviewer agreement authorizes implementation.
 
 ## When to use subagents
 

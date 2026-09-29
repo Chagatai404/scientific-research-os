@@ -12,15 +12,26 @@ Read:
 
 ## Run the canonical cycle
 
-Read `references/LEARNING_PROTOCOL.md` when teaching or probing. Follow the staged
-cycle in `references/RESEARCH_PROTOCOL.md`; mode selection never bypasses a gate.
+Read `references/LEARNING_PROTOCOL.md` when teaching or probing and
+`references/VISUALIZATION_PROTOCOL.md` when planning visuals. Choose the entry path
+in `references/RESEARCH_PROTOCOL.md`: standalone tutoring, research-linked tutoring,
+or the full substantive research cycle. Mode selection never bypasses a gate.
 Read the current project state, identify the active question and central objective,
-and resume from documented evidence, learner readiness, and approval scope.
+and resume from documented evidence, retrieval history, dependency/frontier views,
+learner readiness, and approval scope. Missing retention evidence is not forgetting.
 
-Dispatch independent literature discovery and a separate source verifier using
-the context boundaries in the agent policy. Reconcile with code only after source
-verification, then synthesize, select relevant specialists, and run adversarial
-review. Track provenance, inaccessible sources, and independence limitations.
+For research-linked tutoring or a full cycle needing fresh evidence, dispatch
+independent literature discovery and a separate source verifier using the context
+boundaries in the agent policy. Standalone tutoring follows the learning protocol.
+For research-linked teaching, prepare the protocol's compact evidence pack and
+pre-tutor sanity check before live probing. Use verified inputs for question/visual
+preparation; keep answer keys hidden. Teach, check retention, and retrieve with the
+prepared material. Pause for a genuine evidence gap rather than guessing.
+
+When continuing the full cycle, reconcile with code after independent evidence and
+the lesson, then synthesize, select relevant specialists, and run full adversarial
+review. The lesson sanity check does not replace these reviews. Track provenance,
+inaccessible sources, and independence limitations using the canonical protocols.
 
 Apply A–D triage to all concerns. Resolve scientific blockers; turn testable
 uncertainties into planned experiments and defer reversible choices/refinements.
@@ -37,6 +48,7 @@ fast probes and an end-of-block synthesis, before closing the cycle.
 
 Update project research state with sources, assumptions, evidence, experiment
 records, unresolved questions, rejected hypotheses, learning readiness, and the
-next question. Separate tentative findings from human-accepted conclusions.
+next question. Preserve retrieval history and suggested delayed reviews in working
+learning records. Separate tentative findings from human-accepted conclusions.
 Use configured session notes only within the requested workflow; permanent
 Obsidian understanding remains human-reviewed, not an automatic session log.

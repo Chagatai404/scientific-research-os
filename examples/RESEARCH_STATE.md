@@ -41,14 +41,24 @@
 - Active sub-question / connection to central objective:
 - Current canonical stage / completed evidence links:
 - Prerequisites understood / reinforcement needed:
+- Learning record IDs / subject and project graphs / retention checks due:
 - Post-build explanation and probe synthesis:
+- Retrieval evidence / demonstrated versus retained / suggested next review:
 
 ## Evidence and independence
 
 - Discovery board / scout context:
 - Separate verifier report / context exposure / access limitations:
+- Pre-tutor evidence pack / supported lesson claims / caveats and disagreements:
+- Lesson sanity check: ready / narrowed / needs verification; unresolved mismatch:
+- Prepared lesson / visual artifacts / readiness after retrieval:
 - Repository mismatches / synthesis:
 - Relevant specialist reports / adversarial report:
+
+The pre-tutor sanity check is lesson readiness only. It does not replace the
+separate source verifier or the full post-synthesis specialist/adversarial reviews.
+Keep question keys hidden and use links to working learning records rather than
+duplicating personal retrieval history in the Git research state.
 
 ## Concern triage
 
