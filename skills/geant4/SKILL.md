@@ -21,3 +21,10 @@ Record explicit configuration and observed environment separately. Follow the
 canonical research plan/approval gate before build or experiments. Report the
 actual artifacts, validation limits and A–D findings. Never invent a physics list,
 cut, beam, geometry or event count from runtime discovery.
+
+Installed helper: from this skill directory use
+`python scripts/scientific_tools.py probe geant4` for capability discovery and
+`python scripts/scientific_tools.py manifest --experiment <id> --repo <project> --tool geant4`
+for observed provenance. Supply reviewed choices with `--declared <config.json>`.
+Read `extensions/scientific-tools/geant4/GUIDE.md` for software semantics. Helpers
+and packs are bundled locally; no source checkout or scientific package is required.

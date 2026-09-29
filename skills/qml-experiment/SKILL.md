@@ -21,3 +21,9 @@ review to qml-reviewer. Follow canonical plan approval before implementation or 
 Inspect actual artifacts and resource use, optional small cross-framework checks
 and uncertainties. Report A–D findings and evidence-proportionate conclusions;
 better finite-experiment accuracy alone does not establish quantum advantage.
+
+From the installed skill directory use `python scripts/scientific_tools.py list`
+or `probe pennylane` / `probe qiskit`. Generate provenance with
+`python scripts/scientific_tools.py manifest --experiment <id> --repo <project> --tool pennylane --tool qiskit`
+and reviewed `--declared <config.json>` where available. Read the locally bundled
+guides under `extensions/scientific-tools/`; helpers require no source checkout.

@@ -6,6 +6,14 @@ import shutil
 
 from common import ROOT, load_config, expand, parse_frontmatter
 
+COMPUTE_SKILLS = {"geant4", "ml-experiment", "qml-experiment", "design-experiment",
+                  "research-session", "research-review"}
+COMPUTE_AGENTS = {
+    "simulation-reviewer": ("GEANT4_PROTOCOL.md",),
+    "ml-reviewer": ("ML_PROTOCOL.md",),
+    "qml-reviewer": ("ML_PROTOCOL.md", "QML_PROTOCOL.md"),
+}
+
 
 def copy_dir(src: Path, dst: Path, dry: bool) -> None:
     print(f"{'[dry] ' if dry else ''}{src} -> {dst}")
@@ -51,6 +59,11 @@ def install_skills(base: Path, dry: bool) -> None:
         destination = base / skill.name
         copy_dir(skill, destination, dry)
         copy_dir(shared_references, destination / "references", dry)
+        if skill.name in COMPUTE_SKILLS:
+            for helper in ("scientific_tools.py", "computational_manifest.py"):
+                copy_file(ROOT / "scripts" / helper, destination / "scripts" / helper, dry)
+            copy_dir(ROOT / "extensions/scientific-tools",
+                     destination / "extensions/scientific-tools", dry)
         if skill.name in {"research-session", "research-review"}:
             copy_file(ROOT / "scripts" / "validate_evidence.py",
                       destination / "scripts" / "validate_evidence.py", dry)
@@ -76,6 +89,10 @@ def agent_policy(role: str) -> str:
         source_policy = "\n" + (ROOT / "references" / "SOURCE_POLICY.md").read_text(encoding="utf-8")
     visualization_policy = ""
     evidence_policy = ""
+    compute_policy = ""
+    if role in COMPUTE_AGENTS:
+        for name in ("COMPUTATIONAL_PROTOCOL.md", "SOURCE_POLICY.md", *COMPUTE_AGENTS[role]):
+            compute_policy += "\n" + (ROOT / "references" / name).read_text(encoding="utf-8")
     if role in {"literature-scout", "source-verifier", "adversarial-reviewer"}:
         evidence = (ROOT / "references" / "EVIDENCE_FORMAT.md").read_text(encoding="utf-8")
         evidence_policy = "\n" + evidence.split("## Storage and tooling", 1)[0]
@@ -88,6 +105,7 @@ def agent_policy(role: str) -> str:
         + source_policy
         + visualization_policy
         + evidence_policy
+        + compute_policy
     )
 
 

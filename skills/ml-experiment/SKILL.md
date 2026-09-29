@@ -20,3 +20,10 @@ Present a concrete plan under the canonical approval gate. Execute only within
 approved scope; preserve test-set discipline, explicit configuration and observed
 provenance. Report actual outputs, uncertainty, comparison limitations and A–D
 findings. No model, split, optimizer or budget is inferred from package discovery.
+
+From the installed skill directory use `python scripts/scientific_tools.py list`
+or `probe pytorch` / `probe sklearn`. Explicit `--accelerator` on a PyTorch probe
+opts into its fixed capability query. Generate provenance with
+`python scripts/scientific_tools.py manifest --experiment <id> --repo <project> --tool pytorch`
+and reviewed `--declared <config.json>` where available. Bundled
+`extensions/scientific-tools/` contains the guides; no source checkout is assumed.
