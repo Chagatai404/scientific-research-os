@@ -32,9 +32,9 @@ graph TD
 
 ## Nodes
 
-| Learning ID | Why needed | Evidence-backed state / as-of date | Learning record |
-|---|---|---|---|
-|  |  |  | [[ ]] |
+| Learning ID | Why needed | Evidence-backed state / as-of date | Retention target | Learning record |
+|---|---|---|---|---|
+|  |  |  |  | [[ ]] |
 
 Use `unknown`, `learning`, `demonstrated`, `retained`, `fragile`, or `stale`
 according to `LEARNING_PROTOCOL.md`. This table is a view of working records, not
@@ -55,7 +55,7 @@ another state ledger. Missing recent evidence is not proven forgetting.
 -
 
 Frontier is derived from prerequisite readiness, not a learning-state value.
-Use `13_Knowledge_Graph.md` for a subject-wide or project-wide evidence view.
+Use `13_Knowledge_Graph.md` for a subject, course, project or goal evidence view.
 
 ## Recommended source path
 
@@ -82,3 +82,9 @@ Use `13_Knowledge_Graph.md` for a subject-wide or project-wide evidence view.
 ## Open questions
 
 -
+
+## Retention strategy
+
+Show each record's retention target (core / working / reference / unspecified)
+separately from state. Reference material needs a recovery path, not routine
+spaced review. Frontier is eligibility, not a ranked review queue.

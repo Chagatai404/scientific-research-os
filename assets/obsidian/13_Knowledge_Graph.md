@@ -3,6 +3,8 @@ type: knowledge-graph
 scope: subject
 domain: ""
 project: ""
+goal: ""
+course: ""
 as_of: ""
 created: "{{date}}"
 tags:
@@ -12,7 +14,7 @@ tags:
 # {{title}}
 
 This is an evidence view, not a learning record. Choose `scope: subject` with a
-`domain`, or `scope: project` with a `project`. Record the as-of date when assessing
+`domain`, `scope: project` with a `project`, `scope: goal` with a `goal`, or `scope: course` with a `course`. Record the as-of date when assessing
 freshness. Source records remain authoritative; no note's existence implies mastery.
 
 ## Scope and provenance
@@ -36,8 +38,8 @@ file rather than overwriting this note's human-written choices.
 
 ## Evidence view
 
-| Learning ID | Capability / record | State | Evidence / last retrieval | Next review | Frontier or blocking prerequisite |
-|---|---|---|---|---|---|
+| Learning ID | Capability / record | State | Retention target | Evidence / last retrieval | Next review | Frontier or blocking prerequisite |
+|---|---|---|---|---|---|---|
 
 Distinguish retained foundations, current demonstrations, fragile/stale
 prerequisites, active learning, ready frontier nodes, and future nodes blocked by
@@ -60,3 +62,9 @@ or legacy notes that are not tracked. Do not treat a missing prerequisite as met
 **Human's choice:**
 
 -
+
+## Retention strategy
+
+Show each record's retention target (core / working / reference / unspecified)
+separately from state. Reference material needs a recovery path, not routine
+spaced review. Frontier is eligibility, not a ranked review queue.

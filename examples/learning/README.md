@@ -19,3 +19,24 @@ python scripts/knowledge.py --root examples/learning --project demo --as-of 2026
 On `2026-10-06`, density is stale because its recorded review horizon has passed,
 so gamma-density no longer qualifies as frontier. No forgetting is inferred.
 Input files are never modified. Dates are fixed so this example is reproducible.
+
+## Goal and retention example
+
+Density is core, gamma-density working, and profile reference; these fictional
+choices do not change their evidence. Density intentionally has no goal metadata.
+`research-foundations` selects gamma-density and profile plus external density;
+`applied-probability` selects gamma-density plus external density.
+
+```bash
+python scripts/knowledge.py --root examples/learning --goal research-foundations --as-of 2026-09-29
+```
+
+## Course example
+
+Gamma-density belongs to `stat-xxx` and `math-yyy`, project `demo`, two goals and
+subject probability, all through one evidence record. Its density prerequisite
+belongs to `math-foundations` and is included as an external course foundation.
+
+```bash
+python scripts/knowledge.py --root examples/learning --course stat-xxx --as-of 2026-09-29
+```

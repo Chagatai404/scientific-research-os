@@ -1,8 +1,10 @@
 ---
 learning_schema: 1
+retention_target: reference
 learning_id: demo.shower-profile
 domain: shower-models
 projects: ["demo"]
+goals: ["research-foundations"]
 prerequisites: ["probability.gamma-density"]
 learning_state: unknown
 ---

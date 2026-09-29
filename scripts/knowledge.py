@@ -17,9 +17,10 @@ import sys
 
 ID = re.compile(r"[a-z0-9]+(?:[._-][a-z0-9]+)*\Z")
 STATES = {"unknown", "learning", "demonstrated", "retained", "fragile", "stale"}
+RETENTION_TARGETS = {"core", "working", "reference"}
 FIELDS = {
-    "learning_schema", "learning_id", "domain", "projects", "prerequisites",
-    "learning_state", "first_learned", "last_retrieval", "next_review",
+    "learning_schema", "learning_id", "domain", "projects", "goals", "courses", "prerequisites",
+    "learning_state", "first_learned", "last_retrieval", "next_review", "retention_target",
 }
 HEADER = ["Date", "Learning period", "Timing", "Method", "Outcome",
           "Assistance", "Evidence", "Next review"]
@@ -61,6 +62,17 @@ class Node:
     assessment: Assessment
     as_of: date
     issues: list[str] = field(default_factory=list)
+
+    @property
+    def retention_target(self) -> str:
+        return self.meta.get("retention_target", "unspecified")
+
+    @property
+    def review_policy(self) -> str:
+        return {"core": "maintain justified retrieval",
+                "working": "refresh around use",
+                "reference": "no routine spaced review",
+                "unspecified": "target not chosen"}[self.retention_target]
 
     @property
     def freshness(self) -> str:
@@ -120,7 +132,7 @@ def metadata(text: str) -> tuple[dict[str, object] | None, str]:
         match = re.match(r"([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$", line)
         if not match:
             if line.strip() and not line.lstrip().startswith("#"):
-                if active in FIELDS or re.match(r"\s+(?:learning_\w+|prerequisites|projects|domain):", line):
+                if active in FIELDS or re.match(r"\s+(?:learning_\w+|prerequisites|projects|goals|courses|domain|retention_target):", line):
                     raise ValueError("nested/multiline learning fields are unsupported")
             continue
         key, raw = match.groups()
@@ -130,7 +142,7 @@ def metadata(text: str) -> tuple[dict[str, object] | None, str]:
         if key in data:
             raise ValueError(f"duplicate field: {key}")
         raw = raw.strip()
-        if key in {"projects", "prerequisites"}:
+        if key in {"projects", "goals", "courses", "prerequisites"}:
             value = json.loads(raw)
             if not isinstance(value, list) or any(not isinstance(x, str) or not ID.fullmatch(x) for x in value):
                 raise ValueError(f"{key}: expected inline list of IDs")
@@ -151,6 +163,8 @@ def metadata(text: str) -> tuple[dict[str, object] | None, str]:
             raise ValueError(f"invalid {key}: {value!r}")
     if data.get("learning_state", "unknown") not in STATES:
         raise ValueError("invalid learning_state")
+    if "retention_target" in data and data["retention_target"] not in RETENTION_TARGETS:
+        raise ValueError("invalid retention_target; expected core, working, or reference")
     for key in ("first_learned", "last_retrieval", "next_review"):
         if data.get(key):
             iso_date(data[key])
@@ -302,7 +316,7 @@ def discover(root: Path, as_of: date) -> Collection:
                     continue
                 if not meta["learning_id"]:
                     result.drafts += 1
-                    if (any(meta.get(k) for k in ("domain", "projects", "prerequisites", "first_learned", "last_retrieval", "next_review"))
+                    if (any(meta.get(k) for k in ("domain", "projects", "goals", "courses", "prerequisites", "first_learned", "last_retrieval", "next_review", "retention_target"))
                             or meta.get("learning_state", "unknown") != "unknown" or history(body)):
                         raise ValueError("partially populated record has no learning_id")
                     continue
@@ -338,8 +352,10 @@ def discover(root: Path, as_of: date) -> Collection:
 
 
 def select(nodes: dict[str, Node], scope: str, value: str) -> tuple[set[str], set[str]]:
+    membership = {"project": "projects", "goal": "goals", "course": "courses"}
     primary = {key for key, node in nodes.items()
-               if (node.domain == value if scope == "subject" else value in node.projects)}
+               if (node.domain == value if scope == "subject"
+                   else value in node.meta.get(membership[scope], []))}
     selected = set(primary)
     todo = list(primary)
     while todo:
@@ -383,10 +399,12 @@ def render(collection: Collection, scope: str, value: str, as_of: date) -> str:
     lines = [f"# Knowledge graph: {scope} {safe_text(value)}", "", f"As of: {as_of}", "",
              "States summarize recorded assessments, not independently verified mastery.",
              "Missing recent evidence is not proven forgetting. External nodes are required foundations.", "",
+             "Retention targets are choices, not mastery or importance scores. Frontier is eligibility, not review priority.",
+             "Reference records have no routine spaced-review burden; historical horizons remain visible.", "",
              "```mermaid", "flowchart TD"]
     for key in sorted(selected):
         node = nodes[key]
-        label = f"{node.title} — {node.assessment.state}"
+        label = f"{node.title} — {node.assessment.state} — {node.retention_target}"
         if key not in primary:
             label += " — external"
         if node.issues:
@@ -401,16 +419,20 @@ def render(collection: Collection, scope: str, value: str, as_of: date) -> str:
               "retained": "#dcfce7", "fragile": "#ffedd5", "stale": "#f3e8ff"}
     for state, color in colors.items():
         lines.append(f"    classDef {state} fill:{color},color:#111111,stroke:#555555")
-    lines += ["```", "", "| Learning ID / record | State | Freshness | Last attempt | Next review | State evidence | Position |",
-              "|---|---|---|---|---|---|---|"]
+    lines += ["```", "", "| Learning ID / record | State | Retention target | Freshness | Last attempt | Recorded next review | Review policy | State evidence | Position |",
+              "|---|---|---|---|---|---|---|---|---|"]
     for key in sorted(selected):
         node = nodes[key]
         blocked = sorted(set(node.prerequisites) - ready)
         position = ("evidence issue" if node.issues else "blocked by " + ", ".join(blocked) if blocked
                     else "frontier" if frontier(node, ready) else "retained foundation")
         a = node.assessment
-        lines.append(f"| {safe_text(key)} ({safe_text(node.path)}) | {a.state} | {node.freshness} | "
-                     f"{a.last or '—'} | {a.review or '—'} | {safe_text(a.evidence) or '—'} | {safe_text(position)} |")
+        freshness = node.freshness
+        if node.retention_target == "reference":
+            freshness += (" (historical horizon; no routine review)" if a.review
+                          else " (no routine review)")
+        lines.append(f"| {safe_text(key)} ({safe_text(node.path)}) | {a.state} | {node.retention_target} | {freshness} | "
+                     f"{a.last or '—'} | {a.review or '—'} | {node.review_policy} | {safe_text(a.evidence) or '—'} | {safe_text(position)} |")
     if not primary:
         lines += ["", "No tracked nodes match this scope."]
     lines += ["", f"Skipped untracked/legacy notes: {collection.legacy}; blank drafts: {collection.drafts}.",
@@ -425,6 +447,8 @@ def main(argv: list[str] | None = None) -> int:
     scope = parser.add_mutually_exclusive_group(required=True)
     scope.add_argument("--subject")
     scope.add_argument("--project")
+    scope.add_argument("--goal")
+    scope.add_argument("--course")
     parser.add_argument("--as-of", type=iso_date, default=date.today())
     parser.add_argument("--output", type=Path, help="create a new Markdown file; never overwrite")
     args = parser.parse_args(argv)
@@ -435,11 +459,12 @@ def main(argv: list[str] | None = None) -> int:
     root = args.root.resolve()
     if not root.is_dir():
         parser.error("--root must be an existing directory")
-    value = args.subject or args.project
+    selected_scope = next(name for name in ("subject", "project", "goal", "course") if getattr(args, name) is not None)
+    value = getattr(args, selected_scope)
     if not ID.fullmatch(value):
-        parser.error("scope must be a valid domain/project ID")
+        parser.error("scope must be a valid domain/project/goal/course ID")
     collection = discover(root, args.as_of)
-    output = render(collection, "subject" if args.subject else "project", value, args.as_of)
+    output = render(collection, selected_scope, value, args.as_of)
     try:
         if args.output:
             with args.output.open("x", encoding="utf-8", newline="\n") as stream:

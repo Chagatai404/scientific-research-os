@@ -74,6 +74,30 @@ class ReleaseContracts(unittest.TestCase):
         self.assertIn(b"external", results[0].stdout)
         self.assertIn(b"blocked by probability.gamma-density", results[0].stdout)
 
+    def test_course_contract_routes_routine_study_to_learning(self):
+        text = (ROOT / "references/COURSE_LEARNING_PROTOCOL.md").read_text(encoding="utf-8")
+        for required in ("LEARNING_PROTOCOL.md", "Do not invoke the full", "explicit transition",
+                         "Do not require literature-scout or source-verifier", "one",
+                         "Obsidian", "assigned textbook", "courses:"):
+            self.assertIn(required, text)
+        skill = (ROOT / "skills/course-study/SKILL.md").read_text(encoding="utf-8")
+        self.assertIn("references/COURSE_LEARNING_PROTOCOL.md", skill)
+
+    def test_transcription_fidelity_and_ambiguity_contract(self):
+        from common import parse_frontmatter
+        skill = (ROOT / "skills/notes-to-latex/SKILL.md").read_text(encoding="utf-8")
+        meta, _ = parse_frontmatter(skill)
+        self.assertEqual(meta["name"], "notes-to-latex")
+        self.assertTrue(meta["description"])
+        self.assertIn("references/LATEX_TRANSCRIPTION_PROTOCOL.md", skill)
+        text = (ROOT / "references/LATEX_TRANSCRIPTION_PROTOCOL.md").read_text(encoding="utf-8")
+        for required in ("**faithful:**", "**clean:**", "**polished:**", "**faithful-clean**",
+                         "% UNCERTAIN", "[illegible]", "Figure placeholder", "Do not silently replace",
+                         "transcription, formatting, interpretation and correction", "I did not modify",
+                         "report substantive corrections separately", "without claiming a compilation"):
+            self.assertIn(required, text)
+        validator = (ROOT / "scripts/validate.py").read_text(encoding="utf-8")
+        self.assertIn('"LATEX_TRANSCRIPTION_PROTOCOL.md"', validator)
 
 if __name__ == "__main__":
     unittest.main()

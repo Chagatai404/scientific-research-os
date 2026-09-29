@@ -7,6 +7,9 @@ These templates separate two activities:
    remains a separate human choice.
 2. **Research loop:** follow the canonical `references/RESEARCH_PROTOCOL.md`: independent discovery/verification, reconciliation, validation/adversarial review, triage, plan, explicit approval, build/experiment, result review, decision, and learning.
 
+University coursework uses the learning loop through `COURSE_LEARNING_PROTOCOL.md`;
+it does not become a research project by default.
+
 The files are plain Markdown and are intentionally model-independent.
 
 ## Recommended vault layout
@@ -85,11 +88,11 @@ separate capability records instead of claiming one state for a whole subject.
 - `00_Tutor_Session.md` uses optional `learning_refs` to list the IDs tested.
   Answers and detailed assessments remain in the session; the record links to them.
 - `06_Learning_Map.md` is a lesson plan and evidence view.
-- `13_Knowledge_Graph.md` is a subject/project view, not another ledger. Its
-  `scope`, `domain`/`project`, and `as_of` describe the view, not learner mastery.
+- `13_Knowledge_Graph.md` is a subject/project/goal/course view, not another ledger. Its
+  `scope`, `domain`/`project`/`goal`/`course`, and `as_of` describe the view, not learner mastery.
 
 Search for an existing record before creating one. One capability keeps the same
-ID across projects; genuinely different project-specific capabilities get separate
+ID across courses, projects and goals; genuinely different project-specific capabilities get separate
 IDs and explicit prerequisite links. Do not copy a ledger into each project.
 
 ### Frontmatter contract
@@ -105,13 +108,16 @@ can retain their defaults until evidence exists.
 | `learning_id` | Yes for tracking | Stable unique capability ID, e.g. `probability.gamma-density`. |
 | `domain` | Yes for tracking | Subject ID, e.g. `probability`; reused from existing templates. |
 | `prerequisites` | Yes for tracking | List of required learning IDs; `[]` explicitly declares no prerequisites. Missing is not equivalent to an empty list. |
+| `retention_target` | No | `core`, `working`, or `reference`; omission means unspecified. It does not change evidence. |
+| `courses` | No | Explicit course IDs; default `[]`; same ID syntax as projects. |
+| `goals` | No | Explicit long-term goal IDs; default `[]`; same ID syntax as projects. |
 | `projects` | No | Project IDs for membership; default `[]`. |
 | `learning_state` | No | Summary: `unknown`, `learning`, `demonstrated`, `retained`, `fragile`, or `stale`; default `unknown`. |
 | `first_learned` | No | Date of first successful demonstration, not note creation; default empty. |
 | `last_retrieval` | No | Date of latest recorded attempt, including partial/failure; default empty. |
 | `next_review` | No | Suggested review date, not a promise of forgetting; default empty. |
 
-IDs for capabilities, domains, and projects use lowercase ASCII letters/digits,
+IDs for capabilities, domains, projects, goals and courses use lowercase ASCII letters/digits,
 with dots, hyphens, or underscores between nonempty segments. Examples:
 `probability`, `probability.density`, `example-project.geometry`. Human-friendly
 names belong in note titles. IDs are not filenames and must remain stable when
@@ -142,6 +148,9 @@ learning_schema: 1
 learning_id: probability.gamma-density
 domain: probability
 projects: ["example-project"]
+goals: ["particle-physics-research"]
+courses: ["stat-xxx"]
+retention_target: working
 prerequisites: ["probability.density"]
 learning_state: learning
 first_learned: ""
@@ -198,10 +207,11 @@ evidence must be flagged for review rather than used to unlock prerequisites.
 Do not convert MCQ-only recognition into retained knowledge. A missing review
 date leaves freshness unknown; it does not manufacture a stale/forgotten verdict.
 
-### Subject and project views
+### Context views
 
 A subject view selects records by `domain`; a project view selects membership in
-`projects`. Both include required prerequisite records outside the selected scope
+`projects`. Goal and course views select explicit membership in `goals` and
+`courses`. All include required prerequisite records outside the selected scope
 and mark them as external foundations. Arrows mean prerequisite → dependent node.
 Ordinary backlinks, concept existence, and research evidence levels are not
 learning dependencies or mastery evidence.
@@ -277,6 +287,69 @@ The report marks frontier separately from state and includes external prerequisi
 evidence issues, overdue/unknown freshness, and unmet prerequisites in text. No
 Obsidian plugin or Mermaid renderer is required to generate it; open the Markdown
 in a Mermaid-capable viewer to render the diagram.
+
+### Selective retention
+
+Schema 1 supports optional `retention_target: core` (unaided reconstruction and
+fluency), `working` (refresh around use), or `reference` (understanding plus a
+recovery path; no routine spaced review). Omit until chosen; `unspecified` is a
+view label, not a stored value. Do not silently assign targets to old records.
+The evidence table displays target and review policy separately from state and
+freshness. Recorded dates remain historical evidence even for reference material.
+A reference horizon passing is not a recommendation for routine spaced retention.
+Conservative prerequisite checks still apply; define lookup versus fluent-recall
+requirements explicitly in learning design. No automatic priority score is used.
+
+### Goal views
+
+`goals: ["particle-physics-research"]` adds explicit membership, independently of
+subject and project overlap. A node may belong to multiple goals. Missing `goals`
+means no goal membership, and old records remain valid. Use `14_Learning_Goal.md`
+for direction, time horizon, gaps, retention strategy and human decisions; it is
+not another mastery ledger.
+
+- Subject: What do I know about this subject?
+- Project: What knowledge is needed in this research/project?
+- Goal: What knowledge is relevant to this long-term direction, and what deserves
+  long-term retention?
+
+```bash
+python scripts/knowledge.py --root "<learning-notes-directory>" --goal particle-physics-research --as-of 2026-09-29
+```
+
+Goal views select explicit membership and include the transitive prerequisite
+closure as external foundations. State, retention target, freshness and frontier
+remain separate. Missing IDs, cycles and diagnostics use the same conservative
+rules as subject/project views. Choose next learning using explicit prerequisites,
+evidence, relevance and human goals, never an opaque ranking formula.
+
+### University course study
+
+Use `course-study` and `COURSE_LEARNING_PROTOCOL.md` for syllabus mapping, lecture
+preparation/review, practice, homework, exams, cumulative review and prerequisite
+repair. Ordinary coursework follows the learning loop without research machinery.
+The optional `15_Course.md` and `16_Course_Session.md` templates keep an overview and
+working session. They are not required; the workflow also works without Obsidian.
+
+```yaml
+courses: ["stat-xxx"]
+projects: ["example-project"]
+goals: ["particle-physics-research"]
+retention_target: working
+```
+
+These optional fields can coexist on one schema-1 capability record. Do not create
+course-specific copies of general capabilities. Course membership is explicit.
+
+```bash
+python scripts/knowledge.py --root "<learning-notes-directory>" --course stat-xxx --as-of 2026-09-29
+```
+
+The course view answers what knowledge this class needs, what evidence exists,
+which prerequisites are weak, and what is currently ready to learn. External
+prerequisites and diagnostics follow the same conservative rules as other views.
+Course sources generally start with official course material, the assigned text
+and instructor notes; ordinary coursework does not require literature agents.
 
 ### Existing notes and migration
 
