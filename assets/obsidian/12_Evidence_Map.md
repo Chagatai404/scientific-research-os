@@ -11,6 +11,11 @@ tags:
 
 # {{title}}
 
+Structured v0.4 records may be linked from project-local `evidence/*.json` and
+rendered with `validate_evidence.py --markdown`. Keep candidate and transferred
+statuses visible; only passing EXACT_SUPPORT atoms normally support factual synthesis.
+Existing Markdown rows remain readable and can be migrated when next used.
+
 One **evidence map** records the output of a single literature pass: what was asked, what was found,
 what disagrees, and what is still missing. It is a collection note. Individual sources that turn out
 to matter get their own `04_Source_Note` or `05_Paper_Note` and are linked from here.

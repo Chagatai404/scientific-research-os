@@ -1,0 +1,40 @@
+{
+  "source_atom": {
+    "format_version": 1,
+    "claim_id": "B-energy",
+    "claim_text": "Showers become 25-30% narrower as beam energy increases.",
+    "claim_type": "comparison",
+    "evidence_type": "explicit",
+    "verification_status": "CANDIDATE",
+    "quantitative": true,
+    "comparison": true,
+    "consequential": true,
+    "provenance_class": "system_specific",
+    "source": "Synthetic regression fixture, not scientific evidence",
+    "source_identifier": "fixture:energy",
+    "source_version": "1",
+    "source_locator": "Table 1",
+    "evidence_excerpt": "Showers become 25-30% narrower as beam energy increases.",
+    "system_or_population": "test setup",
+    "material_or_detector": "Material A",
+    "observable": "transverse shower width",
+    "energy_or_parameter_regime": "fixture regime",
+    "source_value": "25-30",
+    "source_units": "%",
+    "required_envelope": [
+      "material_or_detector",
+      "energy_or_parameter_regime"
+    ],
+    "subject": "showers at higher beam energy",
+    "comparator": "showers at lower beam energy",
+    "direction": "narrower",
+    "magnitude": "25-30%",
+    "condition": "vary beam energy; fixed particle species"
+  },
+  "corrupt_changes": {
+    "claim_text": "One species is 25-30% narrower than another.",
+    "subject": "proton showers",
+    "comparator": "pion showers",
+    "condition": "same beam energy"
+  }
+}

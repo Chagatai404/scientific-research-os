@@ -83,6 +83,11 @@ Do not silently generalize from one material, process, observable, regime, or co
 
 For numerical claims, copy the source-stated value and units exactly. Record conversions, compositions, and derived quantities separately with their formula or derivation.
 
+For machine-readable enforcement and reuse, use `EVIDENCE_FORMAT.md` and the
+EvidenceAtom validator. It checks declared structure and verification receipts;
+it cannot establish source fidelity or scientific truth from prose. Existing
+Markdown evidence remains readable and can be migrated claim by claim.
+
 ## Minimum source record
 
 For important claims record, when available:

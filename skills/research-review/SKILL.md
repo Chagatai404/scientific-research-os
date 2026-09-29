@@ -7,6 +7,14 @@ description: Adversarially review a research claim, notebook, draft result, or p
 
 Assume the result may be wrong.
 
+For structured evidence, read `references/EVIDENCE_FORMAT.md` and validate the
+project evidence directory with `scripts/validate_evidence.py` from this skill's
+directory. Factual objections reference a passing EXACT_SUPPORT atom or create a
+CANDIDATE for independent verification. Keep transferred evidence labelled.
+Label new reasoning HYPOTHESIS, TEST_PROPOSAL, UNVERIFIED_INTERPRETATION or
+POSSIBLE_CONFOUNDER. Route ambiguous source support to REASONING_REQUIRED;
+creative criticism is welcome, but it must not silently enter the factual board.
+
 Before reviewing the conclusion, determine whether the supporting literature was discovered independently or selected after the implementation/hypothesis was already preferred.
 
 Ask:

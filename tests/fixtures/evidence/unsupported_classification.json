@@ -1,0 +1,33 @@
+{
+  "source_atom": {
+    "format_version": 1,
+    "claim_id": "D-ratio",
+    "claim_text": "Material A occupies 88% of the material volume.",
+    "claim_type": "quantitative",
+    "evidence_type": "explicit",
+    "verification_status": "CANDIDATE",
+    "quantitative": true,
+    "comparison": false,
+    "consequential": true,
+    "provenance_class": "system_specific",
+    "source": "Synthetic regression fixture, not scientific evidence",
+    "source_identifier": "fixture:ratio",
+    "source_version": "1",
+    "source_locator": "Table 1",
+    "evidence_excerpt": "Material volume ratio A:B is 88:12.",
+    "system_or_population": "test setup",
+    "material_or_detector": "Material A",
+    "observable": "material volume ratio",
+    "energy_or_parameter_regime": "fixture regime",
+    "source_value": "88",
+    "source_units": "%",
+    "required_envelope": [
+      "material_or_detector",
+      "energy_or_parameter_regime"
+    ]
+  },
+  "corrupt_changes": {
+    "claim_text": "The detector has an 88% active fraction.",
+    "observable": "active fraction"
+  }
+}

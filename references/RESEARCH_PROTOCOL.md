@@ -54,6 +54,9 @@ being prepared. Do not require the learner to complete the full subject first.
    extrapolation. Distinguish measured, simulated, theoretical, and inferred
    evidence. Supply atomic claims and sources without the scout's interpretation
    when practical; record unavoidable contamination or unavailable source access.
+   For structured evidence use `EVIDENCE_FORMAT.md`: validate candidate atoms
+   before verification and receipts afterward. Reuse applicable verified records;
+   structural validity alone never establishes source support.
 5. **Prepare and sanity-check the lesson evidence.** Assemble the compact pack
    below from verified material, with explicit uncertainties. Check whether the
    planned central teaching claims are supported and fit the target scope. Repair
@@ -81,6 +84,8 @@ being prepared. Do not require the learner to complete the full subject first.
     falsification: seek confounders, artifacts, leakage, circularity, identifiability
     failures, simulation/preprocessing bias, detector resolution, finite samples,
     selection/estimator bias, and alternative physical explanations as relevant.
+    New factual objections return through candidate validation and independent
+    verification; hypotheses and test proposals remain labelled reasoning.
 11. **Triage and resolve blockers.** Apply the triage below to every concern.
     Resolve genuine blockers by returning to the appropriate earlier stage or
     narrowing the question. A proposed new discriminating experiment still needs

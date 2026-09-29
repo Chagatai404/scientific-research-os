@@ -62,6 +62,22 @@ class InstallationTests(unittest.TestCase):
                     assert (ROOT / "references" / "SOURCE_POLICY.md").read_text(encoding="utf-8") in body
                 if meta["name"] == "visualizer":
                     assert (ROOT / "references" / "VISUALIZATION_PROTOCOL.md").read_text(encoding="utf-8") in body
+                if meta["name"] in {"literature-scout", "source-verifier", "adversarial-reviewer"}:
+                    compact = (ROOT / "references/EVIDENCE_FORMAT.md").read_text(encoding="utf-8").split("## Storage and tooling", 1)[0]
+                    self.assertIn(compact.strip(), body)
+                    self.assertNotIn("## Derivations", body)
+
+    def test_installed_evidence_helper_runs_without_repository_or_packages(self):
+        base = self.tmp_path / "skills"
+        install.install_skills(base, False)
+        for name in ("research-session", "research-review"):
+            helper = base / name / "scripts/validate_evidence.py"
+            self.assertEqual(helper.read_bytes(), (ROOT / "scripts/validate_evidence.py").read_bytes())
+            result = subprocess.run(
+                [sys.executable, "-S", str(helper), str(ROOT / "examples/evidence"), "--markdown", "--facts-only"],
+                cwd=self.tmp_path, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("EXACT_SUPPORT", result.stdout)
 
 
     def test_visualize_installs_for_both_targets_without_site_packages(self):

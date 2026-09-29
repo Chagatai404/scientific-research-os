@@ -69,6 +69,8 @@ required = [
     ROOT / "assets" / "obsidian" / "00_Tutor_Session.md",
     ROOT / "assets" / "obsidian" / "13_Knowledge_Graph.md",
     ROOT / "scripts" / "knowledge.py",
+    ROOT / "scripts" / "validate_evidence.py",
+    ROOT / "references" / "EVIDENCE_FORMAT.md",
 ]
 for p in required:
     if not p.exists():
@@ -91,6 +93,13 @@ for p in ROOT.rglob("*"):
     for pat in suspicious:
         if re.search(pat, text):
             errors.append(f"Possible credential-like token in {p}")
+
+from validate_evidence import load_board, validate as validate_atom
+
+board, evidence_errors = load_board(ROOT / "examples" / "evidence")
+errors.extend(str(e) for e in evidence_errors)
+for claim_id, atom in board.items():
+    errors.extend(f"{claim_id}: {e}" for e in validate_atom(atom, board))
 
 if errors:
     print("Validation failed:")

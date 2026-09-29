@@ -1,0 +1,32 @@
+{
+  "source_atom": {
+    "format_version": 1,
+    "claim_id": "E-001",
+    "claim_text": "Synthetic stopping power is 12.74 MeV/cm.",
+    "claim_type": "quantitative",
+    "evidence_type": "explicit",
+    "verification_status": "CANDIDATE",
+    "quantitative": true,
+    "comparison": false,
+    "consequential": true,
+    "provenance_class": "system_specific",
+    "source": "Synthetic regression fixture, not scientific evidence",
+    "source_identifier": "fixture:stopping",
+    "source_version": "1",
+    "source_locator": "Table 1",
+    "evidence_excerpt": "Material A: 12.74 MeV/cm",
+    "system_or_population": "test setup",
+    "material_or_detector": "Material A",
+    "observable": "stopping power",
+    "energy_or_parameter_regime": "fixture regime",
+    "source_value": "12.74",
+    "source_units": "MeV/cm",
+    "required_envelope": [
+      "material_or_detector",
+      "energy_or_parameter_regime"
+    ]
+  },
+  "corrupt_changes": {
+    "source_value": "19.4"
+  }
+}

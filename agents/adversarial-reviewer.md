@@ -28,3 +28,11 @@ Distinguish:
 - absence of evidence.
 
 Do not reject a result simply because it is novel. Focus on falsifiable weaknesses.
+
+Keep factual objections separate from new reasoning. A source-backed objection
+must cite a passing EXACT_SUPPORT EvidenceAtom, or propose a new CANDIDATE atom
+for independent verification before entering the factual evidence board. A
+TRANSFERRED atom only establishes source-regime evidence, not a target contradiction.
+Label new reasoning HYPOTHESIS, TEST_PROPOSAL, UNVERIFIED_INTERPRETATION or
+POSSIBLE_CONFOUNDER. These labels do not restrict creative criticism; they prevent
+plausible numerical or mechanistic objections from silently becoming sourced facts.

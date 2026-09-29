@@ -1,0 +1,31 @@
+{
+  "source_atom": {
+    "format_version": 1,
+    "claim_id": "C-maximum",
+    "claim_text": "The reported depth is cascade maximum depth.",
+    "claim_type": "qualitative",
+    "evidence_type": "explicit",
+    "verification_status": "CANDIDATE",
+    "quantitative": false,
+    "comparison": false,
+    "consequential": true,
+    "provenance_class": "system_specific",
+    "source": "Synthetic regression fixture, not scientific evidence",
+    "source_identifier": "fixture:maximum",
+    "source_version": "1",
+    "source_locator": "Table 1",
+    "evidence_excerpt": "This depth describes cascade maximum.",
+    "system_or_population": "test setup",
+    "material_or_detector": "Material A",
+    "observable": "cascade maximum depth",
+    "energy_or_parameter_regime": "fixture regime",
+    "required_envelope": [
+      "material_or_detector",
+      "energy_or_parameter_regime"
+    ]
+  },
+  "corrupt_changes": {
+    "claim_text": "The reported depth is containment depth.",
+    "observable": "containment depth"
+  }
+}

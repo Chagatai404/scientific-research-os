@@ -9,6 +9,7 @@ Read:
 - `references/RESEARCH_PROTOCOL.md`
 - `references/AGENT_POLICY.md`
 - `references/SOURCE_POLICY.md`
+- `references/EVIDENCE_FORMAT.md` when handling consequential structured evidence
 
 ## Run the canonical cycle
 
@@ -23,6 +24,14 @@ learner readiness, and approval scope. Missing retention evidence is not forgett
 For research-linked tutoring or a full cycle needing fresh evidence, dispatch
 independent literature discovery and a separate source verifier using the context
 boundaries in the agent policy. Standalone tutoring follows the learning protocol.
+Use candidate atoms → deterministic validation → independent atomic verification
+→ validated factual board. Run `scripts/validate_evidence.py` from this skill's
+directory on the project evidence directory; use `--markdown --facts-only` for
+compact synthesis input. Reuse unchanged verified atoms and validated dependencies.
+Keep transferred approximations visible separately. Escalate REASONING_REQUIRED
+records selectively; the coordinator owns synthesis. Return new adversarial
+factual claims through the same validation/verification path. These are logical
+contracts, not a requirement for a separate model invocation at every arrow.
 For research-linked teaching, prepare the protocol's compact evidence pack and
 pre-tutor sanity check before live probing. Use verified inputs for question/visual
 preparation; keep answer keys hidden. Teach, check retention, and retrieve with the
