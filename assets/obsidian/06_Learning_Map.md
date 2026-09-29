@@ -1,6 +1,8 @@
 ---
 type: learning-map
 topic: ""
+domain: ""
+project: ""
 status: active
 created: "{{date}}"
 tags:
@@ -17,6 +19,9 @@ By the end I want to be able to:
 
 ## Dependency graph
 
+Planning sketch only. Arrows mean required prerequisite → dependent capability;
+ordinary backlinks do not establish a dependency or mastery.
+
 ```mermaid
 graph TD
     A[Foundation] --> B[Concept 1]
@@ -27,9 +32,30 @@ graph TD
 
 ## Nodes
 
-| Node | Why needed | Current state | Note |
+| Learning ID | Why needed | Evidence-backed state / as-of date | Learning record |
 |---|---|---|---|
-|  |  | unknown / learning / solid | [[ ]] |
+|  |  |  | [[ ]] |
+
+Use `unknown`, `learning`, `demonstrated`, `retained`, `fragile`, or `stale`
+according to `LEARNING_PROTOCOL.md`. This table is a view of working records, not
+another state ledger. Missing recent evidence is not proven forgetting.
+
+## Frontier and reinforcement
+
+**Ready next nodes / prerequisite evidence:**
+
+-
+
+**Fragile or stale prerequisites to check:**
+
+-
+
+**Beyond-frontier nodes / unmet prerequisites:**
+
+-
+
+Frontier is derived from prerequisite readiness, not a learning-state value.
+Use `13_Knowledge_Graph.md` for a subject-wide or project-wide evidence view.
 
 ## Recommended source path
 

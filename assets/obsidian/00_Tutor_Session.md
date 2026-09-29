@@ -5,6 +5,7 @@ project: ""
 status: active
 created: "{{date}} {{time}}"
 source_policy: strict
+learning_refs: []
 tags:
   - learning/session
 ---
@@ -42,6 +43,10 @@ tags:
 ---
 
 ## 2. Tutor contract
+
+Follow the canonical `LEARNING_PROTOCOL.md` for preparation, probe budget, MCQ
+quality, retention evidence, and promotion. Prepare before the live loop; record
+the assessment after the block. `learning_refs` lists the working records' IDs.
 
 The AI tutor must:
 
@@ -86,7 +91,7 @@ ticks the box:
 ```markdown
 ### Qn — <short topic> — `ACTIVE`
 
-<question text, split into parts (a)/(b)/(c) when it probes more than one thing>
+<one diagnostic question; do not hide extra questions in multipart prompts>
 
 **My answer:**
 
@@ -99,8 +104,9 @@ After the answer is submitted the tutor rewrites `ACTIVE` to `ANSWERED`, appends
 short verdict/hint (for example, `Correct.` or `Partially correct. Hint: ...`),
 and posts the next question with a fresh unticked checkbox. Clear the old submission
 marker. Defer detailed analysis, source lookup, and map/log updates until block end.
-Give a minimal correction or pause for teaching only if meaningful continuation is
-blocked. Multiple choice is encouraged when it reduces typing or tests intuition.
+Give a minimal correction or pause for teaching/verification if continuation is
+blocked, prepared evidence is insufficient, or the learner requests explanation.
+Multiple choice is encouraged when it reduces typing or tests intuition.
 
 At block end synthesize understood/partly understood concepts, misconceptions,
 corrections, connections, and reinforcement needed before progression.
@@ -211,9 +217,22 @@ Write this **without copying the tutor**.
 
 ---
 
-## 11. What is now solid?
+## 11. Demonstration and retention evidence
 
-- 
+**What I reconstructed in this learning period:**
+
+-
+
+**Delayed retrieval outcomes, if any / assistance used:**
+
+-
+
+**Working learning records updated / attempt links / next review and rationale:**
+
+-
+
+Record summaries after the block; preserve the actual answers above. A same-session
+success is not delayed retention, and an overdue review is not proven forgetting.
 
 ## 12. What is still unclear?
 
@@ -224,6 +243,9 @@ Write this **without copying the tutor**.
 - [[ ]]
 
 ## 14. Promote to permanent notes
+
+Only after I explain the idea in my own words, answer a retrieval question, and
+choose promotion. A working quizbook record can exist before this choice.
 
 - [ ] [[Concept - ]]
 - [ ] [[Derivation - ]]

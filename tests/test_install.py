@@ -6,11 +6,14 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 import io
+import json
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import install
 from common import parse_frontmatter
+from vault import render_template
 
 class InstallationTests(unittest.TestCase):
     def setUp(self):
@@ -55,8 +58,45 @@ class InstallationTests(unittest.TestCase):
                 assert role.strip() in body
                 assert policy in body
                 assert boundaries.strip() in body
-                if meta["name"] in {"literature-scout", "source-verifier"}:
+                if meta["name"] in {"literature-scout", "source-verifier", "visualizer"}:
                     assert (ROOT / "references" / "SOURCE_POLICY.md").read_text(encoding="utf-8") in body
+                if meta["name"] == "visualizer":
+                    assert (ROOT / "references" / "VISUALIZATION_PROTOCOL.md").read_text(encoding="utf-8") in body
+
+
+    def test_visualize_installs_for_both_targets_without_site_packages(self):
+        """Exercise actual target routing with third-party packages unavailable."""
+        config = {"install": {
+            "claude_skills": str(self.tmp_path / "claude-skills"),
+            "claude_agents": str(self.tmp_path / "claude-agents"),
+            "codex_skills": str(self.tmp_path / "codex-skills"),
+            "codex_agents": str(self.tmp_path / "codex-agents"),
+        }}
+        program = (
+            "import json, sys\n"
+            "sys.path.insert(0, sys.argv[1])\n"
+            "import install\n"
+            "config = json.loads(sys.argv[2])\n"
+            "target = sys.argv[3]\n"
+            "install.load_config = lambda: config\n"
+            "sys.argv = ['install.py', '--target', target]\n"
+            "install.main()\n"
+        )
+        canonical = (ROOT / "references/VISUALIZATION_PROTOCOL.md").read_text(encoding="utf-8")
+        for target in ("claude", "codex"):
+            result = subprocess.run(
+                [sys.executable, "-S", "-B", "-c", program, str(ROOT / "scripts"), json.dumps(config), target],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            skill = self.tmp_path / f"{target}-skills/visualize"
+            self.assertEqual((skill / "SKILL.md").read_bytes(), (ROOT / "skills/visualize/SKILL.md").read_bytes())
+            self.assertEqual((skill / "references/VISUALIZATION_PROTOCOL.md").read_text(encoding="utf-8"), canonical)
+        result = subprocess.run(
+            [sys.executable, "-S", "-B", str(ROOT / "scripts/validate.py")],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
     def test_dry_run_creates_no_files(self):
@@ -66,3 +106,26 @@ class InstallationTests(unittest.TestCase):
         install.install_agents_claude(target / "claude", True)
         install.install_agents_codex(target / "codex", True)
         assert not target.exists()
+
+    def test_obsidian_templates_install_without_touching_existing_notes(self):
+        vault = self.tmp_path / "vault"
+        vault.mkdir()
+        note = vault / "Existing concept.md"
+        original = "---\nstatus: solid\n---\nMy existing understanding.\n"
+        note.write_text(original, encoding="utf-8")
+        cfg = {"vault": {"path": str(vault), "templates_dir": "Templates"}}
+        install.install_obsidian(cfg, True)
+        self.assertFalse((vault / "Templates").exists())
+        install.install_obsidian(cfg, False)
+        self.assertEqual(note.read_text(encoding="utf-8"), original)
+        for source in (ROOT / "assets/obsidian").glob("*.md"):
+            installed = vault / "Templates" / source.name
+            self.assertEqual(installed.read_bytes(), source.read_bytes())
+            rendered = render_template(installed.read_text(encoding="utf-8"), "Sample topic")
+            for placeholder in ("{{title}}", "{{date}}", "{{time}}"):
+                self.assertNotIn(placeholder, rendered)
+        quiz, _ = parse_frontmatter((vault / "Templates/03_Quizbook_Topic.md").read_text(encoding="utf-8"))
+        for key in ("learning_id", "first_learned", "last_retrieval", "next_review"):
+            self.assertEqual(quiz[key], "")
+        self.assertEqual(quiz["learning_state"], "unknown")
+        self.assertTrue((vault / "Templates/13_Knowledge_Graph.md").exists())

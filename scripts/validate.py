@@ -64,7 +64,11 @@ required = [
     ROOT / "references" / "RESEARCH_PROTOCOL.md",
     ROOT / "references" / "AGENT_POLICY.md",
     ROOT / "references" / "LEARNING_PROTOCOL.md",
+    ROOT / "references" / "VISUALIZATION_PROTOCOL.md",
+    ROOT / "skills" / "visualize" / "SKILL.md",
     ROOT / "assets" / "obsidian" / "00_Tutor_Session.md",
+    ROOT / "assets" / "obsidian" / "13_Knowledge_Graph.md",
+    ROOT / "scripts" / "knowledge.py",
 ]
 for p in required:
     if not p.exists():
@@ -96,5 +100,5 @@ if errors:
 
 print(
     f"OK: {len(skill_names)} skills, {len(agent_names)} agents, "
-    f"{len(list((ROOT/'assets'/'obsidian').glob('*.md')))} Obsidian templates."
+    f"{len(list((ROOT/'assets'/'obsidian').glob('[0-9][0-9]_*.md')))} Obsidian templates."
 )

@@ -9,32 +9,37 @@ Read `references/LEARNING_PROTOCOL.md` and `references/SOURCE_POLICY.md` before 
 
 ## Workflow
 
-1. Identify the concrete target capability.
-2. Probe prerequisites until the learner's boundary is clear enough to teach from.
-3. Create a compact dependency map.
-4. Verify uncertain scientific facts before teaching them.
+1. Identify the concrete target capability and inspect relevant prior retrieval evidence.
+2. Prepare the dependency map, verified facts, questions, hints, and visual candidates
+   using the learning protocol before starting the live question loop.
+3. Check prior retention and probe prerequisites within the protocol's question budget,
+   one question at a time.
+4. Refine the dependency map from the answers and choose the next necessary node.
 5. Teach one node at a time:
    - motivate why it is needed;
    - establish/derive it;
    - connect it to known foundations;
    - test understanding.
 6. Use primary/authoritative sources for scientific claims and high-quality teaching resources for intuition.
-7. When a visual materially clarifies structure or geometry, delegate to the visualizer if available.
+7. When a visual materially clarifies the teaching idea, use the `visualize` skill
+   if available, or follow `references/VISUALIZATION_PROTOCOL.md` directly. Delegate
+   bounded visual production to the visualizer when useful.
 8. Keep a live Obsidian tutor-session note when a vault is configured, and run the session
    **through that note as the interface** rather than through chat. See "Obsidian as the
    tutoring interface" below.
 9. End a unit by asking the learner to reconstruct the central idea in their own words.
-10. Propose permanent concept/derivation/quiz notes, but do not silently promote them.
+10. At block end preserve retrieval evidence, distinguish current demonstration from
+    delayed retention, and suggest the next review using the learning protocol.
+11. Propose permanent concept/derivation/quiz notes, but do not silently promote them.
 
 ## Active probing
 
-Use the fast active-probe contract in the learning protocol. Prepare concepts,
-acceptable answers, misconceptions, hints, and progression criteria internally
-before the block. Each answer gets only a lightweight verdict/hint and the next
-question; defer analysis, source retrieval, re-teaching, and note synthesis until
-the block ends. Pause only when needed to correct/verify a point that prevents
-continuation or when the learner requests explanation. End with the protocol's
-synthesis and reinforce prerequisites needed for the current task.
+Follow the learning protocol's preparation, probe budget, and fast-response
+contract. Each answer gets a lightweight verdict/hint and, if continuing, one next
+question. Keep prepared answers and MCQ position plans hidden. Use the protocol's
+verification pause when an answer exposes inconsistency or insufficient evidence;
+never guess to maintain speed. End with its assessment synthesis and reinforce
+prerequisites needed for the current task.
 
 ## Question format
 
@@ -57,22 +62,11 @@ Multiple-choice questions are especially useful when:
 - plausible competing interpretations can expose misconceptions;
 - the learner is being rapidly probed across several prerequisites.
 
-For conceptual multiple choice, prefer distractors that represent realistic mistakes rather than obviously false options.
+For multiple choice, apply the learning protocol's hidden answer-position balancing
+and option-symmetry checks before presentation. Prefer distractors that represent
+realistic mistakes rather than obviously false options.
 
 When reasoning matters, ask the learner to give a short justification after selecting an option. Confidence can also be requested when useful.
-
-Example:
-
-```text
-Which change would move the shower maximum deeper?
-
-A. Decreasing the primary energy
-B. Increasing the primary energy
-C. Increasing the critical energy at fixed primary energy
-D. None of the above
-
-Reply with the letter, a one-sentence reason, and low/medium/high confidence.
-```
 
 Do not infer mastery from a correct option alone if the learner cannot explain why it is correct.
 
@@ -123,14 +117,9 @@ is not cosmetic. The same rule applies to any append-only log kept in a research
 
 ## Retrieval checks
 
-Use a mixture of:
-
-- recall;
-- "why" questions;
-- derivation;
-- prediction;
-- transfer to a new situation;
-- coding/computation;
-- multiple choice for efficient intuition checks.
-
-If the learner misses a prerequisite, repair that node before building on it.
+Use the learning protocol's state definitions, evidence requirements, and adaptable
+delayed-review intervals. Preserve attempts and assistance in working learning
+records at block end; do not infer mastery from a note or a correct MCQ alone.
+Check due prerequisites before reteaching, repair demonstrated gaps, and distinguish
+missing recent evidence from failed retrieval. Permanent-note promotion remains a
+separate human choice and does not change the retention evidence.

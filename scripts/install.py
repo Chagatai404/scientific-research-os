@@ -69,13 +69,17 @@ def agent_policy(role: str) -> str:
         "## Scientific invariants\n", 1
     )[0]
     source_policy = ""
-    if role in {"literature-scout", "source-verifier"}:
+    if role in {"literature-scout", "source-verifier", "visualizer"}:
         source_policy = "\n" + (ROOT / "references" / "SOURCE_POLICY.md").read_text(encoding="utf-8")
+    visualization_policy = ""
+    if role == "visualizer":
+        visualization_policy = "\n" + (ROOT / "references" / "VISUALIZATION_PROTOCOL.md").read_text(encoding="utf-8")
     return (
         "\n\n# Shared Research OS policy (generated from canonical references)\n\n"
         + (ROOT / "references" / "AGENT_POLICY.md").read_text(encoding="utf-8")
         + "\n## Blocker / relevance triage\n" + triage_and_gate
         + source_policy
+        + visualization_policy
     )
 
 

@@ -4,8 +4,8 @@ A model-independent research and learning workflow for human-led scientific work
 
 The system separates two loops:
 
-- **Learning:** probe → dependency map → teach → retrieve → promote.
-- **Research:** question → learn → independent discovery → separate verification → reconcile → synthesize → specialist validation → adversarial review → triage → plan → explicit human approval → build → experiment → validate/attack results → decision → learn again → persist.
+- **Learning:** prepare and verify → check prior retention → probe → map frontier → teach/visualize → retrieve → record → delayed checks → reinforce or promote by human choice.
+- **Research:** question → inspect knowledge/retention → independent discovery → separate verification → prepared evidence and lesson sanity check → learn → reconcile → synthesize → specialist validation → full adversarial review → triage → plan → explicit human approval → build/experiment → validate/attack results → human decision → learn again → persist.
 
 The human researcher is always the final authority. AI agents may search, explain, implement, critique, reproduce, verify, and propose changes, but they do not silently promote claims into permanent knowledge or accepted research conclusions.
 
@@ -57,9 +57,10 @@ examples/                Example project integration
 tests/                   Lightweight self-checks
 ```
 
-## Initial skills
+## Skills
 
 - `tutor` — source-grounded live tutoring with prerequisite probing and retrieval checks.
+- `visualize` — scientific diagrams, plots, interactive exploration, and physics/mathematical animation.
 - `study-source` — deeply study a paper, book chapter, website, lecture, or video.
 - `derive` — reconstruct mathematics/physics from assumptions and sanity checks.
 - `form-hypothesis` — turn ideas into falsifiable scientific hypotheses.
@@ -71,7 +72,7 @@ tests/                   Lightweight self-checks
 
 Skills describe workflows and capabilities. They are not tied to a particular model or provider.
 
-## Initial specialist agents
+## Specialist agents
 
 - literature-scout
 - source-verifier
@@ -96,6 +97,8 @@ independent literature discovery
         ↓
 independent source verification
         ↓
+prepared evidence + lesson sanity check → learn/probe/visualize
+        ↓
 reconciliation → synthesis → relevant specialist validation
         ↓
 adversarial review → blocker/relevance triage
@@ -111,7 +114,49 @@ A disagreement between external evidence and the current codebase is a research 
 
 When practical, an independent reviewer should receive the claim, source, artifact, experiment, or acceptance criteria without being given the authoring agent's full reasoning first.
 
+Standalone tutoring uses prepared authoritative material without requiring a full
+research cycle. Research-linked tutoring uses a compact verified evidence pack;
+its sanity check establishes lesson readiness, not independent corroboration or
+research acceptance. Full adversarial review remains after synthesis. See the
+[entry paths and handoffs](references/RESEARCH_PROTOCOL.md).
+
+## Retention and the knowledge frontier
+
+Working quizbook notes hold one learning record per capability, with stable IDs,
+explicit prerequisites, and retrieval history. These records can exist before
+permanent-note promotion; human-reviewed concept notes link to them. Note existence
+does not imply mastery. The [learning protocol](references/LEARNING_PROTOCOL.md) distinguishes
+`unknown`, `learning`, `demonstrated`, `retained`, `fragile`, and `stale`; stale means
+missing recent evidence, not proven forgetting.
+
+Subject graphs group capabilities by domain. Project graphs group their use in a
+research system, including shared prerequisites from other scopes. Frontier is
+derived from evidence-backed prerequisite readiness, not stored as a seventh state.
+Read the [metadata and command contract](assets/obsidian/README.md) for conservative
+state derivation, unknown freshness, diagnostics, and legacy handling.
+
+Tutor preparation includes questions, acceptable answers, misconceptions, hints,
+and visual candidates. Diagnostic blocks normally use 3–5 questions, one at a time,
+with hidden balanced MCQ answer positions and symmetric options. Recognition alone
+does not establish retention. Suggested delayed intervals adapt to retrieval evidence;
+there is no background scheduler or prescribed optimal spacing algorithm.
+
+## Scientific visual teaching
+
+The [visualization protocol](references/VISUALIZATION_PROTOCOL.md) selects the
+simplest suitable diagram, plot, interactive view, or animation. It distinguishes
+schematic, model-driven, and simulation/data-driven visuals and requires rendering
+inspection or an explicit unverified-draft disclosure. Quantitative physics must
+come from stated equations, models, simulations, or data, never decorative motion.
+
+Mermaid, Matplotlib, Plotly, SVG, PyVista, Manim Community, and optional Motion Canvas
+are capability recommendations. None is required to install or validate Research OS.
+Manim Community is the default Manim recommendation; no backend is installed automatically.
+
 ## Quick start
+
+Use Python **3.11+**. Repository scripts and tests use only the standard library;
+PyYAML and visualization packages are not Research OS dependencies.
 
 ### 1. Configure your vault
 
@@ -152,6 +197,10 @@ This installs:
 
 Each installed skill receives copies of the canonical `references/` documents. In the source tree, resolve skill `references/` paths against the repository root. Installed standalone agents receive the shared agent policy, triage, and approval boundary in their generated instructions; edit canonical sources and reinstall, rather than editing generated copies.
 
+The standalone visualizer also receives the source and visualization policies.
+Reinstallation replaces existing skill directories and agent definitions; review
+any local customizations before installing.
+
 The installed definitions are the same scientific roles expressed through provider-specific adapter formats. Installing them does **not** assign Claude or Codex permanent responsibilities.
 
 ### 4. Install Obsidian templates
@@ -160,7 +209,9 @@ The installed definitions are the same scientific roles expressed through provid
 python scripts/install.py --obsidian
 ```
 
-The destination is read from `research-os.toml`.
+The destination is read from `research-os.toml`. This command also installs the
+default skill/agent targets. Template files with matching names are overwritten;
+existing notes are not migrated. Preserve any template customizations first.
 
 ### 5. Start a live tutor session
 
@@ -186,6 +237,28 @@ Open the note:
 python scripts/vault.py open \
   --note "00 Tutor Sessions/2026-09-20 Generalized Fractal Dimensions.md"
 ```
+
+### 6. Generate a subject or project graph
+
+Try the [synthetic learning example](examples/learning/README.md):
+
+```bash
+python scripts/knowledge.py --root examples/learning --subject probability --as-of 2026-09-29
+python scripts/knowledge.py --root examples/learning --project demo --as-of 2026-09-29
+```
+
+For your records, replace the input directory and scope IDs. The command reads notes
+without editing them and emits Markdown/Mermaid. `--output <new-file.md>` creates a
+file without overwriting an existing one. No Obsidian plugin is needed. Record a fixed
+`--as-of` date for reproducible output; otherwise the local current date is used.
+
+### Upgrading from v0.2
+
+Reinstall reviewed skills/agents/templates to get the new policies. Learning metadata
+is opt-in: old notes remain readable and are skipped as untracked by the generator.
+Existing `status`, confidence, review timestamps, and `solid` labels are not converted
+into mastery evidence. Adopt tracking one capability at a time; preserve old logs.
+There is no bulk vault migration or automatic permanent-note promotion.
 
 ## Tool independence
 
@@ -244,15 +317,16 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
-v0.2 focuses on:
+**v0.3.0 — Retention, Knowledge Frontier & Visual Teaching** adds:
 
-1. source-grounded learning,
-2. scientific reasoning,
-3. reproducible research,
-4. Obsidian live logging,
-5. provider-independent AI collaboration,
-6. independent literature discovery and review,
-7. explicit plan approval before builds and experiments,
-8. fast probing, concern triage, and post-build learning.
+1. evidence-based long-term retention records;
+2. subject/project knowledge graphs and derived frontier;
+3. a scientific visualization skill and physics-animation contract;
+4. bounded, prepared probing with MCQ quality controls;
+5. verified preparation before research-linked tutoring.
+
+The v0.2 scientific independence, human authority, and explicit build/experiment
+approval boundaries remain in place. This release remains Markdown plus lightweight
+Python: no database, dashboard, LMS, vector store, daemon, or rendering framework.
 
 Future extensions should be added only after a recurring workflow proves it is needed.
