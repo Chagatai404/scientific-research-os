@@ -80,7 +80,7 @@ class InstallationTests(unittest.TestCase):
             self.assertIn("EXACT_SUPPORT", result.stdout)
 
 
-    def test_visualize_installs_for_both_targets_without_site_packages(self):
+    def test_workflow_skills_install_for_both_targets_without_site_packages(self):
         """Exercise actual target routing with third-party packages unavailable."""
         config = {"install": {
             "claude_skills": str(self.tmp_path / "claude-skills"),

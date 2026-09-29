@@ -83,7 +83,6 @@ class ReleaseContracts(unittest.TestCase):
         skill = (ROOT / "skills/course-study/SKILL.md").read_text(encoding="utf-8")
         self.assertIn("references/COURSE_LEARNING_PROTOCOL.md", skill)
 
-
     def test_transcription_fidelity_and_ambiguity_contract(self):
         from common import parse_frontmatter
         skill = (ROOT / "skills/notes-to-latex/SKILL.md").read_text(encoding="utf-8")
@@ -99,8 +98,6 @@ class ReleaseContracts(unittest.TestCase):
             self.assertIn(required, text)
         validator = (ROOT / "scripts/validate.py").read_text(encoding="utf-8")
         self.assertIn('"LATEX_TRANSCRIPTION_PROTOCOL.md"', validator)
-
-
 
 if __name__ == "__main__":
     unittest.main()

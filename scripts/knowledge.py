@@ -352,8 +352,10 @@ def discover(root: Path, as_of: date) -> Collection:
 
 
 def select(nodes: dict[str, Node], scope: str, value: str) -> tuple[set[str], set[str]]:
+    membership = {"project": "projects", "goal": "goals", "course": "courses"}
     primary = {key for key, node in nodes.items()
-               if (node.domain == value if scope == "subject" else value in node.meta.get({"project": "projects", "goal": "goals", "course": "courses"}[scope], []))}
+               if (node.domain == value if scope == "subject"
+                   else value in node.meta.get(membership[scope], []))}
     selected = set(primary)
     todo = list(primary)
     while todo:
@@ -427,7 +429,8 @@ def render(collection: Collection, scope: str, value: str, as_of: date) -> str:
         a = node.assessment
         freshness = node.freshness
         if node.retention_target == "reference":
-            freshness += " (historical horizon; no routine review)"
+            freshness += (" (historical horizon; no routine review)" if a.review
+                          else " (no routine review)")
         lines.append(f"| {safe_text(key)} ({safe_text(node.path)}) | {a.state} | {node.retention_target} | {freshness} | "
                      f"{a.last or '—'} | {a.review or '—'} | {node.review_policy} | {safe_text(a.evidence) or '—'} | {safe_text(position)} |")
     if not primary:

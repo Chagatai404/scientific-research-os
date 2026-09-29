@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import date
 import re
 import sys
 
@@ -60,6 +61,12 @@ for p in sorted((ROOT / "agents").glob("*.md")):
     agent_names.add(name)
 
 required = [
+    ROOT / "references" / "V0.4.5_IMPLEMENTATION.md",
+    ROOT / "references" / "COURSE_LEARNING_PROTOCOL.md",
+    ROOT / "skills" / "course-study" / "SKILL.md",
+    ROOT / "assets" / "obsidian" / "14_Learning_Goal.md",
+    ROOT / "assets" / "obsidian" / "15_Course.md",
+    ROOT / "assets" / "obsidian" / "16_Course_Session.md",
     ROOT / "references" / "LATEX_TRANSCRIPTION_PROTOCOL.md",
     ROOT / "skills" / "notes-to-latex" / "SKILL.md",
     ROOT / "references" / "SOURCE_POLICY.md",
@@ -77,6 +84,26 @@ required = [
 for p in required:
     if not p.exists():
         errors.append(f"Missing required file: {p}")
+
+# Check named template links in canonical instructions and template documentation.
+template_pattern = re.compile(r"\b[0-9]{2}_[A-Za-z0-9_]+\.md\b")
+documents = [ROOT / "README.md"]
+for directory in ("skills", "references", "assets/obsidian"):
+    documents.extend((ROOT / directory).rglob("*.md"))
+for p in documents:
+    for name in template_pattern.findall(p.read_text(encoding="utf-8")):
+        if not (ROOT / "assets" / "obsidian" / name).is_file():
+            errors.append(f"{p}: missing template {name}")
+
+# knowledge.py owns schema-1 validation; do not duplicate its metadata rules.
+from knowledge import discover
+
+for directory in (ROOT / "examples" / "learning", ROOT / "assets" / "obsidian"):
+    if not directory.is_dir():
+        errors.append(f"Missing learning input directory: {directory}")
+        continue
+    collection = discover(directory, date.max)
+    errors.extend(f"{directory}: {issue}" for issue in collection.diagnostics)
 
 suspicious = [
     r"AKIA[0-9A-Z]{16}",

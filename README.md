@@ -4,7 +4,7 @@ A model-independent research and learning workflow for human-led scientific work
 
 The system separates two loops:
 
-- **Learning:** prepare and verify → check prior retention → probe → map frontier → teach/visualize → retrieve → record → delayed checks → reinforce or promote by human choice.
+- **Learning:** prepare and verify → check prior retention → probe → map frontier → teach/visualize → retrieve → record → target-appropriate follow-up → reinforce or promote by human choice.
 - **Research:** question → inspect knowledge/retention → independent discovery → separate verification → prepared evidence and lesson sanity check → learn → reconcile → synthesize → specialist validation → full adversarial review → triage → plan → explicit human approval → build/experiment → validate/attack results → human decision → learn again → persist.
 
 The human researcher is always the final authority. AI agents may search, explain, implement, critique, reproduce, verify, and propose changes, but they do not silently promote claims into permanent knowledge or accepted research conclusions.
@@ -39,7 +39,7 @@ Obsidian vault                 Git research repo
 
 The user decides which tool performs which task. A project may choose conventions—for example, using one tool more often for tutoring and another for implementation—but those conventions belong to the project or user workflow, not to Scientific Research OS itself.
 
-For substantial work, prefer **one coordinating primary agent at a time**, with separate literature discovery and source-verification agents and relevant independent reviewers. Follow the canonical [research protocol](references/RESEARCH_PROTOCOL.md); the summaries here do not replace its gates.
+For substantive research, prefer **one coordinating primary agent at a time**, with separate literature discovery and source-verification agents and relevant independent reviewers. Follow the canonical [research protocol](references/RESEARCH_PROTOCOL.md); the summaries here do not replace its gates.
 
 Cross-validation means independent reconstruction or verification, not asking a second agent whether it agrees with the first.
 
@@ -59,6 +59,8 @@ tests/                   Lightweight self-checks
 
 ## Skills
 
+- `course-study` — university coursework, from syllabus and lectures to practice, exams and prerequisite repair.
+- `notes-to-latex` — faithful handwritten technical notes to LaTeX, with visible ambiguity and disclosed corrections.
 - `tutor` — source-grounded live tutoring with prerequisite probing and retrieval checks.
 - `visualize` — scientific diagrams, plots, interactive exploration, and physics/mathematical animation.
 - `study-source` — deeply study a paper, book chapter, website, lecture, or video.
@@ -129,17 +131,58 @@ does not imply mastery. The [learning protocol](references/LEARNING_PROTOCOL.md)
 `unknown`, `learning`, `demonstrated`, `retained`, `fragile`, and `stale`; stale means
 missing recent evidence, not proven forgetting.
 
-Subject graphs group capabilities by domain. Project graphs group their use in a
-research system, including shared prerequisites from other scopes. Frontier is
-derived from evidence-backed prerequisite readiness, not stored as a seventh state.
-Read the [metadata and command contract](assets/obsidian/README.md) for conservative
-state derivation, unknown freshness, diagnostics, and legacy handling.
+Understanding a capability does not mean every exact detail deserves permanent
+memorization. Choose a separate optional retention target:
+
+- **core:** maintain fluent unaided reconstruction, explanation or application.
+- **working:** understand deeply and refresh around actual future use.
+- **reference:** understand what/why/when and keep a path to recover exact details;
+  no routine spaced-review burden. Reference material can be scientifically critical.
+
+Missing targets remain **unspecified**. The learner decides meaningful choices;
+the tutor may recommend a target with a short rationale. Historical attempts,
+failures and review dates stay intact. A reference record's old horizon is evidence
+context, not an automatic retention-priority warning.
+
+| View | Question |
+|---|---|
+| Subject | What do I know? |
+| Course | What do I need for this class? |
+| Project | What do I need for this research/project? |
+| Goal | What is worth building and retaining for where I want to go? |
+
+One capability may appear in several courses, projects and goals without being
+duplicated. Membership is explicit. Every view includes required external
+prerequisites and shows evidence state, retention target, freshness and frontier.
+Frontier is eligibility based on conservative prerequisite evidence, not a global
+priority score or an instruction to review every node. Read the
+[metadata and command contract](assets/obsidian/README.md) for state derivation,
+unknown freshness, diagnostics and legacy handling.
 
 Tutor preparation includes questions, acceptable answers, misconceptions, hints,
 and visual candidates. Diagnostic blocks normally use 3–5 questions, one at a time,
 with hidden balanced MCQ answer positions and symmetric options. Recognition alone
-does not establish retention. Suggested delayed intervals adapt to retrieval evidence;
+does not establish retention. For targets needing delayed checks, intervals adapt to retrieval evidence;
 there is no background scheduler or prescribed optimal spacing algorithm.
+
+## University courses and handwritten notes
+
+Use `course-study` to inspect the syllabus/outcomes, map prerequisites, check prior
+knowledge, study a topic, practice, retrieve/apply, use assignment/exam feedback,
+and update the course map. It supports lecture preparation/review, homework, exam
+preparation, cumulative review and prerequisite repair. Ordinary course study
+follows the [course learning protocol](references/COURSE_LEARNING_PROTOCOL.md),
+without research agents or research approval. Research procedures apply when the
+learner explicitly moves into a substantive research question. Course and session
+templates are optional; no Obsidian setup is required for this workflow.
+
+Use `notes-to-latex` with visible handwritten pages to get a fragment or full
+LaTeX document. The default is faithful-clean transcription, preserving apparent
+mathematical mistakes and marking meaningful ambiguity. Explicitly requested
+polished output reports substantive corrections separately. Unclear figures get
+placeholders rather than invented geometry. The
+[transcription protocol](references/LATEX_TRANSCRIPTION_PROTOCOL.md) requires no
+OCR engine, external AI API or LaTeX compiler in Research OS.
 
 ## Scientific visual teaching
 
@@ -238,13 +281,15 @@ python scripts/vault.py open \
   --note "00 Tutor Sessions/2026-09-20 Generalized Fractal Dimensions.md"
 ```
 
-### 6. Generate a subject or project graph
+### 6. Generate a subject, course, project or goal graph
 
 Try the [synthetic learning example](examples/learning/README.md):
 
 ```bash
 python scripts/knowledge.py --root examples/learning --subject probability --as-of 2026-09-29
 python scripts/knowledge.py --root examples/learning --project demo --as-of 2026-09-29
+python scripts/knowledge.py --root examples/learning --goal research-foundations --as-of 2026-09-29
+python scripts/knowledge.py --root examples/learning --course stat-xxx --as-of 2026-09-29
 ```
 
 For your records, replace the input directory and scope IDs. The command reads notes
@@ -252,13 +297,15 @@ without editing them and emits Markdown/Mermaid. `--output <new-file.md>` create
 file without overwriting an existing one. No Obsidian plugin is needed. Record a fixed
 `--as-of` date for reproducible output; otherwise the local current date is used.
 
-### Upgrading from v0.2
+### Upgrading existing learning records
 
 Reinstall reviewed skills/agents/templates to get the new policies. Learning metadata
 is opt-in: old notes remain readable and are skipped as untracked by the generator.
 Existing `status`, confidence, review timestamps, and `solid` labels are not converted
 into mastery evidence. Adopt tracking one capability at a time; preserve old logs.
-There is no bulk vault migration or automatic permanent-note promotion.
+There is no bulk vault migration or automatic permanent-note promotion. Existing
+schema-1 records remain valid; `retention_target`, `goals` and `courses` are optional.
+No old record is silently assigned core retention or inferred context membership.
 
 ## Tool independence
 
@@ -317,7 +364,16 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
-**v0.4.0 — Evidence integrity and low-token verification** adds a small reliability
+**v0.4.5 — Learning Architecture & Academic Workflow** adds selective retention,
+goal maps, dedicated university-course study, and faithful handwritten-note LaTeX
+transcription. Schema 1 remains backward compatible; evidence-state and research
+authorization semantics are unchanged. See the
+[implementation decision](references/V0.4.5_IMPLEMENTATION.md).
+Geant4, ML/QML methodology, scientific-compute integrations, environment probing,
+experiment manifests and HPC/cloud tooling remain deferred to v0.5 or later.
+
+
+**v0.4.0 — Evidence integrity and low-token verification** added a small reliability
 layer over the v0.3 research workflow:
 
 - JSON EvidenceAtoms with claim envelopes, comparison semantics and numerical provenance;

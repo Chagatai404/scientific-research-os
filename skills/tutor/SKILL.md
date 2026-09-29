@@ -29,7 +29,8 @@ Read `references/LEARNING_PROTOCOL.md` and `references/SOURCE_POLICY.md` before 
    tutoring interface" below.
 9. End a unit by asking the learner to reconstruct the central idea in their own words.
 10. At block end preserve retrieval evidence, distinguish current demonstration from
-    delayed retention, and suggest the next review using the learning protocol.
+    delayed retention, and choose follow-up using the learning protocol and existing
+    retention target.
 11. Propose permanent concept/derivation/quiz notes, but do not silently promote them.
 
 ## Active probing
@@ -123,3 +124,18 @@ records at block end; do not infer mastery from a note or a correct MCQ alone.
 Check due prerequisites before reteaching, repair demonstrated gaps, and distinguish
 missing recent evidence from failed retrieval. Permanent-note promotion remains a
 separate human choice and does not change the retention evidence.
+
+## Retention choices and course routing
+
+Understanding does not require permanent memorization of every detail. Respect
+existing `retention_target` metadata. Core supports justified long-term fluent
+reconstruction; working supports refresh around use; reference supports understanding
+plus a recovery path without routine spaced review. Missing means unspecified.
+At block end recommend a target with a short rationale when useful; the learner
+controls consequential choices. Do not silently assign/reassign it, turn every
+interaction into a questionnaire, or alter retrieval evidence to fit the target.
+Frontier is eligibility, not a mandate to rehearse every learned node.
+
+For university coursework, use `course-study` if available or follow
+`references/COURSE_LEARNING_PROTOCOL.md`. Ordinary course learning does not invoke
+the research cycle. Research-linked lessons retain the research protocol's gates.

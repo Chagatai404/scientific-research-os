@@ -327,9 +327,8 @@ class KnowledgeTests(unittest.TestCase):
             view = k.render(c, "subject", "math", AS_OF)
             self.assertIn("Retention target", view)
             self.assertIn("no routine spaced review", view)
-            self.assertIn("historical horizon; no routine review", view)
+            self.assertIn("no routine review)", view)
             self.assertFalse(c.nodes["foundation"].ready)
-
 
     def test_goal_membership_closure_multiple_goals_and_old_records(self):
         self.put("base.md", record("base", rows=attempt()))
@@ -357,7 +356,6 @@ class KnowledgeTests(unittest.TestCase):
                 self.node(record(extra=f"goals: {value}\n"))
         self.put("draft.md", '---\nlearning_schema: 1\nlearning_id: ""\ngoals: ["a"]\n---\n')
         self.assertTrue(k.discover(self.root, AS_OF).diagnostics)
-
 
     def test_course_context_reuses_one_node_and_cross_course_prerequisites(self):
         self.put("base.md", record("base", rows=attempt(), extra='courses: ["foundation-course"]\n'))
@@ -390,7 +388,47 @@ class KnowledgeTests(unittest.TestCase):
         self.put("draft.md", '---\nlearning_schema: 1\nlearning_id: ""\ncourses: ["a"]\n---\n')
         self.assertTrue(k.discover(self.root, AS_OF).diagnostics)
 
+    def test_all_scope_flags_reject_empty_invalid_and_conflicting_values(self):
+        scopes = ("subject", "project", "goal", "course")
+        for scope in scopes:
+            for value in ("", "UPPER", "space id"):
+                with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                    k.main(["--root", str(self.root), "--" + scope, value])
+                self.assertEqual(error.exception.code, 2)
+            for other in scopes:
+                if other == scope:
+                    continue
+                with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
+                    k.main(["--root", str(self.root), "--" + scope, "a", "--" + other, "b"])
+                self.assertEqual(error.exception.code, 2)
 
+    def test_new_metadata_rejects_nested_duplicate_and_multiline_values(self):
+        for field, value in (("retention_target", "core"), ("goals", '["a"]'), ("courses", '["a"]')):
+            variants = (f"{field}: {value}\n{field}: {value}\n",
+                        f"unrelated: text\n  {field}: {value}\n",
+                        f"{field}:\n  - a\n")
+            for extra in variants:
+                with self.subTest(field=field, extra=extra), self.assertRaises(ValueError):
+                    self.node(record(extra=extra))
+
+    def test_new_views_keep_cycles_missing_ids_duplicates_and_inputs_conservative(self):
+        extra = 'goals: ["a"]\ncourses: ["a"]\nretention_target: reference\n'
+        self.put("a.md", record("a", prerequisites=["b"], rows=attempt(), extra=extra))
+        self.put("b.md", record("b", prerequisites=["a"], rows=attempt()))
+        self.put("c.md", record("c", prerequisites=["missing"], extra=extra))
+        self.put("d1.md", record("duplicate", extra=extra))
+        self.put("d2.md", record("duplicate", extra=extra))
+        before = {p.name: p.read_bytes() for p in self.root.glob("*.md")}
+        c = k.discover(self.root, AS_OF)
+        self.assertNotIn("duplicate", c.nodes)
+        self.assertFalse(k.ready_nodes(c.nodes))
+        for scope in ("goal", "course"):
+            with redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(k.main(["--root", str(self.root), "--" + scope, "a",
+                                         "--as-of", AS_OF.isoformat()]), 1)
+            for expected in ("cycle", "missing prerequisite", "duplicate", "external", "evidence issue"):
+                self.assertIn(expected, out.getvalue())
+        self.assertEqual(before, {p.name: p.read_bytes() for p in self.root.glob("*.md")})
 
 if __name__ == "__main__":
     unittest.main()

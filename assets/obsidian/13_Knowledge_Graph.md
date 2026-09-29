@@ -38,8 +38,8 @@ file rather than overwriting this note's human-written choices.
 
 ## Evidence view
 
-| Learning ID | Capability / record | State | Evidence / last retrieval | Next review | Frontier or blocking prerequisite |
-|---|---|---|---|---|---|
+| Learning ID | Capability / record | State | Retention target | Evidence / last retrieval | Next review | Frontier or blocking prerequisite |
+|---|---|---|---|---|---|---|
 
 Distinguish retained foundations, current demonstrations, fragile/stale
 prerequisites, active learning, ready frontier nodes, and future nodes blocked by

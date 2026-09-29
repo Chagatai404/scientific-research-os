@@ -59,7 +59,8 @@ recognition alone is normally insufficient for `retained`; follow it with meanin
 reconstruction or transfer. Record hints and open-note assistance rather than
 treating assisted success as equivalent to unassisted retrieval.
 
-A simple starting schedule is same-session reconstruction, then about one day,
+For core targets needing spaced retention, a simple starting schedule is
+same-session reconstruction, then about one day,
 one week, one month, and a longer interval. These are adaptable defaults, not an
 optimal spacing algorithm or scientific laws. Choose the next interval according
 to the capability, learner, evidence, and upcoming use. Strong delayed retrieval
@@ -73,7 +74,8 @@ For previously demonstrated knowledge, partial or failed retrieval supports
 mark freshness as `stale` while preserving the last evidenced state and history.
 An overdue date must not erase a recorded failure or replace `fragile` with a
 mere absence-of-evidence label.
-If no review horizon was recorded, report freshness as unknown; propose a check when justified by the target and actual use;
+If no review horizon was recorded, report freshness as unknown; propose a check
+when justified by the target and actual use;
 do not invent an expiry date. Retention checks are learner/session driven, not a
 requirement for a background scheduler.
 
