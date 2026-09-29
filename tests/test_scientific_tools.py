@@ -1,0 +1,101 @@
+from copy import deepcopy
+from pathlib import Path
+import importlib.metadata as metadata
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+import scientific_tools as tools
+
+
+def profile():
+    return {"schema_version": 1, "id": "example", "name": "Example", "category": "analysis",
+            "python": {"packages": ["example"]}, "probe": {"commands": [], "environment": []},
+            "provenance": {"fields": ["version"]}}
+
+
+class ToolTests(unittest.TestCase):
+    def test_missing_package_and_metadata_without_import(self):
+        with patch.object(tools.metadata, "version", side_effect=metadata.PackageNotFoundError), \
+                patch.object(tools, "_run") as run:
+            self.assertFalse(tools.probe(profile())["available"])
+            run.assert_not_called()
+        with patch.object(tools.metadata, "version", return_value="1.2"):
+            result = tools.probe(profile())
+            self.assertEqual(result["packages"]["example"]["observed_version"], "1.2")
+            self.assertTrue(result["available"])
+            self.assertNotIn("declared", result)
+
+    def test_unsafe_profiles_rejected_before_effects(self):
+        for commands in ("echo x", ["echo x"], [["python", "-c", "print(1)"]],
+                         [["sh", "-c", "true"]], [["geant4-config", "--version", "|", "cat"]],
+                         [["geant4-config;echo", "--version"]], [["/tmp/probe", "--version"]],
+                         [["geant4-config", ">output"]], [[1]], [[]]):
+            p = profile()
+            p["probe"]["commands"] = commands
+            with self.subTest(commands=commands), patch.object(tools, "_run") as run:
+                with self.assertRaises(ValueError):
+                    tools.probe(p)
+                run.assert_not_called()
+        for change in ({"schema_version": True}, {"schema_version": 2}, {"id": "../x"},
+                       {"category": []}, {"python": {"packages": ["x;evil"]}},
+                       {"python": {"packages": [], "script": "evil"}},
+                       {"probe": {"command": "evil"}},
+                       {"probe": {"commands": [], "environment": ["API_TOKEN"]}}):
+            with self.assertRaises(ValueError):
+                tools.validate_profile({**profile(), **change})
+
+    def test_load_requires_guide_and_matching_unique_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            directory = root / "example"
+            directory.mkdir()
+            text = ('schema_version=1\nid="example"\nname="Example"\ncategory="analysis"\n'
+                    '[python]\npackages=[]\n[probe]\ncommands=[]\nenvironment=[]\n'
+                    '[provenance]\nfields=[]\n')
+            (directory / "PROFILE.toml").write_text(text, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "GUIDE"):
+                tools.load_profiles(root)
+            (directory / "GUIDE.md").write_text("Guide", encoding="utf-8")
+            self.assertEqual(list(tools.load_profiles(root)), ["example"])
+            second = root / "zzz"
+            second.mkdir()
+            (second / "PROFILE.toml").write_text(text, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "duplicate"):
+                tools.load_profiles(root)
+
+    def test_command_normalization_timeout_and_missing_executable(self):
+        p = profile()
+        p.update(id="geant4", python={"packages": []})
+        p["probe"]["commands"] = [["geant4-config", "--version"]]
+        with patch.object(tools.shutil, "which", return_value=None), patch.object(tools, "_run") as run:
+            self.assertFalse(tools.probe(p)["available"])
+            run.assert_not_called()
+        for result in (subprocess.CompletedProcess([], 0, "11.4.1\n"),
+                       subprocess.CompletedProcess([], 1, ""),
+                       subprocess.CompletedProcess([], 0, "bad\noutput")):
+            with patch.object(tools.shutil, "which", return_value="/bin/geant4-config"), \
+                    patch.object(tools.subprocess, "run", return_value=result) as run:
+                observed = tools.probe(p)
+                self.assertEqual(observed["available"], result.stdout == "11.4.1\n")
+                self.assertFalse(run.call_args.kwargs["shell"])
+                self.assertEqual(run.call_args.kwargs["timeout"], 5)
+        with patch.object(tools.shutil, "which", return_value="/bin/geant4-config"), \
+                patch.object(tools, "_run", side_effect=subprocess.TimeoutExpired("probe", 5)):
+            self.assertEqual(tools.probe(p)["commands"]["geant4-config"]["error"], "TimeoutExpired")
+
+    def test_windows_batch_is_inert(self):
+        for suffix in ("cmd", "BAT", "ps1"):
+            with patch.object(tools.shutil, "which", return_value=f"C:/tools/geant4-config.{suffix}"):
+                self.assertIsNone(tools._executable("geant4-config"))
+
+    def test_git_unknown_and_dirty_worktree(self):
+        with patch.object(tools, "_executable", return_value=None):
+            self.assertEqual(tools.git_state(Path.cwd()), {"commit": None, "dirty": None})
+        with patch.object(tools, "_executable", return_value="git"), patch.object(tools, "_run", side_effect=[
+            subprocess.CompletedProcess([], 0, "a" * 40 + "\n"),
+            subprocess.CompletedProcess([], 0, "?? input.json\n")]):
+            self.assertEqual(tools.git_state(Path.cwd()), {"commit": "a" * 40, "dirty": True})

@@ -6,8 +6,13 @@ import re
 import sys
 
 from common import ROOT, parse_frontmatter
+from scientific_tools import load_profiles
 
 errors = []
+try:
+    load_profiles(ROOT / "extensions" / "scientific-tools")
+except ValueError as exc:
+    errors.append(str(exc))
 
 skill_names = set()
 reference_pattern = re.compile(r"`?references/([A-Za-z0-9_.-]+)`?")

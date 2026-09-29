@@ -13,7 +13,7 @@ class LearningValidationTests(unittest.TestCase):
     def test_validator_rejects_learning_metadata_and_missing_contracts(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            for name in ("scripts", "skills", "agents", "references", "assets", "examples"):
+            for name in ("scripts", "skills", "agents", "references", "assets", "examples", "extensions"):
                 shutil.copytree(ROOT / name, root / name,
                                 ignore=shutil.ignore_patterns("__pycache__"))
             shutil.copy2(ROOT / "README.md", root / "README.md")
