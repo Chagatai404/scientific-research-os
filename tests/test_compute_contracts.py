@@ -5,6 +5,22 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ComputeContracts(unittest.TestCase):
+    def test_qml_inherits_ml_and_distinguishes_regimes(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import computational_manifest as manifest
+        text = " ".join((ROOT / "references/QML_PROTOCOL.md").read_text(encoding="utf-8").split())
+        self.assertIn("explicitly extends `ML_PROTOCOL.md`", text)
+        for regime in ("exact-simulator", "finite-shot-simulator", "noisy-simulator", "real-qpu"):
+            self.assertIn(regime, text)
+            record = manifest.create("example", declared={"execution_regime": regime})
+            self.assertEqual(manifest.loads(manifest.dumps(record))["declared"]["execution_regime"], regime)
+        for phrase in ("test-set discipline", "state preparation/data loading", "shot budget",
+                       "as insufficient", "classical preprocessing", "claim strength must match"):
+            self.assertIn(phrase, text)
+        for name in ("pennylane", "qiskit"):
+            self.assertFalse((ROOT / "skills" / name).exists())
+
     def test_ml_test_discipline_and_fairness_contract(self):
         text = " ".join((ROOT / "references/ML_PROTOCOL.md").read_text(encoding="utf-8").split())
         for phrase in ("test-set discipline", "iterative development signal", "training fold",

@@ -1,0 +1,11 @@
+schema_version = 1
+id = "qiskit"
+name = "Qiskit ecosystem"
+category = "quantum-machine-learning"
+[python]
+packages = ["qiskit", "qiskit-machine-learning", "qiskit-aer"]
+[probe]
+commands = []
+environment = []
+[provenance]
+fields = ["version", "python_version", "platform", "backend", "transpilation", "shots"]

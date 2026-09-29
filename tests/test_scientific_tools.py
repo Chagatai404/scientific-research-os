@@ -18,6 +18,20 @@ def profile():
 
 
 class ToolTests(unittest.TestCase):
+    def test_quantum_metadata_never_queries_backend(self):
+        for name in ("pennylane", "qiskit"):
+            p = tools.load_profiles()[name]
+            for available in (False, True):
+                with patch.object(tools.metadata, "version", **(
+                        {"return_value": "test-version"} if available else
+                        {"side_effect": metadata.PackageNotFoundError})), \
+                        patch.object(tools, "_run") as run:
+                    result = tools.probe(p, accelerator=True)
+                    self.assertEqual(result["available"], available)
+                    self.assertNotIn("shots", result)
+                    self.assertNotIn("backend", result)
+                    run.assert_not_called()
+
     def test_ml_metadata_and_opt_in_accelerator(self):
         profiles = tools.load_profiles()
         with patch.object(tools.metadata, "version", return_value="test-version"), \
