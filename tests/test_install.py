@@ -108,6 +108,10 @@ class InstallationTests(unittest.TestCase):
             skill = self.tmp_path / f"{target}-skills/visualize"
             self.assertEqual((skill / "SKILL.md").read_bytes(), (ROOT / "skills/visualize/SKILL.md").read_bytes())
             self.assertEqual((skill / "references/VISUALIZATION_PROTOCOL.md").read_text(encoding="utf-8"), canonical)
+            latex = self.tmp_path / f"{target}-skills/notes-to-latex"
+            self.assertEqual((latex / "SKILL.md").read_bytes(), (ROOT / "skills/notes-to-latex/SKILL.md").read_bytes())
+            self.assertEqual((latex / "references/LATEX_TRANSCRIPTION_PROTOCOL.md").read_bytes(),
+                             (ROOT / "references/LATEX_TRANSCRIPTION_PROTOCOL.md").read_bytes())
             course = self.tmp_path / f"{target}-skills/course-study"
             self.assertEqual((course / "SKILL.md").read_bytes(), (ROOT / "skills/course-study/SKILL.md").read_bytes())
             for name in ("COURSE_LEARNING_PROTOCOL.md", "LEARNING_PROTOCOL.md"):

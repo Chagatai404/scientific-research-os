@@ -60,6 +60,8 @@ for p in sorted((ROOT / "agents").glob("*.md")):
     agent_names.add(name)
 
 required = [
+    ROOT / "references" / "LATEX_TRANSCRIPTION_PROTOCOL.md",
+    ROOT / "skills" / "notes-to-latex" / "SKILL.md",
     ROOT / "references" / "SOURCE_POLICY.md",
     ROOT / "references" / "RESEARCH_PROTOCOL.md",
     ROOT / "references" / "AGENT_POLICY.md",
