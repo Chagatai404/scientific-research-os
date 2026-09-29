@@ -331,6 +331,34 @@ class KnowledgeTests(unittest.TestCase):
             self.assertFalse(c.nodes["foundation"].ready)
 
 
+    def test_goal_membership_closure_multiple_goals_and_old_records(self):
+        self.put("base.md", record("base", rows=attempt()))
+        self.put("target.md", record("target", prerequisites=["base"], projects=["demo"],
+                                     extra='goals: ["goal-a", "goal-b"]\nretention_target: working\n'))
+        self.put("other.md", record("other", projects=["demo"]))
+        c = k.discover(self.root, AS_OF)
+        self.assertFalse(c.diagnostics)
+        for goal in ("goal-a", "goal-b"):
+            self.assertEqual(k.select(c.nodes, "goal", goal), ({"target"}, {"base", "target"}))
+            first = k.render(c, "goal", goal, AS_OF)
+            self.assertEqual(first, k.render(k.discover(self.root, AS_OF), "goal", goal, AS_OF))
+            self.assertIn("external", first)
+            self.assertIn("n0 --> n1", first)
+            self.assertIn("working", first)
+            with redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(k.main(["--root", str(self.root), "--goal", goal,
+                                         "--as-of", AS_OF.isoformat()]), 0)
+            self.assertEqual(first, out.getvalue())
+        self.assertEqual(k.select(c.nodes, "goal", "absent"), (set(), set()))
+
+    def test_invalid_goal_membership_and_partial_drafts_are_diagnosed(self):
+        for value in ('"goal"', '["UPPER"]', '["a", "a"]', '{}', '[1]', 'null'):
+            with self.assertRaises(ValueError):
+                self.node(record(extra=f"goals: {value}\n"))
+        self.put("draft.md", '---\nlearning_schema: 1\nlearning_id: ""\ngoals: ["a"]\n---\n')
+        self.assertTrue(k.discover(self.root, AS_OF).diagnostics)
+
+
 
 if __name__ == "__main__":
     unittest.main()

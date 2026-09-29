@@ -106,6 +106,7 @@ can retain their defaults until evidence exists.
 | `domain` | Yes for tracking | Subject ID, e.g. `probability`; reused from existing templates. |
 | `prerequisites` | Yes for tracking | List of required learning IDs; `[]` explicitly declares no prerequisites. Missing is not equivalent to an empty list. |
 | `retention_target` | No | `core`, `working`, or `reference`; omission means unspecified. It does not change evidence. |
+| `goals` | No | Explicit long-term goal IDs; default `[]`; same ID syntax as projects. |
 | `projects` | No | Project IDs for membership; default `[]`. |
 | `learning_state` | No | Summary: `unknown`, `learning`, `demonstrated`, `retained`, `fragile`, or `stale`; default `unknown`. |
 | `first_learned` | No | Date of first successful demonstration, not note creation; default empty. |
@@ -377,3 +378,26 @@ freshness. Recorded dates remain historical evidence even for reference material
 A reference horizon passing is not a recommendation for routine spaced retention.
 Conservative prerequisite checks still apply; define lookup versus fluent-recall
 requirements explicitly in learning design. No automatic priority score is used.
+
+### Goal views
+
+`goals: ["particle-physics-research"]` adds explicit membership, independently of
+subject and project overlap. A node may belong to multiple goals. Missing `goals`
+means no goal membership, and old records remain valid. Use `14_Learning_Goal.md`
+for direction, time horizon, gaps, retention strategy and human decisions; it is
+not another mastery ledger.
+
+- Subject: What do I know about this subject?
+- Project: What knowledge is needed in this research/project?
+- Goal: What knowledge is relevant to this long-term direction, and what deserves
+  long-term retention?
+
+```bash
+python scripts/knowledge.py --root "<learning-notes-directory>" --goal particle-physics-research --as-of 2026-09-29
+```
+
+Goal views select explicit membership and include the transitive prerequisite
+closure as external foundations. State, retention target, freshness and frontier
+remain separate. Missing IDs, cycles and diagnostics use the same conservative
+rules as subject/project views. Choose next learning using explicit prerequisites,
+evidence, relevance and human goals, never an opaque ranking formula.

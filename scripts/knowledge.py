@@ -19,7 +19,7 @@ ID = re.compile(r"[a-z0-9]+(?:[._-][a-z0-9]+)*\Z")
 STATES = {"unknown", "learning", "demonstrated", "retained", "fragile", "stale"}
 RETENTION_TARGETS = {"core", "working", "reference"}
 FIELDS = {
-    "learning_schema", "learning_id", "domain", "projects", "prerequisites",
+    "learning_schema", "learning_id", "domain", "projects", "goals", "prerequisites",
     "learning_state", "first_learned", "last_retrieval", "next_review", "retention_target",
 }
 HEADER = ["Date", "Learning period", "Timing", "Method", "Outcome",
@@ -132,7 +132,7 @@ def metadata(text: str) -> tuple[dict[str, object] | None, str]:
         match = re.match(r"([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$", line)
         if not match:
             if line.strip() and not line.lstrip().startswith("#"):
-                if active in FIELDS or re.match(r"\s+(?:learning_\w+|prerequisites|projects|domain|retention_target):", line):
+                if active in FIELDS or re.match(r"\s+(?:learning_\w+|prerequisites|projects|goals|domain|retention_target):", line):
                     raise ValueError("nested/multiline learning fields are unsupported")
             continue
         key, raw = match.groups()
@@ -142,7 +142,7 @@ def metadata(text: str) -> tuple[dict[str, object] | None, str]:
         if key in data:
             raise ValueError(f"duplicate field: {key}")
         raw = raw.strip()
-        if key in {"projects", "prerequisites"}:
+        if key in {"projects", "goals", "prerequisites"}:
             value = json.loads(raw)
             if not isinstance(value, list) or any(not isinstance(x, str) or not ID.fullmatch(x) for x in value):
                 raise ValueError(f"{key}: expected inline list of IDs")
@@ -316,7 +316,7 @@ def discover(root: Path, as_of: date) -> Collection:
                     continue
                 if not meta["learning_id"]:
                     result.drafts += 1
-                    if (any(meta.get(k) for k in ("domain", "projects", "prerequisites", "first_learned", "last_retrieval", "next_review", "retention_target"))
+                    if (any(meta.get(k) for k in ("domain", "projects", "goals", "prerequisites", "first_learned", "last_retrieval", "next_review", "retention_target"))
                             or meta.get("learning_state", "unknown") != "unknown" or history(body)):
                         raise ValueError("partially populated record has no learning_id")
                     continue
@@ -353,7 +353,7 @@ def discover(root: Path, as_of: date) -> Collection:
 
 def select(nodes: dict[str, Node], scope: str, value: str) -> tuple[set[str], set[str]]:
     primary = {key for key, node in nodes.items()
-               if (node.domain == value if scope == "subject" else value in node.projects)}
+               if (node.domain == value if scope == "subject" else value in node.meta.get({"project": "projects", "goal": "goals"}[scope], []))}
     selected = set(primary)
     todo = list(primary)
     while todo:
@@ -444,6 +444,7 @@ def main(argv: list[str] | None = None) -> int:
     scope = parser.add_mutually_exclusive_group(required=True)
     scope.add_argument("--subject")
     scope.add_argument("--project")
+    scope.add_argument("--goal")
     parser.add_argument("--as-of", type=iso_date, default=date.today())
     parser.add_argument("--output", type=Path, help="create a new Markdown file; never overwrite")
     args = parser.parse_args(argv)
@@ -454,11 +455,12 @@ def main(argv: list[str] | None = None) -> int:
     root = args.root.resolve()
     if not root.is_dir():
         parser.error("--root must be an existing directory")
-    value = args.subject or args.project
+    selected_scope = next(name for name in ("subject", "project", "goal") if getattr(args, name) is not None)
+    value = getattr(args, selected_scope)
     if not ID.fullmatch(value):
-        parser.error("scope must be a valid domain/project ID")
+        parser.error("scope must be a valid domain/project/goal ID")
     collection = discover(root, args.as_of)
-    output = render(collection, "subject" if args.subject else "project", value, args.as_of)
+    output = render(collection, selected_scope, value, args.as_of)
     try:
         if args.output:
             with args.output.open("x", encoding="utf-8", newline="\n") as stream:
