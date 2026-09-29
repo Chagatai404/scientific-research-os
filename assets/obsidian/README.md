@@ -63,8 +63,8 @@ No community plugin is required.
 
 The installer overwrites same-named templates in the configured template directory.
 Back up local template customizations before installing. It does not migrate
-existing notes. The metadata below can be used manually; graph tooling is planned
-for Slice 3 and is not required to keep learning records.
+existing notes. The metadata below can be used manually; `scripts/knowledge.py`
+provides optional graph generation and is not required to keep learning records.
 
 ## Learning records and graph metadata (schema 1)
 
@@ -208,10 +208,72 @@ learning dependencies or mastery evidence.
 
 Frontier is derived, never stored as a learning state: it consists of nodes not
 securely retained whose required prerequisites have sufficient current evidence
-(`demonstrated` or `retained`). It may include a demonstrated node awaiting delayed
+(`demonstrated` or `retained`, with a review horizon that has not passed). It may include a demonstrated node awaiting delayed
 retrieval. Fragile/stale or unresolved prerequisites require checking; missing IDs
 and cycles must be reported rather than treated as satisfied. An explicitly empty
 prerequisite list permits a root node. Show state, freshness, and frontier separately.
+
+### Generate a graph
+
+From the Research OS repository, using Python 3.11+ and no extra dependencies:
+
+```bash
+python scripts/knowledge.py --root "<learning-notes-directory>" --subject probability --as-of 2026-09-29
+python scripts/knowledge.py --root "<learning-notes-directory>" --project example-project --as-of 2026-09-29
+```
+
+Replace the input directory and scope ID with your own. Include the prerequisite
+records in the input directory tree, even when they belong to another subject.
+Run the project command for each project view wanted. Without `--as-of`, the local
+current date is used. Fixed inputs, scope, and as-of date give deterministic output.
+
+Markdown with Mermaid and a text evidence table is written to stdout. Optionally
+add `--output "<new-file.md>"` to create a new file in an existing directory. Existing
+files are never overwritten, including source notes. Redirecting stdout with your
+shell can overwrite a file, so prefer `--output` for this protection. Keep generated
+views outside the input tree for stable input counts between runs.
+
+The command recursively reads `.md` files, skips hidden directories and symlinks,
+and never edits inputs. Exit status is `0` for a clean report (including an empty
+selection), `1` for data diagnostics with a report still produced, or `2` for invalid
+arguments/output errors. Diagnostics cover the whole input collection, not only the
+selected graph. Malformed records and duplicate IDs are excluded; dependents report
+missing prerequisites. Cycles and their descendants cannot unlock frontier nodes.
+
+The generator checks recorded assessments; it does not grade answers or verify the
+content/existence of evidence links. Human-reviewed evidence remains essential.
+Its conservative automated interpretation is:
+
+- Unassisted `explanation`, `derivation`, `transfer`, or `computation` passes support
+  demonstration. `recall`, `prediction`, and `mcq` alone do not automatically establish
+  reconstruction; record an accompanying explanation/transfer attempt when appropriate.
+- A delayed qualifying pass supports retention only after a qualifying demonstration
+  in the same learning period on an earlier calendar date. Same-day delayed claims
+  are treated as demonstration; finer time-based judgments remain in the human record.
+- Partial/failure or assisted retrieval after demonstration yields fragility; without
+  earlier demonstration it yields learning. A failure clears the earlier period's
+  eligibility for retention until reconstruction succeeds again.
+- Recognition-only passes neither promote state nor renew its review horizon. The
+  summary `next_review` follows the latest state-changing attempt, not a later MCQ
+  success; that row may still suggest another diagnostic check.
+- A passed review horizon makes demonstrated/retained evidence stale. Fragility stays
+  fragile even when overdue. An absent horizon remains unknown and does not establish
+  current prerequisite readiness. Review due today is not yet overdue.
+- Prerequisite readiness requires qualifying current evidence throughout the ancestry;
+  a retained intermediate node cannot hide a stale or unresolved foundation.
+
+Missing optional summaries are derived from history. Explicit state and nonempty date
+summaries are checked against the full history; conflicts block readiness until
+reviewed. `stale` may summarize a previously positive evidence state with a horizon;
+actual freshness is recomputed for `--as-of`. Attempts after that date do not enter
+the displayed state. This is an evidence-date view, not a historical reconstruction
+of past metadata/prerequisite edits. A learning-state summary without supporting
+attempts cannot supply mastery; `learning` can indicate intentional active study.
+
+The report marks frontier separately from state and includes external prerequisites,
+evidence issues, overdue/unknown freshness, and unmet prerequisites in text. No
+Obsidian plugin or Mermaid renderer is required to generate it; open the Markdown
+in a Mermaid-capable viewer to render the diagram.
 
 ### Existing notes and migration
 

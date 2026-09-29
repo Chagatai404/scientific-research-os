@@ -30,7 +30,9 @@ freshness. Source records remain authoritative; no note's existence implies mast
 Insert a Mermaid graph from the working learning records. Required prerequisite
 arrows point toward the dependent capability. Do not infer these edges from
 backlinks. Label nodes with state and mark frontier separately; use text as well
-as color. Graph generation tooling is planned for Slice 3.
+as color. Use `scripts/knowledge.py` from the Research OS repository; see the
+template README for commands, evidence rules, and diagnostics. Generate into a new
+file rather than overwriting this note's human-written choices.
 
 ## Evidence view
 
