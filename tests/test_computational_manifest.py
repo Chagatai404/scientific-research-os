@@ -1,6 +1,8 @@
 from copy import deepcopy
 from pathlib import Path
 import sys
+import json
+import subprocess
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -8,6 +10,18 @@ import computational_manifest as manifest
 
 
 class ManifestTests(unittest.TestCase):
+    def test_documented_example_runs_without_optional_packages(self):
+        root = Path(__file__).resolve().parents[1]
+        path = root / "examples/compute/manifest.json"
+        record = manifest.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(record["declared"], json.loads((path.parent / "declared-ml.json").read_text(encoding="utf-8")))
+        self.assertTrue(record["declared"]["example_only"])
+        self.assertIsNone(record["observed"]["git"]["commit"])
+        result = subprocess.run([sys.executable, "-S", "-B", str(root / "scripts/computational_manifest.py"), str(path)],
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(manifest.loads(result.stdout), record)
+
     def test_roundtrip_determinism_unknown_tools_and_separation(self):
         declared = {"threads": 2, "seed": None}
         record = manifest.create("RQ-1", observed={"tools": {"future-tool": {"version": None}}},

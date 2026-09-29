@@ -56,3 +56,13 @@ Output is JSON on stdout. Manifest generation probes only explicitly named
 with a JSON mapping of reviewed project choices and `--reproduction-command` to
 record an inert command. The manifest helper validates/prints saved JSON.
 No discovery or manifest command installs software or authorizes experiments.
+
+PyTorch alone supports an explicit `--accelerator` CLI option: a code-owned query
+imports trusted installed torch in an isolated child interpreter and inspects
+CUDA/MPS availability and CUDA build version. Profiles cannot supply its code or
+activate it. Default probes never import frameworks. Timeout or invalid output
+records UNKNOWN; no tensors, GPU workloads or quantum jobs are run.
+
+Guides name files in the references directory relative to the repository or installed skill
+root, not relative to the nested pack directory. The installer bundles the same
+pack tree, helpers and canonical references for Claude and Codex.
