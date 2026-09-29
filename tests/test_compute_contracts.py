@@ -5,6 +5,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ComputeContracts(unittest.TestCase):
+    def test_ml_test_discipline_and_fairness_contract(self):
+        text = " ".join((ROOT / "references/ML_PROTOCOL.md").read_text(encoding="utf-8").split())
+        for phrase in ("test-set discipline", "iterative development signal", "training fold",
+                       "same split", "input information", "optimization opportunity",
+                       "compute/resource budgets", "multiple seeds", "event-family/group leakage"):
+            self.assertIn(phrase, text)
+        self.assertFalse((ROOT / "skills/pytorch").exists())
+        self.assertFalse((ROOT / "skills/sklearn").exists())
+
     def test_geant4_routes_to_shared_policies_and_preserves_detector_authority(self):
         skill = (ROOT / "skills/geant4/SKILL.md").read_text(encoding="utf-8")
         for name in ("RESEARCH", "COMPUTATIONAL", "GEANT4"):

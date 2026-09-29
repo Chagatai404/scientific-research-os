@@ -18,6 +18,26 @@ def profile():
 
 
 class ToolTests(unittest.TestCase):
+    def test_ml_metadata_and_opt_in_accelerator(self):
+        profiles = tools.load_profiles()
+        with patch.object(tools.metadata, "version", return_value="test-version"), \
+                patch.object(tools, "_run") as run:
+            for name, package in (("pytorch", "torch"), ("sklearn", "scikit-learn")):
+                self.assertEqual(tools.probe(profiles[name])["packages"][package]["observed_version"], "test-version")
+            run.assert_not_called()
+        response = '{"cuda_available":false,"cuda_build":null,"mps_available":false}'
+        with patch.object(tools.metadata, "version", return_value="test-version"), \
+                patch.object(tools, "_run", return_value=subprocess.CompletedProcess([], 0, response)) as run:
+            state = tools.probe(profiles["pytorch"], accelerator=True)["accelerator"]
+            self.assertIs(state["cuda_available"], False)
+            self.assertIsNone(state["error"])
+            self.assertEqual(run.call_args.args[0], [sys.executable, "-I", "-c", tools.TORCH_QUERY])
+        for response in ('bad', '{"cuda_available":"yes"}', '[]'):
+            with patch.object(tools, "_run", return_value=subprocess.CompletedProcess([], 0, response)):
+                self.assertIsNone(tools.accelerator_state()["cuda_available"])
+        with patch.object(tools, "_run", side_effect=subprocess.TimeoutExpired("torch", 5)):
+            self.assertEqual(tools.accelerator_state()["error"], "TimeoutExpired")
+
     def test_geant4_binding_datasets_and_no_inference(self):
         p = tools.load_profiles()["geant4"]
         with patch.object(tools.metadata, "version", return_value="binding-test"), \

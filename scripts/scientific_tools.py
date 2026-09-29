@@ -110,7 +110,35 @@ def _run(arguments):
                           errors="replace", timeout=5, check=False)
 
 
-def probe(profile: dict) -> dict:
+TORCH_QUERY = """import os, json
+os.environ['PYTORCH_NVML_BASED_CUDA_CHECK'] = '1'
+import torch
+print(json.dumps({'cuda_available': bool(torch.cuda.is_available()),
+                  'cuda_build': torch.version.cuda,
+                  'mps_available': bool(torch.backends.mps.is_available()) if hasattr(torch.backends, 'mps') else None}))
+"""
+
+
+def accelerator_state() -> dict:
+    unknown = {"cuda_available": None, "cuda_build": None, "mps_available": None,
+               "error": "not queried"}
+    try:
+        result = _run([sys.executable, "-I", "-c", TORCH_QUERY])
+        if result.returncode != 0 or len(result.stdout) > 4096:
+            return {**unknown, "error": "accelerator query failed"}
+        data = json.loads(result.stdout, object_pairs_hook=manifest._unique_object)
+        _table(data, {"cuda_available", "cuda_build", "mps_available"}, "accelerator")
+        if any(data[key] is not None and type(data[key]) is not bool
+               for key in ("cuda_available", "mps_available")):
+            raise ValueError("invalid availability")
+        if data["cuda_build"] is not None and type(data["cuda_build"]) is not str:
+            raise ValueError("invalid CUDA build")
+        return {**data, "error": None}
+    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+        return {**unknown, "error": type(exc).__name__}
+
+
+def probe(profile: dict, *, accelerator: bool = False) -> dict:
     validate_profile(profile)  # Also protect direct API callers, before any effects.
     packages, commands = {}, {}
     for package in profile["python"]["packages"]:
@@ -139,11 +167,16 @@ def probe(profile: dict) -> dict:
             except (OSError, subprocess.TimeoutExpired) as exc:
                 item["error"] = type(exc).__name__
         commands[command[0]] = item
-    return {"id": profile["id"],
+    result = {"id": profile["id"],
             "available": any(i["available"] for i in [*packages.values(), *commands.values()]),
             "packages": packages, "commands": commands,
             "environment": {name: os.environ.get(name) for name in profile["probe"]["environment"]},
             "runtime": {"python": platform.python_version(), "platform": platform.platform()}}
+    if profile["id"] == "pytorch":
+        result["accelerator"] = (accelerator_state() if accelerator else
+                                 {"cuda_available": None, "cuda_build": None,
+                                  "mps_available": None, "error": "not queried"})
+    return result
 
 
 def git_state(repo: Path) -> dict:
@@ -171,12 +204,14 @@ def main() -> None:
     inspect = sub.add_parser("probe")
     inspect.add_argument("tool", nargs="?")
     inspect.add_argument("--all", action="store_true")
+    inspect.add_argument("--accelerator", action="store_true", help="opt into fixed PyTorch capability query")
     create = sub.add_parser("manifest")
     create.add_argument("--experiment", required=True)
     create.add_argument("--tool", action="append", default=[])
     create.add_argument("--repo", type=Path, default=Path.cwd())
     create.add_argument("--declared", type=Path, help="JSON mapping of explicit choices; never executed")
     create.add_argument("--reproduction-command")
+    create.add_argument("--accelerator", action="store_true")
     args = parser.parse_args()
     try:
         profiles = load_profiles(args.packs)
@@ -185,11 +220,13 @@ def main() -> None:
         elif args.operation == "probe":
             if bool(args.tool) == args.all:
                 raise ValueError("choose one tool or --all")
-            output = [probe(p) for p in profiles.values()] if args.all else probe(profiles[args.tool])
+            output = ([probe(p, accelerator=args.accelerator) for p in profiles.values()] if args.all
+                      else probe(profiles[args.tool], accelerator=args.accelerator))
         else:
             observed = {"git": git_state(args.repo),
                         "environment": {"python": platform.python_version(), "platform": platform.platform()},
-                        "tools": {name: probe(profiles[name]) for name in sorted(set(args.tool))}}
+                        "tools": {name: probe(profiles[name], accelerator=args.accelerator)
+                                  for name in sorted(set(args.tool))}}
             declared = json.loads(args.declared.read_text(encoding="utf-8"),
                                   object_pairs_hook=manifest._unique_object) if args.declared else {}
             output = manifest.create(args.experiment, observed=observed, declared=declared,
