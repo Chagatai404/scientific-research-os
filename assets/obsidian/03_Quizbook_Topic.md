@@ -142,3 +142,13 @@ Explain interval choices or evidence corrections here, referring to the relevant
 attempt. Preserve earlier attempts; do not delete failures after a successful retry.
 
 -
+
+## Retention decision and recovery path
+
+Optional: add `retention_target: core`, `working`, or `reference` to frontmatter
+only after choosing. Omission means unspecified. Record the learner's choice and
+rationale here, separately from retrieval evidence. For reference material, record
+where/how to recover exact details and the context in which they matter.
+
+- Choice / rationale:
+- Source / locator / recovery steps:

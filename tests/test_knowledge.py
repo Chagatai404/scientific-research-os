@@ -303,6 +303,34 @@ class KnowledgeTests(unittest.TestCase):
                 k.main(["--root", str(self.root), "--subject", "math"] + extra)
             self.assertEqual(error.exception.code, 2)
 
+    def test_retention_targets_are_optional_validated_and_separate(self):
+        rows = attempt(review="2026-09-28")
+        old = self.node(record(rows=rows))
+        self.assertEqual(old.retention_target, "unspecified")
+        for target in k.RETENTION_TARGETS:
+            node = self.node(record(rows=rows, extra=f"retention_target: {target}\n"))
+            self.assertEqual(node.retention_target, target)
+            self.assertEqual(node.assessment, old.assessment)
+            self.assertEqual(node.attempts, old.attempts)
+            self.assertEqual(node.ready, old.ready)
+        for value in ('unimportant', 'unspecified', '""', '[]', 'CORE'):
+            with self.assertRaises(ValueError):
+                self.node(record(extra=f"retention_target: {value}\n"))
+
+    def test_reference_policy_preserves_failure_and_historical_horizon(self):
+        for rows, state in ((attempt(review=""), "demonstrated"),
+                            (attempt(review="2026-09-28"), "stale"),
+                            (attempt() + attempt(day="2026-09-29", outcome="fail"), "fragile")):
+            self.put("reference.md", record(rows=rows, extra="retention_target: reference\n"))
+            c = k.discover(self.root, AS_OF)
+            self.assertEqual(c.nodes["foundation"].assessment.state, state)
+            view = k.render(c, "subject", "math", AS_OF)
+            self.assertIn("Retention target", view)
+            self.assertIn("no routine spaced review", view)
+            self.assertIn("historical horizon; no routine review", view)
+            self.assertFalse(c.nodes["foundation"].ready)
+
+
 
 if __name__ == "__main__":
     unittest.main()

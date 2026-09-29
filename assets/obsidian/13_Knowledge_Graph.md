@@ -60,3 +60,9 @@ or legacy notes that are not tracked. Do not treat a missing prerequisite as met
 **Human's choice:**
 
 -
+
+## Retention strategy
+
+Show each record's retention target (core / working / reference / unspecified)
+separately from state. Reference material needs a recovery path, not routine
+spaced review. Frontier is eligibility, not a ranked review queue.

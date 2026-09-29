@@ -105,6 +105,7 @@ can retain their defaults until evidence exists.
 | `learning_id` | Yes for tracking | Stable unique capability ID, e.g. `probability.gamma-density`. |
 | `domain` | Yes for tracking | Subject ID, e.g. `probability`; reused from existing templates. |
 | `prerequisites` | Yes for tracking | List of required learning IDs; `[]` explicitly declares no prerequisites. Missing is not equivalent to an empty list. |
+| `retention_target` | No | `core`, `working`, or `reference`; omission means unspecified. It does not change evidence. |
 | `projects` | No | Project IDs for membership; default `[]`. |
 | `learning_state` | No | Summary: `unknown`, `learning`, `demonstrated`, `retained`, `fragile`, or `stale`; default `unknown`. |
 | `first_learned` | No | Date of first successful demonstration, not note creation; default empty. |
@@ -364,3 +365,15 @@ After these templates are comfortable, add:
 - Obsidian Zotero Integration for literature notes.
 - Spaced Repetition only for selected durable quiz cards.
 - Project-specific additions pointing to the canonical Research OS protocol; avoid maintaining a conflicting copy.
+
+### Selective retention
+
+Schema 1 supports optional `retention_target: core` (unaided reconstruction and
+fluency), `working` (refresh around use), or `reference` (understanding plus a
+recovery path; no routine spaced review). Omit until chosen; `unspecified` is a
+view label, not a stored value. Do not silently assign targets to old records.
+The evidence table displays target and review policy separately from state and
+freshness. Recorded dates remain historical evidence even for reference material.
+A reference horizon passing is not a recommendation for routine spaced retention.
+Conservative prerequisite checks still apply; define lookup versus fluent-recall
+requirements explicitly in learning design. No automatic priority score is used.

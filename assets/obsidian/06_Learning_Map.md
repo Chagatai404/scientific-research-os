@@ -82,3 +82,9 @@ Use `13_Knowledge_Graph.md` for a subject-wide or project-wide evidence view.
 ## Open questions
 
 -
+
+## Retention strategy
+
+Show each record's retention target (core / working / reference / unspecified)
+separately from state. Reference material needs a recovery path, not routine
+spaced review. Frontier is eligibility, not a ranked review queue.

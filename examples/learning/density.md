@@ -1,5 +1,6 @@
 ---
 learning_schema: 1
+retention_target: core
 learning_id: probability.density
 domain: probability
 prerequisites: []

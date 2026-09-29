@@ -14,7 +14,7 @@ The goal is understanding that can be reconstructed, not copied notes.
    foundations; use a visual when it materially helps understanding.
 5. **Retrieve** — test reconstruction, explanation, derivation, transfer, or use.
 6. **Record and revisit** — preserve retrieval evidence, summarize learning state,
-   and suggest a delayed check; reinforce weak areas when needed.
+   and choose follow-up according to retention target; reinforce weak areas when needed.
 7. **Promote by choice** — the human chooses whether to rewrite demonstrated
    understanding into permanent notes. Promotion does not establish retention.
 
@@ -73,7 +73,7 @@ For previously demonstrated knowledge, partial or failed retrieval supports
 mark freshness as `stale` while preserving the last evidenced state and history.
 An overdue date must not erase a recorded failure or replace `fragile` with a
 mere absence-of-evidence label.
-If no review horizon was recorded, report freshness as unknown and propose a check;
+If no review horizon was recorded, report freshness as unknown; propose a check when justified by the target and actual use;
 do not invent an expiry date. Retention checks are learner/session driven, not a
 requirement for a background scheduler.
 
@@ -204,3 +204,47 @@ AI output is temporary working material until the learner:
 - explains the idea in their own words;
 - answers a retrieval question;
 - and chooses to promote it.
+
+## Selective long-term retention
+
+Understanding and permanent memorization are different questions. `learning_state`
+summarizes retrieval evidence; optional `retention_target` records the learner's
+long-term unaided-availability choice. A demonstrated reference capability is valid.
+Reference does not mean unimportant: scientifically critical details can be looked up.
+
+- **core:** maintain enough unaided understanding to reconstruct, explain, derive,
+  or apply fluently. Learn → reconstruct → delayed retrieval → progressively
+  longer retrieval → maintain when justified.
+- **working:** understand deeply and recover practical fluency with a modest
+  refresh. Learn → demonstrate → some delayed retrieval when useful → refresh
+  around actual future use, without continual spaced review by default.
+- **reference:** understand what it is, why it exists, when it matters, and how to
+  recover exact details. Learn/understand → demonstrate enough understanding →
+  record retrieval path/source/context → no routine spaced-retention burden.
+
+Missing target means **unspecified**, not core. Respect existing choices. A tutor
+may recommend a target with a short rationale, but the learner decides consequential
+choices; never silently assign or reassign targets. Do not turn every block into
+a questionnaire. Note promotion is still separate from both evidence and targets.
+
+Recommend using qualitative questions: Is this a prerequisite for many later
+capabilities? Will the learner reason with it repeatedly? Would lookup interrupt
+reasoning? Is reconstruction expensive? Does fluent understanding need immediate
+availability? Is it central to a stated long-term goal? Conversely, can the exact
+detail be recovered almost instantly? Is knowing it exists the useful knowledge?
+Is it an implementation/API detail rather than a conceptual dependency? Is its
+exact value rarely needed? Foundational probability or physical reasoning may be
+core; rarely used constants, identities, syntax or API spelling may be reference.
+These are examples, never domain rules or a numeric score. Retention priority must
+not be inferred solely from graph centrality, AI confidence, note frequency, or
+arbitrary numeric scoring.
+
+Targets do not alter historical attempts, evidence-derived state, recorded review
+horizons, or conservative prerequisite readiness. An overdue reference horizon is
+historical evidence context, not an automatic high-priority review warning. Show
+its policy explicitly: no routine spaced review. Frontier means eligible for
+learning/checking, not a recommendation to drill every node. When a dependency
+requires fluent recall rather than lookup, handle that explicitly in learning
+design and the capability definition; never claim false mastery from its target.
+Missing/failed evidence can warrant a contextual check for actual use, regardless
+of target. Do not destroy old evidence or invent an expiry date.

@@ -1,5 +1,6 @@
 ---
 learning_schema: 1
+retention_target: working
 learning_id: probability.gamma-density
 domain: probability
 projects: ["demo"]
