@@ -21,7 +21,9 @@ Read `references/LEARNING_PROTOCOL.md` and `references/SOURCE_POLICY.md` before 
    - connect it to known foundations;
    - test understanding.
 6. Use primary/authoritative sources for scientific claims and high-quality teaching resources for intuition.
-7. When a visual materially clarifies structure or geometry, delegate to the visualizer if available.
+7. When a visual materially clarifies the teaching idea, use the `visualize` skill
+   if available, or follow `references/VISUALIZATION_PROTOCOL.md` directly. Delegate
+   bounded visual production to the visualizer when useful.
 8. Keep a live Obsidian tutor-session note when a vault is configured, and run the session
    **through that note as the interface** rather than through chat. See "Obsidian as the
    tutoring interface" below.

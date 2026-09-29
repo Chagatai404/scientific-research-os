@@ -64,6 +64,8 @@ required = [
     ROOT / "references" / "RESEARCH_PROTOCOL.md",
     ROOT / "references" / "AGENT_POLICY.md",
     ROOT / "references" / "LEARNING_PROTOCOL.md",
+    ROOT / "references" / "VISUALIZATION_PROTOCOL.md",
+    ROOT / "skills" / "visualize" / "SKILL.md",
     ROOT / "assets" / "obsidian" / "00_Tutor_Session.md",
 ]
 for p in required:

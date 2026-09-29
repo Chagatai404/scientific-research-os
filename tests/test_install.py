@@ -6,6 +6,8 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 import io
+import json
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -55,8 +57,45 @@ class InstallationTests(unittest.TestCase):
                 assert role.strip() in body
                 assert policy in body
                 assert boundaries.strip() in body
-                if meta["name"] in {"literature-scout", "source-verifier"}:
+                if meta["name"] in {"literature-scout", "source-verifier", "visualizer"}:
                     assert (ROOT / "references" / "SOURCE_POLICY.md").read_text(encoding="utf-8") in body
+                if meta["name"] == "visualizer":
+                    assert (ROOT / "references" / "VISUALIZATION_PROTOCOL.md").read_text(encoding="utf-8") in body
+
+
+    def test_visualize_installs_for_both_targets_without_site_packages(self):
+        """Exercise actual target routing with third-party packages unavailable."""
+        config = {"install": {
+            "claude_skills": str(self.tmp_path / "claude-skills"),
+            "claude_agents": str(self.tmp_path / "claude-agents"),
+            "codex_skills": str(self.tmp_path / "codex-skills"),
+            "codex_agents": str(self.tmp_path / "codex-agents"),
+        }}
+        program = (
+            "import json, sys\n"
+            "sys.path.insert(0, sys.argv[1])\n"
+            "import install\n"
+            "config = json.loads(sys.argv[2])\n"
+            "target = sys.argv[3]\n"
+            "install.load_config = lambda: config\n"
+            "sys.argv = ['install.py', '--target', target]\n"
+            "install.main()\n"
+        )
+        canonical = (ROOT / "references/VISUALIZATION_PROTOCOL.md").read_text(encoding="utf-8")
+        for target in ("claude", "codex"):
+            result = subprocess.run(
+                [sys.executable, "-S", "-B", "-c", program, str(ROOT / "scripts"), json.dumps(config), target],
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            skill = self.tmp_path / f"{target}-skills/visualize"
+            self.assertEqual((skill / "SKILL.md").read_bytes(), (ROOT / "skills/visualize/SKILL.md").read_bytes())
+            self.assertEqual((skill / "references/VISUALIZATION_PROTOCOL.md").read_text(encoding="utf-8"), canonical)
+        result = subprocess.run(
+            [sys.executable, "-S", "-B", str(ROOT / "scripts/validate.py")],
+            cwd=ROOT, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
     def test_dry_run_creates_no_files(self):
