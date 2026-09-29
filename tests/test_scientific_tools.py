@@ -18,6 +18,23 @@ def profile():
 
 
 class ToolTests(unittest.TestCase):
+    def test_geant4_binding_datasets_and_no_inference(self):
+        p = tools.load_profiles()["geant4"]
+        with patch.object(tools.metadata, "version", return_value="binding-test"), \
+                patch.object(tools.shutil, "which", return_value=None), \
+                patch.dict(tools.os.environ, {"G4LEDATA": "/example/data"}, clear=True):
+            result = tools.probe(p)
+        self.assertTrue(result["available"])
+        self.assertFalse(result["commands"]["geant4-config"]["available"])
+        self.assertEqual(result["packages"]["geant4_pybind"]["observed_version"], "binding-test")
+        self.assertEqual(result["environment"]["G4LEDATA"], "/example/data")
+        self.assertIsNone(result["environment"]["G4NEUTRONHPDATA"])
+        for key in ("physics_list", "cuts", "geometry", "beam", "seed", "events"):
+            self.assertNotIn(key, str(result))
+        with patch.object(tools.metadata, "version", side_effect=metadata.PackageNotFoundError), \
+                patch.object(tools.shutil, "which", return_value=None):
+            self.assertFalse(tools.probe(p)["available"])
+
     def test_missing_package_and_metadata_without_import(self):
         with patch.object(tools.metadata, "version", side_effect=metadata.PackageNotFoundError), \
                 patch.object(tools, "_run") as run:
