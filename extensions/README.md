@@ -4,7 +4,7 @@ Extensions are deliberately capability-oriented.
 
 The core workflow must remain usable without any single external provider.
 
-## v0.1 executable extensions
+## Local tools
 
 ### Obsidian live log
 
@@ -35,6 +35,22 @@ Checks:
 - duplicate names,
 - required references/assets,
 - obvious credential-like files.
+
+### Knowledge graphs
+
+Implemented by `scripts/knowledge.py` using only the Python standard library.
+Reads opt-in Markdown learning records, derives retention/freshness and prerequisite
+readiness, and emits deterministic subject/project Mermaid views with diagnostics.
+It does not modify notes or automatically assess the learner. See the
+[metadata and CLI contract](../assets/obsidian/README.md).
+
+### Scientific visualization
+
+The `visualize` skill and `visualizer` agent share
+[`VISUALIZATION_PROTOCOL.md`](../references/VISUALIZATION_PROTOCOL.md). Backends
+are optional capabilities, not installer/validator dependencies. This includes
+Manim Community for explanatory animation; Research OS does not install it or
+maintain a rendering framework.
 
 ## External capabilities
 

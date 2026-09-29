@@ -227,6 +227,7 @@ def history(body: str) -> list[Attempt]:
 def assess(attempts: list[Attempt], initial: str, as_of: date) -> Assessment:
     result = Assessment("learning" if initial == "learning" else "unknown")
     demonstrated_periods: dict[str, date] = {}
+    latest_reconstruction: date | None = None
     for attempt in attempts:
         if attempt.day > as_of:
             break
@@ -234,10 +235,17 @@ def assess(attempts: list[Attempt], initial: str, as_of: date) -> Assessment:
         qualifies = attempt.method in RECONSTRUCTION and attempt.assistance == "none"
         if attempt.outcome == "pass" and qualifies:
             prior = demonstrated_periods.get(attempt.period)
-            delayed = attempt.timing == "delayed" and prior is not None and prior < attempt.day
+            delayed = (attempt.timing == "delayed" and prior is not None and prior < attempt.day
+                       and latest_reconstruction is not None and latest_reconstruction < attempt.day)
+            if (result.state == "retained" and attempt.timing == "delayed"
+                    and prior == attempt.day and latest_reconstruction == attempt.day):
+                # Another successful check today does not undo the delayed evidence,
+                # but cannot extend its horizon as though another interval passed.
+                continue
             result.state = "retained" if delayed else "demonstrated"
             result.first = result.first or attempt.day
             demonstrated_periods[attempt.period] = attempt.day
+            latest_reconstruction = attempt.day
             result.review, result.evidence = attempt.review, attempt.evidence
         elif attempt.outcome != "pass" or attempt.assistance != "none":
             result.state = "fragile" if result.first else "learning"

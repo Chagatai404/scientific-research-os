@@ -97,6 +97,19 @@ class KnowledgeTests(unittest.TestCase):
         rows = attempt() + attempt(day="2026-09-29") + attempt(day="2026-09-29", timing="delayed")
         self.assertEqual(self.node(record(rows=rows)).assessment.state, "demonstrated")
 
+    def test_extra_same_day_check_preserves_retention_without_extending_horizon(self):
+        rows = attempt() + attempt(day="2026-09-29", timing="delayed", review="2026-10-05")
+        rows += attempt(day="2026-09-29", timing="delayed", review="2026-11-01")
+        node = self.node(record(rows=rows, state="retained"))
+        self.assertEqual(node.assessment.state, "retained")
+        self.assertEqual(node.assessment.review, date(2026, 10, 5))
+        self.assertFalse(node.issues)
+
+    def test_old_period_label_cannot_bypass_same_day_reteaching(self):
+        rows = attempt() + attempt(day="2026-09-29", period="reinforcement")
+        rows += attempt(day="2026-09-29", timing="delayed", period="intro")
+        self.assertEqual(self.node(record(rows=rows)).assessment.state, "demonstrated")
+
     def test_mcq_success_does_not_extend_retention_horizon(self):
         rows = attempt(review="2026-09-29") + attempt(day="2026-09-29", timing="delayed", review="2026-09-30")
         rows += attempt(day="2026-10-01", timing="delayed", method="mcq", review="2026-11-01")

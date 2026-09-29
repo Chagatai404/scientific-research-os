@@ -249,7 +249,10 @@ Its conservative automated interpretation is:
   reconstruction; record an accompanying explanation/transfer attempt when appropriate.
 - A delayed qualifying pass supports retention only after a qualifying demonstration
   in the same learning period on an earlier calendar date. Same-day delayed claims
-  are treated as demonstration; finer time-based judgments remain in the human record.
+  cannot establish new retention, even if an older period label is reused after
+  reteaching. Additional successful delayed checks on the day retention was established
+  preserve that evidence without extending its horizon. Finer time-based judgments
+  remain in the human record.
 - Partial/failure or assisted retrieval after demonstration yields fragility; without
   earlier demonstration it yields learning. A failure clears the earlier period's
   eligibility for retention until reconstruction succeeds again.
