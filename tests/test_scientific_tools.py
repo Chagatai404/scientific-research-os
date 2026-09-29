@@ -18,6 +18,22 @@ def profile():
 
 
 class ToolTests(unittest.TestCase):
+    def test_hep_partial_ecosystem_is_useful_without_root(self):
+        def version(name):
+            if name in {"uproot", "awkward"}:
+                return "test-version"
+            raise metadata.PackageNotFoundError(name)
+        with patch.object(tools.metadata, "version", side_effect=version), \
+                patch.object(tools.shutil, "which", return_value=None):
+            result = tools.probe(tools.load_profiles()["root-scikit-hep"])
+        self.assertTrue(result["available"])
+        self.assertFalse(result["packages"]["ROOT"]["available"])
+        self.assertFalse(result["commands"]["root-config"]["available"])
+        self.assertTrue(result["packages"]["uproot"]["available"])
+        self.assertTrue(result["packages"]["awkward"]["available"])
+        self.assertFalse((tools.ROOT / "skills/root").exists())
+        self.assertFalse((tools.ROOT / "skills/scikit-hep").exists())
+
     def test_quantum_metadata_never_queries_backend(self):
         for name in ("pennylane", "qiskit"):
             p = tools.load_profiles()[name]

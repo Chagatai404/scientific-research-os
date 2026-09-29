@@ -1,0 +1,11 @@
+schema_version = 1
+id = "root-scikit-hep"
+name = "ROOT / Scikit-HEP ecosystem"
+category = "hep-analysis"
+[python]
+packages = ["ROOT", "uproot", "awkward", "vector", "hist", "boost-histogram"]
+[probe]
+commands = [["root-config", "--version"]]
+environment = []
+[provenance]
+fields = ["version", "python_version", "platform", "file_schema", "units", "event_identity", "selection", "weights"]
