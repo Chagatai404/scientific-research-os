@@ -45,6 +45,46 @@ class BasesTests(unittest.TestCase):
             self.assertIn(view, names)
 
 
+class GraphifyBridgeTests(unittest.TestCase):
+    def note(self, **extra):
+        fields = dict(research_schema=1, type='experiment', id='EXP-1', project='demo', status='planned',
+                      authorization='awaiting', created='2026-09-30', **extra)
+        return '---\n' + '\n'.join(f'{k}: {research.json.dumps(v)}' for k, v in fields.items()) + '\n---\n# E\n'
+
+    def test_code_references_never_create_research_edges_or_run_anything(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'a.md').write_text(self.note(), encoding='utf-8')
+            plain = research.validate(root)
+            (root / 'a.md').write_text(self.note(code_refs=['src/x.py']), encoding='utf-8')
+            linked = research.enrich(research.validate(root), root)
+            self.assertEqual(plain.edges, linked.edges)
+            self.assertEqual([d.severity for d in linked.diagnostics], ['INFO'])
+        for name in ('research.py', 'install.py', 'validate.py'):
+            text = (ROOT / 'scripts' / name).read_text(encoding='utf-8')
+            self.assertNotIn('subprocess', text)
+            self.assertNotRegex(text, r'(?i)pip install|npx |graphify update')
+
+    def test_cli_works_without_or_with_broken_graphify_output(self):
+        import subprocess
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / 'a.md').write_text(self.note(code_refs=['src/x.py']), encoding='utf-8')
+            for extra in ([], ['--graphify', str(root / 'absent.json')]):
+                result = subprocess.run([sys.executable, '-S', str(ROOT / 'scripts/research.py'), 'status', '--root', tmp,
+                                         '--json'] + extra, capture_output=True, text=True, encoding='utf-8')
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(research.json.loads(result.stdout)['code_references']['EXP-1'][0]['relation'], 'implemented-by')
+
+    def test_documentation_keeps_graphs_separate(self):
+        text = ' '.join((ADAPTERS / 'GRAPHIFY.md').read_text(encoding='utf-8').split())
+        for term in ('does not vendor, install or run Graphify', 'do not infer a scientific relationship',
+                     'Explicit bridges only', 'implemented-by', 'affects-code', 'never runs Graphify'):
+            self.assertIn(term, text)
+
+
 class BreadcrumbsTests(unittest.TestCase):
     def vault(self, tmp, link):
         root = Path(tmp)
