@@ -140,3 +140,30 @@ class StatusTests(unittest.TestCase):
             self.assertEqual(first.stdout, second.stdout)
             self.assertEqual(research.json.loads(first.stdout)['active_questions'], ['RQ-1'])
             self.assertEqual(path.read_text(encoding='utf-8'), note())
+
+
+class FrontierTests(unittest.TestCase):
+    registry = RegistryTests.registry
+
+    def test_frontier_gates_and_no_execution_for_bad_or_terminal_records(self):
+        result = self.registry(note(),
+            note('experiment', 'EXP-1', status='ready', authorization='approved', authorized_by='human', authorized_at='2026-09-30'),
+            note('experiment', 'EXP-2', status='planned', authorization='awaiting'),
+            note('experiment', 'EXP-3', status='abandoned', authorization='approved', authorized_by='human', authorized_at='2026-09-30'),
+            note('experiment', 'EXP-4', status='ready', authorization='approved'))
+        research.lifecycle(result, Path('.'))
+        transitions = {x['id']: x['transition'] for x in research.frontier(result)}
+        self.assertEqual(transitions, {'RQ-1': 'hypothesis-missing', 'EXP-1': 'execution-available',
+                                      'EXP-2': 'approval-required', 'EXP-4': 'repair-record'})
+
+    def test_filters_and_mermaid_escape_labels(self):
+        result = self.registry(note(title='A "] --> injected <script>'), note('hypothesis', 'H-1', research_questions=['RQ-1']),
+                               note(id='RQ-other', project='other'))
+        selected = research.select(result, 'demo', 'H-1')
+        self.assertEqual(set(selected.records), {'H-1', 'RQ-1'})
+        rendered = research.graph(selected)
+        self.assertNotIn('<script>', rendered)
+        self.assertNotIn('"] --> injected', rendered)
+        self.assertIn('research_questions', rendered)
+        with self.assertRaises(ValueError):
+            research.select(result, 'other', 'H-1')

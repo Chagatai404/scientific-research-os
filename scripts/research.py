@@ -11,7 +11,7 @@ import argparse
 import sys
 from dataclasses import asdict
 
-from knowledge import scalar, iso_date, ID as LEARNING_ID, safe_text
+from knowledge import scalar, iso_date, ID as LEARNING_ID, safe_text, mermaid_text
 
 ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]*\Z')
 STATES = {
@@ -245,27 +245,122 @@ def render_status(data: dict) -> str:
     return '\n'.join(lines) + '\n'
 
 
+def select(registry: ResearchRegistry, project=None, key=None) -> ResearchRegistry:
+    selected = {k for k, r in registry.records.items() if project is None or r.meta['project'] == project}
+    if key is not None:
+        if key not in selected:
+            raise ValueError('requested record is absent, invalid, or outside project')
+        neighborhood = {key}
+        while True:
+            additions = {x for e in registry.edges if {e.source, e.target} & neighborhood
+                         for x in (e.source, e.target)} & selected
+            if additions <= neighborhood:
+                break
+            neighborhood |= additions
+        selected = neighborhood
+    paths = {registry.records[k].path for k in selected}
+    return ResearchRegistry({k: registry.records[k] for k in sorted(selected)},
+        [d for d in registry.diagnostics if not d.path or d.path in paths or d.code in {'SCHEMA', 'ROOT', 'READ'}],
+        registry.legacy, [e for e in registry.edges if e.source in selected and e.target in selected])
+
+
+def frontier(registry: ResearchRegistry) -> list[dict]:
+    """Mechanical next transitions; ID ordering is not priority."""
+    result = []
+    bad = {d.path for d in registry.diagnostics if d.severity == 'ERROR'}
+    decided = {e.target for e in registry.edges if e.relation == 'experiments'
+               and e.source in {d.id for d in accepted_decisions(registry)}}
+    for key, r in registry.records.items():
+        m, transitions = r.meta, []
+        if r.path in bad:
+            transitions.append('repair-record')
+        elif r.type == 'research-question' and m['status'] in {'proposed', 'active', 'blocked'}:
+            if m['status'] == 'blocked':
+                unresolved = [e.target for e in registry.edges if e.source == key and e.relation == 'parent_questions'
+                              and registry.records[e.target].meta['status'] != 'resolved']
+                if unresolved or m.get('learning_dependencies'):
+                    transitions.append('inspect-unresolved-dependencies')
+            if not any(e.target == key and e.relation == 'research_questions'
+                       and registry.records[e.source].type == 'hypothesis' for e in registry.edges):
+                transitions.append('hypothesis-missing')
+        elif r.type == 'hypothesis' and m['status'] in {'proposed', 'active', 'survives', 'weakened', 'inconclusive'}:
+            if not any(e.target == key and e.relation == 'hypotheses'
+                       and registry.records[e.source].type == 'experiment' for e in registry.edges):
+                transitions.append('experiment-missing')
+        elif r.type == 'experiment':
+            if m['status'] in {'planned', 'ready'}:
+                transitions += {'awaiting': ['approval-required'], 'approved': ['execution-available'],
+                                'modification-requested': ['plan-revision-required'], 'rejected': []}[m['authorization']]
+            elif m['status'] == 'completed':
+                validation = m.get('result_validation', 'pending')
+                review = m.get('adversarial_review', 'pending')
+                transitions.append('validation-required' if validation == 'pending' else
+                                   'validation-revision-required' if validation == 'failed' else
+                                   'adversarial-review-required' if review == 'pending' else
+                                   'review-revision-required' if review == 'failed' else
+                                   'human-decision-required' if key not in decided else '')
+        elif r.type == 'research-decision' and m['status'] in {'proposed', 'revisit'}:
+            transitions.append('human-decision-required')
+        result.extend({'id': key, 'transition': transition} for transition in sorted(transitions) if transition)
+    return result
+
+
+def graph(registry: ResearchRegistry) -> str:
+    ids = {key: f'n{i}' for i, key in enumerate(registry.records)}
+    lines = ['```mermaid', 'flowchart TD']
+    for key, r in registry.records.items():
+        label = f"{key} {r.title} / {r.meta['status']}"
+        lines.append(f'    {ids[key]}["{mermaid_text(label)}"]')
+    for e in registry.edges:
+        lines.append(f'    {ids[e.source]} -->|{e.relation}| {ids[e.target]}')
+    return '\n'.join(lines + ['```', ''])
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['validate', 'status'])
+    parser.add_argument('command', choices=['validate', 'status', 'frontier', 'graph'])
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--json', action='store_true')
     parser.add_argument('--project')
+    entity = parser.add_mutually_exclusive_group()
+    for name in ('question', 'hypothesis', 'experiment', 'decision'):
+        entity.add_argument('--' + name)
     args = parser.parse_args(argv)
     if args.project is not None and not LEARNING_ID.fullmatch(args.project):
         parser.error('invalid project ID')
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
     registry = validate(args.root)
+    key = next((getattr(args, name) for name in ('question', 'hypothesis', 'experiment', 'decision')
+                if getattr(args, name) is not None), None)
+    for name, kind in [('question', 'research-question'), ('hypothesis', 'hypothesis'),
+                       ('experiment', 'experiment'), ('decision', 'research-decision')]:
+        if getattr(args, name) is not None and (key not in registry.records or registry.records[key].type != kind):
+            parser.error('missing or wrong-type entity filter')
+    try:
+        registry = select(registry, args.project, key)
+    except ValueError as exc:
+        parser.error(str(exc))
     data = status(registry, args.project)
+    data['frontier'] = frontier(registry)
+    data['edges'] = [asdict(e) for e in registry.edges]
     if args.json:
         print(json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False))
     elif args.command == 'status':
         print(render_status(data), end='')
+    elif args.command == 'graph':
+        print(graph(registry), end='')
+    elif args.command == 'frontier':
+        print('# Research frontier (unranked)')
+        for entry in data['frontier']:
+            print(f"- {entry['id']}: {entry['transition']}")
     else:
         print(f'Tracked: {len(registry.records)}; legacy: {registry.legacy}')
         for d in registry.diagnostics:
             print(f'{d.severity} {d.code} {d.path}: {d.message}')
+    if args.command in {'graph', 'frontier'} and not args.json:
+        for d in registry.diagnostics:
+            print(f'{d.severity} {d.code}: {safe_text(d.message)}')
     return int(any(d['severity'] == 'ERROR' for d in data['diagnostics']))
 
 
