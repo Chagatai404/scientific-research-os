@@ -48,3 +48,30 @@ class ParserTests(unittest.TestCase):
 
     def test_missing_root_is_not_empty_success(self):
         self.assertEqual(research.discover(Path('nonexistent-research-root')).diagnostics[0].code, 'ROOT')
+
+
+class RegistryTests(unittest.TestCase):
+    def registry(self, *texts):
+        records = [research.parse(text, f'{i}.md') for i, text in enumerate(texts)]
+        result = research.ResearchRegistry({r.id: r for r in records})
+        research.resolve(result)
+        return result
+
+    def test_typed_edges_and_repeatable_resolution(self):
+        result = self.registry(note(), note('hypothesis', 'H-1', research_questions=['RQ-1']))
+        expected = [research.Edge('H-1', 'research_questions', 'RQ-1')]
+        self.assertEqual(result.edges, expected)
+        self.assertFalse(result.diagnostics)
+        research.resolve(result)
+        self.assertEqual(result.edges, expected)
+
+    def test_bad_links_are_diagnosed_and_never_resolved(self):
+        result = self.registry(note(), note('hypothesis', 'H-1', project='other',
+                               research_questions=['RQ-1', 'RQ-missing', 'H-1']))
+        self.assertEqual({d.code for d in result.diagnostics}, {'DANGLING', 'TARGET_TYPE', 'CROSS_PROJECT'})
+        self.assertFalse(result.edges)
+
+    def test_parent_cycles_and_descendants(self):
+        result = self.registry(note(parent_questions=['RQ-2']), note(id='RQ-2', parent_questions=['RQ-1']),
+                               note(id='RQ-3', parent_questions=['RQ-2']))
+        self.assertEqual(len([d for d in result.diagnostics if d.code == 'CYCLE']), 3)

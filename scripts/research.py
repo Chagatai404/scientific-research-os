@@ -66,6 +66,51 @@ class ResearchRegistry:
     records: dict[str, Record] = field(default_factory=dict)
     diagnostics: list[Diagnostic] = field(default_factory=list)
     legacy: int = 0
+    edges: list[Edge] = field(default_factory=list)
+
+
+@dataclass(order=True, frozen=True)
+class Edge:
+    source: str
+    relation: str
+    target: str
+
+
+def resolve(registry: ResearchRegistry) -> None:
+    """Resolve only legal same-project edges; never infer scientific relations."""
+    registry.edges.clear()
+    registry.diagnostics[:] = [d for d in registry.diagnostics
+                               if d.code not in {'DANGLING', 'TARGET_TYPE', 'CROSS_PROJECT', 'CYCLE'}]
+    for key, record in registry.records.items():
+        for relation, kind in RELATIONS[record.type].items():
+            for target_id in record.meta.get(relation, []):
+                target = registry.records.get(target_id)
+                if target is None:
+                    code = 'DANGLING'
+                elif target.type != kind:
+                    code = 'TARGET_TYPE'
+                elif target.meta['project'] != record.meta['project']:
+                    code = 'CROSS_PROJECT'
+                else:
+                    registry.edges.append(Edge(key, relation, target_id))
+                    continue
+                registry.diagnostics.append(Diagnostic('ERROR', code, record.path,
+                                                       f'{key}.{relation} -> {target_id}'))
+    pending = {key for key, record in registry.records.items() if record.type == 'research-question'}
+    parents = {key: set() for key in pending}
+    for edge in registry.edges:
+        if edge.relation == 'parent_questions':
+            parents[edge.source].add(edge.target)
+    while pending:
+        removable = {key for key in pending if not parents[key] & pending}
+        if not removable:
+            break
+        pending -= removable
+    for key in sorted(pending):
+        registry.diagnostics.append(Diagnostic('ERROR', 'CYCLE', registry.records[key].path,
+                                               f'{key}: question parent cycle or dependency on cycle'))
+    registry.edges.sort()
+    registry.diagnostics.sort()
 
 
 def frontmatter(text: str) -> tuple[list[str], str] | None:
@@ -189,5 +234,6 @@ def discover(root: Path) -> ResearchRegistry:
         result.records.pop(key, None)
         result.diagnostics.append(Diagnostic('ERROR', 'DUPLICATE', '', f'duplicate ID excluded: {key}'))
     result.records = dict(sorted(result.records.items()))
+    resolve(result)
     result.diagnostics.sort()
     return result
