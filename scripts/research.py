@@ -70,6 +70,11 @@ class ResearchRegistry:
     diagnostics: list[Diagnostic] = field(default_factory=list)
     legacy: int = 0
     edges: list[Edge] = field(default_factory=list)
+    # Reported reference state; none of it feeds lifecycle rules or scientific acceptance.
+    links: dict = field(default_factory=dict)
+    claims: dict = field(default_factory=dict)
+    learning: dict = field(default_factory=dict)
+    code: dict = field(default_factory=dict)
 
 
 @dataclass(order=True, frozen=True)
@@ -193,6 +198,213 @@ def validate(root: Path) -> ResearchRegistry:
     return result
 
 
+def link_state(registry: ResearchRegistry, root: Path, evidence: Path | None = None) -> None:
+    """Report referenced EvidenceAtom and manifest state using the existing validators.
+
+    EXACT_SUPPORT, TRANSFERRED, UNRESOLVED etc. are the atom's own recorded status;
+    'valid' means only that the manifest parses. Neither is scientific acceptance.
+    """
+    import computational_manifest
+    import validate_evidence
+    root = root.resolve()
+    registry.links, registry.claims = {}, {}
+    registry.diagnostics[:] = [d for d in registry.diagnostics if not d.code.startswith('LINK_')]
+    wanted = any(r.meta.get('evidence') or r.meta.get('manifests') for r in registry.records.values())
+    board, location = {}, evidence if evidence is not None else root / 'evidence'
+    if wanted and location.exists():
+        board, errors = validate_evidence.load_board(location)
+        registry.diagnostics.extend(Diagnostic('INFO', 'LINK_BOARD', '', e['message']) for e in errors)
+    for key, record in registry.records.items():
+        entry = {}
+        for ref in record.meta.get('evidence', []):
+            atom = board.get(ref)
+            if atom is None:
+                state = 'MISSING'
+            elif validate_evidence.validate(atom, board):
+                state = 'INVALID'
+            else:
+                state = atom['verification_status']
+                registry.claims[ref] = atom['claim_text']
+            entry.setdefault('evidence', {})[ref] = state
+            if state in {'MISSING', 'INVALID'}:
+                registry.diagnostics.append(Diagnostic('WARNING', 'LINK_EVIDENCE', record.path, f'{key}: evidence {ref} is {state}'))
+        for ref in record.meta.get('manifests', []):
+            try:
+                path = local_file(root, ref)
+            except ValueError:
+                state = 'missing'
+            else:
+                try:
+                    computational_manifest.loads(path.read_text(encoding='utf-8'))
+                    state = 'valid'
+                except (ValueError, OSError):
+                    state = 'invalid'
+            entry.setdefault('manifests', {})[ref] = state
+            if state != 'valid':
+                registry.diagnostics.append(Diagnostic('WARNING', 'LINK_MANIFEST', record.path, f'{key}: manifest {ref} is {state}'))
+        if entry:
+            registry.links[key] = entry
+    registry.diagnostics.sort()
+
+
+def learning_state(registry: ResearchRegistry, learning_root: Path, as_of: date) -> None:
+    """Advisory readiness context from the existing learning graph; never blocks, never writes."""
+    import knowledge
+    registry.learning = {}
+    registry.diagnostics[:] = [d for d in registry.diagnostics if d.code != 'LINK_LEARNING']
+    if not any(r.meta.get('learning_dependencies') for r in registry.records.values()):
+        return
+    collection = knowledge.discover(learning_root, as_of)
+    ready = knowledge.ready_nodes(collection.nodes)
+    for key, record in registry.records.items():
+        entry = {}
+        for dep in record.meta.get('learning_dependencies', []):
+            node = collection.nodes.get(dep)
+            if node is None:
+                entry[dep] = {'state': 'untracked'}
+                registry.diagnostics.append(Diagnostic('INFO', 'LINK_LEARNING', record.path,
+                                                       f'{key}: learning dependency {dep} has no tracked record'))
+            else:
+                entry[dep] = {'state': node.assessment.state, 'freshness': node.freshness,
+                              'retention_target': node.retention_target, 'ready': dep in ready}
+        if entry:
+            registry.learning[key] = entry
+    registry.diagnostics.sort()
+
+
+CODE_RELATION = {'experiment': 'implemented-by', 'research-decision': 'affects-code',
+                 'hypothesis': 'references-code', 'research-question': 'references-code'}
+
+
+def code_state(registry: ResearchRegistry, root: Path, graphify: Path | None = None) -> None:
+    """Explicit code references only; imports/calls never imply scientific relations."""
+    registry.code = {}
+    registry.diagnostics[:] = [d for d in registry.diagnostics if d.code != 'LINK_CODE']
+    files = None
+    if graphify is not None:
+        try:
+            nodes = json.loads(graphify.read_text(encoding='utf-8')).get('nodes', [])
+            files = {}
+            for node in nodes:
+                if isinstance(node, dict) and isinstance(node.get('source_file'), str):
+                    files.setdefault(node['source_file'].replace('\\', '/'), set()).add(str(node.get('label', node.get('id', ''))))
+        except (OSError, ValueError, AttributeError):
+            files = None
+    for key, record in registry.records.items():
+        entries = []
+        for ref in record.meta.get('code_refs', []):
+            try:
+                local_file(root, ref)
+                exists = True
+            except ValueError:
+                exists = False
+                registry.diagnostics.append(Diagnostic('INFO', 'LINK_CODE', record.path, f'{key}: code reference {ref} not found under root'))
+            entry = {'path': ref, 'relation': CODE_RELATION[record.type], 'exists': exists}
+            if files is not None:
+                entry['graphify_nodes'] = sorted(label for sf, labels in files.items()
+                                                 if sf == ref or sf.endswith('/' + ref) for label in labels)
+            entries.append(entry)
+        if entries:
+            registry.code[key] = entries
+    registry.diagnostics.sort()
+
+
+def enrich(registry: ResearchRegistry, root: Path, evidence: Path | None = None,
+           learning_root: Path | None = None, as_of: date | None = None,
+           graphify: Path | None = None) -> ResearchRegistry:
+    """Attach reference state without changing any canonical record."""
+    link_state(registry, root, evidence)
+    learning_state(registry, learning_root or root, as_of or date.today())
+    code_state(registry, root, graphify)
+    return registry
+
+
+def neighborhood(registry: ResearchRegistry, key: str) -> list[str]:
+    """Deterministic branch: ancestors and descendants of the root, not siblings."""
+    parents: dict[str, set] = {k: set() for k in registry.records}
+    children: dict[str, set] = {k: set() for k in registry.records}
+    seeds = {key}
+    root = registry.records[key]
+    for e in registry.edges:
+        if registry.records[e.source].type != 'research-decision' and e.relation in {'parent_questions', 'research_questions', 'hypotheses'}:
+            parents[e.source].add(e.target)
+            children[e.target].add(e.source)
+        if root.type == 'research-decision' and e.source == key and e.relation in {'questions', 'hypotheses', 'experiments'}:
+            seeds.add(e.target)
+    def reach(start, graph):
+        seen, todo = set(), list(start)
+        while todo:
+            for nxt in graph[todo.pop()]:
+                if nxt not in seen:
+                    seen.add(nxt)
+                    todo.append(nxt)
+        return seen
+    region = seeds | reach(seeds, parents) | reach(seeds, children)
+    decisions = {e.source for e in registry.edges if registry.records[e.source].type == 'research-decision'
+                 and e.relation in {'questions', 'hypotheses', 'experiments'} and e.target in region}
+    return sorted(region | decisions)
+
+
+def context(registry: ResearchRegistry, key: str, root: Path) -> dict:
+    """Bounded, deterministic context package; no summarization or prioritization."""
+    import visuals
+    region = neighborhood(registry, key)
+    members = {k: registry.records[k] for k in region}
+    accepted = {r.id for r in accepted_decisions(registry)}
+    dependencies = sorted({d for r in members.values() for d in r.meta.get('learning_dependencies', [])})
+    records, _ = visuals.discover(root)
+    referenced = sorted({v for r in members.values() for v in r.meta.get('visuals', [])})
+    trusted = {v['visual_id']: v for v in visuals.reusable(records)}
+    selected = [trusted[v] for v in sorted(trusted) if v in referenced or set(trusted[v]['concepts']) & set(dependencies)]
+    paths = {r.path for r in members.values()}
+    frontier_entries = [f for f in frontier(registry) if f['id'] in members]
+    return {
+        'root': key, 'project': registry.records[key].meta['project'],
+        'records': [dict(r.meta, path=r.path, title=r.title) for r in members.values()],
+        'accepted_decisions': sorted(k for k in members if k in accepted),
+        'pending_decisions': sorted(k for k, r in members.items() if r.type == 'research-decision'
+                                    and r.meta['status'] in {'proposed', 'revisit'}),
+        'evidence': {ref: {'state': state, 'claim_text': registry.claims.get(ref)}
+                     for k in members for ref, state in registry.links.get(k, {}).get('evidence', {}).items()},
+        'manifests': {ref: state for k in members for ref, state in registry.links.get(k, {}).get('manifests', {}).items()},
+        'learning_dependencies': {dep: next((registry.learning[k][dep] for k in region
+                                             if dep in registry.learning.get(k, {})), {'state': 'unresolved'})
+                                  for dep in dependencies},
+        'visuals': [{'visual_id': v['visual_id'], 'artifact': v['artifact'], 'kind': v['kind'], 'concepts': v['concepts']}
+                    for v in selected],
+        'unverified_visual_refs': [v for v in referenced if v not in trusted],
+        'code_refs': [c for k in members for c in registry.code.get(k, [])],
+        'downstream_frontier': frontier_entries,
+        'omitted': {'same_project_records_outside_branch': sorted(
+            k for k, r in registry.records.items() if k not in members and r.meta['project'] == registry.records[key].meta['project']),
+            'unverified_or_unlinked_visuals': sorted(set(records) - set(trusted)) },
+        'diagnostics': [asdict(d) for d in registry.diagnostics if d.path in paths or not d.path],
+    }
+
+
+def render_context(data: dict) -> str:
+    lines = [f"# Research context: {data['root']}", '',
+             'Deterministic neighborhood of recorded state; not a recommendation.', '']
+    for r in data['records']:
+        lines.append(f"- {r['id']} ({r['type']}, {r['status']}): {safe_text(r['title'])}")
+    def section(name, items):
+        lines.extend(['', f'## {name}'])
+        lines.extend(items or ['None.'])
+    section('Accepted decisions', [f'- {x}' for x in data['accepted_decisions']])
+    section('Pending decisions', [f'- {x}' for x in data['pending_decisions']])
+    section('Evidence', [f"- {k}: {v['state']}" + (f" — {safe_text(v['claim_text'])}" if v['claim_text'] else '')
+                         for k, v in data['evidence'].items()])
+    section('Manifests', [f'- {k}: {v}' for k, v in data['manifests'].items()])
+    section('Learning dependencies (advisory)', [f"- {k}: {v['state']}" for k, v in data['learning_dependencies'].items()])
+    section('Verified visuals', [f"- {v['visual_id']}: {v['kind']} {v['artifact']}" for v in data['visuals']])
+    section('Code references', [f"- {c['path']} ({c['relation']}{'' if c['exists'] else ', not found'})" for c in data['code_refs']])
+    section('Downstream frontier', [f"- {f['id']}: {f['transition']}" for f in data['downstream_frontier']])
+    section('Omitted from this context', [f"- {name.replace('_', ' ')}: {', '.join(ids) or 'none'}"
+                                          for name, ids in data['omitted'].items()])
+    section('Diagnostics', [f"- {d['severity']} {d['code']}: {safe_text(d['message'])}" for d in data['diagnostics']])
+    return '\n'.join(lines) + '\n'
+
+
 def status(registry: ResearchRegistry, project: str | None = None) -> dict:
     records = [r for r in registry.records.values() if project is None or r.meta['project'] == project]
     accepted = accepted_decisions(registry)
@@ -223,6 +435,9 @@ def status(registry: ResearchRegistry, project: str | None = None) -> dict:
                                               {e['id'] for e in experiments if e['status'] == 'completed'
                                                and e['research_decision'] == 'missing'}),
             'unresolved_relationships': [d for d in diagnostics if d['code'] in {'DANGLING', 'TARGET_TYPE', 'CROSS_PROJECT', 'CYCLE'}],
+            'links': {r.id: registry.links[r.id] for r in records if r.id in registry.links},
+            'learning_dependencies': {r.id: registry.learning[r.id] for r in records if r.id in registry.learning},
+            'code_references': {r.id: registry.code[r.id] for r in records if r.id in registry.code},
             'diagnostics': diagnostics, 'legacy': registry.legacy}
 
 
@@ -237,6 +452,13 @@ def render_status(data: dict) -> str:
         e = next((e for e in data['experiments'] if e['id'] == r['id']), None)
         if e:
             lines.extend(f"- {key.replace('_', ' ')}: {value}" for key, value in e.items() if key not in {'id', 'status'})
+        for kind, states in data['links'].get(r['id'], {}).items():
+            lines.extend(f'- {kind[:-1] if kind == "manifests" else kind}: {safe_text(ref)} — {state}' for ref, state in states.items())
+        lines.extend(f"- learning dependency (advisory): {dep} — {v['state']}"
+                     + (f", {v['freshness']}" if 'freshness' in v else '')
+                     for dep, v in data['learning_dependencies'].get(r['id'], {}).items())
+        lines.extend(f"- code {c['relation']}: {safe_text(c['path'])}" + ('' if c['exists'] else ' (not found)')
+                     for c in data['code_references'].get(r['id'], []))
     lines += ['', '## Diagnostics', '']
     lines.extend(f"- {d['severity']} {d['code']} {safe_text(d['path'])}: {safe_text(d['message'])}" for d in data['diagnostics'])
     if not data['diagnostics']:
@@ -261,7 +483,10 @@ def select(registry: ResearchRegistry, project=None, key=None) -> ResearchRegist
     paths = {registry.records[k].path for k in selected}
     return ResearchRegistry({k: registry.records[k] for k in sorted(selected)},
         [d for d in registry.diagnostics if not d.path or d.path in paths or d.code in {'SCHEMA', 'ROOT', 'READ'}],
-        registry.legacy, [e for e in registry.edges if e.source in selected and e.target in selected])
+        registry.legacy, [e for e in registry.edges if e.source in selected and e.target in selected],
+        {k: v for k, v in registry.links.items() if k in selected}, registry.claims,
+        {k: v for k, v in registry.learning.items() if k in selected},
+        {k: v for k, v in registry.code.items() if k in selected})
 
 
 def frontier(registry: ResearchRegistry) -> list[dict]:
@@ -313,14 +538,28 @@ def graph(registry: ResearchRegistry) -> str:
         lines.append(f'    {ids[key]}["{mermaid_text(label)}"]')
     for e in registry.edges:
         lines.append(f'    {ids[e.source]} -->|{e.relation}| {ids[e.target]}')
+    extra = 0
+    for key in registry.records:
+        # Reference state only: an edge to evidence or a capability is not scientific support.
+        pairs = [(ref, state, 'evidence' if kind == 'evidence' else 'manifest')
+                 for kind, states in registry.links.get(key, {}).items() for ref, state in states.items()]
+        pairs += [(dep, v['state'], 'learning') for dep, v in registry.learning.get(key, {}).items()]
+        for ref, state, relation in pairs:
+            extra += 1
+            lines.append(f'    x{extra}(["{mermaid_text(f"{ref} / {state}")}"])')
+            lines.append(f'    {ids[key]} -.->|{relation}| x{extra}')
     return '\n'.join(lines + ['```', ''])
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['validate', 'status', 'frontier', 'graph'])
+    parser.add_argument('command', choices=['validate', 'status', 'frontier', 'graph', 'context'])
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--json', action='store_true')
+    parser.add_argument('--evidence', type=Path, help='EvidenceAtom directory (default: <root>/evidence)')
+    parser.add_argument('--learning-root', type=Path, help='learning records root (default: --root)')
+    parser.add_argument('--as-of', help='YYYY-MM-DD for learning freshness (default: today)')
+    parser.add_argument('--graphify', type=Path, help='optional Graphify graph.json for code-reference lookup')
     parser.add_argument('--project')
     entity = parser.add_mutually_exclusive_group()
     for name in ('question', 'hypothesis', 'experiment', 'decision'):
@@ -330,13 +569,23 @@ def main(argv=None) -> int:
         parser.error('invalid project ID')
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
-    registry = validate(args.root)
+    try:
+        as_of = iso_date(args.as_of) if args.as_of else date.today()
+    except ValueError as exc:
+        parser.error(str(exc))
+    registry = enrich(validate(args.root), args.root, args.evidence, args.learning_root, as_of, args.graphify)
     key = next((getattr(args, name) for name in ('question', 'hypothesis', 'experiment', 'decision')
                 if getattr(args, name) is not None), None)
     for name, kind in [('question', 'research-question'), ('hypothesis', 'hypothesis'),
                        ('experiment', 'experiment'), ('decision', 'research-decision')]:
         if getattr(args, name) is not None and (key not in registry.records or registry.records[key].type != kind):
             parser.error('missing or wrong-type entity filter')
+    if args.command == 'context':
+        if key is None:
+            parser.error('context requires --question, --hypothesis, --experiment or --decision')
+        data = context(registry, key, args.root)
+        print(json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False) if args.json else render_context(data), end='\n' if args.json else '')
+        return int(any(d['severity'] == 'ERROR' for d in data['diagnostics']))
     try:
         registry = select(registry, args.project, key)
     except ValueError as exc:

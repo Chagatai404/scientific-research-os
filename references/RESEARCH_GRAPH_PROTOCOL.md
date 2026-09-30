@@ -92,7 +92,18 @@ Filters select project and/or typed entity with its relevant relationship
 neighborhood. Mermaid uses generated node keys and escaped labels. JSON preserves
 explicit IDs, paths and diagnostics. No view changes canonical records.
 
-Context is a bounded deterministic selection, not AI summarization: selected
+Reference state is attached at read time by the standalone CLI (`status`,
+`graph`, `context`): `--evidence DIR` (default `<root>/evidence`), `--learning-root`
+with `--as-of YYYY-MM-DD`, and optional `--graphify graph.json`. Absent boards,
+learning records or Graphify output produce MISSING/untracked/no-match states, never
+failure. Evidence states are the atom's own recorded status; a missing or invalid
+atom and a missing or invalid manifest are WARNING; an untracked learning
+dependency or missing code file is INFO. Code references are labelled by owner
+type: `implemented-by` (experiment), `affects-code` (decision), `references-code`
+(question, hypothesis); Graphify only adds the matching file's node labels.
+
+Context (`research.py context --experiment ID`, or `--question`, `--hypothesis`,
+`--decision`) is a bounded deterministic selection, not AI summarization: selected
 question/hypothesis/experiment/decision, ancestors, accepted upstream decisions,
 linked evidence/manifests, advisory learning, verified visuals, explicit code refs
 and downstream unresolved state. Bounds and omitted items must be visible.
