@@ -5,7 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from tutor_contract import question_issues
+from tutor_contract import question_issues, terminology_issues
 
 
 class QuestionTests(unittest.TestCase):
@@ -18,3 +18,15 @@ class QuestionTests(unittest.TestCase):
     def test_incomplete_contract_and_empty_definitions(self):
         self.assertTrue(question_issues({'TESTS': ['pca']}, set()))
         self.assertTrue(question_issues({'TESTS': ['pca'], 'ASSUMES': [], 'INTRODUCES': {'eigenvalue': ''}}, set()))
+
+    def test_terminology_cases(self):
+        abbreviation = dict(name='PCA', concept='statistics.pca', kind='abbreviation', use='required')
+        symbol = dict(name='lambda', concept='local.lambda', kind='symbol', use='required')
+        self.assertEqual(len(terminology_issues([abbreviation], set())), 2)
+        self.assertEqual(terminology_issues([symbol], set()), ['lambda: define before use'])
+        self.assertFalse(terminology_issues([abbreviation], {'statistics.pca'}))
+        introduced = dict(abbreviation, expansion='Principal Component Analysis',
+                          definition='Find orthogonal directions of maximum variance in centered data.')
+        self.assertFalse(terminology_issues([introduced], set()))
+        self.assertFalse(terminology_issues([dict(abbreviation, use='label')], set()))
+        self.assertFalse(terminology_issues([symbol], set(), {'local.lambda'}))

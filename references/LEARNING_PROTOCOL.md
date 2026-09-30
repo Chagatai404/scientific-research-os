@@ -56,6 +56,22 @@ or an assessment of teaching quality. Definitions do not become retrieval eviden
 For example, asking about PCA's largest eigenvalue silently tests eigenvalues
 unless that foundation is evidenced or intentionally taught/probed first.
 
+### Terminology gate
+
+At the first meaningful occurrence, expand an unestablished abbreviation before
+later shorthand: Principal Component Analysis (PCA). Define new symbols, technical
+terms, named methods/theorems, models and algorithms before requiring their meaning,
+unless current graph evidence establishes them or the concept is intentionally
+part of the current probe. Prior mention is not establishment. A new local symbol
+needs its local definition even when its underlying concept is familiar.
+
+Important concepts need more than a one-line gloss: add the relevant prerequisite
+to the bounded plan and teach/probe it appropriately. A definition given in the
+current lesson permits supported use; it does not establish demonstrated/retained
+state. Harmless labels (for example experiment label PCA-01) do not require a node
+when no understanding of their expansion is assumed. Do not create learning nodes
+for every trivial word or abbreviation. Inspect both question text and options.
+
 Track evidence for a specific capability, not mastery of an entire subject.
 
 | State | Meaning |

@@ -56,6 +56,10 @@ Before presenting every question, prepare the internal TESTS / ASSUMES /
 INTRODUCES contract in the learning protocol. Inspect wording for hidden
 prerequisites; resolve unsupported assumptions by deliberate probing, teaching
 or rewriting. Keep the contract internal unless it helps the learner.
+Apply the terminology gate to text and answer options: expand new abbreviations
+(Principal Component Analysis (PCA)), define symbols before use, and teach/probe
+substantial new concepts. Prior mention is not establishment; harmless labels do
+not require learning nodes. New local notation always needs its local definition.
 
 Choose the question format that best tests the intended knowledge while minimizing unnecessary typing.
 
