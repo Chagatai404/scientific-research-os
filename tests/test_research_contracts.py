@@ -16,6 +16,16 @@ class ResearchContracts(unittest.TestCase):
         cycle = (ROOT / 'references/RESEARCH_PROTOCOL.md').read_text(encoding='utf-8')
         self.assertIn('RESEARCH_GRAPH_PROTOCOL.md', cycle)
 
+    def test_source_first_visual_policy_is_routed_and_conservative(self):
+        protocol = (ROOT / 'references/VISUALIZATION_PROTOCOL.md').read_text(encoding='utf-8')
+        flat = ' '.join(protocol.split())
+        for term in ('authoritative existing visual', 'Never treat a visually plausible generated image as scientific evidence',
+                     'Only `verified` assets', 'schematic, explicitly labelled', 'user-requested'):
+            self.assertIn(term, flat)
+        for name in ('skills/visualize/SKILL.md', 'skills/tutor/SKILL.md'):
+            text = ' '.join((ROOT / name).read_text(encoding='utf-8').split())
+            self.assertIn('source-first', text)
+
     def test_tutor_loads_graph_before_preparing_block(self):
         tutor = (ROOT / 'skills/tutor/SKILL.md').read_text(encoding='utf-8')
         policy = (ROOT / 'references/LEARNING_PROTOCOL.md').read_text(encoding='utf-8')

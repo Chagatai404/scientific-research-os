@@ -15,8 +15,13 @@ local copies of the shared references.
 
 1. Identify one central teaching idea and the intended learner action: notice,
    predict, reconstruct, or explain. Reuse prepared lesson evidence when available.
-2. Classify the visual as conceptual, model-driven, or simulation/data-driven;
-   establish the inputs and scientific assumptions using the visualization protocol.
+2. Apply the protocol's source-first policy: would an authoritative existing
+   visual (paper, official documentation, textbook, university material) serve
+   better? If so use/link/embed it with provenance; otherwise generate only from
+   verified equations/data/geometry, else label a schematic. Check
+   `scripts/visuals.py --reusable --concept <id>` for an already verified asset.
+   Then classify the visual as source, conceptual, model-driven, or
+   simulation/data-driven and establish its inputs and assumptions.
 3. Choose the simplest adequate form/backend from the protocol. Use the existing
    visualizer agent for a bounded production task when delegation adds value; the
    skill also works directly without an agent or a specific provider.

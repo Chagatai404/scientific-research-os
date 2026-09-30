@@ -24,6 +24,43 @@ Choose the presentation form before the backend:
 - **Animation:** order, continuous change, or a mathematical transformation is the
   idea being taught. Prefer static panels when they communicate it as well.
 
+## Source-first policy
+
+Before generating a teaching visual, ask: **would an authoritative existing
+visual better serve this concept?**
+
+```text
+visual need
+   |
+authoritative source visual exists?
+   |- yes -> use / link / embed it with provenance
+   |- no
+       |
+       can verified equations, data or geometry generate it?
+       |- yes -> reproducible generated visual (record basis and parameters)
+       |- no  -> schematic, explicitly labelled as a schematic
+```
+
+Preferred sources, in roughly descending authority for the claim being shown:
+the primary paper, official experiment or software documentation, a textbook, and
+reputable university material. Check licence/permission before copying a figure;
+linking or citing with a locator is always acceptable. A source figure still needs
+a citation and locator, and it does not become correct because it is published:
+confirm it shows the regime and conventions the lesson needs.
+
+Never treat a visually plausible generated image as scientific evidence, and never
+let it stand in for a source figure the learner could have been shown. A generated
+visual is not reusable merely because it rendered: record it in the visual registry
+(`scripts/visuals.py`, `*.visual.json`) and let it advance only through
+`candidate -> rendered -> inspected -> verified`. Only `verified` assets are
+reused automatically as trusted teaching visuals; others are drafts to be
+re-inspected. `verified` is a human/inspector attestation of the specific claim
+the visual makes, not a rendering check.
+
+Animations should normally be user-requested or clearly justified by temporal or
+transformation pedagogy (order, continuous change, a mathematical transformation).
+A static key-frame panel is the default when it teaches as well.
+
 ## Simplest suitable backend
 
 These are optional capability recommendations, not Research OS runtime dependencies.
