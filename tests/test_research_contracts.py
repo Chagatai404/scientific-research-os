@@ -26,6 +26,13 @@ class ResearchContracts(unittest.TestCase):
             text = ' '.join((ROOT / name).read_text(encoding='utf-8').split())
             self.assertIn('source-first', text)
 
+    def test_inline_visuals_do_not_touch_permanent_notes_or_private_data(self):
+        tutor = ' '.join((ROOT / 'skills/tutor/SKILL.md').read_text(encoding='utf-8').split())
+        for term in ('![[VIS-014-gamma-shape.svg]]', '**What to notice:**', 'Do not modify permanent concept notes',
+                     'do not copy private research data', 'never retrieval evidence'):
+            self.assertIn(term, tutor)
+        self.assertIn('broken_embeds', (ROOT / 'references/VISUALIZATION_PROTOCOL.md').read_text(encoding='utf-8'))
+
     def test_tutor_loads_graph_before_preparing_block(self):
         tutor = (ROOT / 'skills/tutor/SKILL.md').read_text(encoding='utf-8')
         policy = (ROOT / 'references/LEARNING_PROTOCOL.md').read_text(encoding='utf-8')

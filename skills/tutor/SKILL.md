@@ -110,6 +110,17 @@ Setup:
 4. During active probing append only the short verdict/hint and next question. At block end,
    write the assessment synthesis and update the map, sources, and lesson log as needed.
 
+Teaching visuals appear **inline in the session note** where the vault supports it:
+embed the file with a valid Obsidian embed (`![[VIS-014-gamma-shape.svg]]`, name
+or vault-relative path) directly beside the question or explanation it serves,
+followed by a concise caption (`> **What to notice:** ...`). `scripts/visuals.py`
+provides `embed_block` and `broken_embeds`. Keep provenance and reproducibility
+in a linked record or one short line nearby, not in the lesson body. Embed only
+verified assets automatically; label anything else as a draft. Do not modify
+permanent concept notes to add visuals, and do not copy private research data into
+the vault: link the reproducible research artifact instead. A visual being shown is
+never retrieval evidence; still ask the learner to predict or explain.
+
 Answer submission is an explicit checkbox, never an idle timer:
 
 Use an available file watcher or bounded polling in the host's shell. Watch only

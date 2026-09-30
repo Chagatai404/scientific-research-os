@@ -168,6 +168,11 @@ vault migration is required. Prefer linking to reproducible research artifacts
 instead of maintaining divergent copies. Do not overwrite unrelated assets or
 silently add visuals to permanent concept notes.
 
+In a vault-backed tutoring note, show the visual inline with a valid Obsidian
+embed such as `![[VIS-014-gamma-shape.svg]]` and a one-line
+`> **What to notice:** ...` caption; keep provenance in a linked visual record.
+Check that every embed resolves (`visuals.broken_embeds`) before finishing.
+
 Return the artifact path/preview, one sentence stating the central idea, its kind
 (schematic/model/data), and essential assumptions or limitations. Keep reproducibility
 details beside the artifact rather than crowding the teaching view.
