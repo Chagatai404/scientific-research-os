@@ -179,7 +179,7 @@ def analyse(root: Path) -> dict:
                     'confidence_note': confidence[1].strip() if confidence else None,
                     'row': row, 'eligible': row is not None, 'reason': reason or 'candidate; requires human review'})
             if str(meta.get('status')) == 'closed' and not session['eligible']:
-                session['note'] = 'closed without any candidate attempt; no evidence is inferred'
+                session['note'] = 'closed with no new candidate attempt (none recorded, or already in a tracked record); no evidence is inferred'
             sessions.append(session)
     return {'dry_run': True, 'sessions': sessions, 'candidates': candidates, 'dependency_edges': edges,
             'tracked_capabilities': len(tracked.nodes), 'legacy_notes': tracked.legacy, 'diagnostics': diagnostics}

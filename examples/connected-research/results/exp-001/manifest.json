@@ -1,0 +1,15 @@
+{
+  "artifacts": [
+    "results/exp-001/profile.csv"
+  ],
+  "declared": {
+    "example_only": true,
+    "seed": 12345
+  },
+  "derived": {},
+  "experiment": "EXP-001",
+  "failure": null,
+  "observed": {},
+  "reproduction_command": null,
+  "schema_version": 1
+}

@@ -1,0 +1,13 @@
+{
+  "visual_schema": 1,
+  "visual_id": "VIS-027",
+  "title": "Published longitudinal profile (source figure)",
+  "kind": "source-figure",
+  "concepts": ["physics.shower-profile"],
+  "source_type": "source",
+  "verification_status": "verified",
+  "artifact": "assets/visuals/VIS-027-source-profile.svg",
+  "provenance": "Fictional placeholder for a primary-paper figure. A real record cites the paper, figure number, licence and the regime it shows.",
+  "verified_by": "Example Researcher",
+  "verified_at": "2026-09-26"
+}

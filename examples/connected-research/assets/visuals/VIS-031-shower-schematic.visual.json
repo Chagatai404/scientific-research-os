@@ -1,0 +1,10 @@
+{
+  "visual_schema": 1,
+  "visual_id": "VIS-031",
+  "title": "Shower development schematic",
+  "kind": "conceptual-schematic",
+  "concepts": ["physics.shower-profile"],
+  "source_type": "schematic",
+  "verification_status": "rendered",
+  "artifact": "assets/visuals/VIS-031-shower-schematic.svg"
+}

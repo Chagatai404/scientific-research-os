@@ -158,6 +158,20 @@ for directory in (ROOT / "examples" / "learning", ROOT / "assets" / "obsidian"):
     collection = discover(directory, date.max)
     errors.extend(f"{directory}: {issue}" for issue in collection.diagnostics)
 
+# The connected example must stay valid under every canonical parser it demonstrates.
+import research
+import visuals
+
+connected = ROOT / "examples" / "connected-research"
+if not connected.is_dir():
+    errors.append(f"Missing example: {connected}")
+else:
+    errors.extend(f"{connected}: {d.severity} {d.code} {d.path} {d.message}"
+                  for d in research.validate(connected).diagnostics if d.severity == "ERROR")
+    errors.extend(f"{connected}: {issue}" for issue in discover(connected, date.max).diagnostics)
+    errors.extend(f"{connected}: {issue}" for issue in visuals.discover(connected)[1])
+    errors.extend(f"{connected}: {issue}" for issue in visuals.broken_embeds(connected))
+
 suspicious = [
     r"AKIA[0-9A-Z]{16}",
     r"ghp_[A-Za-z0-9]{20,}",
