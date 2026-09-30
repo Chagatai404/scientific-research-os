@@ -1,0 +1,13 @@
+{
+  "visual_schema": 1,
+  "visual_id": "VIS-014",
+  "title": "Gamma density shape parameter",
+  "kind": "model-driven-plot",
+  "concepts": ["probability.gamma-distribution"],
+  "source_type": "generated",
+  "verification_status": "verified",
+  "artifact": "assets/visuals/VIS-014-gamma-shape.svg",
+  "basis": "Gamma density with shape k in {1, 2, 5} and unit scale; hand-built synthetic fixture curve, not computed data.",
+  "verified_by": "Example Researcher",
+  "verified_at": "2026-09-26"
+}

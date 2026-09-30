@@ -8,6 +8,15 @@ evidence standards; `AGENT_POLICY.md` owns role independence;
 `VISUALIZATION_PROTOCOL.md` owns scientific visuals. Skills route to these policies.
 `COMPUTATIONAL_PROTOCOL.md` extends relevant stages for computational experiments;
 Geant4, ML and QML protocols specialize it without adding a second lifecycle.
+For opt-in persistent research records, `RESEARCH_GRAPH_PROTOCOL.md` owns schema,
+typed links, mechanical status/frontier and lifecycle diagnostics. Consult that
+derived state at entry and validate affected records during persistence; it never
+replaces human approval, scientific review or accepted research decisions.
+A research session starts by validating the registry, reading the unranked
+frontier, resolving the relevant branch, inspecting its advisory learning
+dependencies and taking its bounded context (`scripts/research.py context`); it
+ends by updating affected canonical records, re-validating, reporting the changed
+frontier and marking a decision `accepted` only on explicit human acceptance.
 Apply the cycle to substantive research, not as a requirement to conduct research
 while maintaining the OS itself or answering an isolated teaching question.
 Resume from recorded evidence and approval when still applicable; do not repeat

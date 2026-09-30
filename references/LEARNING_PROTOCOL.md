@@ -24,6 +24,66 @@ research cycle. Use verified material already available when sufficient.
 
 ## Learning state and retention
 
+### Graph-first block planning
+
+Resolve the target capability, load the relevant knowledge view, resolve its
+prerequisite closure, inspect retrieval evidence and freshness, then prepare a
+bounded lesson/probe. Use `scripts/knowledge.py --root <working-record-root>
+--capability <id> --dependencies --json` where the helper is available; otherwise
+inspect the same canonical learning records directly. A project/course view may
+locate the target, but does not replace checking its prerequisites.
+
+Cache the relevant view for the block; refresh on changed evidence, changed target,
+or newly discovered dependencies, not after every answer. Missing, malformed or
+empty graphs are unknown context: probe conservatively without inventing mastery.
+Prior mention and chat memory do not establish prerequisites. The existing
+assessment algorithm and human retention choices remain authoritative.
+
+### Block start and end
+
+At block start a Tutor resolves the target capability, queries its knowledge graph,
+loads prerequisite closure, inspects evidence and freshness, finds reusable
+*verified* visuals, prepares terminology and TESTS / ASSUMES / INTRODUCES contracts,
+then begins the bounded probe. At block end it preserves actual retrieval evidence
+and assistance, updates working records only within the authorized workflow,
+recomputes the affected graph, records newly discovered prerequisites, keeps visual
+references by ID and does not silently promote permanent notes. Research-linked
+blocks also read the bounded research context for the connection to the active
+question; that context is advisory and never blocks approved work.
+
+### Question Concept Contract
+
+Every prepared diagnostic/retrieval question has an internal TESTS / ASSUMES /
+INTRODUCES contract. TESTS lists intended capabilities. ASSUMES lists concepts
+required by the wording and reasoning, including symbols and named methods.
+INTRODUCES maps new concepts to definitions given before they are required.
+ASSUMES needs current graph evidence; otherwise intentionally probe that concept
+in TESTS, teach/define it in INTRODUCES, or rewrite the question. Separate the
+prerequisite's score from the target's score. A prerequisite failure cannot alone
+diagnose the target. Do not expose this internal plan unless useful to the learner.
+
+`scripts/tutor_contract.py` can check declared sets; the tutor must inspect the
+actual wording for omitted dependencies. It is not an automatic language analyzer
+or an assessment of teaching quality. Definitions do not become retrieval evidence.
+For example, asking about PCA's largest eigenvalue silently tests eigenvalues
+unless that foundation is evidenced or intentionally taught/probed first.
+
+### Terminology gate
+
+At the first meaningful occurrence, expand an unestablished abbreviation before
+later shorthand: Principal Component Analysis (PCA). Define new symbols, technical
+terms, named methods/theorems, models and algorithms before requiring their meaning,
+unless current graph evidence establishes them or the concept is intentionally
+part of the current probe. Prior mention is not establishment. A new local symbol
+needs its local definition even when its underlying concept is familiar.
+
+Important concepts need more than a one-line gloss: add the relevant prerequisite
+to the bounded plan and teach/probe it appropriately. A definition given in the
+current lesson permits supported use; it does not establish demonstrated/retained
+state. Harmless labels (for example experiment label PCA-01) do not require a node
+when no understanding of their expansion is assumed. Do not create learning nodes
+for every trivial word or abbreviation. Inspect both question text and options.
+
 Track evidence for a specific capability, not mastery of an entire subject.
 
 | State | Meaning |
@@ -250,6 +310,27 @@ requires fluent recall rather than lookup, handle that explicitly in learning
 design and the capability definition; never claim false mastery from its target.
 Missing/failed evidence can warrant a contextual check for actual use, regardless
 of target. Do not destroy old evidence or invent an expiry date.
+
+## Legacy bootstrap (candidate-only)
+
+Vaults that predate schema 1 hold real historical work. `scripts/bootstrap.py
+--root <vault>` is a dry-run report over tutor-session notes; it proposes, and a
+human decides. It never writes to the vault (a report file is created only when
+`--write-report` names a new path) and never rewrites historical notes.
+
+- A mention is not an attempt; a tutor explanation is not learner evidence; an
+  unanswered question is not evidence.
+- A recorded learner answer with a recorded verdict can become a candidate
+  retrieval-history row. An answer without a recorded verdict is listed with
+  outcome unknown and no row.
+- Assistance is preserved: a hint recorded in the verdict is `hinted`; otherwise
+  `none` is only "no hint recorded" and must be verified. Confidence is shown as
+  a note and never as the outcome. All bootstrapped rows are same-session, so
+  nothing bootstrapped can establish delayed retention.
+- Proposed learning IDs, prerequisite edges, project membership and retention
+  targets (`working` only as a suggestion when a project is named) require human
+  review. Edges from a session's dependency map are listed by label, not mapped
+  to IDs. Attempts already present in a tracked record are not proposed again.
 
 ## Course routing
 

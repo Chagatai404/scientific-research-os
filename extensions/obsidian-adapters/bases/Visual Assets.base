@@ -1,0 +1,14 @@
+filters:
+  and:
+    - or:
+        - 'file.ext == "svg"'
+        - 'file.ext == "png"'
+        - 'file.ext == "gif"'
+        - 'file.ext == "webp"'
+views:
+  - type: table
+    name: "Visual artifact files"
+    order:
+      - file.name
+      - file.folder
+      - file.mtime

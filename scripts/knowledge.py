@@ -353,7 +353,7 @@ def discover(root: Path, as_of: date) -> Collection:
 
 def select(nodes: dict[str, Node], scope: str, value: str) -> tuple[set[str], set[str]]:
     membership = {"project": "projects", "goal": "goals", "course": "courses"}
-    primary = {key for key, node in nodes.items()
+    primary = ({value} & nodes.keys()) if scope == 'capability' else {key for key, node in nodes.items()
                if (node.domain == value if scope == "subject"
                    else value in node.meta.get(membership[scope], []))}
     selected = set(primary)
@@ -364,6 +364,31 @@ def select(nodes: dict[str, Node], scope: str, value: str) -> tuple[set[str], se
                 selected.add(prerequisite)
                 todo.append(prerequisite)
     return primary, selected
+
+
+def query(collection: Collection, scope: str, value: str, dependencies: bool = True) -> dict:
+    """Projection of existing assessments; no new evidence or readiness semantics."""
+    primary, closure = select(collection.nodes, scope, value)
+    selected = closure if dependencies else primary
+    ready = ready_nodes(collection.nodes)
+    nodes = []
+    for key in sorted(selected):
+        node = collection.nodes[key]
+        a = node.assessment
+        nodes.append({'id': key, 'title': node.title, 'path': node.path,
+                      'prerequisites': sorted(node.prerequisites), 'state': a.state,
+                      'freshness': node.freshness, 'retention_target': node.retention_target,
+                      'last_retrieval': str(a.last) if a.last else None,
+                      'next_review': str(a.review) if a.review else None,
+                      'evidence': a.evidence, 'ready': key in ready,
+                      'frontier': frontier(node, ready), 'diagnostics': sorted(node.issues),
+                      'blocked_by': sorted(set(node.prerequisites) - ready)})
+    diagnostics = sorted(set(collection.diagnostics))
+    if scope == 'capability' and not primary:
+        diagnostics.append(f'missing capability: {value}')
+    return {'scope': scope, 'value': value, 'target': next((n for n in nodes if n['id'] == value), None),
+            'prerequisite_closure': sorted(closure - primary), 'nodes': nodes,
+            'diagnostics': diagnostics, 'legacy': collection.legacy, 'drafts': collection.drafts}
 
 
 def ready_nodes(nodes: dict[str, Node]) -> set[str]:
@@ -449,6 +474,9 @@ def main(argv: list[str] | None = None) -> int:
     scope.add_argument("--project")
     scope.add_argument("--goal")
     scope.add_argument("--course")
+    scope.add_argument("--capability")
+    parser.add_argument("--dependencies", action="store_true", help="include prerequisite closure for capability queries")
+    parser.add_argument("--json", action="store_true", help="machine-readable evidence-derived query")
     parser.add_argument("--as-of", type=iso_date, default=date.today())
     parser.add_argument("--output", type=Path, help="create a new Markdown file; never overwrite")
     args = parser.parse_args(argv)
@@ -459,12 +487,17 @@ def main(argv: list[str] | None = None) -> int:
     root = args.root.resolve()
     if not root.is_dir():
         parser.error("--root must be an existing directory")
-    selected_scope = next(name for name in ("subject", "project", "goal", "course") if getattr(args, name) is not None)
+    selected_scope = next(name for name in ("subject", "project", "goal", "course", "capability") if getattr(args, name) is not None)
     value = getattr(args, selected_scope)
     if not ID.fullmatch(value):
         parser.error("scope must be a valid domain/project/goal/course ID")
     collection = discover(root, args.as_of)
-    output = render(collection, selected_scope, value, args.as_of)
+    if selected_scope == 'capability' and value not in collection.nodes:
+        collection.diagnostics.append(f'missing capability: {value}')
+    output = (json.dumps(query(collection, selected_scope, value,
+                              args.dependencies or selected_scope != 'capability'),
+                         indent=2, sort_keys=True, ensure_ascii=False) + '\n'
+              if args.json else render(collection, selected_scope, value, args.as_of))
     try:
         if args.output:
             with args.output.open("x", encoding="utf-8", newline="\n") as stream:

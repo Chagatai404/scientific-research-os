@@ -9,7 +9,9 @@ Read `references/LEARNING_PROTOCOL.md` and `references/SOURCE_POLICY.md` before 
 
 ## Workflow
 
-1. Identify the concrete target capability and inspect relevant prior retrieval evidence.
+1. Identify the concrete target capability and load its knowledge graph using the
+   graph-first planning section of the learning protocol. Resolve prerequisite
+   closure and inspect retrieval evidence/freshness before preparing the block.
 2. Prepare the dependency map, verified facts, questions, hints, and visual candidates
    using the learning protocol before starting the live question loop.
 3. Check prior retention and probe prerequisites within the protocol's question budget,
@@ -21,7 +23,9 @@ Read `references/LEARNING_PROTOCOL.md` and `references/SOURCE_POLICY.md` before 
    - connect it to known foundations;
    - test understanding.
 6. Use primary/authoritative sources for scientific claims and high-quality teaching resources for intuition.
-7. When a visual materially clarifies the teaching idea, use the `visualize` skill
+7. When a visual materially clarifies the teaching idea, first reuse a verified
+   asset for the concept if one exists and prefer an authoritative source visual
+   over generating one (source-first policy). Then use the `visualize` skill
    if available, or follow `references/VISUALIZATION_PROTOCOL.md` directly. Delegate
    bounded visual production to the visualizer when useful.
 8. Keep a live Obsidian tutor-session note when a vault is configured, and run the session
@@ -33,7 +37,39 @@ Read `references/LEARNING_PROTOCOL.md` and `references/SOURCE_POLICY.md` before 
     retention target.
 11. Propose permanent concept/derivation/quiz notes, but do not silently promote them.
 
+## Session start and block end
+
+**Start** (bounded; do not scan the whole vault):
+
+1. Resolve the target capability ID.
+2. Query the relevant knowledge graph (`scripts/knowledge.py ... --json`).
+3. Load its prerequisite closure.
+4. Inspect retrieval evidence and freshness; unknown or stale is not "known".
+5. Find reusable **verified** visuals (`scripts/visuals.py --reusable --concept <id>`),
+   preferring an authoritative source visual over generating one.
+6. Prepare terminology definitions for terms the learner may not have established.
+7. Prepare each question with its TESTS / ASSUMES / INTRODUCES contract.
+8. Begin the bounded probe or lesson.
+
+When the target belongs to a research project, also read its bounded context
+(`scripts/research.py context ...`) for the connection to the active question.
+
+**End of block:**
+
+1. Preserve the actual retrieval evidence (answers, assistance, method), not a summary.
+2. Update working learning records only within the authorized workflow.
+3. Recompute the affected graph view.
+4. Record newly discovered prerequisites as proposals or working-record edges.
+5. Preserve the visual references used (IDs, not copies).
+6. Do not silently promote permanent notes; promotion stays a human choice.
+
 ## Active probing
+
+At block start use `scripts/knowledge.py --root <working-record-root>
+--capability <id> --dependencies --json` when available. Cache this bounded view
+for the block and refresh after relevant evidence changes; do not scan the entire
+vault for every answer. An unavailable/empty graph permits conservative probing,
+never invented mastery or reliance on vague chat memory.
 
 Follow the learning protocol's preparation, probe budget, and fast-response
 contract. Each answer gets a lightweight verdict/hint and, if continuing, one next
@@ -43,6 +79,15 @@ never guess to maintain speed. End with its assessment synthesis and reinforce
 prerequisites needed for the current task.
 
 ## Question format
+
+Before presenting every question, prepare the internal TESTS / ASSUMES /
+INTRODUCES contract in the learning protocol. Inspect wording for hidden
+prerequisites; resolve unsupported assumptions by deliberate probing, teaching
+or rewriting. Keep the contract internal unless it helps the learner.
+Apply the terminology gate to text and answer options: expand new abbreviations
+(Principal Component Analysis (PCA)), define symbols before use, and teach/probe
+substantial new concepts. Prior mention is not establishment; harmless labels do
+not require learning nodes. New local notation always needs its local definition.
 
 Choose the question format that best tests the intended knowledge while minimizing unnecessary typing.
 
@@ -90,6 +135,17 @@ Setup:
    `- [ ] **Send this answer**` checkbox. Never post a batch.
 4. During active probing append only the short verdict/hint and next question. At block end,
    write the assessment synthesis and update the map, sources, and lesson log as needed.
+
+Teaching visuals appear **inline in the session note** where the vault supports it:
+embed the file with a valid Obsidian embed (`![[VIS-014-gamma-shape.svg]]`, name
+or vault-relative path) directly beside the question or explanation it serves,
+followed by a concise caption (`> **What to notice:** ...`). `scripts/visuals.py`
+provides `embed_block` and `broken_embeds`. Keep provenance and reproducibility
+in a linked record or one short line nearby, not in the lesson body. Embed only
+verified assets automatically; label anything else as a draft. Do not modify
+permanent concept notes to add visuals, and do not copy private research data into
+the vault: link the reproducible research artifact instead. A visual being shown is
+never retrieval evidence; still ask the learner to predict or explain.
 
 Answer submission is an explicit checkbox, never an idle timer:
 
