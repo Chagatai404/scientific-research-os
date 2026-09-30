@@ -260,6 +260,41 @@ and `GUIDE.md`, then run the validator/tests. A new global skill requires distin
 scientific methodology; a new executable probe requires a reviewed code allowlist
 change, not a command string in TOML.
 
+## Connected research and learning (v0.6)
+
+Opt-in schema-1 research records (`research_schema: 1`: research question,
+hypothesis, experiment, research decision) plus explicit links to EvidenceAtoms,
+computational manifests, learning capabilities, verified visuals and code files
+form a **research graph** that is computed from the plain-Markdown records, never
+stored separately. Legacy notes stay valid and untracked. The research graph, the
+learning graph and the (optional) code graph remain separate; the system exposes
+state and the human researcher decides.
+
+```sh
+python scripts/research.py validate --root <project>          # ERROR / WARNING / INFO diagnostics
+python scripts/research.py status   --root <project> [--json] # states, pending validation/decisions
+python scripts/research.py frontier --root <project>          # unranked mechanical transitions
+python scripts/research.py graph    --root <project> --experiment EXP-001   # Mermaid
+python scripts/research.py context  --root <project> --experiment EXP-001   # bounded, deterministic
+python scripts/knowledge.py --root <vault> --capability <id> --dependencies --json
+python scripts/visuals.py   --root <vault> --reusable         # verified teaching visuals only
+python scripts/vault_health.py --root <vault>                 # read-only structural audit
+python scripts/bootstrap.py --root <vault>                    # dry-run legacy learning proposals
+python scripts/scaffold.py course --root <vault> --course-id stat-101 --title "Statistics 101"
+```
+
+Frontier is not a recommendation; a valid manifest or `EXACT_SUPPORT` evidence is
+not scientific acceptance; a learning dependency is advisory and never blocks
+approved work; a rendered visual is not a verified one; a stale or missing
+capability is never treated as known. `bootstrap.py` and `scaffold.py` propose
+first and write only on an explicit flag; nothing migrates a vault automatically.
+Tutor plans each block from the knowledge graph (TESTS / ASSUMES / INTRODUCES,
+terminology gate, verified inline visuals). Optional adapters for Obsidian Bases,
+Breadcrumbs, Excalidraw and Graphify live in `extensions/obsidian-adapters/` and are
+never required. The [synthetic connected example](examples/connected-research/README.md)
+demonstrates every command; the protocol is
+[RESEARCH_GRAPH_PROTOCOL.md](references/RESEARCH_GRAPH_PROTOCOL.md).
+
 ## Quick start
 
 Use Python **3.11+**. Repository scripts and tests use only the standard library;
@@ -427,6 +462,17 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 - Never let an AI agent silently rewrite accepted research conclusions.
 
 ## Status
+
+**v0.6.0 — Connected Research & Learning OS** adds opt-in schema-1 research records
+with a derived research graph, frontier and bounded context; advisory learning
+dependencies; graph-first Tutor planning with a question concept contract and
+terminology gate; a verified-only visual registry with a source-first policy and
+inline Obsidian embeds; a candidate-only legacy bootstrap, a read-only vault
+health audit and course/source scaffolding; and optional Bases, Breadcrumbs,
+Excalidraw and Graphify adapters. See the
+[implementation and verification record](references/V0.6_IMPLEMENTATION.md).
+Standard library only; existing v0.5 behavior, evidence semantics and human
+approval gates are unchanged.
 
 **v0.5.0 — Scientific Compute & Model Validation** adds computational provenance,
 declarative optional tool packs, Geant4/ML/QML methodology, a ROOT/Scikit-HEP bridge
