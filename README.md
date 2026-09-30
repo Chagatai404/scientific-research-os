@@ -71,6 +71,9 @@ tests/                   Lightweight self-checks
 - `physics-audit` — audit physical assumptions, units, geometry, and limiting behavior.
 - `research-review` — adversarial review of claims and evidence.
 - `research-session` — orchestrate a complete human-led research session.
+- `geant4` — plan and validate detector/particle simulation with explicit physical configuration.
+- `ml-experiment` — classical/deep ML experiments with leakage controls and fair evaluation.
+- `qml-experiment` — QML experiments inheriting ML rigor, with explicit execution regimes and claim limits.
 
 Skills describe workflows and capabilities. They are not tied to a particular model or provider.
 
@@ -83,6 +86,9 @@ Skills describe workflows and capabilities. They are not tied to a particular mo
 - reproducibility-auditor
 - adversarial-reviewer
 - visualizer
+- simulation-reviewer
+- ml-reviewer
+- qml-reviewer
 
 These are **task roles**, not provider identities. Any compatible AI system may perform them if it has the required capabilities.
 
@@ -195,6 +201,64 @@ come from stated equations, models, simulations, or data, never decorative motio
 Mermaid, Matplotlib, Plotly, SVG, PyVista, Manim Community, and optional Motion Canvas
 are capability recommendations. None is required to install or validate Research OS.
 Manim Community is the default Manim recommendation; no backend is installed automatically.
+
+## Scientific compute
+
+Scientific Compute makes the tools that produce scientific evidence part of the
+existing research workflow: inspect environment and configuration, plan controls
+and resources, obtain approval, run at the approved scale, then validate the actual
+outputs. It adds no second lifecycle and does not change learning, retention,
+course study or transcription.
+
+**Methodology skills** (`geant4`, `ml-experiment`, `qml-experiment`) own scientific
+reasoning through canonical protocols. **Tool packs** hold software-specific
+guides and strictly declarative discovery metadata. The six shipped packs are
+`geant4`, `pytorch`, `sklearn`, `pennylane`, `qiskit` and `root-scikit-hep`.
+Framework packs do not become global skills. Installation and tests work with none
+of these frameworks installed; no automatic dependency installation is provided.
+
+A computational manifest records provenance, not scientific validity. It separates
+observed facts (versions, platform, discovered components) from declared choices
+(physics list, split, model, circuit, shots/backend) and derived calculations.
+Unknown values stay null; the OS never guesses scientific configuration from an
+installed package. Project-pinned versions take precedence over newer releases.
+
+From the repository, or from an installed compute skill directory:
+
+```sh
+python scripts/scientific_tools.py list
+python scripts/scientific_tools.py probe geant4
+python scripts/scientific_tools.py probe --all
+python scripts/scientific_tools.py probe pytorch --accelerator
+python scripts/scientific_tools.py manifest --experiment RQ-001 --repo /path/to/project --tool sklearn --declared /path/to/reviewed-config.json
+python scripts/computational_manifest.py /path/to/saved-manifest.json
+```
+
+Commands print JSON. Save manifest stdout to a UTF-8 file for later inspection.
+`--declared` accepts an explicit JSON mapping; omit it to leave choices unrecorded.
+`--reproduction-command` records an inert string and never runs it. Manifest
+generation probes only named `--tool` entries; no tool flag means Git/Python/OS
+only. No local Research OS config or source checkout is required by these helpers.
+
+Default package discovery reads distribution metadata without importing frameworks.
+Only fixed, code-owned version probes can execute from profiles. The optional
+`--accelerator` flag uses a fixed isolated PyTorch query without a GPU workload;
+unavailable/failed queries remain unknown. Trust the installed interpreter/packages
+and PATH tools: discovery is not a sandbox for malicious installed software.
+Partial HEP environments retain per-component status, such as ROOT absent and
+Uproot present. Availability is not proof of operational or scientific validity.
+
+The scale ladder is environment probe → smoke → toy → pilot → production.
+It grants no authorization: a probe does not permit an experiment and a successful
+pilot does not authorize production. Follow the existing explicit approval gate.
+
+See the [computational protocol](references/COMPUTATIONAL_PROTOCOL.md),
+[manifest and workflow examples](examples/compute/README.md), and
+[tool-pack contribution contract](extensions/scientific-tools/README.md).
+Add software knowledge with `extensions/scientific-tools/<new-tool>/PROFILE.toml`
+and `GUIDE.md`, then run the validator/tests. A new global skill requires distinct
+scientific methodology; a new executable probe requires a reviewed code allowlist
+change, not a command string in TOML.
 
 ## Quick start
 
@@ -364,13 +428,20 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
+**v0.5.0 — Scientific Compute & Model Validation** adds computational provenance,
+declarative optional tool packs, Geant4/ML/QML methodology, a ROOT/Scikit-HEP bridge
+and provider-symmetric deployment. See the
+[implementation decision and slice record](references/V0.5_IMPLEMENTATION.md).
+The v0.4.5 learning architecture and existing evidence/approval semantics remain
+unchanged. HPC/cloud/QPU automation, experiment tracking services, automatic
+dependency installation, Obsidian plugins and synchronization remain out of scope.
+
 **v0.4.5 — Learning Architecture & Academic Workflow** adds selective retention,
 goal maps, dedicated university-course study, and faithful handwritten-note LaTeX
 transcription. Schema 1 remains backward compatible; evidence-state and research
 authorization semantics are unchanged. See the
 [implementation decision](references/V0.4.5_IMPLEMENTATION.md).
-Geant4, ML/QML methodology, scientific-compute integrations, environment probing,
-experiment manifests and HPC/cloud tooling remain deferred to v0.5 or later.
+These learning capabilities remain available alongside scientific compute.
 
 
 **v0.4.0 — Evidence integrity and low-token verification** added a small reliability

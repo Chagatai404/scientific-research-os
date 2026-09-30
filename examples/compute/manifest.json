@@ -1,0 +1,28 @@
+{
+  "artifacts": [],
+  "declared": {
+    "example_only": true,
+    "seed": 12345,
+    "split": {
+      "assignment_file": null,
+      "group_key": "source_event_id",
+      "strategy": "group-holdout"
+    }
+  },
+  "derived": {},
+  "experiment": "ILLUSTRATION-NOT-A-RUN",
+  "failure": null,
+  "observed": {
+    "environment": {
+      "platform": null,
+      "python": null
+    },
+    "git": {
+      "commit": null,
+      "dirty": null
+    },
+    "tools": {}
+  },
+  "reproduction_command": null,
+  "schema_version": 1
+}

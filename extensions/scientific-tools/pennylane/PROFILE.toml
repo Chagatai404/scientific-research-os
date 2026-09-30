@@ -1,0 +1,11 @@
+schema_version = 1
+id = "pennylane"
+name = "PennyLane"
+category = "quantum-machine-learning"
+[python]
+packages = ["pennylane"]
+[probe]
+commands = []
+environment = []
+[provenance]
+fields = ["version", "python_version", "platform", "device", "shots", "gradient_method"]

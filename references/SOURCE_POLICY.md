@@ -137,6 +137,15 @@ When literature is used to justify a stochastic simulation variable:
 
 This is especially important when parameters are referenced to different origins such as detector entry, first interaction, or shower maximum.
 
+## Framework claims
+
+For software/framework behavior prefer official framework documentation and
+release notes matching the project's pinned version, and primary framework papers
+where relevant. Tool-pack guides route to these sources; they are not independent
+scientific evidence. Package documentation is not authority for detector geometry,
+calibration or physical truth outside its domain. Scientific claims continue to
+require the normal source hierarchy, claim envelope and verification boundaries.
+
 ## Videos
 
 Videos may be selected because they teach an idea clearly. Record:

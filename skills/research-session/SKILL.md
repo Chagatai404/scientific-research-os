@@ -20,6 +20,10 @@ or the full substantive research cycle. Mode selection never bypasses a gate.
 Read the current project state, identify the active question and central objective,
 and resume from documented evidence, retrieval history, dependency/frontier views,
 learner readiness, and approval scope. Missing retention evidence is not forgetting.
+For computational research, read `references/COMPUTATIONAL_PROTOCOL.md` and route
+to geant4, ml-experiment or qml-experiment (and their canonical protocols) as relevant.
+Tool packs supply software knowledge and observed environment facts, never implicit
+scientific choices or permission to execute.
 
 For research-linked tutoring or a full cycle needing fresh evidence, dispatch
 independent literature discovery and a separate source verifier using the context

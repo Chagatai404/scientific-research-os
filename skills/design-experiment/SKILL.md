@@ -6,6 +6,9 @@ description: Design a reproducible scientific or computational experiment before
 # Design Experiment
 
 Read `references/RESEARCH_PROTOCOL.md`.
+For computational experiments also read `references/COMPUTATIONAL_PROTOCOL.md`
+and the applicable Geant4, ML or QML protocol. This extends the plan, not its
+authorization semantics.
 
 Before running anything, define:
 

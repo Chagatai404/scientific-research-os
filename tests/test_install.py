@@ -16,6 +16,47 @@ from common import parse_frontmatter
 from vault import render_template
 
 class InstallationTests(unittest.TestCase):
+    def test_compute_helpers_and_packs_are_standalone_and_provider_symmetric(self):
+        expected = {"geant4", "pytorch", "sklearn", "pennylane", "qiskit", "root-scikit-hep"}
+        for target in ("claude", "codex"):
+            base = self.tmp_path / target
+            install.install_skills(base, False)
+            for name in install.COMPUTE_SKILLS:
+                skill = base / name
+                helper = skill / "scripts/scientific_tools.py"
+                self.assertEqual(helper.read_bytes(), (ROOT / "scripts/scientific_tools.py").read_bytes())
+                # Run from outside both checkout and skill, with site packages disabled.
+                result = subprocess.run([sys.executable, "-S", "-B", str(helper), "list"],
+                                        cwd=self.tmp_path, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual({p["id"] for p in json.loads(result.stdout)}, expected)
+                for tool in expected:
+                    self.assertEqual((skill / "extensions/scientific-tools" / tool / "GUIDE.md").read_bytes(),
+                                     (ROOT / "extensions/scientific-tools" / tool / "GUIDE.md").read_bytes())
+            for name in ("pytorch", "sklearn", "pennylane", "qiskit", "root", "scikit-hep"):
+                self.assertFalse((base / name).exists())
+            result = subprocess.run([sys.executable, "-S", "-B", str(base / "geant4/scripts/scientific_tools.py"),
+                                     "manifest", "--experiment", "temporary", "--repo", str(self.tmp_path)],
+                                    cwd=self.tmp_path, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            path = self.tmp_path / f"{target}-manifest.json"
+            path.write_text(result.stdout, encoding="utf-8")
+            result = subprocess.run([sys.executable, "-S", "-B", str(base / "geant4/scripts/computational_manifest.py"), str(path)],
+                                    cwd=self.tmp_path, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["declared"], {})
+
+    def test_compute_agent_contracts_are_identical_and_self_contained(self):
+        claude, codex = self.tmp_path / "claude", self.tmp_path / "codex"
+        install.install_agents_claude(claude, False)
+        install.install_agents_codex(codex, False)
+        for role, protocols in install.COMPUTE_AGENTS.items():
+            _, claude_body = parse_frontmatter((claude / f"{role}.md").read_text(encoding="utf-8"))
+            codex_body = tomllib.loads((codex / f"{role}.toml").read_text(encoding="utf-8"))["developer_instructions"]
+            self.assertEqual(claude_body.strip(), codex_body.strip())
+            for name in ("COMPUTATIONAL_PROTOCOL.md", "SOURCE_POLICY.md", *protocols):
+                self.assertIn((ROOT / "references" / name).read_text(encoding="utf-8").strip(), claude_body)
+
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

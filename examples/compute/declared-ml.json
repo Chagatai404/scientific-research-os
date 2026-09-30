@@ -1,0 +1,9 @@
+{
+  "example_only": true,
+  "seed": 12345,
+  "split": {
+    "assignment_file": null,
+    "group_key": "source_event_id",
+    "strategy": "group-holdout"
+  }
+}

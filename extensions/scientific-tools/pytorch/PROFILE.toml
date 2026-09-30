@@ -1,0 +1,11 @@
+schema_version = 1
+id = "pytorch"
+name = "PyTorch"
+category = "machine-learning"
+[python]
+packages = ["torch"]
+[probe]
+commands = []
+environment = []
+[provenance]
+fields = ["version", "python_version", "platform", "accelerator"]

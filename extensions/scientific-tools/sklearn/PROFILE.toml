@@ -1,0 +1,11 @@
+schema_version = 1
+id = "sklearn"
+name = "scikit-learn"
+category = "machine-learning"
+[python]
+packages = ["scikit-learn"]
+[probe]
+commands = []
+environment = []
+[provenance]
+fields = ["version", "python_version", "platform"]
