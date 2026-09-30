@@ -52,6 +52,11 @@ prerequisites needed for the current task.
 
 ## Question format
 
+Before presenting every question, prepare the internal TESTS / ASSUMES /
+INTRODUCES contract in the learning protocol. Inspect wording for hidden
+prerequisites; resolve unsupported assumptions by deliberate probing, teaching
+or rewriting. Keep the contract internal unless it helps the learner.
+
 Choose the question format that best tests the intended knowledge while minimizing unnecessary typing.
 
 Use a mixture of:

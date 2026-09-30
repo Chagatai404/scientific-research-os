@@ -1,0 +1,23 @@
+[
+  {
+    "question": "Which principal component has the largest eigenvalue?",
+    "plan": {"TESTS": ["statistics.pca"], "ASSUMES": ["linear-algebra.eigenvalue"], "INTRODUCES": {}},
+    "established": [],
+    "expected": ["unresolved assumption: linear-algebra.eigenvalue"],
+    "repair": "Probe eigenvalues separately or define and teach the prerequisite before using this wording."
+  },
+  {
+    "question": "First explain what an eigenvalue means; then relate it to the variance of a principal component.",
+    "plan": {"TESTS": ["linear-algebra.eigenvalue", "statistics.pca"], "ASSUMES": ["linear-algebra.eigenvalue"], "INTRODUCES": {}},
+    "established": [],
+    "expected": [],
+    "repair": "Score the prerequisite separately; failure cannot diagnose PCA alone."
+  },
+  {
+    "question": "A probability density integrates to one. What does the shaded area represent?",
+    "plan": {"TESTS": ["probability.area"], "ASSUMES": ["calculus.integration"], "INTRODUCES": {}},
+    "established": ["calculus.integration"],
+    "expected": [],
+    "repair": "Use current retrieval evidence for the integration prerequisite."
+  }
+]

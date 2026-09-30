@@ -39,6 +39,23 @@ empty graphs are unknown context: probe conservatively without inventing mastery
 Prior mention and chat memory do not establish prerequisites. The existing
 assessment algorithm and human retention choices remain authoritative.
 
+### Question Concept Contract
+
+Every prepared diagnostic/retrieval question has an internal TESTS / ASSUMES /
+INTRODUCES contract. TESTS lists intended capabilities. ASSUMES lists concepts
+required by the wording and reasoning, including symbols and named methods.
+INTRODUCES maps new concepts to definitions given before they are required.
+ASSUMES needs current graph evidence; otherwise intentionally probe that concept
+in TESTS, teach/define it in INTRODUCES, or rewrite the question. Separate the
+prerequisite's score from the target's score. A prerequisite failure cannot alone
+diagnose the target. Do not expose this internal plan unless useful to the learner.
+
+`scripts/tutor_contract.py` can check declared sets; the tutor must inspect the
+actual wording for omitted dependencies. It is not an automatic language analyzer
+or an assessment of teaching quality. Definitions do not become retrieval evidence.
+For example, asking about PCA's largest eigenvalue silently tests eigenvalues
+unless that foundation is evidenced or intentionally taught/probed first.
+
 Track evidence for a specific capability, not mastery of an entire subject.
 
 | State | Meaning |
