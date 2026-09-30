@@ -1,0 +1,36 @@
+views:
+  - type: table
+    name: "Tracked capabilities"
+    filters:
+      and:
+        - learning_schema == 1
+    order:
+      - learning_id
+      - domain
+      - learning_state
+      - retention_target
+      - next_review
+  - type: table
+    name: "Knowledge Frontier candidates (recorded state)"
+    filters:
+      and:
+        - learning_schema == 1
+        - 'learning_state == "learning" || learning_state == "fragile" || learning_state == "stale"'
+    order:
+      - learning_id
+      - learning_state
+      - last_retrieval
+      - next_review
+  - type: table
+    name: "Source Promotion Queue (structural gaps)"
+    filters:
+      and:
+        - 'type == "source"'
+        - '!trust_tier || (!doi && !url)'
+    order:
+      - file.name
+      - source_type
+      - status
+      - trust_tier
+      - doi
+      - url

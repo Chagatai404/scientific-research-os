@@ -1,0 +1,43 @@
+filters:
+  and:
+    - research_schema == 1
+views:
+  - type: table
+    name: "Research Dashboard"
+    order:
+      - file.name
+      - type
+      - project
+      - status
+      - id
+    groupBy:
+      property: type
+      direction: ASC
+  - type: table
+    name: "Experiments"
+    filters:
+      and:
+        - 'type == "experiment"'
+    order:
+      - file.name
+      - project
+      - status
+      - authorization
+      - result_validation
+      - adversarial_review
+  - type: table
+    name: "Research Frontier (recorded-state view)"
+    filters:
+      and:
+        - or:
+            - 'type == "experiment" && (status == "planned" || status == "ready") && authorization != "rejected"'
+            - 'type == "experiment" && status == "completed" && result_validation != "complete"'
+            - 'type == "experiment" && status == "completed" && result_validation == "complete" && adversarial_review != "complete"'
+            - 'type == "research-decision" && (status == "proposed" || status == "revisit")'
+    order:
+      - file.name
+      - type
+      - status
+      - authorization
+      - result_validation
+      - adversarial_review
