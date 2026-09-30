@@ -53,6 +53,46 @@ class ResearchContracts(unittest.TestCase):
                      'available library source', 'Never bulk-promote'):
             self.assertIn(term, text)
 
+    def test_tutor_and_research_session_start_end_sequences(self):
+        tutor = ' '.join((ROOT / 'skills/tutor/SKILL.md').read_text(encoding='utf-8').split())
+        for term in ('Resolve the target capability ID', 'Load its prerequisite closure', 'reusable **verified** visuals',
+                     'Prepare terminology definitions', 'TESTS / ASSUMES / INTRODUCES contract',
+                     'Preserve the actual retrieval evidence', 'Recompute the affected graph',
+                     'Record newly discovered prerequisites', 'Do not silently promote permanent notes'):
+            self.assertIn(term, tutor)
+        self.assertLess(tutor.index('Resolve the target capability ID'), tutor.index('Begin the bounded probe'))
+        session = ' '.join((ROOT / 'skills/research-session/SKILL.md').read_text(encoding='utf-8').split())
+        for term in ('research.py validate', 'research.py frontier', 'research.py context', 'advisory and never block',
+                     'Keep tentative conclusions distinct from accepted ones', 'explicitly accepted'):
+            self.assertIn(term, session)
+        protocol = ' '.join((ROOT / 'references/RESEARCH_PROTOCOL.md').read_text(encoding='utf-8').split())
+        self.assertIn('marking a decision `accepted` only on explicit human acceptance', protocol)
+        self.assertIn('bounded research context', ' '.join((ROOT / 'references/LEARNING_PROTOCOL.md').read_text(encoding='utf-8').split()))
+
+    def test_installed_graph_helpers_run_without_repository_or_site_packages(self):
+        import json
+        import subprocess
+        import sys
+        import tempfile
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        import install
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / 'skills'
+            install.install_skills(base, False)
+            for skill in install.GRAPH_SKILLS:
+                for helper in install.GRAPH_HELPERS:
+                    self.assertTrue((base / skill / 'scripts' / helper).is_file(), f'{skill}/{helper}')
+            helper = base / 'tutor' / 'scripts'
+            query = subprocess.run([sys.executable, '-S', '-B', str(helper / 'knowledge.py'), '--root', str(ROOT / 'examples/learning'),
+                                    '--capability', 'probability.density', '--dependencies', '--json', '--as-of', '2026-09-29'],
+                                   capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(query.returncode, 0, query.stderr)
+            self.assertEqual(json.loads(query.stdout)['target']['state'], 'retained')
+            for name, args in (('research.py', ['validate']), ('vault_health.py', [])):
+                result = subprocess.run([sys.executable, '-S', '-B', str(base / 'research-session/scripts' / name),
+                                         *args, '--root', str(ROOT / 'examples/learning')], capture_output=True, text=True, encoding='utf-8')
+                self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_tutor_loads_graph_before_preparing_block(self):
         tutor = (ROOT / 'skills/tutor/SKILL.md').read_text(encoding='utf-8')
         policy = (ROOT / 'references/LEARNING_PROTOCOL.md').read_text(encoding='utf-8')

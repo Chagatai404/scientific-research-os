@@ -39,6 +39,18 @@ empty graphs are unknown context: probe conservatively without inventing mastery
 Prior mention and chat memory do not establish prerequisites. The existing
 assessment algorithm and human retention choices remain authoritative.
 
+### Block start and end
+
+At block start a Tutor resolves the target capability, queries its knowledge graph,
+loads prerequisite closure, inspects evidence and freshness, finds reusable
+*verified* visuals, prepares terminology and TESTS / ASSUMES / INTRODUCES contracts,
+then begins the bounded probe. At block end it preserves actual retrieval evidence
+and assistance, updates working records only within the authorized workflow,
+recomputes the affected graph, records newly discovered prerequisites, keeps visual
+references by ID and does not silently promote permanent notes. Research-linked
+blocks also read the bounded research context for the connection to the active
+question; that context is advisory and never blocks approved work.
+
 ### Question Concept Contract
 
 Every prepared diagnostic/retrieval question has an internal TESTS / ASSUMES /

@@ -15,6 +15,13 @@ COMPUTE_AGENTS = {
 }
 
 
+# Standard-library helpers the graph-first workflows call from an installed skill
+# directory (`python scripts/<helper>.py`); they import each other by module name.
+GRAPH_SKILLS = {"tutor", "course-study", "visualize", "research-session", "research-review"}
+GRAPH_HELPERS = ("knowledge.py", "research.py", "visuals.py", "tutor_contract.py", "bootstrap.py",
+                 "vault_health.py", "computational_manifest.py", "validate_evidence.py")
+
+
 def copy_dir(src: Path, dst: Path, dry: bool) -> None:
     print(f"{'[dry] ' if dry else ''}{src} -> {dst}")
     if dry:
@@ -67,6 +74,9 @@ def install_skills(base: Path, dry: bool) -> None:
         if skill.name in {"research-session", "research-review"}:
             copy_file(ROOT / "scripts" / "validate_evidence.py",
                       destination / "scripts" / "validate_evidence.py", dry)
+        if skill.name in GRAPH_SKILLS:
+            for helper in GRAPH_HELPERS:
+                copy_file(ROOT / "scripts" / helper, destination / "scripts" / helper, dry)
 
 
 def install_agents_claude(base: Path, dry: bool) -> None:

@@ -37,6 +37,32 @@ Read `references/LEARNING_PROTOCOL.md` and `references/SOURCE_POLICY.md` before 
     retention target.
 11. Propose permanent concept/derivation/quiz notes, but do not silently promote them.
 
+## Session start and block end
+
+**Start** (bounded; do not scan the whole vault):
+
+1. Resolve the target capability ID.
+2. Query the relevant knowledge graph (`scripts/knowledge.py ... --json`).
+3. Load its prerequisite closure.
+4. Inspect retrieval evidence and freshness; unknown or stale is not "known".
+5. Find reusable **verified** visuals (`scripts/visuals.py --reusable --concept <id>`),
+   preferring an authoritative source visual over generating one.
+6. Prepare terminology definitions for terms the learner may not have established.
+7. Prepare each question with its TESTS / ASSUMES / INTRODUCES contract.
+8. Begin the bounded probe or lesson.
+
+When the target belongs to a research project, also read its bounded context
+(`scripts/research.py context ...`) for the connection to the active question.
+
+**End of block:**
+
+1. Preserve the actual retrieval evidence (answers, assistance, method), not a summary.
+2. Update working learning records only within the authorized workflow.
+3. Recompute the affected graph view.
+4. Record newly discovered prerequisites as proposals or working-record edges.
+5. Preserve the visual references used (IDs, not copies).
+6. Do not silently promote permanent notes; promotion stays a human choice.
+
 ## Active probing
 
 At block start use `scripts/knowledge.py --root <working-record-root>

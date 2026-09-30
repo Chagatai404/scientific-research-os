@@ -11,6 +11,35 @@ Read:
 - `references/SOURCE_POLICY.md`
 - `references/EVIDENCE_FORMAT.md` when handling consequential structured evidence
 
+## Session start and end with the research registry
+
+For projects with schema-1 research records (`references/RESEARCH_GRAPH_PROTOCOL.md`;
+legacy notes are simply untracked), from this skill's directory:
+
+**Start:**
+
+1. Validate the registry: `python scripts/research.py validate --root <project>`.
+   Errors are repaired before anything is built on them.
+2. Read the frontier: `research.py frontier --root <project>` (unranked; a
+   mechanically available transition is not a recommendation).
+3. Resolve the branch the researcher chose, then take its bounded context:
+   `research.py context --root <project> --experiment <ID>` (or `--question`,
+   `--hypothesis`, `--decision`).
+4. Inspect the `learning_dependencies` in that context: they are advisory and never
+   block an approved experiment; route weak prerequisites to tutoring.
+5. Continue the canonical cycle from the correct stage.
+
+**End:**
+
+1. Update the affected canonical records (status, validation/review references,
+   linked evidence and manifests). Do not maintain a separate graph file.
+2. Re-run `research.py validate` and repair errors.
+3. Report the changed frontier.
+4. Keep tentative conclusions distinct from accepted ones.
+5. Record a decision as `accepted` only when the researcher explicitly accepted
+   it (with `accepted_by`, `accepted_at`, rationale); likewise `authorization:
+   approved` only on the researcher's recorded approval.
+
 ## Run the canonical cycle
 
 Read `references/LEARNING_PROTOCOL.md` when teaching or probing and
