@@ -58,3 +58,18 @@ Link evidence records instead of copying their histories. Neither Obsidian nor
 the graph generator is required: chat or another learner-selected workspace works.
 Do not create a research-project note just to hold coursework. Course maps and
 session explanations do not automatically become permanent concept notes.
+
+## Scaffolding and source promotion
+
+`scripts/scaffold.py course` proposes (dry run) or, with `--create`, writes a
+course note, learning map, goal note and source promotion queue. It never
+overwrites an existing file, stays inside the vault root, and writes no
+`learning_schema`/`learning_id`, so a scaffolded course has **learning evidence:
+none, state: unknown** until real retrieval evidence exists.
+
+Sources have three separate tiers: an *available library source* (a file on
+disk), a *used source* (linked from a note) and a *promoted curated source* (a
+source note that records credibility and what it shows). `scaffold.py queue`
+lists the used-but-unpromoted sources; `scaffold.py promote --title "<one
+source>" --create` creates one stub. Never bulk-promote a library, and never
+treat availability or use as verification.

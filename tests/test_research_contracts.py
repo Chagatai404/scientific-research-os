@@ -47,6 +47,12 @@ class ResearchContracts(unittest.TestCase):
                      'nothing bootstrapped can establish delayed retention'):
             self.assertIn(term, text)
 
+    def test_course_scaffolding_policy_is_evidence_free_and_not_bulk(self):
+        text = ' '.join((ROOT / 'references/COURSE_LEARNING_PROTOCOL.md').read_text(encoding='utf-8').split())
+        for term in ('learning evidence: none, state: unknown', 'never overwrites an existing file',
+                     'available library source', 'Never bulk-promote'):
+            self.assertIn(term, text)
+
     def test_tutor_loads_graph_before_preparing_block(self):
         tutor = (ROOT / 'skills/tutor/SKILL.md').read_text(encoding='utf-8')
         policy = (ROOT / 'references/LEARNING_PROTOCOL.md').read_text(encoding='utf-8')
