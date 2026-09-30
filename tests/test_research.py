@@ -75,3 +75,40 @@ class RegistryTests(unittest.TestCase):
         result = self.registry(note(parent_questions=['RQ-2']), note(id='RQ-2', parent_questions=['RQ-1']),
                                note(id='RQ-3', parent_questions=['RQ-2']))
         self.assertEqual(len([d for d in result.diagnostics if d.code == 'CYCLE']), 3)
+
+
+class LifecycleTests(unittest.TestCase):
+    registry = RegistryTests.registry
+
+    def test_authorization_and_incomplete_validation_have_different_severity(self):
+        result = self.registry(note('experiment', 'EXP-1', status='running', authorization='awaiting'),
+                               note('experiment', 'EXP-2', status='completed', authorization='approved',
+                                    authorized_by='researcher', authorized_at='2026-09-30'))
+        research.lifecycle(result, Path('.'))
+        self.assertIn(('ERROR', 'LIFE_AUTHORIZATION'), {(d.severity, d.code) for d in result.diagnostics})
+        self.assertIn(('WARNING', 'LIFE_VALIDATION'), {(d.severity, d.code) for d in result.diagnostics})
+
+    def test_human_acceptance_required_and_outcome_is_explicit(self):
+        for human, expected in [(False, True), (True, False)]:
+            extra = dict(accepted_by='researcher', accepted_at='2026-09-30', rationale='Recorded choice') if human else {}
+            result = self.registry(note(status='resolved'),
+                note('hypothesis', 'H-1', status='rejected', decisions=['DEC-1']),
+                note('research-decision', 'DEC-1', status='accepted', questions=['RQ-1'],
+                     hypotheses=['H-1'], outcome='rejected', **extra))
+            research.lifecycle(result, Path('.'))
+            self.assertEqual(any(d.severity == 'ERROR' for d in result.diagnostics), expected)
+
+    def test_nonexistent_experiment_cannot_support_resolution(self):
+        result = self.registry(note(status='resolved'), note('research-decision', 'DEC-1', status='accepted',
+                               questions=['RQ-1'], experiments=['EXP-missing'], accepted_by='human',
+                               accepted_at='2026-09-30', rationale='Claim'))
+        research.lifecycle(result, Path('.'))
+        self.assertIn('LIFE_RESOLUTION', {d.code for d in result.diagnostics})
+
+    def test_review_requires_inspectable_file_and_stays_read_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self.registry(note('experiment', 'EXP-1', status='completed', authorization='approved',
+                authorized_by='human', authorized_at='2026-09-30', result_validation='complete', validation_record='../outside'))
+            research.lifecycle(result, Path(tmp))
+            self.assertIn('LIFE_REVIEW_RECORD', {d.code for d in result.diagnostics})
+            self.assertFalse(list(Path(tmp).iterdir()))

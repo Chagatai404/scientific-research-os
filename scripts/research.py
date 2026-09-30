@@ -7,6 +7,9 @@ import json
 import os
 from pathlib import Path
 import re
+import argparse
+import sys
+from dataclasses import asdict
 
 from knowledge import scalar, iso_date, ID as LEARNING_ID
 
@@ -111,6 +114,102 @@ def resolve(registry: ResearchRegistry) -> None:
                                                f'{key}: question parent cycle or dependency on cycle'))
     registry.edges.sort()
     registry.diagnostics.sort()
+
+
+def local_file(root: Path, reference: str) -> Path:
+    """Validate portable root-relative paths, including resolved symlink targets."""
+    if (not reference or '\\' in reference or ':' in reference or
+            any(part in {'', '.', '..'} for part in reference.split('/'))):
+        raise ValueError('expected a root-relative file path')
+    root = root.resolve()
+    path = (root / reference).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise ValueError('missing file or path outside root')
+    return path
+
+
+def accepted_decisions(registry: ResearchRegistry) -> list[Record]:
+    invalid = {d.path for d in registry.diagnostics if d.severity == 'ERROR'}
+    return [r for r in registry.records.values() if r.type == 'research-decision'
+            and r.meta['status'] == 'accepted' and r.path not in invalid]
+
+
+def lifecycle(registry: ResearchRegistry, root: Path) -> None:
+    registry.diagnostics[:] = [d for d in registry.diagnostics if not d.code.startswith('LIFE_')]
+    def issue(record, severity, code, message):
+        registry.diagnostics.append(Diagnostic(severity, 'LIFE_' + code, record.path, message))
+    for r in registry.records.values():
+        m = r.meta
+        if r.type == 'research-decision' and m['status'] == 'accepted':
+            if not all(m.get(k, '').strip() for k in ('accepted_by', 'accepted_at', 'rationale')):
+                issue(r, 'ERROR', 'ACCEPTANCE', 'accepted decision requires explicit human acceptance and rationale')
+            if not m.get('evidence'):
+                issue(r, 'WARNING', 'EVIDENCE', 'accepted decision references no evidence')
+            for target in m.get('supersedes', []):
+                other = registry.records.get(target)
+                if other and other.meta['status'] == 'accepted':
+                    issue(other, 'ERROR', 'SUPERSEDED', f'{target} superseded by {r.id} but still accepted')
+    accepted = accepted_decisions(registry)
+    links = {(e.source, e.relation, e.target) for e in registry.edges}
+    for r in registry.records.values():
+        m = r.meta
+        if r.type == 'research-question' and m['status'] == 'resolved':
+            if not any((d.id, 'questions', r.id) in links for d in accepted):
+                issue(r, 'ERROR', 'RESOLUTION', 'resolved question lacks accepted human decision')
+        if r.type == 'hypothesis':
+            if m['status'] in OUTCOMES and not any(
+                    (r.id, 'decisions', d.id) in links and (d.id, 'hypotheses', r.id) in links
+                    and d.meta.get('outcome') == m['status'] for d in accepted):
+                issue(r, 'ERROR', 'OUTCOME', 'scientific hypothesis state lacks matching accepted human decision')
+            if m['status'] == 'active' and not any(e.relation == 'hypotheses' and e.target == r.id
+                                                and registry.records[e.source].type == 'experiment' for e in registry.edges):
+                issue(r, 'INFO', 'NO_EXPERIMENT', 'active hypothesis has no experiment')
+        if r.type != 'experiment':
+            continue
+        if m['status'] in {'running', 'completed'} and m['authorization'] != 'approved':
+            issue(r, 'ERROR', 'AUTHORIZATION', 'running/completed experiment requires approved authorization')
+        if m['authorization'] == 'approved' and not all(m.get(k, '').strip() for k in ('authorized_by', 'authorized_at')):
+            issue(r, 'ERROR', 'APPROVAL', 'approval requires a recorded human and date')
+        if m['status'] == 'completed' and m.get('result_validation', 'pending') != 'complete':
+            issue(r, 'WARNING', 'VALIDATION', 'completed experiment lacks completed result validation')
+        for state, reference in [('result_validation', 'validation_record'), ('adversarial_review', 'review_record')]:
+            if m.get(state) == 'complete':
+                try:
+                    local_file(root, m.get(reference, ''))
+                except ValueError as exc:
+                    issue(r, 'ERROR', 'REVIEW_RECORD', f'{state}: {exc}')
+        if m.get('adversarial_review') == 'complete' and m.get('result_validation') != 'complete':
+            issue(r, 'ERROR', 'REVIEW_ORDER', 'completed adversarial review requires completed validation')
+        if m['status'] in {'ready', 'running'}:
+            if any(registry.records[e.target].meta['status'] == 'rejected' for e in registry.edges
+                   if e.source == r.id and e.relation == 'hypotheses'):
+                issue(r, 'ERROR', 'REJECTED_HYPOTHESIS', 'active experiment targets a rejected hypothesis; revise explicit records')
+    registry.diagnostics.sort()
+
+
+def validate(root: Path) -> ResearchRegistry:
+    result = discover(root)
+    lifecycle(result, root)
+    return result
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('command', choices=['validate'])
+    parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--json', action='store_true')
+    args = parser.parse_args(argv)
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
+    registry = validate(args.root)
+    if args.json:
+        print(json.dumps({'diagnostics': [asdict(d) for d in registry.diagnostics],
+                          'tracked': len(registry.records), 'legacy': registry.legacy}, indent=2, sort_keys=True))
+    else:
+        print(f'Tracked: {len(registry.records)}; legacy: {registry.legacy}')
+        for d in registry.diagnostics:
+            print(f'{d.severity} {d.code} {d.path}: {d.message}')
+    return int(any(d.severity == 'ERROR' for d in registry.diagnostics))
 
 
 def frontmatter(text: str) -> tuple[list[str], str] | None:
@@ -237,3 +336,7 @@ def discover(root: Path) -> ResearchRegistry:
     resolve(result)
     result.diagnostics.sort()
     return result
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
