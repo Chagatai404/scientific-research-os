@@ -15,3 +15,12 @@ class ResearchContracts(unittest.TestCase):
             self.assertIn(term, text)
         cycle = (ROOT / 'references/RESEARCH_PROTOCOL.md').read_text(encoding='utf-8')
         self.assertIn('RESEARCH_GRAPH_PROTOCOL.md', cycle)
+
+    def test_tutor_loads_graph_before_preparing_block(self):
+        tutor = (ROOT / 'skills/tutor/SKILL.md').read_text(encoding='utf-8')
+        policy = (ROOT / 'references/LEARNING_PROTOCOL.md').read_text(encoding='utf-8')
+        for text in (tutor, policy):
+            self.assertIn('--dependencies --json', text)
+            self.assertIn('prerequisite closure', ' '.join(text.split()))
+            self.assertIn('inventing mastery' if text == policy else 'invented mastery', text)
+        self.assertLess(tutor.index('load its knowledge graph'), tutor.index('2. Prepare'))

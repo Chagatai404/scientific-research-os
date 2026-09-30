@@ -9,7 +9,9 @@ Read `references/LEARNING_PROTOCOL.md` and `references/SOURCE_POLICY.md` before 
 
 ## Workflow
 
-1. Identify the concrete target capability and inspect relevant prior retrieval evidence.
+1. Identify the concrete target capability and load its knowledge graph using the
+   graph-first planning section of the learning protocol. Resolve prerequisite
+   closure and inspect retrieval evidence/freshness before preparing the block.
 2. Prepare the dependency map, verified facts, questions, hints, and visual candidates
    using the learning protocol before starting the live question loop.
 3. Check prior retention and probe prerequisites within the protocol's question budget,
@@ -34,6 +36,12 @@ Read `references/LEARNING_PROTOCOL.md` and `references/SOURCE_POLICY.md` before 
 11. Propose permanent concept/derivation/quiz notes, but do not silently promote them.
 
 ## Active probing
+
+At block start use `scripts/knowledge.py --root <working-record-root>
+--capability <id> --dependencies --json` when available. Cache this bounded view
+for the block and refresh after relevant evidence changes; do not scan the entire
+vault for every answer. An unavailable/empty graph permits conservative probing,
+never invented mastery or reliance on vague chat memory.
 
 Follow the learning protocol's preparation, probe budget, and fast-response
 contract. Each answer gets a lightweight verdict/hint and, if continuing, one next

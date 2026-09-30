@@ -24,6 +24,21 @@ research cycle. Use verified material already available when sufficient.
 
 ## Learning state and retention
 
+### Graph-first block planning
+
+Resolve the target capability, load the relevant knowledge view, resolve its
+prerequisite closure, inspect retrieval evidence and freshness, then prepare a
+bounded lesson/probe. Use `scripts/knowledge.py --root <working-record-root>
+--capability <id> --dependencies --json` where the helper is available; otherwise
+inspect the same canonical learning records directly. A project/course view may
+locate the target, but does not replace checking its prerequisites.
+
+Cache the relevant view for the block; refresh on changed evidence, changed target,
+or newly discovered dependencies, not after every answer. Missing, malformed or
+empty graphs are unknown context: probe conservatively without inventing mastery.
+Prior mention and chat memory do not establish prerequisites. The existing
+assessment algorithm and human retention choices remain authoritative.
+
 Track evidence for a specific capability, not mastery of an entire subject.
 
 | State | Meaning |
