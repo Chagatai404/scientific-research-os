@@ -81,6 +81,33 @@ def source_gaps(rel: str, meta: dict, body: str) -> list[str]:
     return [f'{rel}: {g}' for g in gaps]
 
 
+def breadcrumbs_conflicts(root: Path, collection) -> list[str]:
+    """Optional display links must agree with canonical prerequisites; canonical wins."""
+    stem_to_id = {Path(n.path).stem: key for key, n in collection.nodes.items()}
+    result = []
+    for key, node in sorted(collection.nodes.items()):
+        try:
+            meta, _ = bootstrap.fields((root / node.path).read_text(encoding='utf-8-sig'))
+        except (OSError, UnicodeError):
+            continue
+        raw = meta.get('prerequisite')
+        if raw is None:
+            continue
+        values = raw if isinstance(raw, list) else [raw]
+        stems = [m.strip() for v in values if isinstance(v, str) for m in re.findall(r'\[\[([^\]|#]+)', v)]
+        linked = {stem_to_id.get(s) for s in stems}
+        unresolved = [s for s in stems if s not in stem_to_id]
+        if unresolved:
+            result.append(f'{node.path}: prerequisite link does not resolve to a tracked note: {", ".join(unresolved)}')
+        extra = sorted(x for x in linked - set(node.prerequisites) - {None})
+        missing = sorted(set(node.prerequisites) - linked)
+        if extra:
+            result.append(f'{node.path}: prerequisite link not in canonical prerequisites: {", ".join(extra)}')
+        if missing:
+            result.append(f'{node.path}: canonical prerequisites absent from link field: {", ".join(missing)}')
+    return result
+
+
 def audit(root: Path, as_of: date) -> dict:
     root = root.resolve()
     collection = knowledge.discover(root, as_of)
@@ -146,6 +173,7 @@ def audit(root: Path, as_of: date) -> dict:
                     'invalid_records': sorted(visual_problems), 'broken_embeds': sorted(embeds)},
         'diagnostics': {
             'missing_ids': missing_ids, 'cycles': len([i for i in issues if i.startswith('cycle')]),
+            'breadcrumbs_conflicts': breadcrumbs_conflicts(root, collection),
             'schema_issues': sorted([d.path + ': ' + d.message for d in registry_errors if d.code in {'SCHEMA', 'DUPLICATE', 'READ'}]
                                     + malformed),
             'stale_references': sorted(embeds + [i for i in issues if i.startswith('missing prerequisite')]
@@ -186,6 +214,8 @@ def render(report: dict) -> str:
     lines += ['', '## Diagnostics', f"- missing IDs: {d['missing_ids']}; cycles: {d['cycles']}",
               '- schema issues:'] + ['  ' + x for x in bullet(d['schema_issues'])]
     lines += ['- stale references:'] + ['  ' + x for x in bullet(d['stale_references'])]
+    lines += ['- Breadcrumbs display links that disagree with canonical prerequisites:'] + [
+        '  ' + x for x in bullet(d['breadcrumbs_conflicts'])]
     return '\n'.join(lines) + '\n'
 
 

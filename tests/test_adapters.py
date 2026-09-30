@@ -45,5 +45,43 @@ class BasesTests(unittest.TestCase):
             self.assertIn(view, names)
 
 
+class BreadcrumbsTests(unittest.TestCase):
+    def vault(self, tmp, link):
+        root = Path(tmp)
+        for name, ident, pre, field in (('Density', 'probability.density', '[]', ''),
+                                        ('Gamma', 'probability.gamma-density', '["probability.density"]', link)):
+            (root / f'{name}.md').write_text(
+                f'---\nlearning_schema: 1\nlearning_id: {ident}\ndomain: probability\nprerequisites: {pre}\n{field}---\n# {name}\n',
+                encoding='utf-8')
+        return root
+
+    def conflicts(self, link):
+        import tempfile
+        import vault_health
+        from datetime import date
+        with tempfile.TemporaryDirectory() as tmp:
+            root = self.vault(tmp, link)
+            return vault_health.audit(root, date(2026, 9, 30))['diagnostics']['breadcrumbs_conflicts']
+
+    def test_matching_display_links_and_absent_plugin_are_clean(self):
+        self.assertEqual(self.conflicts(''), [])
+        self.assertEqual(self.conflicts('prerequisite: ["[[Density]]"]\n'), [])
+        self.assertEqual(self.conflicts('prerequisite: "[[Density]]"\n'), [])
+
+    def test_display_links_never_override_canonical_prerequisites(self):
+        extra = self.conflicts('prerequisite: ["[[Density]]", "[[Gamma]]"]\n')
+        self.assertTrue(any('not in canonical' in c for c in extra))
+        self.assertTrue(any('absent from link field' in c for c in self.conflicts('prerequisite: []\n')))
+        self.assertTrue(any('does not resolve' in c for c in self.conflicts('prerequisite: ["[[Ghost]]"]\n')))
+
+    def test_documentation_forbids_transitive_or_implied_authority(self):
+        text = ' '.join((ADAPTERS / 'BREADCRUMBS.md').read_text(encoding='utf-8').split())
+        for term in ('optional presentation adapter', 'authoritative', 'transitive closure',
+                     'learning readiness', 'research acceptance', 'explicit edges only'):
+            self.assertIn(term, text)
+        for relation in ('prerequisite', 'tests', 'supports', 'used-by', 'supersedes', 'visualized-by', 'implemented-by'):
+            self.assertIn(f'`{relation}`', text)
+
+
 if __name__ == '__main__':
     unittest.main()
