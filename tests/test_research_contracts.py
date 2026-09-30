@@ -33,6 +33,13 @@ class ResearchContracts(unittest.TestCase):
             self.assertIn(term, tutor)
         self.assertIn('broken_embeds', (ROOT / 'references/VISUALIZATION_PROTOCOL.md').read_text(encoding='utf-8'))
 
+    def test_excalidraw_adapter_is_optional_and_schematic_only(self):
+        text = ' '.join((ROOT / 'extensions/obsidian-adapters/EXCALIDRAW.md').read_text(encoding='utf-8').split())
+        for term in ('optional presentation adapter', 'not the default source for quantitative scientific plots',
+                     'remains a schematic', 'Nothing here installs a plugin'):
+            self.assertIn(term, text)
+        self.assertIn('EXCALIDRAW.md', (ROOT / 'references/VISUALIZATION_PROTOCOL.md').read_text(encoding='utf-8'))
+
     def test_tutor_loads_graph_before_preparing_block(self):
         tutor = (ROOT / 'skills/tutor/SKILL.md').read_text(encoding='utf-8')
         policy = (ROOT / 'references/LEARNING_PROTOCOL.md').read_text(encoding='utf-8')

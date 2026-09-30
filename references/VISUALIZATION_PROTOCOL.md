@@ -57,6 +57,10 @@ reused automatically as trusted teaching visuals; others are drafts to be
 re-inspected. `verified` is a human/inspector attestation of the specific claim
 the visual makes, not a rendering check.
 
+Obsidian Excalidraw is an optional adapter for schematics and annotations only
+(`extensions/obsidian-adapters/EXCALIDRAW.md`); it is never the source of a
+quantitative plot, and Research OS must work without it.
+
 Animations should normally be user-requested or clearly justified by temporal or
 transformation pedagogy (order, continuous change, a mathematical transformation).
 A static key-frame panel is the default when it teaches as well.
