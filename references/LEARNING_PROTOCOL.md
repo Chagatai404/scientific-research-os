@@ -299,6 +299,27 @@ design and the capability definition; never claim false mastery from its target.
 Missing/failed evidence can warrant a contextual check for actual use, regardless
 of target. Do not destroy old evidence or invent an expiry date.
 
+## Legacy bootstrap (candidate-only)
+
+Vaults that predate schema 1 hold real historical work. `scripts/bootstrap.py
+--root <vault>` is a dry-run report over tutor-session notes; it proposes, and a
+human decides. It never writes to the vault (a report file is created only when
+`--write-report` names a new path) and never rewrites historical notes.
+
+- A mention is not an attempt; a tutor explanation is not learner evidence; an
+  unanswered question is not evidence.
+- A recorded learner answer with a recorded verdict can become a candidate
+  retrieval-history row. An answer without a recorded verdict is listed with
+  outcome unknown and no row.
+- Assistance is preserved: a hint recorded in the verdict is `hinted`; otherwise
+  `none` is only "no hint recorded" and must be verified. Confidence is shown as
+  a note and never as the outcome. All bootstrapped rows are same-session, so
+  nothing bootstrapped can establish delayed retention.
+- Proposed learning IDs, prerequisite edges, project membership and retention
+  targets (`working` only as a suggestion when a project is named) require human
+  review. Edges from a session's dependency map are listed by label, not mapped
+  to IDs. Attempts already present in a tracked record are not proposed again.
+
 ## Course routing
 
 For university coursework use `COURSE_LEARNING_PROTOCOL.md`, which builds on this

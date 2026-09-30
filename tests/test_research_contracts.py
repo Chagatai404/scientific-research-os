@@ -40,6 +40,13 @@ class ResearchContracts(unittest.TestCase):
             self.assertIn(term, text)
         self.assertIn('EXCALIDRAW.md', (ROOT / 'references/VISUALIZATION_PROTOCOL.md').read_text(encoding='utf-8'))
 
+    def test_legacy_bootstrap_policy_is_candidate_only(self):
+        text = ' '.join((ROOT / 'references/LEARNING_PROTOCOL.md').read_text(encoding='utf-8').split())
+        for term in ('candidate-only', 'A mention is not an attempt', 'unanswered question is not evidence',
+                     'Confidence is shown as a note and never as the outcome', 'never rewrites historical notes',
+                     'nothing bootstrapped can establish delayed retention'):
+            self.assertIn(term, text)
+
     def test_tutor_loads_graph_before_preparing_block(self):
         tutor = (ROOT / 'skills/tutor/SKILL.md').read_text(encoding='utf-8')
         policy = (ROOT / 'references/LEARNING_PROTOCOL.md').read_text(encoding='utf-8')
