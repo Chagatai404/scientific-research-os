@@ -2,6 +2,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+import subprocess
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 import research
@@ -112,3 +113,30 @@ class LifecycleTests(unittest.TestCase):
             research.lifecycle(result, Path(tmp))
             self.assertIn('LIFE_REVIEW_RECORD', {d.code for d in result.diagnostics})
             self.assertFalse(list(Path(tmp).iterdir()))
+
+
+class StatusTests(unittest.TestCase):
+    registry = RegistryTests.registry
+
+    def test_reports_pending_without_claiming_acceptance(self):
+        result = self.registry(note(), note('experiment', 'EXP-1', status='completed', authorization='approved',
+                               authorized_by='human', authorized_at='2026-09-30'))
+        research.lifecycle(result, Path('.'))
+        data = research.status(result, 'demo')
+        self.assertEqual(data['pending_validation'], ['EXP-1'])
+        self.assertEqual(data['pending_human_decisions'], ['EXP-1'])
+        self.assertEqual(data['experiments'][0]['research_decision'], 'missing')
+        self.assertIn('result validation: pending', research.render_status(data))
+        self.assertEqual(research.status(result, 'other')['records'], [])
+
+    def test_json_cli_is_deterministic_and_read_only_without_site_packages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'rq.md'
+            path.write_text(note(), encoding='utf-8')
+            command = [sys.executable, '-S', research.__file__, 'status', '--root', tmp, '--project', 'demo', '--json']
+            first = subprocess.run(command, capture_output=True, text=True)
+            second = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertEqual(first.stdout, second.stdout)
+            self.assertEqual(research.json.loads(first.stdout)['active_questions'], ['RQ-1'])
+            self.assertEqual(path.read_text(encoding='utf-8'), note())

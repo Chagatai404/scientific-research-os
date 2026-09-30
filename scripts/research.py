@@ -11,7 +11,7 @@ import argparse
 import sys
 from dataclasses import asdict
 
-from knowledge import scalar, iso_date, ID as LEARNING_ID
+from knowledge import scalar, iso_date, ID as LEARNING_ID, safe_text
 
 ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]*\Z')
 STATES = {
@@ -193,23 +193,80 @@ def validate(root: Path) -> ResearchRegistry:
     return result
 
 
+def status(registry: ResearchRegistry, project: str | None = None) -> dict:
+    records = [r for r in registry.records.values() if project is None or r.meta['project'] == project]
+    accepted = accepted_decisions(registry)
+    decided = {e.target for e in registry.edges if e.relation == 'experiments'
+               and e.source in {d.id for d in accepted}}
+    paths = {r.path for r in records}
+    diagnostics = [asdict(d) for d in registry.diagnostics if project is None or not d.path or d.path in paths
+                   or d.code in {'SCHEMA', 'READ', 'ROOT'}]
+    experiments = []
+    for r in records:
+        if r.type != 'experiment':
+            continue
+        experiments.append({'id': r.id, 'status': r.meta['status'], 'authorization': r.meta['authorization'],
+                            'result_validation': r.meta.get('result_validation', 'pending'),
+                            'adversarial_review': r.meta.get('adversarial_review', 'pending'),
+                            'research_decision': 'recorded' if r.id in decided else 'missing'})
+    return {'project': project, 'records': [dict(r.meta, path=r.path, title=r.title) for r in records],
+            'active_questions': [r.id for r in records if r.type == 'research-question' and r.meta['status'] == 'active'],
+            'active_hypotheses': [r.id for r in records if r.type == 'hypothesis' and r.meta['status'] == 'active'],
+            'experiments': experiments,
+            'experiments_by_state': {state: [e['id'] for e in experiments if e['status'] == state]
+                                     for state in sorted(STATES['experiment'])},
+            'authorization_states': {state: [e['id'] for e in experiments if e['authorization'] == state]
+                                     for state in sorted(AUTH)},
+            'pending_validation': [e['id'] for e in experiments if e['status'] == 'completed' and e['result_validation'] != 'complete'],
+            'pending_human_decisions': sorted({r.id for r in records if r.type == 'research-decision'
+                                               and r.meta['status'] in {'proposed', 'revisit'}} |
+                                              {e['id'] for e in experiments if e['status'] == 'completed'
+                                               and e['research_decision'] == 'missing'}),
+            'unresolved_relationships': [d for d in diagnostics if d['code'] in {'DANGLING', 'TARGET_TYPE', 'CROSS_PROJECT', 'CYCLE'}],
+            'diagnostics': diagnostics, 'legacy': registry.legacy}
+
+
+def render_status(data: dict) -> str:
+    lines = ['# Research status: ' + safe_text(data['project'] or 'all projects'), '',
+             'Recorded state only; no research direction or scientific conclusion is selected.', '']
+    for name in ('active_questions', 'active_hypotheses', 'pending_validation', 'pending_human_decisions'):
+        lines += [name.replace('_', ' ').capitalize() + ': ' + (', '.join(data[name]) or 'none')]
+    for r in data['records']:
+        lines += ['', f"## {r['id']} — {safe_text(r['title'])}",
+                  f"Project: {r['project']}; status: {r['status']}; record: {safe_text(r['path'])}"]
+        e = next((e for e in data['experiments'] if e['id'] == r['id']), None)
+        if e:
+            lines.extend(f"- {key.replace('_', ' ')}: {value}" for key, value in e.items() if key not in {'id', 'status'})
+    lines += ['', '## Diagnostics', '']
+    lines.extend(f"- {d['severity']} {d['code']} {safe_text(d['path'])}: {safe_text(d['message'])}" for d in data['diagnostics'])
+    if not data['diagnostics']:
+        lines.append('None.')
+    lines += ['', f"Legacy/untracked notes: {data['legacy']}"]
+    return '\n'.join(lines) + '\n'
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['validate'])
+    parser.add_argument('command', choices=['validate', 'status'])
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--json', action='store_true')
+    parser.add_argument('--project')
     args = parser.parse_args(argv)
+    if args.project is not None and not LEARNING_ID.fullmatch(args.project):
+        parser.error('invalid project ID')
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
     registry = validate(args.root)
+    data = status(registry, args.project)
     if args.json:
-        print(json.dumps({'diagnostics': [asdict(d) for d in registry.diagnostics],
-                          'tracked': len(registry.records), 'legacy': registry.legacy}, indent=2, sort_keys=True))
+        print(json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False))
+    elif args.command == 'status':
+        print(render_status(data), end='')
     else:
         print(f'Tracked: {len(registry.records)}; legacy: {registry.legacy}')
         for d in registry.diagnostics:
             print(f'{d.severity} {d.code} {d.path}: {d.message}')
-    return int(any(d.severity == 'ERROR' for d in registry.diagnostics))
+    return int(any(d['severity'] == 'ERROR' for d in data['diagnostics']))
 
 
 def frontmatter(text: str) -> tuple[list[str], str] | None:
