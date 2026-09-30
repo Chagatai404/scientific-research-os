@@ -117,5 +117,41 @@ class ConnectedExample(unittest.TestCase):
         self.assertEqual(sorted(v['visual_id'] for v in data['visuals']), ['VIS-014', 'VIS-027'])
 
 
+class CombinedVault(unittest.TestCase):
+    def test_legacy_learning_material_plus_schema_one_research_records(self):
+        """The release scenario: no chat history, legacy notes and research records together."""
+        import shutil
+        import tempfile
+        sys.path.insert(0, str(ROOT / 'tests'))
+        import legacy_fixture
+        with tempfile.TemporaryDirectory() as tmp:
+            root = legacy_fixture.build(Path(tmp))
+            for name in ('research', 'evidence', 'results', 'src', 'assets', 'tutor-sessions'):
+                shutil.copytree(EXAMPLE / name, root / name)
+            shutil.copytree(EXAMPLE / 'learning', root / 'learning-connected')
+            before = {str(p.relative_to(root)): p.read_bytes() for p in root.rglob('*') if p.is_file()}
+            r, k = str(root), '--as-of=2026-09-30'
+            context = json.loads(run('research.py', 'context', '--root', r, '--experiment', 'EXP-001', '--json', k).stdout)
+            self.assertEqual(context['downstream_frontier'], [{'id': 'EXP-001', 'transition': 'adversarial-review-required'}])
+            self.assertEqual({d: v['state'] for d, v in context['learning_dependencies'].items()},
+                             {'probability.density': 'retained', 'probability.gamma-distribution': 'demonstrated',
+                              'physics.shower-profile': 'stale'})
+            self.assertEqual(context['manifests'], {'results/exp-001/manifest.json': 'valid'})
+            self.assertEqual([v['visual_id'] for v in context['visuals']], ['VIS-014', 'VIS-027'])
+            collection = knowledge.discover(root, AS_OF)
+            # Old "solid"/"retained" labels on legacy notes never become tracked capabilities.
+            self.assertEqual(sorted(collection.nodes), ['physics.shower-profile', 'probability.density',
+                                                        'probability.gamma-density', 'probability.gamma-distribution'])
+            self.assertEqual(sorted(knowledge.ready_nodes(collection.nodes)), ['probability.density', 'probability.gamma-distribution'])
+            self.assertEqual(collection.nodes['probability.gamma-density'].assessment.state, 'stale')
+            health = json.loads(run('vault_health.py', '--root', r, k, '--json').stdout)
+            self.assertEqual(health['research']['errors'], 0)
+            self.assertEqual(health['courses']['referenced_without_record'], ['stat-201'])
+            proposal = json.loads(run('bootstrap.py', '--root', r, '--json').stdout)
+            self.assertEqual([c['question'] for c in proposal['candidates'] if c['eligible']], ['Q1', 'Q2'])
+            after = {str(p.relative_to(root)): p.read_bytes() for p in root.rglob('*') if p.is_file()}
+            self.assertEqual(before, after)
+
+
 if __name__ == '__main__':
     unittest.main()
