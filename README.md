@@ -463,6 +463,8 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
+**v0.6.1 — Visual cadence and verification tiers** makes a visual part of every tutoring block and sets who may mark one `verified`: the producing agent for general mathematical or physical claims after independent recomputation, a separate bounded reviewer for project, literature or reusable claims, and the human for publication figures. See the protocol's *Visual cadence* and *Verification tiers* and the [post-release note](references/V0.6_IMPLEMENTATION.md). No schema or script change.
+
 **v0.6.0 — Connected Research & Learning OS** adds opt-in schema-1 research records
 with a derived research graph, frontier and bounded context; advisory learning
 dependencies; graph-first Tutor planning with a question concept contract and
