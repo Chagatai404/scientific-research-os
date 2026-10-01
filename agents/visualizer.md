@@ -25,4 +25,6 @@ coordinator; do not start another research cycle or claim independent physics
 validation merely because you checked your own rendering.
 
 Return the file path/preview, the central idea, representation kind, provenance,
-and inspection status, including any unresolved limitation.
+and inspection status, including any unresolved limitation. State which verification
+tier applies (see the protocol's verification tiers), the independent recomputation
+method used, and the claims checked and not checked.

@@ -11,7 +11,8 @@ The goal is understanding that can be reconstructed, not copied notes.
 3. **Probe and map** — use a bounded diagnostic block to locate the learner's
    boundary, then refine the dependency map from the answers.
 4. **Teach and connect** — one dependency node at a time, connected to established
-   foundations; use a visual when it materially helps understanding.
+   foundations; every tutoring block carries at least one visual for its central
+   idea (see the visualization protocol, "Visual cadence").
 5. **Retrieve** — test reconstruction, explanation, derivation, transfer, or use.
 6. **Record and revisit** — preserve retrieval evidence, summarize learning state,
    and choose follow-up according to retention target; reinforce weak areas when needed.
