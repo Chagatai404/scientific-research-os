@@ -8,8 +8,14 @@ and `RESEARCH_PROTOCOL.md` owns research plans and execution approval.
 ## Choose the teaching need
 
 State what the learner should notice, predict, or explain after seeing the visual.
-Use a visual when relationships, geometry, scale, variation, or temporal evolution
-are materially clearer than prose. Skip it when a short explanation suffices.
+**Visual cadence.** Each tutoring block carries at least one visual for its central
+idea, prepared before the block's key question. Choose the visual that serves the
+learner's actual gap: often the idea they missed, or a predict-first picture. A
+retention check or short repair block is a block. If a node truly has no useful
+visual, write one line in the session note saying why; never skip silently. Add
+further visuals only when each carries a different idea (one visual, one idea).
+Relationships, geometry, scale, variation and temporal evolution are the usual
+candidates; a short explanation can carry a minor point without one.
 Prepare visual candidates before live probing; do not start a long rendering job
 between every answer. Ask for a prediction before revealing a change when useful,
 then check explanation or transfer afterward. Watching an animation is not
@@ -54,8 +60,31 @@ visual is not reusable merely because it rendered: record it in the visual regis
 (`scripts/visuals.py`, `*.visual.json`) and let it advance only through
 `candidate -> rendered -> inspected -> verified`. Only `verified` assets are
 reused automatically as trusted teaching visuals; others are drafts to be
-re-inspected. `verified` is a human/inspector attestation of the specific claim
-the visual makes, not a rendering check.
+re-inspected. `verified` is an attestation of the specific claim the visual makes,
+not a rendering check. Who may attest depends on what the visual claims.
+
+### Verification tiers
+
+Keep the cost proportional to the risk. Record the tier in `verified_by` with a
+prefix (`agent: `, `reviewer: `, `human: `) and state in `basis` exactly which claim
+was checked and which was **not**.
+
+- **Producer (agent) tier.** The producing agent may mark a visual `verified` when
+  it makes only a general mathematical or physical claim reproducible from stated
+  equations, and the agent has (1) recomputed the displayed values by a *different*
+  method or routine than the one that drew them, (2) inspected the render, and
+  (3) written the verified and not-verified claims into `basis`. A human may revoke it.
+- **Separate reviewer tier.** Required when the visual (a) asserts something about
+  project data, simulation output or code behaviour, (b) quotes a number or figure
+  from the literature, (c) will leave the session as a research artifact, permanent
+  note or paper figure, or (d) cannot be recomputed independently by the producer.
+  Keep it cheap: give the reviewer a bounded brief (the claim, the inputs, the file;
+  no repository tour), use the smallest adequate agent, and verify once per claim so
+  the visual is reused afterwards. Do not spawn a reviewer for the producer tier.
+- **Human tier.** Publication figures and any claim the researcher reserves.
+
+A producer's self-check is not an independent physics review; the producer tier is
+deliberately limited to claims the agent can re-derive from first principles.
 
 Obsidian Excalidraw is an optional adapter for schematics and annotations only
 (`extensions/obsidian-adapters/EXCALIDRAW.md`); it is never the source of a
