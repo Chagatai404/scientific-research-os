@@ -12,3 +12,9 @@ claude_skills = "~/.claude/skills"
 claude_agents = "~/.claude/agents"
 codex_skills = "~/.agents/skills"
 codex_agents = "~/.codex/agents"
+
+[paper_library]
+# Set your own paper directory in the ignored local configuration.
+root = "~/Research/papers"
+organization = "concept"
+max_pdf_bytes = 52428800

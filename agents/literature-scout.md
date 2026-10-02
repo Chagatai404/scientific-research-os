@@ -32,6 +32,11 @@ For each retained source report:
 
 Return the evidence map before reconciling it with the repository.
 
+For local paper ingestion, return reviewed candidate metadata and the explicit
+screening stage, relevance and legitimate access basis under the bundled paper
+library contract. The coordinator performs authorized writes; this role remains
+read-only. An unavailable PDF retains a citation with its access limitation.
+
 Do not decide whether the user's hypothesis is true. Map the evidence landscape and unresolved gaps.
 
 Use the bundled EvidenceAtom contract for consequential claims. Return CANDIDATE

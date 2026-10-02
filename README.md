@@ -463,19 +463,16 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
-v0.7 is planned in [the Slice 0 design record](references/V0.7_IMPLEMENTATION.md).
-Slice 1 adds the opt-in [knowledge model](references/KNOWLEDGE_MODEL.md): explicit
-domains, subjects, shared concepts and project/block mappings, with separate
-scope/dimension retrieval evidence and a backup-preserving dry-run migration.
-See the [synthetic example](examples/ontology/README.md). VERSION remains v0.6.2
-until release preparation; later slices require explicit continuation and are
-committed and verified individually.
-
-Slice 2 adds the [concept-first tutor](references/TUTOR_PLANNING.md): a read-only
-planner chooses narrow prerequisite/concept checks, independent transfer, then
-project application from scoped evidence. Current dimensions skip automatic
-reteaching; legacy capability targets retain the graph-first path. The tutor skill
-and session template use this progression without changing submission or promotion.
+**v0.7.0 — Concept-first learning and connected research** adds the opt-in
+[knowledge model](references/KNOWLEDGE_MODEL.md), [concept-first tutor](references/TUTOR_PLANNING.md),
+[domain retention](references/RETENTION_PROTOCOL.md), [MathJax notes](references/MATH_RENDERING.md),
+intent-based visualization, [managed knowledge maps](references/KNOWLEDGE_MAPS.md)
+and a [screened paper library](references/PAPER_LIBRARY.md). General understanding,
+independent transfer and project application retain separate evidence. Existing
+schema-1 learning and research workflows remain compatible; migration and generated
+artifacts plan by default. See the [synthetic example](examples/ontology/README.md),
+[implementation and verification record](references/V0.7_IMPLEMENTATION.md) and
+[changelog](CHANGELOG.md). Release preparation is local; no tag or publication.
 
 **v0.6.2 — Installed Obsidian adapters are used** makes Excalidraw, Bases and Breadcrumbs part of every session when a vault has them: schematics through the new `scripts/excalidraw_schematic.py`, dashboards as embedded Base views, and `up` links plus prerequisite trails for navigation. See "Using the vault's installed Obsidian adapters" in the visualization protocol. No schema change.
 

@@ -118,7 +118,18 @@ for p in required:
         errors.append(f"Missing required file: {p}")
 
 # Check installer-owned source references without writing outputs or executing probes.
-from install import COMPUTE_AGENTS, COMPUTE_SKILLS
+from install import COMPUTE_AGENTS, COMPUTE_SKILLS, GRAPH_HELPERS
+for helper in GRAPH_HELPERS:
+    if not (ROOT / 'scripts' / helper).is_file():
+        errors.append(f'Installer references missing graph helper: {helper}')
+for name in ('V0.7_IMPLEMENTATION.md', 'KNOWLEDGE_MODEL.md', 'TUTOR_PLANNING.md',
+             'RETENTION_PROTOCOL.md', 'MATH_RENDERING.md', 'KNOWLEDGE_MAPS.md', 'PAPER_LIBRARY.md'):
+    if not (ROOT / 'references' / name).is_file():
+        errors.append(f'Missing v0.7 reference: {name}')
+
+import math_notes
+for p in (ROOT / 'assets/obsidian').glob('*.md'):
+    errors.extend(f'{p}: {issue}' for issue in math_notes.issues(p.read_text(encoding='utf-8')))
 for skill in COMPUTE_SKILLS:
     if not (ROOT / "skills" / skill / "SKILL.md").is_file():
         errors.append(f"Installer references missing compute skill: {skill}")
