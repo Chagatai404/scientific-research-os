@@ -5,23 +5,30 @@ description: Source-grounded tutoring for mathematics, statistics, physics, quan
 
 # Tutor
 
-Read `references/LEARNING_PROTOCOL.md` and `references/SOURCE_POLICY.md` before setup; do not reread them after every probe answer. In this repository, shared references live at `../../references/`; the installer copies them into each installed skill's `references/` directory.
+Read `references/LEARNING_PROTOCOL.md`, `references/TUTOR_PLANNING.md` and `references/SOURCE_POLICY.md` before setup; do not reread them after every probe answer. In this repository, shared references live at `../../references/`; the installer copies them into each installed skill's `references/` directory.
 
 ## Workflow
 
-1. Identify the concrete target capability and load its knowledge graph using the
-   graph-first planning section of the learning protocol. Resolve prerequisite
-   closure and inspect retrieval evidence/freshness before preparing the block.
+1. Identify the narrow required concepts from the active task/project/block using
+   the ontology, then relevant conceptual capabilities; load its knowledge graph and
+   concept-first plan (`scripts/tutor_plan.py`) using the learning protocol and
+   tutor planning reference. Resolve concept/capability prerequisites across domains
+   and inspect separate scope/dimension evidence before preparation. Legacy targets
+   retain the existing graph-first path without inferred scope.
 2. Prepare the dependency map, verified facts, questions, hints, and visual candidates
    using the learning protocol before starting the live question loop.
 3. Check prior retention and probe prerequisites within the protocol's question budget,
    one question at a time.
 4. Refine the dependency map from the answers and choose the next necessary node.
 5. Teach one node at a time:
-   - motivate why it is needed;
-   - establish/derive it;
+   - motivate why it is needed, then explain the general concept;
+   - use an intuitive model and formal/derived treatment when appropriate;
    - connect it to known foundations;
-   - test understanding.
+   - test concept-level reconstruction;
+   - use an independent transfer example before relying on project application.
+   Skip established dimensions and repair actual gaps. Unknown/stale evidence calls
+   for a check before reteaching. A project example can support explanation but must
+   not be the only teaching frame. Do not teach a chapter for one prerequisite.
 6. Use primary/authoritative sources for scientific claims and high-quality teaching resources for intuition.
 7. Make at least one visual per tutoring block (visual cadence in
    `references/VISUALIZATION_PROTOCOL.md`). First reuse a verified asset for the
@@ -45,10 +52,15 @@ Read `references/LEARNING_PROTOCOL.md` and `references/SOURCE_POLICY.md` before 
 
 **Start** (bounded; do not scan the whole vault):
 
-1. Resolve the target capability ID.
+1. Resolve the target capability ID/profile from explicit target concepts; narrow
+   broad project/block subject/domain mappings to the actual task.
 2. Query the relevant knowledge graph (`scripts/knowledge.py ... --json`).
-3. Load its prerequisite closure.
-4. Inspect retrieval evidence and freshness; unknown or stale is not "known".
+3. Load its prerequisite closure and concept-first decision (`scripts/tutor_plan.py
+   --root <working-record-root> --block <id> --focus <concept-id>`, or its capability/
+   concept/project selector). Supply the exact --context for an application capability.
+4. Inspect separate conceptual/transfer/application evidence and freshness;
+   unknown or stale is not "known". Select multiple capability profiles explicitly;
+   never merge optimistic mastery.
 5. Find reusable **verified** visuals (`scripts/visuals.py --reusable --concept <id>`),
    preferring an authoritative source visual over generating one.
 6. Prepare terminology definitions for terms the learner may not have established.
@@ -61,6 +73,10 @@ When the target belongs to a research project, also read its bounded context
 **End of block:**
 
 1. Preserve the actual retrieval evidence (answers, assistance, method), not a summary.
+   For schema 2 record Scope, Dimension and Context in its eleven-cell history:
+   conceptual/empty Context, independent transfer/transfer/empty Context, or
+   project_application/exact project or block. Project success never creates
+   conceptual/transfer rows; recognition alone is not reconstruction.
 2. Update working learning records only within the authorized workflow.
 3. Recompute the affected graph view.
 4. Record newly discovered prerequisites as proposals or working-record edges.
@@ -92,6 +108,12 @@ Apply the terminology gate to text and answer options: expand new abbreviations
 (Principal Component Analysis (PCA)), define symbols before use, and teach/probe
 substantial new concepts. Prior mention is not establishment; harmless labels do
 not require learning nodes. New local notation always needs its local definition.
+
+Also declare scope, dimension, method and Context internally. Use
+`scoped_question_issues` in `scripts/tutor_contract.py` when available; transfer
+requires a genuinely independent example, not a renamed project exercise. Preserve
+separate verdicts/evidence for what was actually tested. The helper cannot judge
+wording, teaching quality, scientific correctness or actual independence.
 
 Choose the question format that best tests the intended knowledge while minimizing unnecessary typing.
 

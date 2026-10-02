@@ -209,3 +209,5 @@ records from promoted explanations and reports ontology diagnostics.
 The installer bundles ontology and migration helpers with graph workflows for both
 providers. All parsing, fixtures and migration work offline with the standard library.
 No graphics, paper ingestion, tutor rewrite or retention selection is part of Slice 1.
+Slice 2 consumes this same model through the read-only tutor planner described in
+`references/TUTOR_PLANNING.md`; it introduces no second state store or schema migration.

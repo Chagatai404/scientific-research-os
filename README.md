@@ -471,6 +471,12 @@ See the [synthetic example](examples/ontology/README.md). VERSION remains v0.6.2
 until release preparation; later slices require explicit continuation and are
 committed and verified individually.
 
+Slice 2 adds the [concept-first tutor](references/TUTOR_PLANNING.md): a read-only
+planner chooses narrow prerequisite/concept checks, independent transfer, then
+project application from scoped evidence. Current dimensions skip automatic
+reteaching; legacy capability targets retain the graph-first path. The tutor skill
+and session template use this progression without changing submission or promotion.
+
 **v0.6.2 — Installed Obsidian adapters are used** makes Excalidraw, Bases and Breadcrumbs part of every session when a vault has them: schematics through the new `scripts/excalidraw_schematic.py`, dashboards as embedded Base views, and `up` links plus prerequisite trails for navigation. See "Using the vault's installed Obsidian adapters" in the visualization protocol. No schema change.
 
 **v0.6.1 — Visual cadence and verification tiers** makes a visual part of every tutoring block and sets who may mark one `verified`: the producing agent for general mathematical or physical claims after independent recomputation, a separate bounded reviewer for project, literature or reusable claims, and the human for publication figures. See the protocol's *Visual cadence* and *Verification tiers* and the [post-release note](references/V0.6_IMPLEMENTATION.md). No schema or script change.

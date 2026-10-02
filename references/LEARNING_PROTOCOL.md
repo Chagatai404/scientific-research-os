@@ -10,8 +10,11 @@ The goal is understanding that can be reconstructed, not copied notes.
    or uncertain prerequisites before reteaching them.
 3. **Probe and map** — use a bounded diagnostic block to locate the learner's
    boundary, then refine the dependency map from the answers.
-4. **Teach and connect** — one dependency node at a time, connected to established
-   foundations; every tutoring block carries at least one visual for its central
+4. **Teach and connect** — establish general concepts before relying on project
+   application, one dependency node at a time, connected to established foundations;
+   use intuition/formal treatment as needed, concept reconstruction, then an
+   independent transfer example. Skip established dimensions and repair actual gaps.
+   Every tutoring block carries at least one visual for its central
    idea (see the visualization protocol, "Visual cadence").
 5. **Retrieve** — test reconstruction, explanation, derivation, transfer, or use.
 6. **Record and revisit** — preserve retrieval evidence, summarize learning state,
@@ -34,6 +37,15 @@ conceptual or transfer mastery. State/readiness summaries are projections of the
 declared profile; inspect the separate dimension evidence. Schema-1 assessment and
 human retention choices remain compatible. Concept relation edges guide planning;
 only explicit capability prerequisites and actual retrieval establish readiness.
+
+Concept-first decisions are specified in `references/TUTOR_PLANNING.md` and the
+read-only `scripts/tutor_plan.py`. Resolve mapped concepts for the task/block,
+narrow broad views, then inspect general conceptual evidence before transfer and
+the actual application. Strong application does not establish theory or transfer.
+Unknown/stale dimensions need a probe before reteaching; current dimensions are
+not retaught by default. Select multiple profiles instead of merging them.
+Structural prerequisites/cross-domain foundations guide the bounded lesson;
+related concepts are not obligatory lessons.
 
 Resolve the target capability, load the relevant knowledge view, resolve its
 prerequisite closure, inspect retrieval evidence and freshness, then prepare a

@@ -79,6 +79,12 @@ The AI tutor must:
 11. Do not silently convert an AI explanation into one of my permanent notes.
 12. End by asking me to restate the core idea in my own words.
 
+Use the narrow concepts needed for this task. Establish general understanding,
+check it on an independent example, then apply it to the project. A project example
+may help explain, but should not be the only explanation. Check uncertain evidence
+before reteaching and skip established dimensions. Follow `TUTOR_PLANNING.md`
+without turning the progression into a rigid script.
+
 ---
 
 ## 3. Prerequisite probe
@@ -163,7 +169,14 @@ graph TD
 
 **Explanation / derivation**
 
+Start with the general concept and an intuitive model. Include formal treatment,
+assumptions and limits when needed.
+
 **Connection to what I already know**
+
+**Independent example / transfer check**
+
+**Project application, when relevant**
 
 **Check**
 
@@ -233,6 +246,9 @@ Write this **without copying the tutor**.
 
 Record summaries after the block; preserve the actual answers above. A same-session
 success is not delayed retention, and an overdue review is not proven forgetting.
+Keep conceptual, independent transfer and project application outcomes separate.
+For schema-2 working records preserve scope, tested dimension and exact project/block
+context when applicable; project success is not transfer evidence.
 
 ## 12. What is still unclear?
 

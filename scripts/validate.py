@@ -103,11 +103,13 @@ required = [
     ROOT / "references" / "RESEARCH_PROTOCOL.md",
     ROOT / "references" / "AGENT_POLICY.md",
     ROOT / "references" / "LEARNING_PROTOCOL.md",
+    ROOT / "references" / "TUTOR_PLANNING.md",
     ROOT / "references" / "VISUALIZATION_PROTOCOL.md",
     ROOT / "skills" / "visualize" / "SKILL.md",
     ROOT / "assets" / "obsidian" / "00_Tutor_Session.md",
     ROOT / "assets" / "obsidian" / "13_Knowledge_Graph.md",
     ROOT / "scripts" / "knowledge.py",
+    ROOT / "scripts" / "tutor_plan.py",
     ROOT / "scripts" / "validate_evidence.py",
     ROOT / "references" / "EVIDENCE_FORMAT.md",
 ]

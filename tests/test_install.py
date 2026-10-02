@@ -165,6 +165,16 @@ class InstallationTests(unittest.TestCase):
                 cwd=self.tmp_path, capture_output=True, text=True, encoding='utf-8')
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(len(json.loads(result.stdout)['nodes']), 2)
+            result = subprocess.run(
+                [sys.executable, '-S', '-B', str(graph / 'tutor_plan.py'), '--root', str(ROOT / 'examples/ontology'),
+                 '--block', 'block-9', '--focus', 'box-counting', '--as-of', '2026-10-02'],
+                cwd=self.tmp_path, capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            decision = json.loads(result.stdout)['next']
+            self.assertEqual(decision['action'], 'prerequisite_probe')
+            self.assertEqual(decision['concept'], 'scale-invariance')
+            self.assertEqual((graph.parent / 'references/TUTOR_PLANNING.md').read_bytes(),
+                             (ROOT / 'references/TUTOR_PLANNING.md').read_bytes())
             result = subprocess.run([sys.executable, '-S', '-B', str(graph / 'migrate_learning.py'), '--help'],
                                     cwd=self.tmp_path, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
