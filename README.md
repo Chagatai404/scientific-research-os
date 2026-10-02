@@ -472,7 +472,7 @@ independent transfer and project application retain separate evidence. Existing
 schema-1 learning and research workflows remain compatible; migration and generated
 artifacts plan by default. See the [synthetic example](examples/ontology/README.md),
 [implementation and verification record](references/V0.7_IMPLEMENTATION.md) and
-[changelog](CHANGELOG.md). Release preparation is local; no tag or publication.
+[changelog](CHANGELOG.md). VERSION is 0.7.0; the release is identified by the v0.7 Git tag.
 
 **v0.6.2 — Installed Obsidian adapters are used** makes Excalidraw, Bases and Breadcrumbs part of every session when a vault has them: schematics through the new `scripts/excalidraw_schematic.py`, dashboards as embedded Base views, and `up` links plus prerequisite trails for navigation. See "Using the vault's installed Obsidian adapters" in the visualization protocol. No schema change.
 
