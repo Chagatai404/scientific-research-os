@@ -206,6 +206,11 @@ is not cosmetic. The same rule applies to any append-only log kept in a research
 
 ## Retrieval checks
 
+For retention sessions use `references/RETENTION_PROTOCOL.md` and
+`scripts/retention.py`; include broader domains/subjects beyond the active project.
+For generated note equations use `references/MATH_RENDERING.md` and
+`scripts/math_notes.py`. Important equations use supported formula callouts.
+
 Use the learning protocol's state definitions, evidence requirements, and adaptable
 delayed-review intervals. Preserve attempts and assistance in working learning
 records at block end; do not infer mastery from a note or a correct MCQ alone.

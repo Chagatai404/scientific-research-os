@@ -12,9 +12,12 @@ tags:
 
 ## What are we trying to derive?
 
-$$
-\boxed{\text{target result}}
-$$
+> [!formula] Target result — replace with a supported title
+> $$
+> \text{target result}
+> $$
+
+Use MATH_RENDERING.md; include only supported units, assumptions, validity and source.
 
 ## Why do we need it?
 

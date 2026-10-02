@@ -99,6 +99,11 @@ dimensions it can be part of a profile. No dimension is silently required.
 
 ## Retrieval table and dimension assessment
 
+Optional `retention_focus` on either learning schema is a reviewed qualitative value:
+foundational, transferable, reasoning or detail. It is separate from human
+retention_target and evidence. See `references/RETENTION_PROTOCOL.md`; selection
+does not write targets, grades, dates or inferred importance.
+
 Under the exact `## Retrieval history` heading, use:
 
 ```markdown

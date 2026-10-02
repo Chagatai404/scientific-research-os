@@ -18,13 +18,14 @@ import sys
 ID = re.compile(r"[a-z0-9]+(?:[._-][a-z0-9]+)*\Z")
 STATES = {"unknown", "learning", "demonstrated", "retained", "fragile", "stale"}
 RETENTION_TARGETS = {"core", "working", "reference"}
+RETENTION_FOCUS = {'foundational', 'transferable', 'reasoning', 'detail'}
 SCOPES = {'conceptual', 'transfer', 'project_application'}
 DIMENSIONS = ('recognition', 'explanation', 'derivation', 'transfer', 'application')
 V2_FIELDS = {'concept', 'learning_scope', 'required_dimensions', 'blocks', 'legacy_subject'}
 FIELDS = {
     "learning_schema", "learning_id", "domain", "projects", "goals", "courses", "prerequisites",
     "learning_state", "first_learned", "last_retrieval", "next_review", "retention_target",
-} | V2_FIELDS
+} | V2_FIELDS | {'retention_focus'}
 HEADER = ["Date", "Learning period", "Timing", "Method", "Outcome",
           "Assistance", "Evidence", "Next review"]
 HEADER_V2 = HEADER + ['Scope', 'Dimension', 'Context']
@@ -207,6 +208,8 @@ def metadata(text: str) -> tuple[dict[str, object] | None, str]:
         raise ValueError("invalid learning_state")
     if "retention_target" in data and data["retention_target"] not in RETENTION_TARGETS:
         raise ValueError("invalid retention_target; expected core, working, or reference")
+    if 'retention_focus' in data and data['retention_focus'] not in RETENTION_FOCUS:
+        raise ValueError('invalid retention_focus; expected foundational, transferable, reasoning or detail')
     for key in ("first_learned", "last_retrieval", "next_review"):
         if data.get(key):
             iso_date(data[key])

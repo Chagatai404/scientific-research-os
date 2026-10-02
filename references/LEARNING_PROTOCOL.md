@@ -269,6 +269,10 @@ When a learner selects the correct option for the wrong reason, treat the underl
 
 ## Mathematical teaching
 
+Follow `references/MATH_RENDERING.md` for Obsidian mathematics and important formula
+callouts. Use `scripts/math_notes.py` helpers/lint when available; never invent
+missing units, assumptions or sources.
+
 For a new formula:
 
 1. State the problem that makes the quantity necessary.
@@ -289,6 +293,10 @@ AI output is temporary working material until the learner:
 - and chooses to promote it.
 
 ## Selective long-term retention
+
+Use `references/RETENTION_PROTOCOL.md` and the read-only `scripts/retention.py`
+for domain/subject candidates, scoped dimensions and independent examples. Existing
+targets and dates remain authoritative; no background scheduler is introduced.
 
 Understanding and permanent memorization are different questions. `learning_state`
 summarizes retrieval evidence; optional `retention_target` records the learner's

@@ -47,9 +47,13 @@ Start from the problem that makes this concept necessary.
 
 ## Mathematical form
 
-$$
-\text{equation}
-$$
+> [!formula] Important equation — replace with a supported title
+> $$
+> \text{equation}
+> $$
+
+Add only supported variables, units, assumptions, validity limits and sources;
+follow MATH_RENDERING.md. Omit this callout when a formula is not useful.
 
 ### Symbols
 
