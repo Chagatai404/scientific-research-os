@@ -148,10 +148,10 @@ for p in documents:
         if not (ROOT / "assets" / "obsidian" / name).is_file():
             errors.append(f"{p}: missing template {name}")
 
-# knowledge.py owns schema-1 validation; do not duplicate its metadata rules.
+# knowledge.py owns learning/ontology validation; do not duplicate its rules.
 from knowledge import discover
 
-for directory in (ROOT / "examples" / "learning", ROOT / "assets" / "obsidian"):
+for directory in (ROOT / "examples" / "learning", ROOT / "examples" / "ontology", ROOT / "assets" / "obsidian"):
     if not directory.is_dir():
         errors.append(f"Missing learning input directory: {directory}")
         continue

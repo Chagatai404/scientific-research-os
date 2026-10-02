@@ -28,7 +28,8 @@ RELATIONS = {
     'research-decision': {'questions': 'research-question', 'hypotheses': 'hypothesis',
                           'experiments': 'experiment', 'supersedes': 'research-decision'},
 }
-EXTERNAL = {'evidence', 'manifests', 'artifacts', 'learning_dependencies', 'code_refs', 'visuals'}
+ONTOLOGY_LINKS = {'domains': 'domain', 'subjects': 'subject', 'concepts': 'concept', 'blocks': 'research-block'}
+EXTERNAL = {'evidence', 'manifests', 'artifacts', 'learning_dependencies', 'code_refs', 'visuals'} | ONTOLOGY_LINKS.keys()
 LISTS = EXTERNAL | {key for relations in RELATIONS.values() for key in relations}
 REQUIRED = {'research_schema', 'type', 'id', 'project', 'status', 'created'}
 EXTRA = {
@@ -195,7 +196,28 @@ def lifecycle(registry: ResearchRegistry, root: Path) -> None:
 def validate(root: Path) -> ResearchRegistry:
     result = discover(root)
     lifecycle(result, root)
+    ontology_links(result, root)
     return result
+
+
+def ontology_links(registry: ResearchRegistry, root: Path) -> None:
+    """Validate explicit knowledge links without altering research lifecycle."""
+    registry.diagnostics[:] = [d for d in registry.diagnostics if d.code != 'LINK_ONTOLOGY']
+    if not any(set(r.meta) & ONTOLOGY_LINKS.keys() for r in registry.records.values()):
+        return
+    import ontology
+    knowledge = ontology.discover(root)
+    for r in registry.records.values():
+        for name, kind in ONTOLOGY_LINKS.items():
+            for key in r.meta.get(name, []):
+                message = None
+                if not knowledge.valid(key, {kind}):
+                    message = f'{name}: missing, invalid or wrong-type reference {key}'
+                elif kind == 'research-block' and knowledge.records[key].meta['project'] != r.meta['project']:
+                    message = f'block {key} belongs to a different project'
+                if message:
+                    registry.diagnostics.append(Diagnostic('ERROR', 'LINK_ONTOLOGY', r.path, message))
+    registry.diagnostics.sort()
 
 
 def link_state(registry: ResearchRegistry, root: Path, evidence: Path | None = None) -> None:
@@ -267,6 +289,9 @@ def learning_state(registry: ResearchRegistry, learning_root: Path, as_of: date)
             else:
                 entry[dep] = {'state': node.assessment.state, 'freshness': node.freshness,
                               'retention_target': node.retention_target, 'ready': dep in ready}
+                if node.mastery:
+                    entry[dep].update(concept=node.meta['concept'], learning_scope=node.meta['learning_scope'],
+                                      mastery=knowledge.node_dimensions(node), state_kind='readiness-summary')
         if entry:
             registry.learning[key] = entry
     registry.diagnostics.sort()
@@ -313,6 +338,7 @@ def enrich(registry: ResearchRegistry, root: Path, evidence: Path | None = None,
            learning_root: Path | None = None, as_of: date | None = None,
            graphify: Path | None = None) -> ResearchRegistry:
     """Attach reference state without changing any canonical record."""
+    ontology_links(registry, learning_root or root)
     link_state(registry, root, evidence)
     learning_state(registry, learning_root or root, as_of or date.today())
     code_state(registry, root, graphify)
@@ -675,7 +701,7 @@ def parse(text: str, path: str = '') -> Record | None:
             iso_date(data[key])
     for key in LISTS & data.keys():
         if key not in {'manifests', 'artifacts', 'code_refs'}:
-            pattern = LEARNING_ID if key == 'learning_dependencies' else ID
+            pattern = LEARNING_ID if key == 'learning_dependencies' or key in ONTOLOGY_LINKS else ID
             if any(not pattern.fullmatch(x) for x in data[key]):
                 raise ValueError(f'{key}: invalid reference ID')
     if kind == 'experiment' and data.get('authorization') not in AUTH:

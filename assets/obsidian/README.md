@@ -69,7 +69,17 @@ Back up local template customizations before installing. It does not migrate
 existing notes. The metadata below can be used manually; `scripts/knowledge.py`
 provides optional graph generation and is not required to keep learning records.
 
-## Learning records and graph metadata (schema 1)
+## Learning records and graph metadata
+
+Schema 1 and its templates remain supported as documented below. For explicit
+domain/subject/concept/application records and independent scope/dimension evidence,
+use the opt-in [knowledge model and schema 2](../../references/KNOWLEDGE_MODEL.md).
+The existing quizbook template remains schema 1; do not merely change its version.
+Schema 2 needs an explicit concept/readiness profile and eleven-column history,
+and derives state/date summaries instead of storing them. The migration helper
+defaults to a dry run and preserves original bytes on explicit apply.
+
+### Schema 1
 
 `LEARNING_PROTOCOL.md` owns learning-state and retrieval rules. This section owns
 the storage format. Records remain ordinary Markdown in the configured vault;

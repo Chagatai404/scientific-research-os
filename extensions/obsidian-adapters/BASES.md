@@ -38,6 +38,12 @@ Edits belong in the source notes and records. Never treat a Base as an editable
 ledger: the canonical parsers (`research.py`, `knowledge.py`, `visuals.py`)
 remain authoritative and disagree with a Base whenever the two differ.
 
+Learning schema 2 derives scope/dimension state from retrieval rows and does not
+store scalar learning_state/date summaries in frontmatter. Existing Base columns
+or filters using those summaries therefore cannot display schema-2 mastery/frontier.
+Use `knowledge.py` for that evidence; never copy its derived state back into notes
+just to populate a dashboard. Structural ontology concept records also carry no mastery.
+
 ## Default use when installed (v0.6.2)
 
 Bases is a core Obsidian feature. When a vault has the `.base` files, plan, session and hub notes embed their views

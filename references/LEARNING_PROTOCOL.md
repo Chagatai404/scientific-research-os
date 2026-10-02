@@ -27,6 +27,14 @@ research cycle. Use verified material already available when sufficient.
 
 ### Graph-first block planning
 
+Opt-in ontology and learning schema 2 are defined in `references/KNOWLEDGE_MODEL.md`.
+Concept identity is distinct from assessable capability evidence. Schema-2 attempts
+record scope and dimension explicitly; unknown scope in old evidence never becomes
+conceptual or transfer mastery. State/readiness summaries are projections of the
+declared profile; inspect the separate dimension evidence. Schema-1 assessment and
+human retention choices remain compatible. Concept relation edges guide planning;
+only explicit capability prerequisites and actual retrieval establish readiness.
+
 Resolve the target capability, load the relevant knowledge view, resolve its
 prerequisite closure, inspect retrieval evidence and freshness, then prepare a
 bounded lesson/probe. Use `scripts/knowledge.py --root <working-record-root>

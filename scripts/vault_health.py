@@ -127,8 +127,9 @@ def audit(root: Path, as_of: date) -> dict:
             sources.append(rel)
             gaps += source_gaps(rel, meta, body)
         elif kind == 'concept':
-            concepts.append(rel)
-            gaps += concept_gaps(rel, meta, body)
+            if not meta.get('knowledge_schema'):
+                concepts.append(rel)
+                gaps += concept_gaps(rel, meta, body)
         elif kind == 'course' and meta.get('course'):
             courses.add(str(meta['course']))
         if kind != 'course' and meta.get('course'):
@@ -180,6 +181,11 @@ def audit(root: Path, as_of: date) -> dict:
                                        + [d.path + ': ' + d.message for d in registry_errors
                                           if d.code in {'DANGLING', 'TARGET_TYPE', 'CROSS_PROJECT'}])},
     }
+    if collection.ontology.records or collection.ontology.diagnostics:
+        report['ontology'] = {
+            'counts': {kind: sum(r.type == kind for r in collection.ontology.records.values())
+                       for kind in ('domain', 'subject', 'concept', 'project', 'research-block')},
+            'diagnostics': collection.ontology.diagnostics}
     return report
 
 
@@ -194,6 +200,10 @@ def render(report: dict) -> str:
              f"- sessions: {len(l['sessions']['active'])} active, {len(l['sessions']['closed'])} closed"]
     lines += ['- malformed:'] + ['  ' + x for x in bullet(l['malformed'])]
     lines += ['- unresolved prerequisites:'] + ['  ' + x for x in bullet(l['unresolved_prerequisites'])]
+    if 'ontology' in report:
+        lines += ['', '## Knowledge ontology',
+                  '- ' + '; '.join(f'{kind}: {count}' for kind, count in report['ontology']['counts'].items())]
+        lines += bullet(report['ontology']['diagnostics'])
     lines += ['', '## Research',
               f"- tracked records: {r['tracked_records']}; legacy notes: {r['legacy_notes']}; errors: {r['errors']}",
               f"- active questions: {', '.join(r['active_questions']) or 'none'}",

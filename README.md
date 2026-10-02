@@ -464,8 +464,12 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 ## Status
 
 v0.7 is planned in [the Slice 0 design record](references/V0.7_IMPLEMENTATION.md).
-Only reconnaissance is complete; the current runtime remains v0.6.2. Later slices
-require explicit continuation and are committed and verified individually.
+Slice 1 adds the opt-in [knowledge model](references/KNOWLEDGE_MODEL.md): explicit
+domains, subjects, shared concepts and project/block mappings, with separate
+scope/dimension retrieval evidence and a backup-preserving dry-run migration.
+See the [synthetic example](examples/ontology/README.md). VERSION remains v0.6.2
+until release preparation; later slices require explicit continuation and are
+committed and verified individually.
 
 **v0.6.2 — Installed Obsidian adapters are used** makes Excalidraw, Bases and Breadcrumbs part of every session when a vault has them: schematics through the new `scripts/excalidraw_schematic.py`, dashboards as embedded Base views, and `up` links plus prerequisite trails for navigation. See "Using the vault's installed Obsidian adapters" in the visualization protocol. No schema change.
 

@@ -158,6 +158,17 @@ class InstallationTests(unittest.TestCase):
             for name in ("COURSE_LEARNING_PROTOCOL.md", "LEARNING_PROTOCOL.md"):
                 self.assertEqual((course / "references" / name).read_bytes(), (ROOT / "references" / name).read_bytes())
 
+            graph = self.tmp_path / f"{target}-skills/tutor/scripts"
+            result = subprocess.run(
+                [sys.executable, '-S', '-B', str(graph / 'knowledge.py'), '--root', str(ROOT / 'examples/ontology'),
+                 '--concept', 'box-counting', '--json', '--as-of', '2026-10-02'],
+                cwd=self.tmp_path, capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(len(json.loads(result.stdout)['nodes']), 2)
+            result = subprocess.run([sys.executable, '-S', '-B', str(graph / 'migrate_learning.py'), '--help'],
+                                    cwd=self.tmp_path, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
         result = subprocess.run(
             [sys.executable, "-S", "-B", str(ROOT / "scripts/validate.py")],
             cwd=ROOT, capture_output=True, text=True,
