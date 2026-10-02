@@ -463,6 +463,10 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
+v0.7 is planned in [the Slice 0 design record](references/V0.7_IMPLEMENTATION.md).
+Only reconnaissance is complete; the current runtime remains v0.6.2. Later slices
+require explicit continuation and are committed and verified individually.
+
 **v0.6.2 — Installed Obsidian adapters are used** makes Excalidraw, Bases and Breadcrumbs part of every session when a vault has them: schematics through the new `scripts/excalidraw_schematic.py`, dashboards as embedded Base views, and `up` links plus prerequisite trails for navigation. See "Using the vault's installed Obsidian adapters" in the visualization protocol. No schema change.
 
 **v0.6.1 — Visual cadence and verification tiers** makes a visual part of every tutoring block and sets who may mark one `verified`: the producing agent for general mathematical or physical claims after independent recomputation, a separate bounded reviewer for project, literature or reusable claims, and the human for publication figures. See the protocol's *Visual cadence* and *Verification tiers* and the [post-release note](references/V0.6_IMPLEMENTATION.md). No schema or script change.
