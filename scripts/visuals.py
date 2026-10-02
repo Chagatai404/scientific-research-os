@@ -18,10 +18,12 @@ from research import local_file
 SUFFIX = '.visual.json'
 VISUAL_ID = re.compile(r'VIS-[A-Za-z0-9][A-Za-z0-9._-]*\Z')
 KINDS = {'source-figure', 'conceptual-schematic', 'model-driven-plot', 'simulation-data-visual', 'animation'}
+MODES = {'plot', 'diagram', 'geometric-construction', 'scientific-illustration',
+         'conceptual-schematic', 'simulation', 'animation'}
 SOURCE_TYPES = {'source', 'generated', 'schematic'}
 STATUSES = ('candidate', 'rendered', 'inspected', 'verified')
 FIELDS = {'visual_schema', 'visual_id', 'title', 'kind', 'concepts', 'source_type', 'verification_status',
-          'artifact', 'quantitative', 'provenance', 'basis', 'verified_by', 'verified_at'}
+          'artifact', 'quantitative', 'provenance', 'basis', 'verified_by', 'verified_at', 'mode'}
 REQUIRED = {'visual_schema', 'visual_id', 'title', 'kind', 'concepts', 'source_type',
             'verification_status', 'artifact'}
 EMBED = re.compile(r'!\[\[([^\]\n]+)\]\]')
@@ -46,6 +48,8 @@ def issues(record: object, root: Path) -> list[str]:
             result.append(f'{key}: expected nonempty string')
     if record['kind'] not in KINDS:
         result.append('unsupported kind')
+    if 'mode' in record and (not isinstance(record['mode'], str) or record['mode'] not in MODES):
+        result.append('unsupported presentation mode')
     if record['source_type'] not in SOURCE_TYPES:
         result.append('unsupported source_type')
     if record['verification_status'] not in STATUSES:

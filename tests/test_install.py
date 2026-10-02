@@ -158,6 +158,48 @@ class InstallationTests(unittest.TestCase):
             for name in ("COURSE_LEARNING_PROTOCOL.md", "LEARNING_PROTOCOL.md"):
                 self.assertEqual((course / "references" / name).read_bytes(), (ROOT / "references" / name).read_bytes())
 
+            graph = self.tmp_path / f"{target}-skills/tutor/scripts"
+            result = subprocess.run(
+                [sys.executable, '-S', '-B', str(graph / 'knowledge.py'), '--root', str(ROOT / 'examples/ontology'),
+                 '--concept', 'box-counting', '--json', '--as-of', '2026-10-02'],
+                cwd=self.tmp_path, capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(len(json.loads(result.stdout)['nodes']), 2)
+            result = subprocess.run(
+                [sys.executable, '-S', '-B', str(graph / 'tutor_plan.py'), '--root', str(ROOT / 'examples/ontology'),
+                 '--block', 'block-9', '--focus', 'box-counting', '--as-of', '2026-10-02'],
+                cwd=self.tmp_path, capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            decision = json.loads(result.stdout)['next']
+            self.assertEqual(decision['action'], 'prerequisite_probe')
+            self.assertEqual(decision['concept'], 'scale-invariance')
+            self.assertEqual((graph.parent / 'references/TUTOR_PLANNING.md').read_bytes(),
+                             (ROOT / 'references/TUTOR_PLANNING.md').read_bytes())
+            result = subprocess.run([sys.executable, '-S', '-B', str(graph / 'migrate_learning.py'), '--help'],
+                                    cwd=self.tmp_path, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
+            library_config = self.tmp_path / f'{target}-papers.toml'
+            library_config.write_text('[paper_library]\nroot = "unused-library"\n', encoding='utf-8')
+            manifest = self.tmp_path / f'{target}-papers.json'
+            manifest.write_text(json.dumps([{'title': 'Offline fixture', 'other_id': 'fixture',
+                                            'source_url': 'https://example.org/fixture', 'screening': 'found'}]), encoding='utf-8')
+            spec = self.tmp_path / f'{target}-visual.json'
+            spec.write_text(json.dumps({'need': 'geometry', 'goal': 'Explain counted cells'}), encoding='utf-8')
+            commands = [
+                ['retention.py', '--root', str(ROOT / 'examples/ontology'), '--domain', 'mathematics', '--as-of', '2026-10-02'],
+                ['math_notes.py', str(ROOT / 'assets/obsidian/01_Concept.md')],
+                ['visual_intent.py', '--spec', str(spec)],
+                ['knowledge_maps.py', '--root', str(ROOT / 'examples/ontology'), '--as-of', '2026-10-02'],
+                ['paper_library.py', '--config', str(library_config), '--input', str(manifest)],
+            ]
+            for helper, *args in commands:
+                self.assertEqual((graph / helper).read_bytes(), (ROOT / 'scripts' / helper).read_bytes())
+                result = subprocess.run([sys.executable, '-S', '-B', str(graph / helper), *args],
+                                        cwd=self.tmp_path, capture_output=True, text=True, encoding='utf-8')
+                self.assertEqual(result.returncode, 0, f'{target}/{helper}: {result.stderr}')
+            self.assertFalse((self.tmp_path / 'unused-library').exists())
+
         result = subprocess.run(
             [sys.executable, "-S", "-B", str(ROOT / "scripts/validate.py")],
             cwd=ROOT, capture_output=True, text=True,

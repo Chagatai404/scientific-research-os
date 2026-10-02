@@ -55,6 +55,14 @@ acceptance. Manifest validity is structural and not scientific validity.
 
 Learning IDs resolve using learning schema 1; readiness is advisory and cannot
 revoke human experiment approval. Research queries never write learning records.
+Learning schema 2 also resolves, exposing scope/dimension evidence alongside its
+explicitly labelled readiness summary. Optional `domains`, `subjects`, `concepts`
+and `blocks` arrays reference the ontology in `references/KNOWLEDGE_MODEL.md`;
+wrong-type/invalid/missing links are errors. A block must belong to this research
+record's project. Enriched queries use `--learning-root` for separate ontology/vault
+roots; otherwise the record root is used. These links never resolve a question,
+change authorization or infer support/contradiction. Structural project/block
+records do not duplicate research lifecycle state.
 Visual IDs refer to separately verified visual records. Code references and
 artifact paths are explicit root-relative references, not executable instructions.
 No path may escape root, including through symlinks. No import/call edge implies

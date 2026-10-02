@@ -36,7 +36,7 @@ class LearningValidationTests(unittest.TestCase):
                     self.assertIn(field, result.stdout)
             record.write_text(original, encoding="utf-8")
 
-            for name in ("COURSE_LEARNING_PROTOCOL.md", "LATEX_TRANSCRIPTION_PROTOCOL.md"):
+            for name in ("COURSE_LEARNING_PROTOCOL.md", "LATEX_TRANSCRIPTION_PROTOCOL.md", "TUTOR_PLANNING.md"):
                 path = root / "references" / name
                 saved = path.read_bytes()
                 path.unlink()

@@ -10,6 +10,15 @@ Read:
 - `references/AGENT_POLICY.md`
 - `references/SOURCE_POLICY.md`
 - `references/EVIDENCE_FORMAT.md` when handling consequential structured evidence
+- `references/PAPER_LIBRARY.md` when screening or saving selected papers
+
+For selected papers, use the configured local paper-library helper after reviewed
+metadata and relevance screening. Plan first; apply within the user's authorized
+scope. Preserve unavailable-PDF reasons and source access limits. The catalog
+never updates learning grades or accepted claims; the literature scout stays read-only.
+Complete the literature session only after each selected useful paper has a saved
+PDF/metadata, existing-library match, unavailable PDF with citation, or explicit
+reviewed rejection. Report per-paper outcomes; a dry-run plan does not complete ingestion.
 
 ## Session start and end with the research registry
 

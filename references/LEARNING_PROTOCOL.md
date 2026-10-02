@@ -10,8 +10,11 @@ The goal is understanding that can be reconstructed, not copied notes.
    or uncertain prerequisites before reteaching them.
 3. **Probe and map** — use a bounded diagnostic block to locate the learner's
    boundary, then refine the dependency map from the answers.
-4. **Teach and connect** — one dependency node at a time, connected to established
-   foundations; every tutoring block carries at least one visual for its central
+4. **Teach and connect** — establish general concepts before relying on project
+   application, one dependency node at a time, connected to established foundations;
+   use intuition/formal treatment as needed, concept reconstruction, then an
+   independent transfer example. Skip established dimensions and repair actual gaps.
+   Every tutoring block carries at least one visual for its central
    idea (see the visualization protocol, "Visual cadence").
 5. **Retrieve** — test reconstruction, explanation, derivation, transfer, or use.
 6. **Record and revisit** — preserve retrieval evidence, summarize learning state,
@@ -26,6 +29,23 @@ research cycle. Use verified material already available when sufficient.
 ## Learning state and retention
 
 ### Graph-first block planning
+
+Opt-in ontology and learning schema 2 are defined in `references/KNOWLEDGE_MODEL.md`.
+Concept identity is distinct from assessable capability evidence. Schema-2 attempts
+record scope and dimension explicitly; unknown scope in old evidence never becomes
+conceptual or transfer mastery. State/readiness summaries are projections of the
+declared profile; inspect the separate dimension evidence. Schema-1 assessment and
+human retention choices remain compatible. Concept relation edges guide planning;
+only explicit capability prerequisites and actual retrieval establish readiness.
+
+Concept-first decisions are specified in `references/TUTOR_PLANNING.md` and the
+read-only `scripts/tutor_plan.py`. Resolve mapped concepts for the task/block,
+narrow broad views, then inspect general conceptual evidence before transfer and
+the actual application. Strong application does not establish theory or transfer.
+Unknown/stale dimensions need a probe before reteaching; current dimensions are
+not retaught by default. Select multiple profiles instead of merging them.
+Structural prerequisites/cross-domain foundations guide the bounded lesson;
+related concepts are not obligatory lessons.
 
 Resolve the target capability, load the relevant knowledge view, resolve its
 prerequisite closure, inspect retrieval evidence and freshness, then prepare a
@@ -249,6 +269,10 @@ When a learner selects the correct option for the wrong reason, treat the underl
 
 ## Mathematical teaching
 
+Follow `references/MATH_RENDERING.md` for Obsidian mathematics and important formula
+callouts. Use `scripts/math_notes.py` helpers/lint when available; never invent
+missing units, assumptions or sources.
+
 For a new formula:
 
 1. State the problem that makes the quantity necessary.
@@ -269,6 +293,10 @@ AI output is temporary working material until the learner:
 - and chooses to promote it.
 
 ## Selective long-term retention
+
+Use `references/RETENTION_PROTOCOL.md` and the read-only `scripts/retention.py`
+for domain/subject candidates, scoped dimensions and independent examples. Existing
+targets and dates remain authoritative; no background scheduler is introduced.
 
 Understanding and permanent memorization are different questions. `learning_state`
 summarizes retrieval evidence; optional `retention_target` records the learner's

@@ -103,11 +103,13 @@ required = [
     ROOT / "references" / "RESEARCH_PROTOCOL.md",
     ROOT / "references" / "AGENT_POLICY.md",
     ROOT / "references" / "LEARNING_PROTOCOL.md",
+    ROOT / "references" / "TUTOR_PLANNING.md",
     ROOT / "references" / "VISUALIZATION_PROTOCOL.md",
     ROOT / "skills" / "visualize" / "SKILL.md",
     ROOT / "assets" / "obsidian" / "00_Tutor_Session.md",
     ROOT / "assets" / "obsidian" / "13_Knowledge_Graph.md",
     ROOT / "scripts" / "knowledge.py",
+    ROOT / "scripts" / "tutor_plan.py",
     ROOT / "scripts" / "validate_evidence.py",
     ROOT / "references" / "EVIDENCE_FORMAT.md",
 ]
@@ -116,7 +118,18 @@ for p in required:
         errors.append(f"Missing required file: {p}")
 
 # Check installer-owned source references without writing outputs or executing probes.
-from install import COMPUTE_AGENTS, COMPUTE_SKILLS
+from install import COMPUTE_AGENTS, COMPUTE_SKILLS, GRAPH_HELPERS
+for helper in GRAPH_HELPERS:
+    if not (ROOT / 'scripts' / helper).is_file():
+        errors.append(f'Installer references missing graph helper: {helper}')
+for name in ('V0.7_IMPLEMENTATION.md', 'KNOWLEDGE_MODEL.md', 'TUTOR_PLANNING.md',
+             'RETENTION_PROTOCOL.md', 'MATH_RENDERING.md', 'KNOWLEDGE_MAPS.md', 'PAPER_LIBRARY.md'):
+    if not (ROOT / 'references' / name).is_file():
+        errors.append(f'Missing v0.7 reference: {name}')
+
+import math_notes
+for p in (ROOT / 'assets/obsidian').glob('*.md'):
+    errors.extend(f'{p}: {issue}' for issue in math_notes.issues(p.read_text(encoding='utf-8')))
 for skill in COMPUTE_SKILLS:
     if not (ROOT / "skills" / skill / "SKILL.md").is_file():
         errors.append(f"Installer references missing compute skill: {skill}")
@@ -148,10 +161,10 @@ for p in documents:
         if not (ROOT / "assets" / "obsidian" / name).is_file():
             errors.append(f"{p}: missing template {name}")
 
-# knowledge.py owns schema-1 validation; do not duplicate its metadata rules.
+# knowledge.py owns learning/ontology validation; do not duplicate its rules.
 from knowledge import discover
 
-for directory in (ROOT / "examples" / "learning", ROOT / "assets" / "obsidian"):
+for directory in (ROOT / "examples" / "learning", ROOT / "examples" / "ontology", ROOT / "assets" / "obsidian"):
     if not directory.is_dir():
         errors.append(f"Missing learning input directory: {directory}")
         continue

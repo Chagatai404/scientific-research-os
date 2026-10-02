@@ -20,3 +20,9 @@ broad search
 ```
 
 A literature tool does not replace reading important sources.
+
+The built-in stdlib paper-library helper accepts reviewed metadata after screening.
+It plans by default, keeps one canonical record/PDF per paper, organizes physical
+PDFs by primary concept and generates cross-domain/project indexes. Configuration,
+access rules and commands are in [PAPER_LIBRARY.md](../../references/PAPER_LIBRARY.md).
+This bibliographic catalog does not replace claim extraction or verification.

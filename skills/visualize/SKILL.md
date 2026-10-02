@@ -27,6 +27,10 @@ local copies of the shared references.
    skill also works directly without an agent or a specific provider. For a schematic
    in an Obsidian vault with Excalidraw installed, use `scripts/excalidraw_schematic.py`
    and the protocol's section on the vault's installed adapters.
+   Use `scripts/visual_intent.py` for an intent-level representation decision when
+   useful: scale dependence may need geometric panels, relationships a schematic,
+   and motion an animation only with a justified basis. No material benefit means
+   no new visual. Selection is not successful rendering or verification.
 4. Create, render, inspect, and return the artifact with its provenance and limits
    under the protocol. If capabilities are missing, apply its fallback/draft rules.
 5. For tutoring, follow with an explanation or transfer check; do not treat viewing

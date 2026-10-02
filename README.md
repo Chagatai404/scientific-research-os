@@ -463,6 +463,17 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
+**v0.7.0 — Concept-first learning and connected research** adds the opt-in
+[knowledge model](references/KNOWLEDGE_MODEL.md), [concept-first tutor](references/TUTOR_PLANNING.md),
+[domain retention](references/RETENTION_PROTOCOL.md), [MathJax notes](references/MATH_RENDERING.md),
+intent-based visualization, [managed knowledge maps](references/KNOWLEDGE_MAPS.md)
+and a [screened paper library](references/PAPER_LIBRARY.md). General understanding,
+independent transfer and project application retain separate evidence. Existing
+schema-1 learning and research workflows remain compatible; migration and generated
+artifacts plan by default. See the [synthetic example](examples/ontology/README.md),
+[implementation and verification record](references/V0.7_IMPLEMENTATION.md) and
+[changelog](CHANGELOG.md). VERSION is 0.7.0; the release is identified by the v0.7 Git tag.
+
 **v0.6.2 — Installed Obsidian adapters are used** makes Excalidraw, Bases and Breadcrumbs part of every session when a vault has them: schematics through the new `scripts/excalidraw_schematic.py`, dashboards as embedded Base views, and `up` links plus prerequisite trails for navigation. See "Using the vault's installed Obsidian adapters" in the visualization protocol. No schema change.
 
 **v0.6.1 — Visual cadence and verification tiers** makes a visual part of every tutoring block and sets who may mark one `verified`: the producing agent for general mathematical or physical claims after independent recomputation, a separate bounded reviewer for project, literature or reusable claims, and the human for publication figures. See the protocol's *Visual cadence* and *Verification tiers* and the [post-release note](references/V0.6_IMPLEMENTATION.md). No schema or script change.

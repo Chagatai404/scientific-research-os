@@ -18,8 +18,9 @@ COMPUTE_AGENTS = {
 # Standard-library helpers the graph-first workflows call from an installed skill
 # directory (`python scripts/<helper>.py`); they import each other by module name.
 GRAPH_SKILLS = {"tutor", "course-study", "visualize", "research-session", "research-review"}
-GRAPH_HELPERS = ("knowledge.py", "research.py", "visuals.py", "tutor_contract.py", "bootstrap.py",
-                 "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py")
+GRAPH_HELPERS = ("knowledge.py", "ontology.py", "migrate_learning.py", "research.py", "visuals.py", "tutor_contract.py", "tutor_plan.py", "bootstrap.py",
+                 "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
+                 "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py")
 
 
 def copy_dir(src: Path, dst: Path, dry: bool) -> None:
@@ -106,6 +107,8 @@ def agent_policy(role: str) -> str:
     if role in {"literature-scout", "source-verifier", "adversarial-reviewer"}:
         evidence = (ROOT / "references" / "EVIDENCE_FORMAT.md").read_text(encoding="utf-8")
         evidence_policy = "\n" + evidence.split("## Storage and tooling", 1)[0]
+    if role == "literature-scout":
+        evidence_policy += "\n" + (ROOT / "references" / "PAPER_LIBRARY.md").read_text(encoding="utf-8")
     if role == "visualizer":
         visualization_policy = "\n" + (ROOT / "references" / "VISUALIZATION_PROTOCOL.md").read_text(encoding="utf-8")
     return (
