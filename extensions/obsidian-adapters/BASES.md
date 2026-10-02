@@ -37,3 +37,9 @@ A Base only sees frontmatter, so it cannot follow edges. Therefore:
 Edits belong in the source notes and records. Never treat a Base as an editable
 ledger: the canonical parsers (`research.py`, `knowledge.py`, `visuals.py`)
 remain authoritative and disagree with a Base whenever the two differ.
+
+## Default use when installed (v0.6.2)
+
+Bases is a core Obsidian feature. When a vault has the `.base` files, plan, session and hub notes embed their views
+(for example `![[Knowledge and Sources.base#Knowledge Frontier candidates (recorded state)]]`) instead of pasting
+lists. See "Using the vault's installed Obsidian adapters" in the visualization protocol.

@@ -94,6 +94,31 @@ Animations should normally be user-requested or clearly justified by temporal or
 transformation pedagogy (order, continuous change, a mathematical transformation).
 A static key-frame panel is the default when it teaches as well.
 
+## Using the vault's installed Obsidian adapters
+
+The adapters stay optional to **install**, and Research OS runs without them. **When a vault has them installed,
+sessions use them by default; configuring them and leaving them idle is a defect.** Detect them cheaply, once per
+session, from `<vault>/.obsidian/community-plugins.json` (`obsidian-excalidraw-plugin`, `breadcrumbs`) and
+`<vault>/.obsidian/core-plugins.json` (`"bases": true`). If one is absent, fall back to the plain Markdown route and
+say so in one line; do not install a plugin yourself.
+
+- **Excalidraw, for schematics of intent** (plans, pipelines, gates, dependency pictures, mechanisms). Generate the
+  file with `python scripts/excalidraw_schematic.py --spec <spec.json> --out
+  "<vault>/99 Attachments/Excalidraw/<Name>.excalidraw.md"` (standard library, never overwrites). Register it in the
+  visual registry as `kind: conceptual-schematic`, `source_type: schematic`, status `inspected`, and embed it with
+  `![[<Name>.excalidraw.md]]` plus a `> **What to notice:** ...` caption. It is never the source of a quantitative
+  plot; those stay reproducible figures verified under the verification tiers.
+- **Bases, for dashboards.** In plan, session and hub notes, embed views of the installed `.base` files instead of
+  pasting lists, for example `![[Knowledge and Sources.base#Knowledge Frontier candidates (recorded state)]]`. A Base
+  reads frontmatter only, so it points to state and never replaces `knowledge.py` or `research.py`. The research base is
+  empty in a vault that does not hold the typed research records.
+- **Breadcrumbs, for navigation.** Give every new session, plan and dashboard note an `up` link to its project note
+  (`up: ["[[Project]]"]`), and point the learner to the prerequisite trail of the capability being taught (the note's
+  `prerequisite` field) instead of describing the chain in prose. Breadcrumbs edges are navigation only, with explicit
+  edges and no inferred or transitive relations; they never establish readiness, retention or approval.
+
+After adding any embed, run `python scripts/vault_health.py --root <vault>` and fix broken embeds before finishing.
+
 ## Simplest suitable backend
 
 These are optional capability recommendations, not Research OS runtime dependencies.

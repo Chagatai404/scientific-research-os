@@ -140,6 +140,12 @@ Setup:
 4. During active probing append only the short verdict/hint and next question. At block end,
    write the assessment synthesis and update the map, sources, and lesson log as needed.
 
+**Installed Obsidian adapters are used, not just configured.** When the vault has Excalidraw, Bases or Breadcrumbs
+(detect from `.obsidian/community-plugins.json` and `core-plugins.json`), follow the visualization protocol's
+"Using the vault's installed Obsidian adapters": schematics through `scripts/excalidraw_schematic.py`, dashboards as
+embedded Base views, an `up` link on every new session note, and the prerequisite trail named when a capability is
+taught. Quantitative visuals remain verified figures.
+
 Teaching visuals appear **inline in the session note** where the vault supports it:
 embed the file with a valid Obsidian embed (`![[VIS-014-gamma-shape.svg]]`, name
 or vault-relative path) directly beside the question or explanation it serves,

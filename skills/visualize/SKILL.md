@@ -24,7 +24,9 @@ local copies of the shared references.
    simulation/data-driven and establish its inputs and assumptions.
 3. Choose the simplest adequate form/backend from the protocol. Use the existing
    visualizer agent for a bounded production task when delegation adds value; the
-   skill also works directly without an agent or a specific provider.
+   skill also works directly without an agent or a specific provider. For a schematic
+   in an Obsidian vault with Excalidraw installed, use `scripts/excalidraw_schematic.py`
+   and the protocol's section on the vault's installed adapters.
 4. Create, render, inspect, and return the artifact with its provenance and limits
    under the protocol. If capabilities are missing, apply its fallback/draft rules.
 5. For tutoring, follow with an explanation or transfer check; do not treat viewing

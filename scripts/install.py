@@ -19,7 +19,7 @@ COMPUTE_AGENTS = {
 # directory (`python scripts/<helper>.py`); they import each other by module name.
 GRAPH_SKILLS = {"tutor", "course-study", "visualize", "research-session", "research-review"}
 GRAPH_HELPERS = ("knowledge.py", "research.py", "visuals.py", "tutor_contract.py", "bootstrap.py",
-                 "vault_health.py", "computational_manifest.py", "validate_evidence.py")
+                 "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py")
 
 
 def copy_dir(src: Path, dst: Path, dry: bool) -> None:
