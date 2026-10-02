@@ -50,3 +50,9 @@ Embed the exported image (or the drawing note, if the plugin renders it) with a
 standard Obsidian embed and a "What to notice" caption, as for any other teaching
 visual. If the plugin is not installed, the exported SVG/PNG still embeds; the
 `.excalidraw.md` file is then just a Markdown note and nothing breaks.
+
+## Default use when installed (v0.6.2)
+
+Installing the plugin stays optional. Once it is installed, sessions use it for schematics by default, through
+`scripts/excalidraw_schematic.py`, and register each drawing as an `inspected` conceptual schematic. An installed but
+unused Excalidraw is a defect. See "Using the vault's installed Obsidian adapters" in the visualization protocol.

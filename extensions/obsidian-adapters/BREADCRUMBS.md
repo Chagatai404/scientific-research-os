@@ -52,3 +52,9 @@ prerequisite: ["[[Probability density]]"]
 ```
 
 Use a quoted string or a JSON-style list so the value stays valid YAML.
+
+## Default use when installed (v0.6.2)
+
+When the plugin is installed, every new session, plan and dashboard note gets an `up` link to its project note, and
+the learner is pointed to the `prerequisite` trail of the capability being taught. Edges stay explicit and are
+navigation only. See "Using the vault's installed Obsidian adapters" in the visualization protocol.
