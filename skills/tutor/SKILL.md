@@ -79,6 +79,9 @@ When the target belongs to a research project, also read its bounded context
    conceptual/transfer rows; recognition alone is not reconstruction.
 2. Update working learning records only within the authorized workflow.
 3. Recompute the affected graph view.
+   When managed vault maps are in use, regenerate the derived master/domain/subject
+   views via `references/KNOWLEDGE_MAPS.md` and `scripts/knowledge_maps.py` within the
+   authorized working-note workflow. Do not edit their shapes as canonical state.
 4. Record newly discovered prerequisites as proposals or working-record edges.
 5. Preserve the visual references used (IDs, not copies).
 6. Do not silently promote permanent notes; promotion stays a human choice.

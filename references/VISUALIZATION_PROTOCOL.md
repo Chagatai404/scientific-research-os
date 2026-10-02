@@ -7,6 +7,29 @@ and `RESEARCH_PROTOCOL.md` owns research plans and execution approval.
 
 ## Choose the teaching need
 
+The read-only `scripts/visual_intent.py` accepts a JSON intent with a concrete goal,
+need (dependence, geometry, scale, relations, mechanism, evolution or none), optional
+material/motion_material/interaction_material booleans, available modes, and
+supported basis/provenance. It selects plot, diagram, geometric-construction,
+scientific-illustration, conceptual-schematic, simulation or animation. Motion is
+chosen only when it materially serves the stated need and a basis is declared;
+otherwise use static panels. Missing backends return an honest draft/fallback.
+The default catalogue is a planning vocabulary, not a claim that renderers exist;
+provide the observed available modes before production. No material benefit yields
+no visual; note that reason under the existing cadence exception. The helper does
+not render/verify facts or install tools. Use existing plot/Manim/diagram backends.
+Its box_grid helper supplies deterministic ideal line/square counting SVG panels
+with exact counts; these are geometric examples, not detector estimates. Scientific
+verification and actual render inspection still follow the tiers below.
+
+Optional visual registry `mode` records presentation independently of the existing
+source/model/schematic kind. Old records remain valid; adding a mode does not raise
+verification_status or change scientific provenance requirements.
+
+For canonical knowledge/research overview maps use `references/KNOWLEDGE_MAPS.md`
+and `scripts/knowledge_maps.py`. These generated views do not replace teaching
+figures or become evidence.
+
 State what the learner should notice, predict, or explain after seeing the visual.
 **Visual cadence.** Each tutoring block carries at least one visual for its central
 idea, prepared before the block's key question. Choose the visual that serves the
