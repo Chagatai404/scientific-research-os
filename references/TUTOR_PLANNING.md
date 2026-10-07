@@ -8,6 +8,11 @@ and resolution remain separate; this learning plan never gates already approved 
 
 ## Resolve a narrow target
 
+The planned v0.8 branch/return-point and method/tool capability contracts are in
+`RESEARCHER_OWNERSHIP_PROTOCOL.md`; defense targets are in `DEFENSE_PROTOCOL.md`.
+They extend this planner's responsibilities, not its current implemented actions.
+Do not insert unsupported dimensions or branch fields into existing schema-2 ledgers.
+
 Resolve an explicit capability or mapped concepts from the active project/block.
 Inspect the knowledge graph, then use the read-only planner when available:
 

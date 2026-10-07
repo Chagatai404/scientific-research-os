@@ -361,6 +361,15 @@ human decides. It never writes to the vault (a report file is created only when
   review. Edges from a session's dependency map are listed by label, not mapped
   to IDs. Attempts already present in a tracked record are not proposed again.
 
+## v0.8 ownership and defense contracts (planned runtime)
+
+`RESEARCHER_OWNERSHIP_PROTOCOL.md` defines selective method/tool learning and
+interruptions with a saved return point. Learner-generated questions do not spend
+diagnostic budget; tutor-initiated assessments within branches still do. Actual
+capability evidence and assistance are required; casual questions are not mastery.
+`DEFENSE_PROTOCOL.md` derives presentation readiness separately from scientific
+support. These designs do not change current parsers, research approval or retention.
+
 ## Course routing
 
 For university coursework use `COURSE_LEARNING_PROTOCOL.md`, which builds on this

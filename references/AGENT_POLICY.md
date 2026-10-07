@@ -138,6 +138,16 @@ duplicated reviews without a reason. They remain advisory, cannot accept researc
 conclusions or authorize implementation, and may run reproductions only within
 explicitly approved scope.
 
+## v0.8 contract routing (planned runtime)
+
+`ORCHESTRATION_PROTOCOL.md` defines durable task state, immutable input/context
+bindings, writer isolation and provider-neutral execution capabilities. It records
+work within the existing research lifecycle and never grants build/run permission.
+`LITERATURE_RELIABILITY_PROTOCOL.md` preserves candidate/verification separation;
+`AUTHENTICATED_ACCESS_PROTOCOL.md` permits sanitized scholarly document outcomes
+from an already-authenticated user environment, never agent access to raw credentials.
+Its credential prohibition applies regardless of the general exception above.
+
 ## Convergence
 
 Specialists return reports to the main agent.

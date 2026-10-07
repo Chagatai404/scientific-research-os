@@ -9,6 +9,11 @@ Read `references/LEARNING_PROTOCOL.md`, `references/TUTOR_PLANNING.md` and `refe
 
 ## Workflow
 
+For planned v0.8 method/tool learning and interruptible branches, consult
+`references/RESEARCHER_OWNERSHIP_PROTOCOL.md`; presentation readiness uses
+`references/DEFENSE_PROTOCOL.md`. These are design contracts, not new parser
+dimensions or implemented defense commands. Research validity remains separate.
+
 1. Identify the narrow required concepts from the active task/project/block using
    the ontology, then relevant conceptual capabilities; load its knowledge graph and
    concept-first plan (`scripts/tutor_plan.py`) using the learning protocol and

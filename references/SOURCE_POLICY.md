@@ -146,6 +146,15 @@ scientific evidence. Package documentation is not authority for detector geometr
 calibration or physical truth outside its domain. Scientific claims continue to
 require the normal source hierarchy, claim envelope and verification boundaries.
 
+## v0.8 literature and access contracts (planned runtime)
+
+`LITERATURE_RELIABILITY_PROTOCOL.md` separates discovery, paper identity, access,
+claim extraction, independent verification, contradiction analysis and synthesis.
+It refines this policy without replacing EvidenceAtoms. Search snippets and abstracts
+cannot silently become full scientific verification; access and support stay separate.
+`AUTHENTICATED_ACCESS_PROTOCOL.md` defines a sanitized scholarly access capability
+with credentials external to Research OS. Access basis never implies source truth.
+
 ## Videos
 
 Videos may be selected because they teach an idea clearly. Record:

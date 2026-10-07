@@ -151,6 +151,12 @@ capabilities. Link actual required capabilities in the ledger's `prerequisites`.
 
 ## Legacy and migration
 
+For planned v0.8 ownership requirements and method/tool/navigation dimensions,
+see `RESEARCHER_OWNERSHIP_PROTOCOL.md`. New requirements reference these canonical
+ledgers rather than duplicating mastery. A supported opt-in extension is required
+before new dimensions can be parsed; existing schemas and unknown legacy scope
+remain valid. `DEFENSE_PROTOCOL.md` consumes this model as a read-only projection.
+
 Schema-1 `domain` still means subject, and `--subject` retains that selector.
 Schema 1 still accepts its eight-column table and derives its existing scalar
 assessment. New concept/scope/profile/block fields require schema 2. Schema 2 rejects

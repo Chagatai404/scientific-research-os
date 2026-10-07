@@ -12,6 +12,14 @@ Read:
 - `references/EVIDENCE_FORMAT.md` when handling consequential structured evidence
 - `references/PAPER_LIBRARY.md` when screening or saving selected papers
 
+v0.8 design contracts (runtime pending):
+`references/LITERATURE_RELIABILITY_PROTOCOL.md`,
+`references/AUTHENTICATED_ACCESS_PROTOCOL.md` and
+`references/ORCHESTRATION_PROTOCOL.md` extend the same evidence/access/task
+responsibilities. For ownership or presentation readiness, consult
+`references/RESEARCHER_OWNERSHIP_PROTOCOL.md` and `references/DEFENSE_PROTOCOL.md`.
+Do not invoke planned helpers as though installed or infer approval from task state.
+
 For selected papers, use the configured local paper-library helper after reviewed
 metadata and relevance screening. Plan first; apply within the user's authorized
 scope. Preserve unavailable-PDF reasons and source access limits. The catalog

@@ -70,6 +70,11 @@ scientific support, causality, prerequisite mastery or research acceptance.
 
 ## Derivation and diagnostics
 
+The planned v0.8 `ORCHESTRATION_PROTOCOL.md` keeps execution state in a separate
+task DAG; `RESEARCHER_OWNERSHIP_PROTOCOL.md` references learning requirements;
+`DEFENSE_PROTOCOL.md` projects linked scientific and human-learning artifacts.
+None replaces this research graph or adds unsupported fields to schema-1 records.
+
 Discover Markdown deterministically; exclude repository internals and symlinks.
 Malformed records are diagnosed, not partially trusted. Exclude all copies of a
 duplicate ID, including when one copy is malformed. Resolve typed edges and report

@@ -11,6 +11,12 @@ The human researcher is always the final authority. AI agents may search, explai
 
 ## Core design
 
+v0.8 Slice 0 architecture contracts are documented in
+[the implementation record](references/V0.8_IMPLEMENTATION.md). They extend the
+existing responsibilities for literature reliability, external authenticated access,
+durable task orchestration, researcher ownership and defense readiness. Runtime
+implementation is pending the later slices; the current version remains 0.7.0.
+
 ```text
 Obsidian vault                 Git research repo
 (understanding)                (evidence)

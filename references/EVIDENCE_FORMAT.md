@@ -28,6 +28,11 @@ with the research skills. Do not load that detail for every retrieval task.
 
 ## Storage and tooling
 
+The planned v0.8 `LITERATURE_RELIABILITY_PROTOCOL.md` adds referenced access/scope/
+conflict provenance around these same atoms. EvidenceAtom v1 and existing valid
+receipts remain supported; missing new access data is unknown. New metadata must
+not silently change fingerprint coverage or manufacture independent verification.
+
 Use project-local `evidence/<claim_id>.json`, one atomic claim per file. The
 standard-library representation and validator are `scripts/validate_evidence.py`.
 No database or third-party packages are needed. Existing Markdown evidence stays

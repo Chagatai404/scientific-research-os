@@ -14,6 +14,18 @@ COMPUTE_AGENTS = {
     "qml-reviewer": ("ML_PROTOCOL.md", "QML_PROTOCOL.md"),
 }
 
+# Slice 0 contracts only; runtime helpers arrive in their authorized slices.
+V08_REFERENCES = (
+    "V0.8_IMPLEMENTATION.md", "LITERATURE_RELIABILITY_PROTOCOL.md",
+    "AUTHENTICATED_ACCESS_PROTOCOL.md", "ORCHESTRATION_PROTOCOL.md",
+    "RESEARCHER_OWNERSHIP_PROTOCOL.md", "DEFENSE_PROTOCOL.md",
+)
+V08_AGENT_REFERENCES = {
+    "literature-scout": ("LITERATURE_RELIABILITY_PROTOCOL.md", "AUTHENTICATED_ACCESS_PROTOCOL.md"),
+    "source-verifier": ("LITERATURE_RELIABILITY_PROTOCOL.md", "AUTHENTICATED_ACCESS_PROTOCOL.md"),
+    "adversarial-reviewer": ("LITERATURE_RELIABILITY_PROTOCOL.md",),
+}
+
 
 # Standard-library helpers the graph-first workflows call from an installed skill
 # directory (`python scripts/<helper>.py`); they import each other by module name.
@@ -101,6 +113,9 @@ def agent_policy(role: str) -> str:
     visualization_policy = ""
     evidence_policy = ""
     compute_policy = ""
+    v08_policy = ""
+    for name in ("ORCHESTRATION_PROTOCOL.md", *V08_AGENT_REFERENCES.get(role, ())):
+        v08_policy += "\n" + (ROOT / "references" / name).read_text(encoding="utf-8")
     if role in COMPUTE_AGENTS:
         for name in ("COMPUTATIONAL_PROTOCOL.md", "SOURCE_POLICY.md", *COMPUTE_AGENTS[role]):
             compute_policy += "\n" + (ROOT / "references" / name).read_text(encoding="utf-8")
@@ -119,6 +134,7 @@ def agent_policy(role: str) -> str:
         + visualization_policy
         + evidence_policy
         + compute_policy
+        + v08_policy
     )
 
 
