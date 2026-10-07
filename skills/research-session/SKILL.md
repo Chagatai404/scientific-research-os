@@ -20,6 +20,12 @@ responsibilities. For ownership or presentation readiness, consult
 `references/RESEARCHER_OWNERSHIP_PROTOCOL.md` and `references/DEFENSE_PROTOCOL.md`.
 Do not invoke planned helpers as though installed or infer approval from task state.
 
+For authenticated scholarly access, use the bundled `scripts/paper_access.py`
+with a user-selected library/inbox and one sanitized request. It plans by default;
+authorized imports require `--apply`, reviewed public fallback also `--download`.
+Never receive raw provider responses or sessions. Preserve optional literature
+`access_ref` records; retrieval does not establish reading or source support.
+
 For schema-1 literature manifests, run `python scripts/literature_check.py --root
 <project> --input <root-relative-manifest>` before verification and after receipts
 or conflict reviews change. Use `--handoff <claim-id>` for bounded verifier context

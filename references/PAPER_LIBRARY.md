@@ -108,3 +108,10 @@ transaction. Rerun the same input to reconcile catalog/indexes after interruptio
 an interrupted lock must be reviewed before manual removal. No PDF deletion,
 automatic background fetch, metadata extraction, automatic paper selection or
 claim promotion is performed. Network tests use mocks, not live publisher downloads.
+
+For a document delivered from an already-authenticated user environment, use the
+credential-free `paper_access.py` boundary described in
+[AUTHENTICATED_ACCESS_PROTOCOL.md](AUTHENTICATED_ACCESS_PROTOCOL.md). It reuses
+authorized-local ingestion and stores versioned sanitized provenance beside the
+catalog. It plans by default, preserves screening/deduplication and never logs in.
+Only sanitized results and permitted documents may cross that boundary.

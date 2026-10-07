@@ -1,7 +1,7 @@
 # Authenticated scholarly access protocol
 
-Status: Slice 0 design contract; capability/runtime implementation is planned for
-Slice 2. `PAPER_LIBRARY.md` continues to own screened bibliographic storage and
+Status: Slice 2 local handoff capability implemented in `scripts/paper_access.py`.
+`PAPER_LIBRARY.md` continues to own screened bibliographic storage and
 ingestion; `SOURCE_POLICY.md` and `EVIDENCE_FORMAT.md` own scientific verification.
 
 ## Capability boundary
@@ -47,7 +47,7 @@ through your authenticated browser and place it in the configured paper inbox."
 Do not alter VPN settings, authenticate accounts or operate external accounts as
 part of implementing this capability.
 
-## Proposed access outcome
+## Versioned access outcome
 
 A versioned access record should reference paper identity and document version,
 access basis (open/institutional/user-session/manual/local), sanitized source,
@@ -77,7 +77,66 @@ An institutionally retrieved full text can be read and verified like any legitim
 source; access basis says nothing about scientific support. Retrieval is not reading,
 reading is not independent verification, and neither accepts research conclusions.
 
-Slice 2 tests will use fake/local fixtures only: authorized handoff, missing/expired
+Slice 2 tests use fake/local fixtures only: authorized handoff, missing/expired
 session, denial, prohibited automation, manual retrieval, OA fallback, duplicate
 library paper, secret rejection/redaction, safe logs, path escapes and rate/bulk
 limits. No live credentials, publisher sessions or institutional data are fixtures.
+
+## Runtime and provider contract
+
+Use `paper_access.py --root <library> --inbox <inbox> --input <sanitized-request.json>`.
+It plans by default; `--apply` authorizes local writes/imports. Reviewed public OA
+fallback additionally requires `--download`; authenticated service operations are
+never performed by this helper. No password/session/configuration field exists.
+Both provider bundles contain the same helper and protocols. An upstream capability
+must return only one already sanitized outcome/document; never export a raw provider
+response for an agent to redact. Provider session tooling stays outside Research OS.
+
+The schema-1 request contains reviewed `paper` metadata without `pdf`, an explicit
+`source_version`, optional `result`, and at most one `open_fallback`. The result has
+exactly `status`, `identity`, `source_version`, `basis`, `source_origin`, `method`,
+`automation`, and `local_file` only for an available document. Identity must match a
+reviewed paper alias; version must match the request. Source origin is HTTPS host
+only. Unknown fields, recognizable credential strings, URL userinfo, queries,
+fragments and encoded URL strings are rejected, with fixed CLI errors and no echo.
+An opaque secret disguised as metadata cannot be detected mechanically; upstream
+sanitization and selecting only scholarly documents are required.
+
+Supported status codes: `available`, `missing-session`, `expired-session`,
+`access-denied`, `automation-prohibited`, `manual-required`, `metadata-only`,
+`retrieval-failed`, `rate-limited`, `version-unconfirmed`. Supported result methods:
+`broker-local`, `manual-inbox`, `local-inbox`. Broker/local automated handoffs require
+explicit permission `allowed`; `unknown`/`prohibited` yields manual retrieval.
+A `manual-inbox` handoff has basis `manual` and preserves the declared automation
+permission without using it as authorization to operate a service.
+
+Public OA fallback is one reviewed URL with explicit `automation: allowed` and
+matching version. HTTPS/public URL validation and robots policy apply to each PDF
+redirect, and public URL validation applies to robots redirects. Download errors
+become a fixed `retrieval-failed` code. Retrieval URLs/diagnostics are never cataloged by
+this helper; the record retains origin only. Robots 404 is allowed; denied or unknown
+policy fails closed. A session is never forwarded to this downloader.
+
+Documents are bounded at 50 MiB, confined to a selected inbox without symlinks,
+checked for PDF header and staged for existing authorized-local ingestion. Screening
+remains authoritative: only useful papers gain canonical PDFs. Metadata-only entries
+can retain access gaps; this helper does not grade usefulness or accept claims.
+One access lock guards writes/retrieval, alongside existing ingestion locking.
+Attempts are bounded to one per minute and ten per rolling day in a per-library
+file, including failed attempts. This is not an account-wide/global rate guarantee.
+Cache hits validate hash and version-bound sidecar before returning an idempotent
+outcome; older cached PDFs without such provenance require explicit manual review.
+
+Records in `.access/PAPER-<id>.access.json` bind canonical paper ID, identity and
+document version to a confined path and SHA-256. Add `access_ref` with `record_ref`
+and `document_ref` to a literature claim, both relative to its check root; permitted
+copies can be explicitly placed under a project root. The checker validates the
+record/document and retains provenance in factual/qualified exports and minimal
+verifier handoffs, rechecking on handoff. Retrieval never sets reading depth or
+creates receipts. Older literature manifests without references remain supported;
+the original paper-library parser and EvidenceAtom schema are unchanged.
+
+See `examples/access/README.md` for a runnable plan and limitations. No active
+institutional/browser integration is claimed. Record assertions and hashes do not
+prove entitlement, document identity from its contents, independence or scientific
+truth; those require the external broker and source review.

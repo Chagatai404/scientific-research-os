@@ -22,8 +22,10 @@ The read-only schema-1 literature checker uses existing paper identities and
 EvidenceAtoms, with explicit access/version/scope and reviewer-supplied conflict
 classifications. Use its minimal verifier handoff and facts/qualified exports;
 snippets, abstracts and candidate records cannot silently become full-text facts.
-See `examples/literature/README.md` for a runnable synthetic example. Authenticated
-retrieval remains a later capability; no credential/session integration is added here.
+See `examples/literature/README.md` for a runnable synthetic example. Slice 2's
+credential-free `paper_access.py` accepts sanitized results/documents and links
+version/hash provenance to literature checks. It never operates accounts or sessions;
+see `examples/access/README.md` for the manual inbox flow and reviewed OA fallback.
 
 The built-in stdlib paper-library helper accepts reviewed metadata after screening.
 It plans by default, keeps one canonical record/PDF per paper, organizes physical

@@ -1,4 +1,4 @@
-"""Slice 0 documentation gates and real provider packaging; no runtime claims."""
+"""Release-slice contract boundaries and real provider packaging."""
 from contextlib import redirect_stdout
 import io
 from pathlib import Path
@@ -19,12 +19,17 @@ def reference(name):
 
 
 class V08ContractTests(unittest.TestCase):
-    def test_contract_inventory_is_explicitly_design_only(self):
+    def test_contract_inventory_distinguishes_completed_and_pending_slices(self):
         self.assertEqual(len(install.V08_REFERENCES), 6)
+        completed = {'LITERATURE_RELIABILITY_PROTOCOL.md': 'literature_check.py',
+                     'AUTHENTICATED_ACCESS_PROTOCOL.md': 'paper_access.py'}
         for name in install.V08_REFERENCES:
             text = reference(name)
-            self.assertIn("Slice 0", text)
-            self.assertRegex(text, r"planned|pending|not.*implemented")
+            if name in completed:
+                self.assertIn(completed[name], text)
+            else:
+                self.assertIn("Slice 0", text)
+                self.assertRegex(text, r"planned|pending|not.*implemented")
         self.assertIn("V08_REFERENCES", (ROOT / "scripts/validate.py").read_text(encoding="utf-8"))
 
     def test_one_lifecycle_and_existing_approval_order(self):

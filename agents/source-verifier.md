@@ -76,3 +76,10 @@ For apparent conflicts return the checked observable/regime/convention/unit and
 comparison dimensions plus an explicit classification/rationale. Do not resolve
 genuine disagreement by agreement with another agent. The literature checker
 checks declarations and receipts, not the scientific truth of your reconstruction.
+
+When a handoff includes `access_ref` and sanitized access provenance, check the
+bound document version/identity and read the permitted source itself. Institutional
+access is a legitimate basis, never a source-support verdict. Do not request cookies,
+tokens or login details, inspect session state, or infer reading from a saved PDF.
+If the document is unavailable or changed, report the gap and use the manual inbox
+instruction from the authenticated access protocol.

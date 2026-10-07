@@ -16,6 +16,25 @@ from common import parse_frontmatter
 from vault import render_template
 
 class InstallationTests(unittest.TestCase):
+    def test_access_boundary_runs_symmetrically_without_site_packages(self):
+        outcomes = []
+        for provider in ('claude', 'codex'):
+            base = self.tmp_path / f'{provider}-access'
+            install.install_skills(base, False)
+            helper = base / 'research-session/scripts/paper_access.py'
+            self.assertEqual(helper.read_bytes(), (ROOT / 'scripts/paper_access.py').read_bytes())
+            library, inbox = self.tmp_path / provider / 'library', self.tmp_path / provider / 'inbox'
+            result = subprocess.run([sys.executable, '-S', '-B', str(helper), '--root', str(library),
+                                     '--inbox', str(inbox), '--input', str(ROOT / 'examples/access/request.json')],
+                                    cwd=self.tmp_path, capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            outcome = json.loads(result.stdout)
+            self.assertEqual(outcome['record']['failure_reason'], 'manual-required')
+            self.assertFalse(outcome['record']['saved'])
+            self.assertFalse(library.exists())
+            outcomes.append(result.stdout)
+        self.assertEqual(*outcomes)
+
     def test_literature_checker_runs_symmetrically_without_repository_or_site_packages(self):
         results = []
         for provider in ('claude', 'codex'):

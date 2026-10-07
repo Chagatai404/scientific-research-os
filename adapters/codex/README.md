@@ -24,6 +24,8 @@ Custom agents use TOML files in:
 The research graph skill bundles include the read-only literature_check.py and
 its canonical manifest protocol. They use the same scientific contracts as Claude;
 the helper does not authenticate, launch agents or execute experiments.
+The same bundles include paper_access.py for sanitized single-document handoffs,
+reviewed public fallback and manual inbox outcomes. Provider sessions stay external.
 
 Recommended project `AGENTS.md` addition:
 

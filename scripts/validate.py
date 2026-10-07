@@ -214,6 +214,12 @@ for p in ROOT.rglob("*"):
 
 from validate_evidence import load_board, validate as validate_atom
 import literature_check
+import paper_access
+
+try:
+    paper_access.request_data(paper_access.read_json(ROOT / 'examples/access/request.json'))
+except (OSError, ValueError, TypeError, UnicodeError):
+    errors.append('Invalid access example: sanitized schema-1 request required')
 
 literature_root = ROOT / 'examples' / 'literature'
 try:

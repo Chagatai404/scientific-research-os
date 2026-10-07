@@ -1,0 +1,20 @@
+{
+  "access_schema": 1,
+  "paper": {
+    "title": "Synthetic access example; not scientific evidence",
+    "doi": "10.1234/synthetic-a",
+    "source_url": "https://example.org/paper",
+    "screening": "useful",
+    "relevance_notes": "Demonstrates a reviewed single-document handoff only."
+  },
+  "source_version": "1",
+  "result": {
+    "status": "manual-required",
+    "identity": "doi:10.1234/synthetic-a",
+    "source_version": "1",
+    "basis": "institutional",
+    "source_origin": "https://example.org",
+    "method": "broker-local",
+    "automation": "unknown"
+  }
+}

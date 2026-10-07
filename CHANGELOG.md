@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — v0.8 slices 0–1
+## Unreleased — v0.8 slices 0–2
 
 - Architecture contracts for reliability, external authenticated access, task
   orchestration, researcher ownership and defense; one research lifecycle retained.
@@ -8,8 +8,11 @@
   canonical paper identities, explicit access/scope and reviewed conflict classes.
 - Read-only literature checking, minimal verifier handoffs and fail-closed factual/
   qualified synthesis with synthetic regressions and equivalent provider bundles.
+- Sanitized single-document scholarly access results, permitted local handoffs,
+  reviewed public OA fallback, rate/bulk guards and version/hash-bound provenance
+  in literature checks and verifier handoffs. Credentials stay outside the interface.
 
-VERSION remains 0.7.0; authenticated retrieval, task execution, tutor extensions,
+VERSION remains 0.7.0; live authenticated provider integrations, task execution, tutor extensions,
 ownership and defense runtime are still planned for later authorized slices.
 
 ## 0.7.0 — 2026-10-02

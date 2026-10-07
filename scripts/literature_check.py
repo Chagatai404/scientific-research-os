@@ -10,6 +10,7 @@ import re
 import sys
 
 import paper_library as papers
+import paper_access
 from migrate_learning import confined
 import validate_evidence as ev
 
@@ -236,7 +237,7 @@ def check(root: Path, manifest: dict) -> dict:
         ref = 'claims.' + str(index)
         try:
             shape(item, {'claim_id', 'atom_ref', 'atom_fingerprint', 'paper_id', 'access',
-                         'full_text_required', 'assumptions'},
+                         'full_text_required', 'assumptions', 'access_ref'},
                   {'claim_id', 'atom_ref', 'atom_fingerprint', 'paper_id', 'access', 'full_text_required', 'assumptions'})
             key = item['claim_id']
             if not isinstance(key, str) or not ID.fullmatch(key) or key in ids:
@@ -286,6 +287,13 @@ def check(root: Path, manifest: dict) -> dict:
         for error in atom_errors:
             report(error['code'], key, error['field'] + ': ' + error['message'])
         entry, access = entries[item['paper_id']], item['access']
+        access_provenance = None
+        if 'access_ref' in item:
+            try:
+                access_provenance = paper_access.provenance(root, item['access_ref'], entry['group']['canonical_id'],
+                                                           entry['group']['aliases'], atom.get('source_version'))
+            except (OSError, ValueError, TypeError, UnicodeError):
+                report('ACCESS_PROVENANCE', key, 'Invalid, missing or changed access document/identity/version binding')
         level, region = access['level'], access['locator_region']
         known = set(entry['group']['aliases']) | set(entry['group']['urls'])
         try:
@@ -326,6 +334,8 @@ def check(root: Path, manifest: dict) -> dict:
                            access=access, observations=observations, scope=scope,
                            scope_fingerprint=scope_fingerprint(atom, item['assumptions']),
                            verification_status=atom.get('verification_status'), eligible_fact=eligible)
+        if access_provenance is not None:
+            claims[key].update(access_ref=item['access_ref'], access_provenance=access_provenance)
 
     ids = set()
     for index, pair in enumerate(manifest['comparisons']):
@@ -427,9 +437,16 @@ def verifier_handoff(report, claim_id, root):
         raise ValueError('atom changed since manifest check')
     allowed = ('claim_id', 'claim_text', 'source', 'source_identifier', 'source_version', 'source_locator',
                'target_envelope', 'required_envelope', *ev.ENVELOPE)
-    return dict(claim={k: atom[k] for k in allowed if k in atom}, access=claim['access'],
+    handoff = dict(claim={k: atom[k] for k in allowed if k in atom}, access=claim['access'],
                 assumptions_to_check=claim['scope']['assumptions'],
                 context_exposure='atomic claim/source and declared minimal scope; no scout rationale or desired verdict')
+    if 'access_ref' in claim:
+        binding = paper_access.provenance(root.resolve(), claim['access_ref'], claim['paper_id'],
+                                        [claim['access_provenance']['identity']], atom.get('source_version'))
+        if binding != claim['access_provenance']:
+            raise ValueError('access provenance changed since manifest check')
+        handoff.update(access_ref=claim['access_ref'], access_provenance=binding)
+    return handoff
 
 
 def main(argv=None):

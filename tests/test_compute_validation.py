@@ -25,6 +25,7 @@ class ComputeValidationTests(unittest.TestCase):
                 ("references/QML_PROTOCOL.md", None, "QML_PROTOCOL.md"),
                 ("references/LITERATURE_RELIABILITY_PROTOCOL.md", None, "LITERATURE_RELIABILITY_PROTOCOL.md"),
                 ("examples/literature/literature.json", None, "Invalid literature example"),
+                ("examples/access/request.json", '{"cookies":"synthetic-secret"}', "Invalid access example"),
                 ("extensions/scientific-tools/geant4/GUIDE.md", None, "GUIDE.md"),
                 ("extensions/scientific-tools/geant4/PROFILE.toml", 'schema_version = 99\n', "profile"),
                 ("agents/ml-reviewer.md", '---\nname: ml-reviewer\ndescription: test\nmode: write\n---\n', "read-only"),

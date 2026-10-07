@@ -1,8 +1,8 @@
 # Literature reliability protocol
 
 Status: Slice 0 architecture contract, extended by the Slice 1 read-only checker.
-`scripts/literature_check.py` is available; authenticated retrieval and task runtime
-remain planned for later slices. Structural validation is never source verification.
+`scripts/literature_check.py` is available; Slice 2 adds sanitized access handoffs
+via `paper_access.py`. Task runtime remains pending. Structural validation is never source verification.
 `SOURCE_POLICY.md` owns source standards, `AGENT_POLICY.md` owns independence,
 and `EVIDENCE_FORMAT.md` owns scientific claim evidence. This contract refines
 research stages 3–4 and 7–8 in `RESEARCH_PROTOCOL.md`; it adds no research lifecycle.
@@ -206,3 +206,11 @@ See `examples/literature/README.md` and the ten synthetic adversarial scenarios 
 `tests/fixtures/literature/`. These evaluate mechanics with declared synthetic
 reviews, not model accuracy or source-reading truth. Semantic overstatement,
 equation equivalence, assumptions and conflict resolution require source/human review.
+
+Slice 2 adds optional claim `access_ref: {record_ref, document_ref}` referencing a
+sanitized schema-1 access record and the actual PDF, both confined to the check root.
+The checker validates paper ID/alias, source version and document SHA-256 and retains
+the provenance in claims, facts and verifier handoffs. Missing/changed bindings fail
+closed; handoff rechecks the earlier snapshot. Retrieval supplies no reading status
+or receipt. Old manifests remain valid without this optional reference. Use
+`AUTHENTICATED_ACCESS_PROTOCOL.md` and `examples/access/README.md` for the boundary.

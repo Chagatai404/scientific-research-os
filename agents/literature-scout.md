@@ -54,3 +54,9 @@ do not claim registry confirmation without its source. The coordinator can assem
 the versioned literature manifest and run literature_check.py; this read-only role
 does not ingest papers, attach acceptance receipts or promote candidates.
 Keep relevance notes and scout rationale outside the minimal verifier handoff.
+
+For authenticated access, request only a sanitized document/outcome through the
+bundled authenticated access protocol. Never inspect session state or raw broker
+responses. If supplied, preserve the `access_ref` identity/version/document binding;
+successful retrieval does not mean you read it. Return the manual inbox instruction
+when access or automation permission is unavailable. The coordinator owns imports.
