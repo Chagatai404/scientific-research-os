@@ -12,13 +12,25 @@ Read:
 - `references/EVIDENCE_FORMAT.md` when handling consequential structured evidence
 - `references/PAPER_LIBRARY.md` when screening or saving selected papers
 
-v0.8 design contracts (runtime pending):
+v0.8 contracts (literature checker available; access/task/ownership runtime pending):
 `references/LITERATURE_RELIABILITY_PROTOCOL.md`,
 `references/AUTHENTICATED_ACCESS_PROTOCOL.md` and
 `references/ORCHESTRATION_PROTOCOL.md` extend the same evidence/access/task
 responsibilities. For ownership or presentation readiness, consult
 `references/RESEARCHER_OWNERSHIP_PROTOCOL.md` and `references/DEFENSE_PROTOCOL.md`.
 Do not invoke planned helpers as though installed or infer approval from task state.
+
+For schema-1 literature manifests, run `python scripts/literature_check.py --root
+<project> --input <root-relative-manifest>` before verification and after receipts
+or conflict reviews change. Use `--handoff <claim-id>` for bounded verifier context
+without scout notes, verdicts or receipts. It is a field allowlist, not proof of
+independence; record actual exposure. Use `--facts-only` for literature synthesis:
+the facts collection contains matched full-text EXACT_SUPPORT atoms; the qualified
+collection retains explicitly limited/TRANSFERRED/disputed support. Candidates are
+never facts. Invalid manifests export no facts or qualified support. Keep both
+access and conflict qualifications visible; task/read completion is not verification.
+The existing EvidenceAtom CLI remains unchanged for legacy boards without this
+opt-in manifest; do not bypass the literature gate for claims in a manifest.
 
 For selected papers, use the configured local paper-library helper after reviewed
 metadata and relevance screening. Plan first; apply within the user's authorized

@@ -192,6 +192,9 @@ existing stages; its runtime is planned, not yet available. It cannot bypass hum
 approval. `LITERATURE_RELIABILITY_PROTOCOL.md` refines stages 3–4 and 7–8 without
 adding a lifecycle. `RESEARCHER_OWNERSHIP_PROTOCOL.md` extends learning at stages
 6/19; `DEFENSE_PROTOCOL.md` projects personal readiness, never research acceptance.
+The literature manifest checker is available: validate candidate handoffs and
+receipts, keep source access visible, and synthesize its facts or explicitly qualified
+material. Genuine/unresolved disputes are retained; no structural check accepts science.
 
 Parallelize only tasks whose inputs are ready. Discovery can feed sources and
 atomic claims incrementally to the separate verifier, without passing the scout's

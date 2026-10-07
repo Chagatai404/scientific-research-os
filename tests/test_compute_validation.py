@@ -23,6 +23,8 @@ class ComputeValidationTests(unittest.TestCase):
 
             for relative, replacement, message in (
                 ("references/QML_PROTOCOL.md", None, "QML_PROTOCOL.md"),
+                ("references/LITERATURE_RELIABILITY_PROTOCOL.md", None, "LITERATURE_RELIABILITY_PROTOCOL.md"),
+                ("examples/literature/literature.json", None, "Invalid literature example"),
                 ("extensions/scientific-tools/geant4/GUIDE.md", None, "GUIDE.md"),
                 ("extensions/scientific-tools/geant4/PROFILE.toml", 'schema_version = 99\n', "profile"),
                 ("agents/ml-reviewer.md", '---\nname: ml-reviewer\ndescription: test\nmode: write\n---\n', "read-only"),

@@ -213,6 +213,14 @@ for p in ROOT.rglob("*"):
             errors.append(f"Possible credential-like token in {p}")
 
 from validate_evidence import load_board, validate as validate_atom
+import literature_check
+
+literature_root = ROOT / 'examples' / 'literature'
+try:
+    literature_report = literature_check.check(literature_root, literature_check.read_json(literature_root / 'literature.json'))
+    errors.extend(str(d) for d in literature_report['diagnostics'] if d['severity'] == 'ERROR')
+except (OSError, ValueError) as exc:
+    errors.append(f'Invalid literature example: {exc}')
 
 board, evidence_errors = load_board(ROOT / "examples" / "evidence")
 errors.extend(str(e) for e in evidence_errors)

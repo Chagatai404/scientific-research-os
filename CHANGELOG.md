@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — v0.8 slices 0–1
+
+- Architecture contracts for reliability, external authenticated access, task
+  orchestration, researcher ownership and defense; one research lifecycle retained.
+- Opt-in literature manifests referencing unchanged EvidenceAtom v1 records,
+  canonical paper identities, explicit access/scope and reviewed conflict classes.
+- Read-only literature checking, minimal verifier handoffs and fail-closed factual/
+  qualified synthesis with synthetic regressions and equivalent provider bundles.
+
+VERSION remains 0.7.0; authenticated retrieval, task execution, tutor extensions,
+ownership and defense runtime are still planned for later authorized slices.
+
 ## 0.7.0 — 2026-10-02
 
 - Opt-in domains, subjects and shared concepts, with explicit research mappings

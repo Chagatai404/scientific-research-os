@@ -11,11 +11,14 @@ The human researcher is always the final authority. AI agents may search, explai
 
 ## Core design
 
-v0.8 Slice 0 architecture contracts are documented in
+v0.8 architecture and completed slices are documented in
 [the implementation record](references/V0.8_IMPLEMENTATION.md). They extend the
 existing responsibilities for literature reliability, external authenticated access,
-durable task orchestration, researcher ownership and defense readiness. Runtime
-implementation is pending the later slices; the current version remains 0.7.0.
+durable task orchestration, researcher ownership and defense readiness. Slice 1 adds
+the opt-in, read-only literature manifest checker; other runtime work awaits later
+slices. The current version remains 0.7.0. See the
+[literature example](examples/literature/README.md) for access-qualified evidence,
+paper identity checks and minimal source-verifier handoffs.
 
 ```text
 Obsidian vault                 Git research repo

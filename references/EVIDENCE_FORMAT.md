@@ -28,10 +28,13 @@ with the research skills. Do not load that detail for every retrieval task.
 
 ## Storage and tooling
 
-The planned v0.8 `LITERATURE_RELIABILITY_PROTOCOL.md` adds referenced access/scope/
+The opt-in v0.8 `LITERATURE_RELIABILITY_PROTOCOL.md` adds referenced access/scope/
 conflict provenance around these same atoms. EvidenceAtom v1 and existing valid
 receipts remain supported; missing new access data is unknown. New metadata must
 not silently change fingerprint coverage or manufacture independent verification.
+The read-only literature_check.py validates manifest-linked atoms and exports
+provenance-bearing facts/qualified support. This existing validator and v1 receipt
+contract remain unchanged for legacy evidence; manifests do not replace atoms.
 
 Use project-local `evidence/<claim_id>.json`, one atomic claim per file. The
 standard-library representation and validator are `scripts/validate_evidence.py`.

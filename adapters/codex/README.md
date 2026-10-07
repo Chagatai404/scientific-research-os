@@ -21,6 +21,10 @@ Custom agents use TOML files in:
 
 `scripts/install.py` converts canonical `agents/*.md` into Codex TOML agent definitions.
 
+The research graph skill bundles include the read-only literature_check.py and
+its canonical manifest protocol. They use the same scientific contracts as Claude;
+the helper does not authenticate, launch agents or execute experiments.
+
 Recommended project `AGENTS.md` addition:
 
 ```markdown

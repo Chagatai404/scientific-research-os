@@ -16,6 +16,31 @@ from common import parse_frontmatter
 from vault import render_template
 
 class InstallationTests(unittest.TestCase):
+    def test_literature_checker_runs_symmetrically_without_repository_or_site_packages(self):
+        results = []
+        for provider in ('claude', 'codex'):
+            base = self.tmp_path / f'{provider}-literature'
+            install.install_skills(base, False)
+            helper = base / 'research-session/scripts/literature_check.py'
+            self.assertEqual(helper.read_bytes(), (ROOT / 'scripts/literature_check.py').read_bytes())
+            command = [sys.executable, '-S', '-B', str(helper), '--root', str(ROOT / 'examples/literature'),
+                       '--input', 'literature.json']
+            result = subprocess.run(command + ['--facts-only'], cwd=self.tmp_path,
+                                    capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            view = json.loads(result.stdout)
+            self.assertEqual([item['atom']['claim_id'] for item in view['facts']], ['C-1'])
+            self.assertEqual(len(view['qualified']), 3)
+            self.assertEqual(len(view['papers']), 3)
+            results.append(result.stdout)
+            result = subprocess.run(command + ['--handoff', 'C-2'], cwd=self.tmp_path,
+                                    capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            handoff = json.loads(result.stdout)
+            self.assertNotIn('verification_status', handoff['claim'])
+            self.assertNotIn('notes', handoff['claim'])
+        self.assertEqual(*results)
+
     def test_compute_helpers_and_packs_are_standalone_and_provider_symmetric(self):
         expected = {"geant4", "pytorch", "sklearn", "pennylane", "qiskit", "root-scikit-hep"}
         for target in ("claude", "codex"):

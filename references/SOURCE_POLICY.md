@@ -146,12 +146,16 @@ scientific evidence. Package documentation is not authority for detector geometr
 calibration or physical truth outside its domain. Scientific claims continue to
 require the normal source hierarchy, claim envelope and verification boundaries.
 
-## v0.8 literature and access contracts (planned runtime)
+## v0.8 literature reliability and planned authenticated access
 
 `LITERATURE_RELIABILITY_PROTOCOL.md` separates discovery, paper identity, access,
 claim extraction, independent verification, contradiction analysis and synthesis.
 It refines this policy without replacing EvidenceAtoms. Search snippets and abstracts
 cannot silently become full scientific verification; access and support stay separate.
+Use the schema-1 literature checker for manifest-linked claims before factual
+synthesis. Its facts and qualified support remain separate; identity/receipt checks
+and supplied conflict reviews do not establish semantic truth. Bibliographic
+confirmation is a declared observation with a source, never a guessed title/author.
 `AUTHENTICATED_ACCESS_PROTOCOL.md` defines a sanitized scholarly access capability
 with credentials external to Research OS. Access basis never implies source truth.
 

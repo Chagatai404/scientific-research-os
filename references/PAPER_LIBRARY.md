@@ -17,9 +17,9 @@ an explicit reviewed rejection. A dry-run plan is not an ingestion outcome.
 
 ## Configuration and invocation
 
-The planned v0.8 contracts `LITERATURE_RELIABILITY_PROTOCOL.md` and
-`AUTHENTICATED_ACCESS_PROTOCOL.md` extend identity diagnostics and sanitized access
-provenance. Reuse this catalog and authorized-local ingestion; no authenticated
+The v0.8 `LITERATURE_RELIABILITY_PROTOCOL.md` supplies a read-only manifest checker
+for identity/access/scope handoffs. `AUTHENTICATED_ACCESS_PROTOCOL.md` still plans
+sanitized access retrieval. Reuse this catalog and authorized-local ingestion; no authenticated
 login/downloader runtime exists yet. Proposed access fields are not accepted by
 the current strict manifest parser. Bibliographic storage never becomes claim truth.
 

@@ -25,7 +25,7 @@ For each retained source report:
 - key claim,
 - candidate atomic claim records with exact locators and short source excerpts,
 - system/population/material/detector and regime studied,
-- whether you verified the full source or only metadata/abstract,
+- actual material read (snippet, metadata, abstract or full text); reading depth is not independent claim verification,
 - DOI/stable URL,
 - important follow-up references,
 - whether the source supports, challenges, or is neutral toward the project's current direction if that comparison is requested later.
@@ -46,3 +46,11 @@ claims. Metadata/abstract-only access is a gap, not verification. Short relevanc
 notes are useful; do not combine papers into an authoritative scientific model
 or write a polished conclusion. Extraction is a logical role and need not invoke
 another agent. The coordinator owns synthesis after independent verification.
+
+Follow the bundled literature reliability protocol. Return paper identifiers,
+supplied bibliographic metadata, source version, actual access/locator region and
+explicit full-text requirements for each candidate. Missing data stays unknown;
+do not claim registry confirmation without its source. The coordinator can assemble
+the versioned literature manifest and run literature_check.py; this read-only role
+does not ingest papers, attach acceptance receipts or promote candidates.
+Keep relevance notes and scout rationale outside the minimal verifier handoff.

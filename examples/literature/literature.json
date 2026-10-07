@@ -1,0 +1,172 @@
+{
+  "literature_schema": 1,
+  "papers": [
+    {
+      "paper_id": "P-1",
+      "metadata": {
+        "title": "Synthetic primary paper 10.1234/synthetic-a",
+        "authors": [
+          "Fixture Author"
+        ],
+        "year": 2026,
+        "doi": "10.1234/synthetic-a",
+        "source_url": "https://example.org/P-1",
+        "screening": "found"
+      }
+    },
+    {
+      "paper_id": "P-2",
+      "metadata": {
+        "title": "Synthetic primary paper 10.1234/synthetic-a",
+        "authors": [
+          "Fixture Author"
+        ],
+        "year": 2026,
+        "doi": "10.1234/synthetic-a",
+        "source_url": "https://example.org/P-2",
+        "screening": "found"
+      }
+    },
+    {
+      "paper_id": "P-4",
+      "metadata": {
+        "title": "Synthetic primary paper 10.1234/synthetic-4",
+        "authors": [
+          "Fixture Author"
+        ],
+        "year": 2026,
+        "doi": "10.1234/synthetic-4",
+        "source_url": "https://example.org/P-4",
+        "screening": "found"
+      }
+    },
+    {
+      "paper_id": "P-5",
+      "metadata": {
+        "title": "Synthetic primary paper 10.1234/synthetic-5",
+        "authors": [
+          "Fixture Author"
+        ],
+        "year": 2026,
+        "doi": "10.1234/synthetic-5",
+        "source_url": "https://example.org/P-5",
+        "screening": "found"
+      }
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "C-1",
+      "atom_ref": "evidence/C-1.json",
+      "atom_fingerprint": "7a4571a269781d1dec7bdcdd4d5b692d11b58f6c3763005b127ea0e92b224a87",
+      "paper_id": "P-1",
+      "access": {
+        "level": "FULL_TEXT_READ",
+        "locator_region": "full_text",
+        "source_version": "1"
+      },
+      "full_text_required": true,
+      "assumptions": [
+        "synthetic controlled conditions"
+      ]
+    },
+    {
+      "claim_id": "C-2",
+      "atom_ref": "evidence/C-2.json",
+      "atom_fingerprint": "a3c48d251cd072f1840c79be23cf5ebbdfd3700713b1624e1852a19c3986f329",
+      "paper_id": "P-2",
+      "access": {
+        "level": "FULL_TEXT_READ",
+        "locator_region": "full_text",
+        "source_version": "1"
+      },
+      "full_text_required": true,
+      "assumptions": [
+        "synthetic controlled conditions"
+      ]
+    },
+    {
+      "claim_id": "C-3",
+      "atom_ref": "evidence/C-3.json",
+      "atom_fingerprint": "cca3b0387f1cf0b0afabe081e5f7918c3d05ff33c01c308e04690eede91114bb",
+      "paper_id": "P-1",
+      "access": {
+        "level": "ABSTRACT_READ",
+        "locator_region": "abstract",
+        "source_version": "1"
+      },
+      "full_text_required": false,
+      "assumptions": [
+        "synthetic controlled conditions"
+      ]
+    },
+    {
+      "claim_id": "C-4",
+      "atom_ref": "evidence/C-4.json",
+      "atom_fingerprint": "ed1449c6670ca2bdedfd3ddb9f201dc1af64cf710c38c6c365cc0978fc9f028c",
+      "paper_id": "P-4",
+      "access": {
+        "level": "FULL_TEXT_READ",
+        "locator_region": "full_text",
+        "source_version": "1"
+      },
+      "full_text_required": true,
+      "assumptions": [
+        "synthetic controlled conditions"
+      ]
+    },
+    {
+      "claim_id": "C-5",
+      "atom_ref": "evidence/C-5.json",
+      "atom_fingerprint": "0e06f908838cfcc9f02933b2691d56dc47061539196fe578583f29546590d3e0",
+      "paper_id": "P-5",
+      "access": {
+        "level": "FULL_TEXT_READ",
+        "locator_region": "full_text",
+        "source_version": "1"
+      },
+      "full_text_required": true,
+      "assumptions": [
+        "synthetic controlled conditions"
+      ]
+    }
+  ],
+  "comparisons": [
+    {
+      "comparison_id": "PAIR-1",
+      "left": "C-4",
+      "right": "C-5",
+      "classification": "GENUINE_CONFLICT",
+      "checked_dimensions": [
+        "system_or_population",
+        "particle_or_process",
+        "material_or_detector",
+        "energy_or_parameter_regime",
+        "observable",
+        "coordinate_or_origin_convention",
+        "model_or_approximation",
+        "subject",
+        "comparator",
+        "direction",
+        "magnitude",
+        "condition",
+        "source_units",
+        "source_version",
+        "assumptions",
+        "evidence_type",
+        "evidence_quality"
+      ],
+      "review": {
+        "reviewer": "synthetic conflict reviewer",
+        "reviewed_at": "2026-10-07",
+        "context_exposure": "two synthetic source reconstructions; no vote",
+        "relation": "disagree",
+        "rationale": "Explicit synthetic scenario judgment; not inferred by helper."
+      },
+      "left_fingerprint": "ed1449c6670ca2bdedfd3ddb9f201dc1af64cf710c38c6c365cc0978fc9f028c",
+      "left_scope_fingerprint": "870f1bb260d665227ec8718b521a2bad3efb0d7ebe1d2560a069e8a1b793799c",
+      "right_fingerprint": "0e06f908838cfcc9f02933b2691d56dc47061539196fe578583f29546590d3e0",
+      "right_scope_fingerprint": "870f1bb260d665227ec8718b521a2bad3efb0d7ebe1d2560a069e8a1b793799c"
+    }
+  ]
+}

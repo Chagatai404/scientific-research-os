@@ -138,7 +138,7 @@ duplicated reviews without a reason. They remain advisory, cannot accept researc
 conclusions or authorize implementation, and may run reproductions only within
 explicitly approved scope.
 
-## v0.8 contract routing (planned runtime)
+## v0.8 contract routing (literature checker available; orchestration/access planned)
 
 `ORCHESTRATION_PROTOCOL.md` defines durable task state, immutable input/context
 bindings, writer isolation and provider-neutral execution capabilities. It records

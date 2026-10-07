@@ -1,0 +1,55 @@
+{
+  "misleading_abstract": {
+    "source": "Abstract mentions a restricted trend. Methods and generality require body access; no body was read.",
+    "left": {"claim_text": "Synthetic estimator is reliable in all energy regimes."},
+    "access": "ABSTRACT_READ", "region": "abstract",
+    "errors": ["LITERATURE_FULL_TEXT_REQUIRED"], "facts": []
+  },
+  "duplicate_urls": {
+    "source": "The same synthetic DOI is linked through two public URLs, with identical bibliographic metadata.",
+    "duplicate": true, "right": {}, "right_reviewed": false,
+    "warnings": ["LITERATURE_DUPLICATE_PAPER"], "facts": ["C-1"], "papers": 1
+  },
+  "wrong_doi": {
+    "source": "The reviewed catalog identifies synthetic-a; the extracted atom cites a different DOI.",
+    "left": {"source_identifier": "doi:10.9999/wrong"},
+    "errors": ["LITERATURE_IDENTITY_MISMATCH"], "facts": []
+  },
+  "metadata_inconsistency": {
+    "source": "The DOI registry metadata supplied by the reviewer has a different title and author from the candidate.",
+    "metadata_conflict": true,
+    "errors": ["LITERATURE_METADATA_CONFLICT"], "facts": []
+  },
+  "equation_conventions": {
+    "source": "Synthetic y=x+1 uses entry origin; y=x_prime+2 uses an origin shifted by one. A reviewer must reconstruct the transformation.",
+    "left": {"claim_text": "Synthetic y=x+1.", "source_locator": "Equation 1"},
+    "right": {"claim_text": "Synthetic y=x_prime+2.", "coordinate_or_origin_convention": "shifted origin", "source_locator": "Equation 1"},
+    "classification": "CONVENTION_DIFFERENCE", "relation": "equivalent",
+    "facts": ["C-1", "C-2"]
+  },
+  "different_observables": {
+    "source": "Synthetic maximum particle number is at 5 cm; maximum deposited energy is at 7 cm. These are distinct observables.",
+    "right": {"observable": "depth of maximum deposited energy", "source_value": "7", "claim_text": "Synthetic maximum energy deposition is at 7 cm.", "evidence_excerpt": "Synthetic maximum deposited energy at 7 cm."},
+    "classification": "SCOPE_DIFFERENCE", "facts": ["C-1", "C-2"]
+  },
+  "different_energy_regimes": {
+    "source": "One synthetic paper covers 1–10 GeV; another covers 100–1000 GeV. Target portability requires separate review.",
+    "right": {"energy_or_parameter_regime": "100–1000 GeV", "source_value": "8", "claim_text": "Synthetic depth is 8 cm in the high-energy regime.", "evidence_excerpt": "Synthetic high-energy depth: 8 cm."},
+    "classification": "SCOPE_DIFFERENCE", "facts": ["C-1", "C-2"]
+  },
+  "genuine_disagreement": {
+    "source": "Two independent synthetic sources report 5 cm and 8 cm for matched observables, regimes, conventions, models and controlled assumptions. Disagreement remains.",
+    "right": {"source_value": "8", "evidence_excerpt": "Synthetic depth: 8 cm.", "claim_text": "Synthetic maximum depth is 8 cm."},
+    "classification": "GENUINE_CONFLICT", "relation": "disagree", "facts": [], "qualified": 2
+  },
+  "unresolved_access": {
+    "source": "Only citation metadata is available; no abstract or body can be read. No support is attested.",
+    "reviewed": false, "status": "UNRESOLVED", "access": "UNAVAILABLE", "region": "none",
+    "facts": [], "qualified": 0
+  },
+  "citation_drift": {
+    "source": "Original synthetic paper reports a restricted trend; a later citation claims universal reliability. Independent semantic review records OVERSTATED, not EXACT_SUPPORT.",
+    "left": {"claim_text": "Synthetic estimator is universally reliable.", "evidence_excerpt": "Restricted synthetic regime only."},
+    "status": "OVERSTATED", "facts": [], "qualified": 0
+  }
+}

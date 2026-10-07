@@ -14,7 +14,7 @@ COMPUTE_AGENTS = {
     "qml-reviewer": ("ML_PROTOCOL.md", "QML_PROTOCOL.md"),
 }
 
-# Slice 0 contracts only; runtime helpers arrive in their authorized slices.
+# Canonical v0.8 inventory; helpers arrive in their authorized slices.
 V08_REFERENCES = (
     "V0.8_IMPLEMENTATION.md", "LITERATURE_RELIABILITY_PROTOCOL.md",
     "AUTHENTICATED_ACCESS_PROTOCOL.md", "ORCHESTRATION_PROTOCOL.md",
@@ -32,7 +32,8 @@ V08_AGENT_REFERENCES = {
 GRAPH_SKILLS = {"tutor", "course-study", "visualize", "research-session", "research-review"}
 GRAPH_HELPERS = ("knowledge.py", "ontology.py", "migrate_learning.py", "research.py", "visuals.py", "tutor_contract.py", "tutor_plan.py", "bootstrap.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
-                 "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py")
+                 "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py",
+                 "literature_check.py")
 
 
 def copy_dir(src: Path, dst: Path, dry: bool) -> None:

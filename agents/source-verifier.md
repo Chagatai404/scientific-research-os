@@ -65,3 +65,14 @@ independence if it was unavailable. A mismatched relation, envelope or number
 cannot receive EXACT_SUPPORT. Preserve the original and any corrected claim
 separately; a material correction starts a new candidate. Read around locators
 when necessary, without routinely rereading entire papers or session histories.
+
+Follow the bundled literature reliability protocol. Check the supplied paper
+identity/version and actual source access independently; locate support in the
+abstract or full text explicitly. A body-dependent claim cannot receive exact
+support from an abstract/snippet. Abstract-supported wording remains qualified
+as abstract-only, never full-text verified. Reconstruct applicable assumptions
+and scope before reporting source support; annotate unavailable material honestly.
+For apparent conflicts return the checked observable/regime/convention/unit and
+comparison dimensions plus an explicit classification/rationale. Do not resolve
+genuine disagreement by agreement with another agent. The literature checker
+checks declarations and receipts, not the scientific truth of your reconstruction.
