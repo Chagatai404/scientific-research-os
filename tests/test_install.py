@@ -17,6 +17,39 @@ from common import parse_frontmatter
 from vault import render_template
 
 class InstallationTests(unittest.TestCase):
+    def test_interruptible_tutoring_runs_standalone_in_both_provider_bundles(self):
+        outcomes = []
+        for provider in ('claude', 'codex'):
+            base = self.tmp_path / f'{provider}-tutoring'
+            with redirect_stdout(io.StringIO()):
+                install.install_skills(base, False)
+            scripts = base / 'tutor/scripts'
+            self.assertEqual((scripts / 'tutor_session.py').read_bytes(), (ROOT / 'scripts/tutor_session.py').read_bytes())
+            project = self.tmp_path / f'{provider}-lesson'
+            shutil.copytree(ROOT / 'examples/tutoring', project)
+            command = [sys.executable, '-S', '-B', str(scripts / 'tutor_session.py'), '--root', str(project)]
+            result = subprocess.run(command + ['--input', 'session.json', '--output', 'checkpoint.json'],
+                                    cwd=self.tmp_path, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            restarted = subprocess.run(command + ['--input', 'checkpoint.json'], cwd=self.tmp_path,
+                                       capture_output=True, text=True)
+            self.assertEqual(result.stdout, restarted.stdout)
+            report = json.loads(result.stdout)
+            self.assertEqual(report['budget']['used'], 4)
+            self.assertEqual(report['branches'], [])
+            outcomes.append(report)
+            result = subprocess.run([sys.executable, '-S', '-B', str(scripts / 'knowledge.py'), '--root', str(project),
+                                     '--capability', 'box.tool', '--json', '--as-of', '2026-10-02'],
+                                    cwd=self.tmp_path, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(json.loads(result.stdout)['target']['mastery']['project_application']['tool_operation']['state'], 'unknown')
+            result = subprocess.run([sys.executable, '-S', '-B', str(scripts / 'tutor_plan.py'), '--root', str(project),
+                                     '--capability', 'box.method', '--as-of', '2026-10-02'],
+                                    cwd=self.tmp_path, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(json.loads(result.stdout)['next']['action'], 'capability_repair')
+        self.assertEqual(*outcomes)
+
     def test_tasks_run_standalone_and_symmetrically_in_both_bundles(self):
         outcomes = []
         for provider in ('claude', 'codex'):

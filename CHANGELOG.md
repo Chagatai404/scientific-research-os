@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — v0.8 slices 0–3
+## Unreleased — v0.8 slices 0–4
 
 - Architecture contracts for reliability, external authenticated access, task
   orchestration, researcher ownership and defense; one research lifecycle retained.
@@ -15,7 +15,12 @@
   contexts, current approval checks, isolated writer reservations and explicit
   retry/cancel/restart reconciliation. Manual mode and host adapter hooks are equivalent.
 
-VERSION remains 0.7.0; live authenticated/detached provider integrations, tutor extensions,
+- Interruptible tutoring with nested return checkpoints, learner questions at zero
+  diagnostic cost, counted branch assessments and explicitly reviewed answer provenance.
+- Opt-in learning schema 3 adds separate method understanding, tool operation and
+  implementation navigation evidence; selective artifact mappings reuse canonical ledgers.
+
+VERSION remains 0.7.0; live authenticated/detached provider integrations,
 ownership and defense runtime are still planned for later authorized slices.
 
 ## 0.7.0 — 2026-10-02

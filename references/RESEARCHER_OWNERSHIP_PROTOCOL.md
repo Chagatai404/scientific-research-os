@@ -1,7 +1,7 @@
 # Researcher ownership protocol
 
-Status: Slice 0 design contract; method/tool learning extensions are planned for
-Slice 4 and ownership runtime for Slice 5. `LEARNING_PROTOCOL.md`,
+Status: Slice 0 design contract with Slice 4 method/tool learning implemented via
+schema 3 and `scripts/tutor_session.py`; ownership runtime remains pending Slice 5. `LEARNING_PROTOCOL.md`,
 `KNOWLEDGE_MODEL.md` and `TUTOR_PLANNING.md` remain the human-learning authorities.
 `EVIDENCE_FORMAT.md` remains scientific evidence; ownership evidence never replaces it.
 
@@ -39,7 +39,7 @@ and implementation navigation. Never collapse them into a single mastery scalar.
 
 Reuse one canonical capability ledger per capability. Proposed ownership records
 store provenance, requirements and references to those ledgers; readiness is derived,
-not another saved grade map. New dimensions require a supported opt-in schema
+not another saved grade map. New dimensions use the supported opt-in schema 3
 extension in Slice 4: the current strict schema-2 parser does not accept them.
 Do not write proposed fields into existing learning frontmatter in Slice 0.
 Keep legacy scope unknown; no historical attempt is relabelled automatically.
@@ -52,7 +52,7 @@ and failure modes for consequential work. Map only relevant methods/tools to
 capabilities; for example an estimator choice may need method reasoning separately
 from operating its library or navigating its implementation.
 
-Learner questions are first-class interruptions. The planned tutor branch checkpoint
+Learner questions are first-class interruptions. The implemented tutor branch checkpoint
 preserves original target, current lesson stage, unresolved question, prerequisite
 branch and return point, including nested interruptions. Answer the question, verify
 uncertain content when needed, then resume or explicitly renegotiate the target.

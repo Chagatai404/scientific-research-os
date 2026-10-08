@@ -110,7 +110,7 @@ def dimension_step(node, scope, dimension, context='', as_of=None):
     assessment = k.Assessment('unknown') if node is None else node.mastery[scope][dimension]
     if node is not None and context:
         # Application at a different project/block is not evidence for this context.
-        assessment = k.mastery([a for a in node.attempts if a.context == context], node.as_of)[scope][dimension]
+        assessment = k.mastery([a for a in node.attempts if a.context == context], node.as_of, node.meta['learning_schema'])[scope][dimension]
     day = node.as_of if node else as_of
     return {'capability': node.id if node else None, 'scope': scope, 'dimension': dimension,
             'context': context, **k.assessment_data(assessment, day),
@@ -170,6 +170,25 @@ def plan(collection: k.Collection, scope: str, value: str, *, focus=(), foundati
         node = collection.nodes.get(key)
         if node is None or not node.mastery or node.meta['learning_scope'] != 'conceptual':
             raise ValueError('--foundation must name a schema-2 conceptual capability')
+    # Explicit literacy profiles are selective objectives, not a requirement to
+    # demonstrate every conceptual/transfer profile mapped to the same concept.
+    if target and target.meta['learning_schema'] == 3 and any(
+            d in k.LITERACY_DIMENSIONS for d in target.meta['required_dimensions']):
+        if preferred:
+            raise ValueError('literacy profiles use explicit capability prerequisites, not --foundation')
+        ready = k.ready_nodes(collection.nodes)
+        closure = capability_closure(collection, {target.id})
+        missing = sorted(key for key in closure - {target.id} if key not in ready)
+        checks = [dimension_step(target, target.meta['learning_scope'], d,
+                                 context if target.meta['learning_scope'] == 'project_application' else '', day)
+                  for d in target.meta['required_dimensions']]
+        weak = next((check for check in checks if not check['sufficient']), None)
+        return {'plan_schema': 1, 'mode': 'capability-profile', 'scope': scope, 'value': value,
+                'as_of': str(day), 'context': context, 'checks': checks,
+                'capability_closure': sorted(closure), 'diagnostics': collection.diagnostics,
+                'next': ({'action': 'prerequisite_probe', 'capabilities': missing} if missing else
+                         dict(weak, action='capability_' + weak['recommendation']) if weak else
+                         {'action': 'complete', 'note': 'Only the selected profile is sufficient.'})}
     # Selected transfer/application profiles have their own prerequisite contracts.
     # Their success cannot bypass those contracts when targeting another ledger.
     for concept in seeds:

@@ -170,7 +170,7 @@ def analyse(root: Path) -> dict:
                 if not reason:
                     row = (f"| {when[0]} | bootstrap-{slug(file.stem)} | same-session | {method} | {outcome} | "
                            f"{'hinted' if hinted else 'none'} | {evidence} | |")
-                    if capability in tracked.nodes and tracked.nodes[capability].meta['learning_schema'] == 2:
+                    if capability in tracked.nodes and tracked.nodes[capability].meta['learning_schema'] in {2, 3}:
                         row += ' legacy | legacy | |'
                     session['eligible'] += 1
                 candidates.append({

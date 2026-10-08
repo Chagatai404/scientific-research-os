@@ -361,14 +361,17 @@ human decides. It never writes to the vault (a report file is created only when
   review. Edges from a session's dependency map are listed by label, not mapped
   to IDs. Attempts already present in a tracked record are not proposed again.
 
-## v0.8 ownership and defense contracts (planned runtime)
+## v0.8 method/tool learning and pending ownership/defense runtime
 
 `RESEARCHER_OWNERSHIP_PROTOCOL.md` defines selective method/tool learning and
 interruptions with a saved return point. Learner-generated questions do not spend
 diagnostic budget; tutor-initiated assessments within branches still do. Actual
 capability evidence and assistance are required; casual questions are not mastery.
 `DEFENSE_PROTOCOL.md` derives presentation readiness separately from scientific
-support. These designs do not change current parsers, research approval or retention.
+support. Slice 4 adds opt-in learning schema 3 and `scripts/tutor_session.py` for
+nested checkpoint replay and honest assessment budgeting. See `TUTOR_PLANNING.md`
+for the event and evidence contracts. Existing schemas, research approval and
+retention semantics remain valid; ownership and defense runtime remain Slice 5.
 
 ## Course routing
 

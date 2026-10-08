@@ -141,6 +141,13 @@ being prepared. Do not require the learner to complete the full subject first.
 19. **Learn again.** Teach what was built and discovered: connect code to mathematics,
     physics/statistics, explain choices, results and deviations from expectations,
     probe understanding, and reinforce weak areas using the fast learning loop.
+    For consequential methods/tools, teach what, why, how the method works, which
+    library/framework implements it, how to reproduce the action, alternatives,
+    assumptions, how to inspect success, where the workflow/code lives, how to
+    modify it and how it can fail. Select relevant canonical capabilities; keep
+    concept, derivation, transfer, project, method, tool and navigation evidence
+    distinct. Learner questions can interrupt and resume this lesson through the
+    checkpoint contract in `TUTOR_PLANNING.md` without spending diagnostic budget.
 20. **Persist and repeat.** Update the appropriate project state with validated
     sources, assumptions, evidence, accepted decisions, unresolved questions,
     rejected hypotheses, experiment records, next question, and learning readiness.

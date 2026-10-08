@@ -33,7 +33,7 @@ GRAPH_SKILLS = {"tutor", "course-study", "visualize", "research-session", "resea
 GRAPH_HELPERS = ("knowledge.py", "ontology.py", "migrate_learning.py", "research.py", "visuals.py", "tutor_contract.py", "tutor_plan.py", "bootstrap.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
                  "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py",
-                 "literature_check.py", "paper_access.py", "tasks.py")
+                 "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py")
 
 
 def copy_dir(src: Path, dst: Path, dry: bool) -> None:

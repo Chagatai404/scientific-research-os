@@ -31,6 +31,12 @@ may register nonblocking launch/status/cancel hooks; live background integration
 not installed. Canonical job IDs, approval/context bindings and writer reservations
 survive restart. Do not pass full-history forks as independent verifier context.
 
+The same graph skill bundles include `tutor_session.py` for nested lesson checkpoint
+replay and explicit local persistence. Learner questions cost no diagnostic units;
+tutor assessments share their budget across branches. Schema 3 keeps method/tool/
+navigation evidence separate. Canonical ledgers remain authoritative and unchanged
+by session replay. Ownership/defense runtime remains pending Slice 5.
+
 Recommended project `CLAUDE.md` addition:
 
 ```markdown

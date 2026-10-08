@@ -23,11 +23,14 @@ class V08ContractTests(unittest.TestCase):
         self.assertEqual(len(install.V08_REFERENCES), 6)
         completed = {'LITERATURE_RELIABILITY_PROTOCOL.md': 'literature_check.py',
                      'AUTHENTICATED_ACCESS_PROTOCOL.md': 'paper_access.py',
-                     'ORCHESTRATION_PROTOCOL.md': 'tasks.py'}
+                     'ORCHESTRATION_PROTOCOL.md': 'tasks.py',
+                     'RESEARCHER_OWNERSHIP_PROTOCOL.md': 'tutor_session.py'}
         for name in install.V08_REFERENCES:
             text = reference(name)
             if name in completed:
                 self.assertIn(completed[name], text)
+                if name == 'RESEARCHER_OWNERSHIP_PROTOCOL.md':
+                    self.assertIn('ownership runtime remains pending Slice 5', text)
             else:
                 self.assertIn("Slice 0", text)
                 self.assertRegex(text, r"planned|pending|not.*implemented")

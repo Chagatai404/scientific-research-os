@@ -9,6 +9,15 @@ Read `references/COURSE_LEARNING_PROTOCOL.md` and
 `references/LEARNING_PROTOCOL.md` before setup. In this repository shared references
 live at `../../references/`; installation bundles them under `references/`.
 
+Learner questions can interrupt any lesson or probe. Use the nested checkpoint and
+shared assessment-budget contract in `references/TUTOR_PLANNING.md`; learner questions
+do not consume probe units, while tutor assessments inside branches do. For
+consequential course methods/tools, select opt-in schema-3 method understanding,
+tool operation and implementation navigation profiles separately from conceptual
+and transfer evidence. Preserve actual answer/action, assistance and honest verdict;
+explanations and questions alone never establish mastery. Resume the saved lesson
+after answering and verifying the branch as needed.
+
 1. Identify the course, available syllabus/outcomes and immediate study need.
 2. Reuse existing capability records and inspect evidence and prerequisites.
 3. Follow the course cycle: map, check knowledge, study, practice, retrieve/apply,

@@ -72,7 +72,7 @@ def plan(root: Path, key: str, concept: str, scope: str, required: list[str], su
         raise ValueError('explicit subject mapping must name a subject on the mapped concept')
     source = confined(root, node.path)
     original = source.read_bytes()
-    if node.meta['learning_schema'] == 2:
+    if node.meta['learning_schema'] in {2, 3}:
         if (node.meta['concept'], node.meta['learning_scope'], node.meta['required_dimensions']) != (concept, scope, required):
             raise ValueError('already migrated with a different mapping/profile')
         return {'status': 'already-migrated', 'path': node.path, 'learning_id': key,

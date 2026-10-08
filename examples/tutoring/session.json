@@ -1,0 +1,261 @@
+{
+  "session_schema": 1,
+  "session_id": "synthetic",
+  "main": {
+    "target": "box.explain",
+    "lesson_stage": "concept lesson",
+    "unresolved_question": "Explain scale counting.",
+    "prerequisite_branch": null
+  },
+  "events": [
+    {
+      "type": "question",
+      "id": "clarify",
+      "question": "Why does log N change linearly with log scale?",
+      "target": "box.explain",
+      "lesson_stage": "answer learner question",
+      "classification": "CLARIFICATION"
+    },
+    {
+      "type": "question",
+      "id": "prereq",
+      "question": "What does a power law mean?",
+      "target": "box.explain",
+      "lesson_stage": "answer learner question",
+      "classification": "PREREQUISITE",
+      "prerequisite_branch": "scale-invariance"
+    },
+    {
+      "type": "question",
+      "id": "tool",
+      "question": "Where do I change box sizes in the counting workflow?",
+      "target": "box.explain",
+      "lesson_stage": "answer learner question",
+      "classification": "TOOL"
+    },
+    {
+      "type": "probe",
+      "id": "tool-check",
+      "assessment": {
+        "capability": "box.tool",
+        "schema": 3,
+        "scope": "project_application",
+        "dimension": "tool_operation",
+        "method": "computation",
+        "context": "ecal",
+        "question": "Demonstrate the declared capability.",
+        "contract": {
+          "TESTS": [
+            "box.tool"
+          ],
+          "ASSUMES": [],
+          "INTRODUCES": {}
+        },
+        "established": [],
+        "criteria": [
+          "State the assumptions.",
+          "Inspect the result."
+        ],
+        "units": 1,
+        "independent_example": false
+      }
+    },
+    {
+      "type": "respond",
+      "id": "tool-check",
+      "answer": "Actual synthetic learner reasoning/action, judged by fixture reviewer."
+    },
+    {
+      "type": "review",
+      "id": "tool-check",
+      "outcome": "pass",
+      "assistance": "none",
+      "criteria_met": [
+        true,
+        true
+      ],
+      "rationale": "Offline reviewer attestation against both criteria.",
+      "reviewed_by": "fixture-reviewer",
+      "solution_revealed": false
+    },
+    {
+      "type": "answer_branch",
+      "id": "tool",
+      "answer": "Synthetic tutor explanation; no learner evidence."
+    },
+    {
+      "type": "resume",
+      "id": "tool"
+    },
+    {
+      "type": "answer_branch",
+      "id": "prereq",
+      "answer": "Synthetic tutor explanation; no learner evidence."
+    },
+    {
+      "type": "resume",
+      "id": "prereq"
+    },
+    {
+      "type": "answer_branch",
+      "id": "clarify",
+      "answer": "Synthetic tutor explanation; no learner evidence."
+    },
+    {
+      "type": "resume",
+      "id": "clarify"
+    },
+    {
+      "type": "question",
+      "id": "challenge",
+      "question": "Why estimate a slope instead of choosing one box size?",
+      "target": "box.explain",
+      "lesson_stage": "answer learner question",
+      "classification": "CHALLENGE"
+    },
+    {
+      "type": "probe",
+      "id": "method-check",
+      "assessment": {
+        "capability": "box.method",
+        "schema": 3,
+        "scope": "conceptual",
+        "dimension": "method_understanding",
+        "method": "explanation",
+        "context": "",
+        "question": "Demonstrate the declared capability.",
+        "contract": {
+          "TESTS": [
+            "box.method"
+          ],
+          "ASSUMES": [],
+          "INTRODUCES": {}
+        },
+        "established": [],
+        "criteria": [
+          "State the assumptions.",
+          "Inspect the result."
+        ],
+        "units": 1,
+        "independent_example": false
+      }
+    },
+    {
+      "type": "respond",
+      "id": "method-check",
+      "answer": "Actual synthetic learner reasoning/action, judged by fixture reviewer."
+    },
+    {
+      "type": "review",
+      "id": "method-check",
+      "outcome": "pass",
+      "assistance": "none",
+      "criteria_met": [
+        true,
+        true
+      ],
+      "rationale": "Offline reviewer attestation against both criteria.",
+      "reviewed_by": "fixture-reviewer",
+      "solution_revealed": false
+    },
+    {
+      "type": "answer_branch",
+      "id": "challenge",
+      "answer": "Synthetic tutor explanation; no learner evidence."
+    },
+    {
+      "type": "resume",
+      "id": "challenge"
+    },
+    {
+      "type": "probe",
+      "id": "concept-check",
+      "assessment": {
+        "capability": "box.explain",
+        "schema": 3,
+        "scope": "conceptual",
+        "dimension": "explanation",
+        "method": "explanation",
+        "context": "",
+        "question": "Demonstrate the declared capability.",
+        "contract": {
+          "TESTS": [
+            "box.explain"
+          ],
+          "ASSUMES": [],
+          "INTRODUCES": {}
+        },
+        "established": [],
+        "criteria": [
+          "State the assumptions.",
+          "Inspect the result."
+        ],
+        "units": 1,
+        "independent_example": false
+      }
+    },
+    {
+      "type": "respond",
+      "id": "concept-check",
+      "answer": "Actual synthetic learner reasoning/action, judged by fixture reviewer."
+    },
+    {
+      "type": "review",
+      "id": "concept-check",
+      "outcome": "pass",
+      "assistance": "none",
+      "criteria_met": [
+        true,
+        true
+      ],
+      "rationale": "Offline reviewer attestation against both criteria.",
+      "reviewed_by": "fixture-reviewer",
+      "solution_revealed": false
+    },
+    {
+      "type": "probe",
+      "id": "transfer-check",
+      "assessment": {
+        "capability": "box.transfer",
+        "schema": 3,
+        "scope": "transfer",
+        "dimension": "transfer",
+        "method": "explanation",
+        "context": "",
+        "question": "Demonstrate the declared capability.",
+        "contract": {
+          "TESTS": [
+            "box.transfer"
+          ],
+          "ASSUMES": [],
+          "INTRODUCES": {}
+        },
+        "established": [],
+        "criteria": [
+          "State the assumptions.",
+          "Inspect the result."
+        ],
+        "units": 1,
+        "independent_example": true
+      }
+    },
+    {
+      "type": "respond",
+      "id": "transfer-check",
+      "answer": "Actual synthetic learner reasoning/action, judged by fixture reviewer."
+    },
+    {
+      "type": "review",
+      "id": "transfer-check",
+      "outcome": "pass",
+      "assistance": "none",
+      "criteria_met": [
+        true,
+        true
+      ],
+      "rationale": "Offline reviewer attestation against both criteria.",
+      "reviewed_by": "fixture-reviewer",
+      "solution_revealed": false
+    }
+  ]
+}

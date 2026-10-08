@@ -17,8 +17,10 @@ existing responsibilities for literature reliability, external authenticated acc
 durable task orchestration, researcher ownership and defense readiness. Slice 1 adds
 the opt-in, read-only literature manifest checker. Slice 2 adds sanitized scholarly
 access handoffs through the existing paper library, with version/hash provenance.
-Slice 3 adds durable task DAGs, bounded contexts, approval checks and writer reservations;
-later runtime work awaits further slices. The current version remains 0.7.0. See the
+Slice 3 adds durable task DAGs, bounded contexts, approval checks and writer reservations.
+Slice 4 adds nested lesson checkpoints, shared probe budgeting and opt-in schema-3
+method/tool/navigation profiles; see the [offline tutoring example](examples/tutoring/README.md).
+Ownership/defense runtime awaits Slice 5. The current version remains 0.7.0. See the
 [literature example](examples/literature/README.md) for access-qualified evidence,
 paper identity checks and minimal source-verifier handoffs.
 The [access example](examples/access/README.md) demonstrates credential-free planning

@@ -1,4 +1,4 @@
-# Knowledge model — ontology schema 1 and learning schema 2
+# Knowledge model — ontology schema 1 and learning schemas 2/3
 
 This opt-in extension separates knowledge identity from evidence and application.
 Schema-1 learning records continue unchanged. `LEARNING_PROTOCOL.md` owns assessment
@@ -151,11 +151,35 @@ capabilities. Link actual required capabilities in the ledger's `prerequisites`.
 
 ## Legacy and migration
 
-For planned v0.8 ownership requirements and method/tool/navigation dimensions,
+For v0.8 ownership requirements and method/tool/navigation dimensions,
 see `RESEARCHER_OWNERSHIP_PROTOCOL.md`. New requirements reference these canonical
-ledgers rather than duplicating mastery. A supported opt-in extension is required
-before new dimensions can be parsed; existing schemas and unknown legacy scope
+ledgers rather than duplicating mastery. Slice 4 adds the supported opt-in schema 3;
+existing schemas and unknown legacy scope
 remain valid. `DEFENSE_PROTOCOL.md` consumes this model as a read-only projection.
+
+Schema 3 uses exactly the schema-2 frontmatter and eleven-column retrieval table,
+adding `method_understanding`, `tool_operation` and `implementation_navigation` to
+the allowed dimensions. Schema 2 continues to reject these profile dimensions and
+rows. Explicitly choose schema 3 for a reviewed new profile; changing the version
+alone never relabels historical attempts. `migrate_learning.py` retains its schema-1
+to schema-2 purpose and leaves already modern ledgers untouched.
+
+| Dimension | Actual evidence required | Allowed retrieval method |
+|---|---|---|
+| method_understanding | Explain assumptions, choice, alternatives and failure modes; reconstruct relevant reasoning | explanation, derivation, computation |
+| tool_operation | Perform a reproducible action and inspect success/failure under its contract | computation |
+| implementation_navigation | Locate consequential code/workflow, trace behavior and explain or demonstrate a modification | explanation, computation |
+
+Scopes remain conceptual, transfer and project_application. Transfer still requires
+its own transfer dimension and independent example. Literacy evidence uses conceptual
+scope for general reasoning or project_application for a named project/block; a
+project-specific success cannot establish another context or general conceptual
+understanding. Profile readiness remains the weakest explicitly required dimension;
+queries expose all schema-supported dimensions separately. Unassisted, reviewed
+passes can demonstrate that dimension; retained state requires a genuinely delayed
+qualifying attempt in the same scope/dimension/period under existing policy. Missing
+evidence stays unknown, assistance stays visible, and no scientific claim becomes
+supported through learning evidence. See `examples/tutoring/README.md` for a fixture.
 
 Schema-1 `domain` still means subject, and `--subject` retains that selector.
 Schema 1 still accepts its eight-column table and derives its existing scalar

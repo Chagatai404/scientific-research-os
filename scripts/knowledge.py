@@ -21,6 +21,15 @@ RETENTION_TARGETS = {"core", "working", "reference"}
 RETENTION_FOCUS = {'foundational', 'transferable', 'reasoning', 'detail'}
 SCOPES = {'conceptual', 'transfer', 'project_application'}
 DIMENSIONS = ('recognition', 'explanation', 'derivation', 'transfer', 'application')
+LITERACY_DIMENSIONS = ('method_understanding', 'tool_operation', 'implementation_navigation')
+
+
+def supported_dimensions(schema=2):
+    if schema not in {1, 2, 3}:
+        raise ValueError('unsupported learning schema')
+    return DIMENSIONS + (LITERACY_DIMENSIONS if schema == 3 else ())
+
+
 V2_FIELDS = {'concept', 'learning_scope', 'required_dimensions', 'blocks', 'legacy_subject'}
 FIELDS = {
     "learning_schema", "learning_id", "domain", "projects", "goals", "courses", "prerequisites",
@@ -96,7 +105,7 @@ class Node:
 
     @property
     def ready(self) -> bool:
-        if self.meta['learning_schema'] == 2:
+        if self.meta['learning_schema'] in {2, 3}:
             dimensions = self.meta['required_dimensions']
             return (not self.issues and any(d != 'recognition' for d in dimensions) and all(
                 self.mastery[self.meta['learning_scope']][d].state in {'demonstrated', 'retained'}
@@ -172,16 +181,16 @@ def metadata(text: str) -> tuple[dict[str, object] | None, str]:
                 raise ValueError(f"{key}: duplicate ID")
             data[key] = value
         elif key == "learning_schema":
-            if raw not in {"1", "2"}:
-                raise ValueError("unsupported learning_schema; expected integer 1 or 2")
+            if raw not in {"1", "2", "3"}:
+                raise ValueError("unsupported learning_schema; expected integer 1, 2 or 3")
             data[key] = int(raw)
         else:
             data[key] = scalar(raw)
-    if data.get("learning_schema") not in {1, 2} or "learning_id" not in data:
+    if data.get("learning_schema") not in {1, 2, 3} or "learning_id" not in data:
         raise ValueError("tracking requires learning_schema and learning_id")
     if data['learning_schema'] == 1 and V2_FIELDS & data.keys():
         raise ValueError('concept/scope/dimension/block fields require learning schema 2')
-    if data['learning_schema'] == 2:
+    if data['learning_schema'] in {2, 3}:
         if ratings:
             raise ValueError('mastery must be derived from retrieval evidence, not stored ratings')
         if {'concept', 'learning_scope', 'required_dimensions', 'prerequisites'} - data.keys():
@@ -189,7 +198,7 @@ def metadata(text: str) -> tuple[dict[str, object] | None, str]:
         if data['learning_scope'] not in SCOPES:
             raise ValueError('invalid learning_scope')
         dims = data['required_dimensions']
-        if not dims or set(dims) - set(DIMENSIONS):
+        if not dims or set(dims) - set(supported_dimensions(data['learning_schema'])):
             raise ValueError('required_dimensions: expected nonempty mastery dimension list')
         if (data['learning_scope'] == 'transfer' and dims != ['transfer'] or
                 data['learning_scope'] != 'transfer' and 'transfer' in dims):
@@ -202,7 +211,7 @@ def metadata(text: str) -> tuple[dict[str, object] | None, str]:
         value = data.get(key, "")
         if value and not ID.fullmatch(value):
             raise ValueError(f"invalid {key}: {value!r}")
-    if data['learning_schema'] == 2 and not data['concept']:
+    if data['learning_schema'] in {2, 3} and not data['concept']:
         raise ValueError('schema 2 requires a nonempty concept ID')
     if data.get("learning_state", "unknown") not in STATES:
         raise ValueError("invalid learning_state")
@@ -268,9 +277,9 @@ def history(body: str, schema: int = 1) -> list[Attempt]:
         try:
             values = cells(line, width)
             day, period, timing, method, outcome, assistance, evidence, review = values[:8]
-            scope, dimension, context = values[8:] if schema == 2 else ('legacy', 'legacy', '')
-            if schema == 2:
-                validate_attempt_scope(scope, dimension, context, method)
+            scope, dimension, context = values[8:] if schema in {2, 3} else ('legacy', 'legacy', '')
+            if schema in {2, 3}:
+                validate_attempt_scope(scope, dimension, context, method, schema=schema)
             when = iso_date(day)
             due = iso_date(review) if review else None
             if not period or not evidence:
@@ -290,17 +299,20 @@ def history(body: str, schema: int = 1) -> list[Attempt]:
     return attempts
 
 
-def validate_attempt_scope(scope: str, dimension: str, context: str, method: str) -> None:
+def validate_attempt_scope(scope: str, dimension: str, context: str, method: str, *, schema: int = 2) -> None:
     if scope == dimension == 'legacy' and not context:
         return
-    if scope not in SCOPES or dimension not in DIMENSIONS:
+    if scope not in SCOPES or dimension not in supported_dimensions(schema):
         raise ValueError('invalid retrieval scope or mastery dimension')
     if (scope == 'transfer') != (dimension == 'transfer'):
         raise ValueError('transfer evidence requires transfer scope and dimension')
     methods = {'recognition': {'mcq', 'recall', 'prediction'}, 'explanation': {'explanation'},
                'derivation': {'derivation', 'explanation', 'computation'},
                'transfer': {'transfer', 'explanation', 'computation'},
-               'application': {'computation', 'explanation', 'derivation'}}
+               'application': {'computation', 'explanation', 'derivation'},
+               'method_understanding': {'explanation', 'derivation', 'computation'},
+               'tool_operation': {'computation'},
+               'implementation_navigation': {'explanation', 'computation'}}
     if method not in methods[dimension]:
         raise ValueError('method does not support the declared mastery dimension')
     if scope == 'project_application':
@@ -341,13 +353,22 @@ def assess(attempts: list[Attempt], initial: str, as_of: date, recognition: bool
     return result
 
 
-def mastery(attempts: list[Attempt], as_of: date) -> dict[str, dict[str, Assessment]]:
+def mastery(attempts: list[Attempt], as_of: date, schema: int = 2) -> dict[str, dict[str, Assessment]]:
     result = {}
     for scope in sorted(SCOPES):
         result[scope] = {}
-        for dimension in DIMENSIONS:
+        for dimension in supported_dimensions(schema):
             rows = [a for a in attempts if a.scope == scope and a.dimension == dimension]
-            a = assess(rows, 'unknown', as_of, recognition=dimension == 'recognition')
+            contextual_rows = [row for row in rows if row.day <= as_of]
+            if schema == 3 and scope == 'project_application' and contextual_rows:
+                # Different contexts cannot form one delayed retention chain.
+                contexts = {row.context for row in contextual_rows}
+                states = {context: assess([row for row in contextual_rows if row.context == context],
+                                          'unknown', as_of, recognition=dimension == 'recognition')
+                          for context in contexts}
+                a = profile_assessment(states, sorted(states))
+            else:
+                a = assess(rows, 'unknown', as_of, recognition=dimension == 'recognition')
             if a.state in {'demonstrated', 'retained'} and a.review and as_of > a.review:
                 a.state = 'stale'
             result[scope][dimension] = a
@@ -373,10 +394,10 @@ def make_node(meta: dict[str, object], body: str, path: str, as_of: date) -> Nod
         raise ValueError("tracked node requires domain and explicit prerequisites")
     attempts = history(body, schema)
     initial = meta.get("learning_state", "unknown")
-    dimensions = mastery(attempts, as_of) if schema == 2 else {}
+    dimensions = mastery(attempts, as_of, schema) if schema in {2, 3} else {}
     full = assess(attempts, initial, date.max)
     current = (profile_assessment(dimensions[meta['learning_scope']], meta['required_dimensions'])
-               if schema == 2 else assess(attempts, initial, as_of))
+               if schema in {2, 3} else assess(attempts, initial, as_of))
     titles = [line[2:] for line in unfenced_lines(body) if line.startswith("# ")]
     node = Node(meta["learning_id"], titles[0] if titles else meta["learning_id"], path,
                 meta.get('legacy_subject', meta.get("domain", "")), meta.get("projects", []), meta["prerequisites"], meta, attempts, current, as_of,
@@ -448,7 +469,7 @@ def discover(root: Path, as_of: date) -> Collection:
         result.diagnostics.append(f"duplicate ID excluded: {duplicate}")
         result.nodes.pop(duplicate, None)
     for node in result.nodes.values():
-        if node.meta['learning_schema'] == 2:
+        if node.meta['learning_schema'] in {2, 3}:
             link_ontology(node, registry)
         for prerequisite in node.prerequisites:
             if prerequisite not in result.nodes:
@@ -502,7 +523,7 @@ def link_ontology(node: Node, registry) -> None:
 def select(nodes: dict[str, Node], scope: str, value: str) -> tuple[set[str], set[str]]:
     def matches(node):
         if scope == 'subject':
-            return value in node.subjects or value == node.domain if node.meta['learning_schema'] == 2 else node.domain == value
+            return value in node.subjects or value == node.domain if node.meta['learning_schema'] in {2, 3} else node.domain == value
         if scope == 'domain':
             return value in node.domains
         if scope == 'concept':
@@ -554,7 +575,7 @@ def query(collection: Collection, scope: str, value: str, dependencies: bool = T
                       'evidence': a.evidence, 'ready': key in ready,
                       'frontier': frontier(node, ready), 'diagnostics': sorted(node.issues),
                       'blocked_by': sorted(set(node.prerequisites) - ready)})
-        if node.meta['learning_schema'] == 2:
+        if node.meta['learning_schema'] in {2, 3}:
             nodes[-1].update(concept=node.meta['concept'], learning_scope=node.meta['learning_scope'],
                              required_dimensions=node.meta['required_dimensions'], subjects=node.subjects,
                              domains=node.domains, projects=node.projects, blocks=node.blocks,
@@ -573,7 +594,7 @@ def query(collection: Collection, scope: str, value: str, dependencies: bool = T
         import ontology
         seeds = {value} if scope != 'capability' else set()
         seeds |= {collection.nodes[key].meta['concept'] for key in selected
-                  if collection.nodes[key].meta['learning_schema'] == 2}
+                  if collection.nodes[key].meta['learning_schema'] in {2, 3}}
         result['ontology'] = ontology.view(collection.ontology, seeds)
     return result
 

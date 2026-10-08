@@ -41,14 +41,14 @@ def terminology_issues(terms: list[dict], established: set[str], tested: set[str
 
 def scoped_question_issues(plan: dict, established: set[str], *, scope: str,
                           dimension: str, method: str, context: str = '',
-                          independent_example: bool = False) -> list[str]:
+                          independent_example: bool = False, schema: int = 2) -> list[str]:
     """Check declared scope alongside the existing question contract, never wording."""
     from knowledge import SCOPES, validate_attempt_scope
     issues = question_issues(plan, established)
     if scope not in SCOPES:
         return issues + ['new questions require an explicit conceptual/transfer/project_application scope']
     try:
-        validate_attempt_scope(scope, dimension, context, method)
+        validate_attempt_scope(scope, dimension, context, method, schema=schema)
     except ValueError as exc:
         issues.append(str(exc))
     if scope == 'transfer' and independent_example is not True:

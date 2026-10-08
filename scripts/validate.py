@@ -216,7 +216,20 @@ from validate_evidence import load_board, validate as validate_atom
 import literature_check
 import paper_access
 import tasks
+import tutor_session
 import runpy
+
+try:
+    tutor_example = ROOT / 'examples/tutoring'
+    tutor_records = discover(tutor_example, date(2026, 10, 2))
+    errors.extend(f'{tutor_example}: {issue}' for issue in tutor_records.diagnostics)
+    lesson_report = tutor_session.replay(paper_access.read_json(tutor_example / 'session.json'))
+    if lesson_report['branches'] or lesson_report['budget']['used'] != 4 or len(lesson_report['assessed_answers']) != 4:
+        raise ValueError('synthetic lesson return/budget invalid')
+    if len(tutor_records.nodes) != 4:
+        raise ValueError('synthetic literacy profiles missing')
+except (OSError, ValueError, TypeError, KeyError, UnicodeError):
+    errors.append('Invalid tutoring example: bounded lesson and schema-3 canonical ledgers required')
 
 try:
     task_example = ROOT / 'examples/tasks'

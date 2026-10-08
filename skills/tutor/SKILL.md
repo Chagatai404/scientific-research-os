@@ -9,10 +9,11 @@ Read `references/LEARNING_PROTOCOL.md`, `references/TUTOR_PLANNING.md` and `refe
 
 ## Workflow
 
-For planned v0.8 method/tool learning and interruptible branches, consult
+For v0.8 method/tool learning and interruptible branches, consult
 `references/RESEARCHER_OWNERSHIP_PROTOCOL.md`; presentation readiness uses
-`references/DEFENSE_PROTOCOL.md`. These are design contracts, not new parser
-dimensions or implemented defense commands. Research validity remains separate.
+`references/DEFENSE_PROTOCOL.md`. Slice 4 implements schema-3 literacy dimensions
+and `scripts/tutor_session.py`; ownership/defense runtime remains pending Slice 5.
+Research validity remains separate.
 
 1. Identify the narrow required concepts from the active task/project/block using
    the ontology, then relevant conceptual capabilities; load its knowledge graph and
@@ -34,6 +35,17 @@ dimensions or implemented defense commands. Research validity remains separate.
    Skip established dimensions and repair actual gaps. Unknown/stale evidence calls
    for a check before reteaching. A project example can support explanation but must
    not be the only teaching frame. Do not teach a chapter for one prerequisite.
+   Accept arbitrary learner questions at any point. Save target/stage/unresolved
+   question/prerequisite/return point, answer or verify, then resume the parent lesson;
+   preserve nested branches. Use `tutor_session.py` checkpoint replay when useful.
+   Learner questions spend no diagnostic budget; count every tutor assessment inside
+   a branch. Actual learner reasoning needs an explicit contract and honest review
+   before it can support a canonical ledger. Tutor explanations are not evidence.
+   For consequential methods/tools, explain choice, assumptions, alternatives,
+   reproducible operation, inspecting success, locating/modifying code and failure
+   modes. Select method/tool/navigation schema-3 profiles when relevant; assess each
+   separately, and use a computation/action check for tool operation. Do not turn
+   every encountered API into a learning target.
 6. Use primary/authoritative sources for scientific claims and high-quality teaching resources for intuition.
 7. Make at least one visual per tutoring block (visual cadence in
    `references/VISUALIZATION_PROTOCOL.md`). First reuse a verified asset for the

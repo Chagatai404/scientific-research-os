@@ -8,10 +8,59 @@ and resolution remain separate; this learning plan never gates already approved 
 
 ## Resolve a narrow target
 
-The planned v0.8 branch/return-point and method/tool capability contracts are in
+The v0.8 branch/return-point and method/tool capability contracts are in
 `RESEARCHER_OWNERSHIP_PROTOCOL.md`; defense targets are in `DEFENSE_PROTOCOL.md`.
-They extend this planner's responsibilities, not its current implemented actions.
+Slice 4 implements lesson replay with `scripts/tutor_session.py` and opt-in schema-3
+literacy profiles. Ownership and defense runtime remain pending Slice 5.
 Do not insert unsupported dimensions or branch fields into existing schema-2 ledgers.
+
+## Interruptible lessons and literacy profiles (Slice 4)
+
+Maintain a session declaration with `session_schema: 1`, a session ID, a main
+checkpoint and an append-only event list. A checkpoint stores `target`,
+`lesson_stage`, nullable `unresolved_question` and nullable `prerequisite_branch`.
+`question` pushes an arbitrary learner question plus its target/stage and optional
+classification/prerequisite. The helper snapshots a return point before branching.
+`answer_branch` records the tutor's answer; `resume` restores the exact parent
+checkpoint after resolving the active branch. Nested branches unwind in order.
+`progress` explicitly advances or renegotiates the current checkpoint. Use source
+verification when an answer is uncertain; the helper does not answer questions.
+
+`probe` declares one capability, schema/scope/dimension/method/context, the existing
+TESTS/ASSUMES/INTRODUCES contract, established prerequisites, explicit answer criteria,
+independent-example declaration and counted assessment `units`. `respond` preserves
+the actual learner answer. `review` requires a verdict, assistance, a Boolean judgment
+for every criterion, reviewer and rationale, plus honest `solution_revealed`.
+Passing requires all criteria; operation uses computation/action evidence. The helper
+checks declarations, not semantic answer correctness. Human/tutor review remains
+responsible for whether the recorded action really ran or the reasoning is sufficient.
+
+The default diagnostic budget is five units, initially configurable from one to
+eight. Learner questions and tutor explanations cost zero. All tutor probes,
+including prerequisite and side-branch probes and multipart components, share the
+same counter. A declared learner request with an explained `extend_budget` can raise
+the bounded limit (maximum 30); ordinary branches cannot reset it. Count components
+honestly; wording complexity is not inferred. A pending parent probe can be paused
+for a learner question and answered after returning. Finish a branch probe before
+returning. `learner_reasoning` can capture actual reasoning embedded in the active
+learner question at zero budget, but still requires an explicit matching contract,
+actual answer and subsequent review. Asking a question alone yields no evidence.
+
+CLI replay is read-only: `python scripts/tutor_session.py --root <root> --input
+session.json`. Explicit `--output new.json` exclusively publishes a complete confined
+checkpoint. Replay derives the stack, counter and assessed-answer provenance after
+restart; there is no hidden state or automatic ledger/vault write. No solution shown
+today establishes delayed retention. After reviewing the real evidence, append only
+the actually assessed scope/dimension to its canonical ledger with honest assistance
+and the existing dates/period/review policy. Never copy one answer into multiple
+capabilities or treat session provenance as a second mastery store.
+
+Select consequential methods/tools from actual artifacts using the read-only
+`--targets` mapping interface described in `examples/tutoring/README.md`. It binds
+current artifact hashes to existing schema-3 canonical ledger references and explicit
+consequences/provenance. A schema-3 literacy `--capability` plan checks only its
+declared profile and prerequisites; it does not automatically require every tool,
+concept or transfer profile. Inspect additional objectives explicitly as needed.
 
 Resolve an explicit capability or mapped concepts from the active project/block.
 Inspect the knowledge graph, then use the read-only planner when available:

@@ -79,6 +79,12 @@ Schema 2 needs an explicit concept/readiness profile and eleven-column history,
 and derives state/date summaries instead of storing them. The migration helper
 defaults to a dry run and preserves original bytes on explicit apply.
 
+Opt-in schema 3 keeps the schema-2 fields/table and adds method understanding,
+tool operation and implementation navigation dimensions. See the same knowledge
+model for valid evidence formats and scoped readiness. Schema 2 continues to reject
+these dimensions; legacy evidence stays legacy. No template or real vault is
+automatically migrated, and lesson checkpoint replay never writes canonical ledgers.
+
 ### Schema 1
 
 `LEARNING_PROTOCOL.md` owns learning-state and retrieval rules. This section owns

@@ -20,6 +20,13 @@ responsibilities. For ownership or presentation readiness, consult
 `references/RESEARCHER_OWNERSHIP_PROTOCOL.md` and `references/DEFENSE_PROTOCOL.md`.
 Do not invoke planned helpers as though installed or infer approval from task state.
 
+At Stage 19, select consequential methods/tools from the actual research artifacts
+and teach what/why/how, library behavior, reproducibility, alternatives, assumptions,
+inspection, code location, modification and failure modes. Use canonical schema-3
+literacy profiles and `references/TUTOR_PLANNING.md` for separate evidence and
+interruptible learner questions. Scientific support and human learning remain
+separate; this adds no research gate or automatic real-vault obligation.
+
 Use bundled `scripts/tasks.py --root <project>` for durable plan/ready/start/status/
 collect/cancel/retry/reconcile operations. Plan is read-only unless `--apply`;
 manual start returns a bounded handoff and launches no process. Host adapters may
