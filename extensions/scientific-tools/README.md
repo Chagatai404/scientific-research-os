@@ -66,3 +66,10 @@ records UNKNOWN; no tensors, GPU workloads or quantum jobs are run.
 Guides name files in the references directory relative to the repository or installed skill
 root, not relative to the nested pack directory. The installer bundles the same
 pack tree, helpers and canonical references for Claude and Codex.
+
+In v0.8, consequential agent-selected methods/tools can be mapped selectively to
+schema-3 learning requirements and ownership gaps. A working tool or computational
+manifest does not demonstrate the researcher's understanding, and unknown learning
+evidence does not revoke an accepted experiment. The
+[release exercise](../../examples/release/README.md) checks these boundaries;
+real scientific tool execution remains separately approved project work.

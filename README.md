@@ -11,23 +11,24 @@ The human researcher is always the final authority. AI agents may search, explai
 
 ## Core design
 
-v0.8 architecture and completed slices are documented in
-[the implementation record](references/V0.8_IMPLEMENTATION.md). They extend the
-existing responsibilities for literature reliability, external authenticated access,
-durable task orchestration, researcher ownership and defense readiness. Slice 1 adds
-the opt-in, read-only literature manifest checker. Slice 2 adds sanitized scholarly
-access handoffs through the existing paper library, with version/hash provenance.
-Slice 3 adds durable task DAGs, bounded contexts, approval checks and writer reservations.
-Slice 4 adds nested lesson checkpoints, shared probe budgeting and opt-in schema-3
-method/tool/navigation profiles; see the [offline tutoring example](examples/tutoring/README.md).
-Slice 5 adds selective ownership gaps, claim-by-claim defense projections and skeptical
-viva mode; see the [defense fixture](examples/defense/README.md). The current version remains 0.7.0. See the
+v0.8 adds literature reliability, sanitized external access handoffs, durable task
+orchestration, researcher ownership and defense readiness. Its opt-in helpers keep
+scientific evidence, bibliographic storage, research state and human-learning
+evidence separate. Nested lesson checkpoints preserve learner interruptions and
+share a diagnostic budget across branches. Schema 3 adds separate method, tool and
+navigation evidence; see the [offline tutoring example](examples/tutoring/README.md).
+Selective ownership gaps and claim-by-claim defense projections support skeptical
+viva preparation; see the [defense fixture](examples/defense/README.md). See the
 [literature example](examples/literature/README.md) for access-qualified evidence,
 paper identity checks and minimal source-verifier handoffs.
 The [access example](examples/access/README.md) demonstrates credential-free planning
 and manual inbox retrieval; no institutional login or session integration is installed.
 The [task example](examples/tasks/README.md) covers resumable manual execution and
 provider adapter hooks. Built-in task commands do not launch background processes.
+The [integration exercise](examples/release/README.md) joins these contracts and
+includes a read-only real-project context check. Synthetic concurrency and learning
+attestations do not establish live provider performance or human understanding.
+Detailed release gates and limits are in [the implementation record](references/V0.8_IMPLEMENTATION.md).
 
 ```text
 Obsidian vault                 Git research repo
@@ -481,6 +482,15 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
+**v0.8.0 — Researcher Autonomy & Verified Parallel Research** is prepared locally
+with literature/access reliability, durable bounded task orchestration, interruptible
+schema-3 tutoring, selective ownership and separate scientific/human defense axes.
+The [release exercise](examples/release/README.md) and
+[implementation record](references/V0.8_IMPLEMENTATION.md) document integration,
+provider parity, compatibility gates and remaining live-environment validation.
+VERSION is 0.8.0. Publishing, tagging, merging and global installation require
+separate deployment authorization.
+
 **v0.7.0 — Concept-first learning and connected research** adds the opt-in
 [knowledge model](references/KNOWLEDGE_MODEL.md), [concept-first tutor](references/TUTOR_PLANNING.md),
 [domain retention](references/RETENTION_PROTOCOL.md), [MathJax notes](references/MATH_RENDERING.md),
@@ -490,7 +500,7 @@ independent transfer and project application retain separate evidence. Existing
 schema-1 learning and research workflows remain compatible; migration and generated
 artifacts plan by default. See the [synthetic example](examples/ontology/README.md),
 [implementation and verification record](references/V0.7_IMPLEMENTATION.md) and
-[changelog](CHANGELOG.md). VERSION is 0.7.0; the release is identified by the v0.7 Git tag.
+[changelog](CHANGELOG.md). The earlier v0.7 release is identified by its existing Git tag.
 
 **v0.6.2 — Installed Obsidian adapters are used** makes Excalidraw, Bases and Breadcrumbs part of every session when a vault has them: schematics through the new `scripts/excalidraw_schematic.py`, dashboards as embedded Base views, and `up` links plus prerequisite trails for navigation. See "Using the vault's installed Obsidian adapters" in the visualization protocol. No schema change.
 

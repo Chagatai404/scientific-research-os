@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — v0.8 slices 0–5
+## 0.8.0 — 2026-10-08 (local release preparation)
 
 - Architecture contracts for reliability, external authenticated access, task
   orchestration, researcher ownership and defense; one research lifecycle retained.
@@ -24,8 +24,16 @@
   valid research. Defense targets separate scientific support from personal readiness;
   skeptical viva mode preserves actual answers, assistance, interruptions and budget.
 
-VERSION remains 0.7.0; Slice 6 integration/release gates and real-environment validation
-remain pending. Live authenticated/detached provider integrations remain external.
+- End-to-end disposable integration joins parallel tasks, access/identity, verification,
+  interrupted tutoring, synthesis, ownership and viva. A generic read-only context
+  helper was exercised against the active AMS question without research changes.
+- Credential-pattern validation now covers JSON/YAML/INI fixtures as well as code
+  and prose. Structural exercise counts are separated from unmeasured timings.
+
+All required offline release gates passed before setting VERSION to 0.8.0.
+Prepared locally; deployment is separately authorized after review.
+Live authenticated/detached provider integrations and actual human assessment
+remain environment-specific validation work.
 
 ## 0.7.0 — 2026-10-02
 

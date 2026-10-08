@@ -39,6 +39,11 @@ by session replay. Slice 5 bundles `defend-research` and `defense.py` for select
 ownership gaps, separate scientific/personal claim projections and one-question viva
 feedback. No projection changes scientific approval or canonical learning records.
 
+The v0.8 release gates exercise these helpers together and compare disposable
+Claude/Codex installations. Both receive identical canonical scientific semantics;
+live launch adapters and authenticated sessions require separate environment tests.
+See `examples/release/README.md` and `references/V0.8_IMPLEMENTATION.md`.
+
 Recommended project `CLAUDE.md` addition:
 
 ```markdown

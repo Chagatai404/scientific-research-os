@@ -32,3 +32,8 @@ It plans by default, keeps one canonical record/PDF per paper, organizes physica
 PDFs by primary concept and generates cross-domain/project indexes. Configuration,
 access rules and commands are in [PAPER_LIBRARY.md](../../references/PAPER_LIBRARY.md).
 This bibliographic catalog does not replace claim extraction or verification.
+
+The v0.8 integration regression connects sanitized access provenance to source
+handoffs and factual/qualified synthesis, then to ownership and defense projections.
+The read-only AMS context exercise supplies no new verification receipts. See
+[release exercise and limits](../../examples/release/README.md).

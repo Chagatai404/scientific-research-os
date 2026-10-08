@@ -202,7 +202,7 @@ suspicious = [
 for p in ROOT.rglob("*"):
     if not p.is_file() or ".git" in p.parts:
         continue
-    if p.suffix.lower() not in {".md", ".py", ".toml", ".txt", ""}:
+    if p.suffix.lower() not in {".md", ".py", ".toml", ".txt", ".json", ".yaml", ".yml", ".ini", ""}:
         continue
     try:
         text = p.read_text(encoding="utf-8")

@@ -29,6 +29,7 @@ class ComputeValidationTests(unittest.TestCase):
                 ("examples/tasks/question.txt", None, "Invalid task example"),
                 ("examples/tutoring/session.json", '{"session_schema":99}', "Invalid tutoring example"),
                 ("examples/defense/workflow.txt", None, "Invalid defense example"),
+                ("examples/defense/computation.json", '{"synthetic": "' + 'ghp_' + 'X' * 24 + '"}', "Possible credential-like token"),
                 ("extensions/scientific-tools/geant4/GUIDE.md", None, "GUIDE.md"),
                 ("extensions/scientific-tools/geant4/PROFILE.toml", 'schema_version = 99\n', "profile"),
                 ("agents/ml-reviewer.md", '---\nname: ml-reviewer\ndescription: test\nmode: write\n---\n', "read-only"),
