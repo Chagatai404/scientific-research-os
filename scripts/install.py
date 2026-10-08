@@ -29,11 +29,11 @@ V08_AGENT_REFERENCES = {
 
 # Standard-library helpers the graph-first workflows call from an installed skill
 # directory (`python scripts/<helper>.py`); they import each other by module name.
-GRAPH_SKILLS = {"tutor", "course-study", "visualize", "research-session", "research-review"}
+GRAPH_SKILLS = {"tutor", "course-study", "visualize", "research-session", "research-review", "defend-research"}
 GRAPH_HELPERS = ("knowledge.py", "ontology.py", "migrate_learning.py", "research.py", "visuals.py", "tutor_contract.py", "tutor_plan.py", "bootstrap.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
                  "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py",
-                 "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py")
+                 "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py")
 
 
 def copy_dir(src: Path, dst: Path, dry: bool) -> None:

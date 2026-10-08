@@ -17,6 +17,39 @@ from common import parse_frontmatter
 from vault import render_template
 
 class InstallationTests(unittest.TestCase):
+    def test_defense_skill_runs_standalone_and_symmetrically_for_both_providers(self):
+        outcomes = []
+        for provider in ('claude', 'codex'):
+            base = self.tmp_path / f'{provider}-defense'
+            with redirect_stdout(io.StringIO()):
+                install.install_skills(base, False)
+            scripts = base / 'defend-research/scripts'
+            self.assertEqual((scripts / 'defense.py').read_bytes(), (ROOT / 'scripts/defense.py').read_bytes())
+            project = self.tmp_path / f'{provider}-presentation'
+            shutil.copytree(ROOT / 'examples/defense', project)
+            generated = subprocess.run([sys.executable, '-S', '-B', str(ROOT / 'examples/defense/demo.py'),
+                                        '--root', str(project), '--output', 'target.json'],
+                                       cwd=self.tmp_path, capture_output=True, text=True)
+            self.assertEqual(generated.returncode, 0, generated.stdout + generated.stderr)
+            command = [sys.executable, '-S', '-B', str(scripts / 'defense.py')]
+            modes = [('project', 'target.json'), ('ownership', 'ownership.json'), ('viva', 'target.json')]
+            for mode, source in modes:
+                result = subprocess.run(command + [mode, '--root', str(project), '--input', source, '--as-of', '2026-10-08'],
+                                        cwd=self.tmp_path, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                data = json.loads(result.stdout)
+                if mode == 'project':
+                    outcomes.append([(row['scientific_support']['state'], row['personal_defensibility']) for row in data['claims']])
+                    self.assertEqual(outcomes[-1][4], ('UNCERTAIN', 'UNKNOWN'))
+                elif mode == 'ownership':
+                    self.assertEqual(data['ownership'][0]['state'], 'OPEN_UNKNOWN')
+                else:
+                    self.assertEqual(data['action'], 'ask_one_question')
+                    self.assertEqual(data['claim_id'], 'T-2')
+            self.assertEqual((base / 'defend-research/references/DEFENSE_PROTOCOL.md').read_bytes(),
+                             (ROOT / 'references/DEFENSE_PROTOCOL.md').read_bytes())
+        self.assertEqual(*outcomes)
+
     def test_interruptible_tutoring_runs_standalone_in_both_provider_bundles(self):
         outcomes = []
         for provider in ('claude', 'codex'):

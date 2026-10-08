@@ -1,0 +1,2 @@
+Synthetic workflow; never executed.
+Choose the rank estimator and inspect its assumptions.

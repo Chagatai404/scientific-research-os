@@ -1,0 +1,51 @@
+{
+  "literature_schema": 1,
+  "papers": [
+    {
+      "paper_id": "P-1",
+      "metadata": {
+        "title": "Synthetic primary paper 10.1234/synthetic-a",
+        "authors": [
+          "Fixture Author"
+        ],
+        "year": 2026,
+        "doi": "10.1234/synthetic-a",
+        "source_url": "https://example.org/P-1",
+        "screening": "found"
+      }
+    }
+  ],
+  "claims": [
+    {
+      "claim_id": "C-1",
+      "atom_ref": "evidence/C-1.json",
+      "atom_fingerprint": "7a4571a269781d1dec7bdcdd4d5b692d11b58f6c3763005b127ea0e92b224a87",
+      "paper_id": "P-1",
+      "access": {
+        "level": "FULL_TEXT_READ",
+        "locator_region": "full_text",
+        "source_version": "1"
+      },
+      "full_text_required": true,
+      "assumptions": [
+        "synthetic controlled conditions"
+      ]
+    },
+    {
+      "claim_id": "C-2",
+      "atom_ref": "evidence/C-2.json",
+      "atom_fingerprint": "959cac73ed642ec08cc93ec99a0c10f31e7d662dc6b71362be2c4d11bbc1d75a",
+      "paper_id": "P-1",
+      "access": {
+        "level": "FULL_TEXT_READ",
+        "locator_region": "full_text",
+        "source_version": "1"
+      },
+      "full_text_required": true,
+      "assumptions": [
+        "synthetic controlled conditions"
+      ]
+    }
+  ],
+  "comparisons": []
+}

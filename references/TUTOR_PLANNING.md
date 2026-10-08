@@ -11,7 +11,8 @@ and resolution remain separate; this learning plan never gates already approved 
 The v0.8 branch/return-point and method/tool capability contracts are in
 `RESEARCHER_OWNERSHIP_PROTOCOL.md`; defense targets are in `DEFENSE_PROTOCOL.md`.
 Slice 4 implements lesson replay with `scripts/tutor_session.py` and opt-in schema-3
-literacy profiles. Ownership and defense runtime remain pending Slice 5.
+literacy profiles. Slice 5 ownership/defense projections use `scripts/defense.py`
+without adding a learning grade store or research gate.
 Do not insert unsupported dimensions or branch fields into existing schema-2 ledgers.
 
 ## Interruptible lessons and literacy profiles (Slice 4)

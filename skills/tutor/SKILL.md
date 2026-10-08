@@ -12,7 +12,8 @@ Read `references/LEARNING_PROTOCOL.md`, `references/TUTOR_PLANNING.md` and `refe
 For v0.8 method/tool learning and interruptible branches, consult
 `references/RESEARCHER_OWNERSHIP_PROTOCOL.md`; presentation readiness uses
 `references/DEFENSE_PROTOCOL.md`. Slice 4 implements schema-3 literacy dimensions
-and `scripts/tutor_session.py`; ownership/defense runtime remains pending Slice 5.
+and `scripts/tutor_session.py`; Slice 5 `scripts/defense.py` projects ownership/
+defense targets and skeptical viva feedback from canonical evidence.
 Research validity remains separate.
 
 1. Identify the narrow required concepts from the active task/project/block using

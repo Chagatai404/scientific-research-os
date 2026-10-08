@@ -12,7 +12,7 @@ Read:
 - `references/EVIDENCE_FORMAT.md` when handling consequential structured evidence
 - `references/PAPER_LIBRARY.md` when screening or saving selected papers
 
-v0.8 contracts (literature/access/tasks available; ownership/defense runtime pending):
+v0.8 contracts (literature/access/tasks/learning/ownership/defense helpers available):
 `references/LITERATURE_RELIABILITY_PROTOCOL.md`,
 `references/AUTHENTICATED_ACCESS_PROTOCOL.md` and
 `references/ORCHESTRATION_PROTOCOL.md` extend the same evidence/access/task
@@ -26,6 +26,11 @@ inspection, code location, modification and failure modes. Use canonical schema-
 literacy profiles and `references/TUTOR_PLANNING.md` for separate evidence and
 interruptible learner questions. Scientific support and human learning remain
 separate; this adds no research gate or automatic real-vault obligation.
+When preparing a presentation/manuscript, claiming personal understanding or
+modifying consequential agent work, use the defend-research workflow and
+`scripts/defense.py` to inspect selective ownership requirements and separate
+per-claim science/personal readiness. Scientific objections return to the existing
+source-review/research triage; learning gaps never automatically revoke approval.
 
 Use bundled `scripts/tasks.py --root <project>` for durable plan/ready/start/status/
 collect/cancel/retry/reconcile operations. Plan is read-only unless `--apply`;

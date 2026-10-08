@@ -217,6 +217,7 @@ import literature_check
 import paper_access
 import tasks
 import tutor_session
+import defense
 import runpy
 
 try:
@@ -230,6 +231,22 @@ try:
         raise ValueError('synthetic literacy profiles missing')
 except (OSError, ValueError, TypeError, KeyError, UnicodeError):
     errors.append('Invalid tutoring example: bounded lesson and schema-3 canonical ledgers required')
+
+try:
+    defense_example = ROOT / 'examples/defense'
+    defense_demo = runpy.run_path(str(defense_example / 'demo.py'))
+    defense_report = defense.project(defense_example, defense_demo['declaration'](defense_example), date(2026, 10, 8))
+    defense_gaps = defense.ownership(defense_example, defense_demo['ownership_declaration'](defense_example), date(2026, 10, 8))
+    expected = [('SUPPORTED', 'DEFENSIBLE'), ('SUPPORTED', 'INCOMPLETE'),
+                ('OVERSTATED', 'DEFENSIBLE'), ('UNCERTAIN', 'DEFENSIBLE'), ('UNCERTAIN', 'UNKNOWN')]
+    if [(row['scientific_support']['state'], row['personal_defensibility']) for row in defense_report['claims']] != expected:
+        raise ValueError('synthetic defense axes invalid')
+    if defense_gaps['ownership'][0]['state'] != 'OPEN_UNKNOWN':
+        raise ValueError('synthetic ownership gap invalid')
+    if not (ROOT / 'skills/defend-research/SKILL.md').is_file():
+        raise ValueError('defense skill missing')
+except (OSError, ValueError, TypeError, KeyError, UnicodeError):
+    errors.append('Invalid defense example: five claim cases and selective ownership required')
 
 try:
     task_example = ROOT / 'examples/tasks'

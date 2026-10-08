@@ -1,0 +1,12 @@
+{
+  "artifacts": [],
+  "declared": {
+    "fixture": true
+  },
+  "derived": {},
+  "experiment": "EXP-1",
+  "failure": null,
+  "observed": {},
+  "reproduction_command": null,
+  "schema_version": 1
+}

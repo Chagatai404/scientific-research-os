@@ -1,7 +1,8 @@
 # Researcher ownership protocol
 
 Status: Slice 0 design contract with Slice 4 method/tool learning implemented via
-schema 3 and `scripts/tutor_session.py`; ownership runtime remains pending Slice 5. `LEARNING_PROTOCOL.md`,
+schema 3 and `scripts/tutor_session.py`; Slice 5 ownership projections use
+`scripts/defense.py`. `LEARNING_PROTOCOL.md`,
 `KNOWLEDGE_MODEL.md` and `TUTOR_PLANNING.md` remain the human-learning authorities.
 `EVIDENCE_FORMAT.md` remains scientific evidence; ownership evidence never replaces it.
 
@@ -79,3 +80,30 @@ Slice 4 tests interruption/resumption and separate concept/method/tool evidence.
 Slice 5 tests selective ownership gaps, unknown evidence, actual assistance,
 context-specific readiness and noninterference with accepted scientific records
 and approved work. No automatic real-vault writes or permanent-note promotion.
+
+## Ownership requirement records (Slice 5)
+
+Use an opt-in JSON object with `ownership_schema: 1` and a bounded `gaps` list.
+Each gap declares `gap_id`, `subject`, `introduced_by`, a nonempty `required_for`
+selection (presentation, manuscript, modification, personal_understanding or
+major_decision), `consequence`, nonempty `affected` work, selective `requirements`
+and `selection` containing reviewer/date/rationale. The selection is a reviewed
+attestation of consequence, not an automatic API scan or proof of human approval.
+Agent introduction alone never proves inability; the human can refine obligations.
+
+Affected work uses `{kind, ref}`. Types include implementation, theory, method,
+decision, experiment, manifest and evidence; bound references and capability
+requirements follow `DEFENSE_PROTOCOL.md`. A defense target may reference this
+ownership file and explicit gap IDs. Requirements join the claim's personal
+objective, without merging the scientific axis. No grade, mastery scalar, lifecycle
+status or research authorization is saved in ownership input.
+
+`defense.py ownership` derives RESOLVED from current sufficient canonical evidence,
+OPEN_UNKNOWN when no capability evidence is known, OPEN_EVIDENCE_GAP for incomplete
+or stale evidence, and OPEN_REFERENCE_GAP when affected work is missing/changed.
+Each capability's scope/context, assistance, freshness and actual attempt reference
+remain visible. A changed artifact requires renewed mapping/review; old ledger
+success alone cannot resolve a stale affected-work reference. Every gap has
+`research_blocker: false`; the helper never edits scientific records, revokes
+accepted decisions or stops approved experiments. Scientific blockers still belong
+to independent research triage. Exports are versioned read-only snapshots.

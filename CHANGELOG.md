@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — v0.8 slices 0–4
+## Unreleased — v0.8 slices 0–5
 
 - Architecture contracts for reliability, external authenticated access, task
   orchestration, researcher ownership and defense; one research lifecycle retained.
@@ -20,8 +20,12 @@
 - Opt-in learning schema 3 adds separate method understanding, tool operation and
   implementation navigation evidence; selective artifact mappings reuse canonical ledgers.
 
-VERSION remains 0.7.0; live authenticated/detached provider integrations,
-ownership and defense runtime are still planned for later authorized slices.
+- Selective ownership records reference canonical capability evidence without gating
+  valid research. Defense targets separate scientific support from personal readiness;
+  skeptical viva mode preserves actual answers, assistance, interruptions and budget.
+
+VERSION remains 0.7.0; Slice 6 integration/release gates and real-environment validation
+remain pending. Live authenticated/detached provider integrations remain external.
 
 ## 0.7.0 — 2026-10-02
 

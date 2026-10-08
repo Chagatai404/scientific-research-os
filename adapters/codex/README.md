@@ -35,7 +35,9 @@ The same graph skill bundles include `tutor_session.py` for nested lesson checkp
 replay and explicit local persistence. Learner questions cost no diagnostic units;
 tutor assessments share their budget across branches. Schema 3 keeps method/tool/
 navigation evidence separate. Canonical ledgers remain authoritative and unchanged
-by session replay. Ownership/defense runtime remains pending Slice 5.
+by session replay. Slice 5 bundles `defend-research` and `defense.py` for selective
+ownership gaps, separate scientific/personal claim projections and one-question viva
+feedback. No projection changes scientific approval or canonical learning records.
 
 Recommended project `AGENTS.md` addition:
 

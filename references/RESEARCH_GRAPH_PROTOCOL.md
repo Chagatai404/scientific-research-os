@@ -70,10 +70,14 @@ scientific support, causality, prerequisite mastery or research acceptance.
 
 ## Derivation and diagnostics
 
-The planned v0.8 `ORCHESTRATION_PROTOCOL.md` keeps execution state in a separate
+The v0.8 `ORCHESTRATION_PROTOCOL.md` keeps execution state in a separate
 task DAG; `RESEARCHER_OWNERSHIP_PROTOCOL.md` references learning requirements;
 `DEFENSE_PROTOCOL.md` projects linked scientific and human-learning artifacts.
 None replaces this research graph or adds unsupported fields to schema-1 records.
+Slice 5 `scripts/defense.py` consumes canonical research/learning/evidence records
+and explicit manual presentation claims as a read-only snapshot. Selective ownership
+requirements are advisory; missing personal evidence cannot revoke accepted
+decisions, modify authorization or confer scientific support.
 
 Discover Markdown deterministically; exclude repository internals and symlinks.
 Malformed records are diagnosed, not partially trusted. Exclude all copies of a
