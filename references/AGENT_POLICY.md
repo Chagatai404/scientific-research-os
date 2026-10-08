@@ -138,11 +138,15 @@ duplicated reviews without a reason. They remain advisory, cannot accept researc
 conclusions or authorize implementation, and may run reproductions only within
 explicitly approved scope.
 
-## v0.8 contract routing (literature checker available; orchestration/access planned)
+## v0.8 contract routing (literature/access/orchestration available)
 
 `ORCHESTRATION_PROTOCOL.md` defines durable task state, immutable input/context
 bindings, writer isolation and provider-neutral execution capabilities. It records
 work within the existing research lifecycle and never grants build/run permission.
+`tasks.py` persists task DAGs and bounded launch contexts. Manual execution is
+explicit; host adapters own detached execution and stopping acknowledgment. Do not
+infer independent review from task completion, full-history forks or role names.
+Running writers retain workspace/branch reservations until stopping is reconciled.
 `LITERATURE_RELIABILITY_PROTOCOL.md` preserves candidate/verification separation;
 `AUTHENTICATED_ACCESS_PROTOCOL.md` permits sanitized scholarly document outcomes
 from an already-authenticated user environment, never agent access to raw credentials.

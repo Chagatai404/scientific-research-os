@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — v0.8 slices 0–2
+## Unreleased — v0.8 slices 0–3
 
 - Architecture contracts for reliability, external authenticated access, task
   orchestration, researcher ownership and defense; one research lifecycle retained.
@@ -11,8 +11,11 @@
 - Sanitized single-document scholarly access results, permitted local handoffs,
   reviewed public OA fallback, rate/bulk guards and version/hash-bound provenance
   in literature checks and verifier handoffs. Credentials stay outside the interface.
+- Durable file-based task DAGs, immutable attempt snapshots, bounded verifier
+  contexts, current approval checks, isolated writer reservations and explicit
+  retry/cancel/restart reconciliation. Manual mode and host adapter hooks are equivalent.
 
-VERSION remains 0.7.0; live authenticated provider integrations, task execution, tutor extensions,
+VERSION remains 0.7.0; live authenticated/detached provider integrations, tutor extensions,
 ownership and defense runtime are still planned for later authorized slices.
 
 ## 0.7.0 — 2026-10-02

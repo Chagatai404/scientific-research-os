@@ -8,6 +8,7 @@ from contextlib import redirect_stdout
 import io
 import json
 import subprocess
+import shutil
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -16,6 +17,35 @@ from common import parse_frontmatter
 from vault import render_template
 
 class InstallationTests(unittest.TestCase):
+    def test_tasks_run_standalone_and_symmetrically_in_both_bundles(self):
+        outcomes = []
+        for provider in ('claude', 'codex'):
+            base = self.tmp_path / f'{provider}-tasks'
+            install.install_skills(base, False)
+            helper = base / 'research-session/scripts/tasks.py'
+            self.assertEqual(helper.read_bytes(), (ROOT / 'scripts/tasks.py').read_bytes())
+            project = self.tmp_path / f'{provider}-task-project'
+            shutil.copytree(ROOT / 'examples/tasks', project)
+            generated = subprocess.run([sys.executable, '-S', '-B', str(ROOT / 'examples/tasks/demo.py'),
+                                        '--root', str(project), '--output', 'plan.json'], cwd=self.tmp_path,
+                                       capture_output=True, text=True)
+            self.assertEqual(generated.returncode, 0, generated.stdout + generated.stderr)
+            command = [sys.executable, '-S', '-B', str(helper), '--root', str(project)]
+            for args in (['plan', '--input', 'plan.json', '--apply'], ['start', 'scout'], ['start', 'verify'], ['start', 'visual']):
+                result = subprocess.run(command + args, cwd=self.tmp_path, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            result = subprocess.run(command + ['status'], cwd=self.tmp_path, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            rows = json.loads(result.stdout)['tasks']
+            outcomes.append({row['task_id']: row['state'] for row in rows})
+            self.assertEqual(list(outcomes[-1].values()).count('RUNNING'), 3)
+            result = subprocess.run(command + ['cancel', 'scout', '--acknowledge-stopped'], cwd=self.tmp_path,
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            states = {r['task_id']: r['state'] for r in json.loads(result.stdout)['tasks']}
+            self.assertEqual(states['scout'], 'CANCELLED')
+        self.assertEqual(*outcomes)
+
     def test_access_boundary_runs_symmetrically_without_site_packages(self):
         outcomes = []
         for provider in ('claude', 'codex'):

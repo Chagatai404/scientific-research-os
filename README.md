@@ -16,12 +16,15 @@ v0.8 architecture and completed slices are documented in
 existing responsibilities for literature reliability, external authenticated access,
 durable task orchestration, researcher ownership and defense readiness. Slice 1 adds
 the opt-in, read-only literature manifest checker. Slice 2 adds sanitized scholarly
-access handoffs through the existing paper library, with version/hash provenance;
+access handoffs through the existing paper library, with version/hash provenance.
+Slice 3 adds durable task DAGs, bounded contexts, approval checks and writer reservations;
 later runtime work awaits further slices. The current version remains 0.7.0. See the
 [literature example](examples/literature/README.md) for access-qualified evidence,
 paper identity checks and minimal source-verifier handoffs.
 The [access example](examples/access/README.md) demonstrates credential-free planning
 and manual inbox retrieval; no institutional login or session integration is installed.
+The [task example](examples/tasks/README.md) covers resumable manual execution and
+provider adapter hooks. Built-in task commands do not launch background processes.
 
 ```text
 Obsidian vault                 Git research repo

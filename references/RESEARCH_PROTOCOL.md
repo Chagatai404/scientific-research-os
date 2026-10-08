@@ -188,7 +188,7 @@ return the precise claim to verification or narrow/pause the affected lesson.
 ## Preparation handoffs
 
 The v0.8 design in `ORCHESTRATION_PROTOCOL.md` maps durable tasks onto these
-existing stages; its runtime is planned, not yet available. It cannot bypass human
+existing stages; `tasks.py` now provides durable execution manifests. It cannot bypass human
 approval. `LITERATURE_RELIABILITY_PROTOCOL.md` refines stages 3–4 and 7–8 without
 adding a lifecycle. `RESEARCHER_OWNERSHIP_PROTOCOL.md` extends learning at stages
 6/19; `DEFENSE_PROTOCOL.md` projects personal readiness, never research acceptance.

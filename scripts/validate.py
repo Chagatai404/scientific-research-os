@@ -215,6 +215,17 @@ for p in ROOT.rglob("*"):
 from validate_evidence import load_board, validate as validate_atom
 import literature_check
 import paper_access
+import tasks
+import runpy
+
+try:
+    task_example = ROOT / 'examples/tasks'
+    declaration = runpy.run_path(str(task_example / 'demo.py'))['declaration'](task_example)
+    task_report = tasks.plan(task_example, declaration)
+    if len(task_report['tasks']) != 4 or sum(row['state'] == 'READY' for row in task_report['tasks']) != 3:
+        raise ValueError('synthetic independent task frontier invalid')
+except (OSError, ValueError, TypeError, KeyError, UnicodeError):
+    errors.append('Invalid task example: bounded schema-1 DAG required')
 
 try:
     paper_access.request_data(paper_access.read_json(ROOT / 'examples/access/request.json'))

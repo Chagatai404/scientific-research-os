@@ -1,6 +1,6 @@
 # Parallel and background research orchestration protocol
 
-Status: Slice 0 design contract; durable task runtime is planned for Slice 3.
+Status: Slice 3 durable task runtime implemented in `scripts/tasks.py`.
 `RESEARCH_PROTOCOL.md` remains the only research lifecycle and approval authority.
 `AGENT_POLICY.md` owns scientific independence. Task state records execution;
 it is neither research state, scientific evidence nor learning state.
@@ -83,7 +83,7 @@ Use atomic state replacement and locks/reservations for concurrent task updates;
 validate confinement and hashes before reads, writes and collection. A crashed or
 cancel-requested writer keeps its reservation until execution is reconciled.
 
-## Provider boundary and planned CLI
+## Provider boundary and CLI
 
 Canonical manifests own task state. Adapters own launch, execution handles, status
 and cancellation acknowledgment. Handles remain local/sanitized; secrets never
@@ -91,13 +91,98 @@ enter manifests/logs. A detached-capable provider may launch background work;
 others expose manual/sequential execution with the same scientific gates. An
 unavailable provider is explicit, never silently replaced with contaminated self-review.
 
-Planned ergonomics: `tasks.py plan`, `ready`, `start <task-id>`, `status`,
+Available ergonomics: `tasks.py plan`, `ready`, `start <task-id>`, `status`,
 `collect <task-id>`, `cancel <task-id>`; retry may use an explicit additional command.
-These commands do not exist in Slice 0. Planning is not execution authorization.
+Planning is not execution authorization. Plans are dry-run unless `--apply` is explicit.
 No hidden experiments, permanent worker service or Unix-only process assumptions.
 
-Slice 3 must test Windows-safe atomic files, locks and process/adapter semantics:
+Slice 3 tests Windows-safe atomic files, locks and process/adapter semantics:
 three independent tasks, immediate parent continuation, one failure and one success,
 independent verifier context, later collection, restart reconstruction, stale work,
 retry/cancel, unavailable provider, writer conflict and unapproved experiment rejection.
 Tests distinguish fake-adapter behavior from live provider background capability.
+
+## Runtime schema and recovery
+
+Schema-1 plans contain `task_schema: 1` and a task array. Required spec fields are
+the identity/role/goal/stage, `research_refs`, `input_refs`, dependencies,
+independence group (nullable), context exposure, permissions, provider and nullable
+writer workspace. Refs are `{path, sha256, kind}` with root-relative paths; JSON
+is bounded to 2 MiB and artifacts to 50 MiB. Source-verifier inputs accept only
+claim/source/minimal scope at stage 4, with bounded exposure and read-only scope.
+Launch packets exclude research refs, dependency results, prior attempt history and
+coordinator/scout rationale. Full-history input cannot assert independence.
+
+Context is `{mode, input_paths, notes}`; paths must match declared inputs and
+collection records actual exposure again. Goal/source prose and kind labels remain
+attestations: the helper cannot prove their content is neutral or that an agent had
+no prior knowledge. The coordinator must provide genuinely minimal inputs.
+
+Permissions are `{write_paths, run, approval_ref}`. Build/experiment and every
+scientific write/run require a current bound approval record. A schema-1 approval
+has `approval_schema`, `status: approved`, `approved_by`, UTC `approved_at`, task ID,
+stage, immutable `plan_ref`, exact write/run scope and `writer_workspace`. The plan
+must itself be a task input. This is recorded human approval, not cryptographic
+issuer proof; the helper neither generates approvals nor infers them from dependencies.
+Other read-only preparation can proceed without execution approval.
+
+Writers declare an absolute existing Git worktree path, branch and commit. Git
+proves common project repository, exact branch and baseline before start/retry;
+the main project directory is rejected. Running work may advance HEAD from the
+approved baseline; collection requires its ancestry and original branch/isolation.
+New starts after baseline changes need a new task/approval or explicit restoration.
+Workspace/branch reservations survive cancel requests, uncertain launch and stale
+timestamps. Task-owned paths exclude `.git` and `.research-tasks`. Adapters must
+enforce actual write/run scope; manifests are not a filesystem security sandbox.
+An exclusive `.research-task-writer.lock` in the actual worktree guards ownership
+across separate stores/coordinators, with a canonical job/owner binding and Windows
+path normalization. Git must report unique branch/worktree ownership. Locks remain
+until confirmed stopping/collection; malformed or foreign locks block reuse and
+need explicit repair. Other programs that ignore the reservation remain outside
+this guard. A crash between reservation and state writes does not justify deletion.
+
+Stage 7 requires completed discovery; stage 8 requires a source-verifier dependency
+and bound valid EXACT_SUPPORT/TRANSFERRED EvidenceAtoms, including derivation
+inputs. TRANSFERRED remains qualified; use the literature checker for actual
+factual/qualified synthesis, access and conflicts. COMPLETE never fabricates a
+receipt. Dependencies/inputs must be scientifically sufficient, not merely valid:
+the helper cannot infer every necessary dependency from arbitrary task goals.
+
+The store is `.research-tasks/state.json` with an exclusive update lock and atomic
+replacement. Planning may add new IDs; existing tasks are never silently edited.
+Runtime includes timestamps, canonical job handle, attempts/history, result and
+artifact bindings, fixed failure code and cancellation request. Status/readiness
+are read-only projections, rechecking current artifacts/gates. Missing not-yet-ready
+inputs wait; changed bindings block reuse. Collected task validity survives provider
+shutdown and workspace reuse. Stale RUNNING is a diagnostic after one hour.
+
+`start` persists RUNNING intent and reservation before adapter dispatch; uncertain
+launch keeps it RUNNING. Adapters implement nonblocking idempotent `launch(handle,
+packet)`, `status(handle)` and stop-acknowledging `cancel(handle)`. Private provider
+handles/session details stay outside the canonical store. Unknown status retains
+the reservation. Only the manual adapter is bundled; it returns a handoff and
+launches no process. Other IDs require host registration through the Python API;
+unavailable providers are BLOCKED, not silently substituted. Tests use a fake
+detached adapter. No live Codex/Claude background capability is claimed.
+
+`collect --result <confined.json>` requires a result attestation with schema, task,
+attempt and handle, completed/failed execution, explicit stopped flag, reporter,
+actual context exposure and bound artifact refs. Registered adapters must report
+stopping; manual execution relies on the owner's explicit attestation. Results and
+outputs are snapshotted per attempt into `.research-tasks/artifacts/` before state
+completion, so retries cannot erase earlier delivered files by name reuse. Saved
+canonical refs point at snapshots; the original result wrapper remains exact bytes.
+Integrity changes block reuse. Result acceptance is structural, not scientific.
+
+`cancel` retains RUNNING until stopped. `reconcile` reconstructs stopped/failed
+execution without pretending a result exists. Manual owners may use explicit
+`--acknowledge-stopped`; it is not a process-kill mechanism. `retry` archives a
+stopped FAILED/CANCELLED attempt and rechecks permission, context, dependency and
+workspace gates before another start. Never restart solely because time elapsed.
+Bounds: 100 tasks, 20 attempts/history entries, 30 refs per list. State and snapshot
+writes are per-file atomic, not a batch transaction. Crashes can leave locks or
+partial snapshots; inspect actual execution before explicit repair. There is no
+automatic stale-lock deletion, out-of-band writer exclusion or account-wide lock.
+
+See `examples/tasks/README.md` for the runnable synthetic manual workflow and
+limitations. VERSION remains 0.7.0 until the separately authorized release slice.

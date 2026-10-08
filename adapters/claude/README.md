@@ -26,6 +26,10 @@ its canonical manifest protocol. They use the same scientific contracts as Codex
 the helper does not authenticate, launch agents or execute experiments.
 The same bundles include paper_access.py for sanitized single-document handoffs,
 reviewed public fallback and manual inbox outcomes. Provider sessions stay external.
+`tasks.py` provides the same durable DAG and manual fallback as Codex. Host adapters
+may register nonblocking launch/status/cancel hooks; live background integration is
+not installed. Canonical job IDs, approval/context bindings and writer reservations
+survive restart. Do not pass full-history forks as independent verifier context.
 
 Recommended project `CLAUDE.md` addition:
 
