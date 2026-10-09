@@ -274,6 +274,13 @@ errors.extend(str(e) for e in evidence_errors)
 for claim_id, atom in board.items():
     errors.extend(f"{claim_id}: {e}" for e in validate_atom(atom, board))
 
+# HTML-native sessions: known historical fixture is an explicitly reported archive.
+import html_sessions
+html_archives = {"examples/connected-research/tutor-sessions/2026-09-25 gamma shape.md"}
+errors.extend(html_sessions.validate_sessions(ROOT, exceptions=html_archives))
+for archive in sorted(html_archives):
+    print(f"INFO HTML archival exception: {archive} (historical compatibility fixture)")
+
 if errors:
     print("Validation failed:")
     for e in errors:

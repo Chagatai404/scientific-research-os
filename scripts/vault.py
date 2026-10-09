@@ -8,7 +8,7 @@ import time
 import urllib.parse
 import webbrowser
 
-from common import load_config, expand, safe_filename
+from common import load_config, expand, safe_filename, parse_frontmatter
 
 def vault_root(cfg: dict) -> Path:
     root = expand(cfg["vault"]["path"])
@@ -65,7 +65,15 @@ def new_note(args, cfg):
         raise SystemExit(f"Note already exists: {note}")
 
     text = render_template(template.read_text(encoding="utf-8"), args.title)
-    note.write_text(text, encoding="utf-8")
+    meta, _ = parse_frontmatter(text)
+    if 'session' in meta.get('type', '').lower():
+        from html_sessions import create_session, install_runtime
+        if note.exists():
+            raise SystemExit(f"Session already exists; use the structured update API: {note}")
+        install_runtime(root)
+        create_session(root, note.relative_to(root).as_posix(), text, title=args.title)
+    else:
+        note.write_text(text, encoding="utf-8")
     print(note.relative_to(root).as_posix())
 
 def append_note(args, cfg):
@@ -75,10 +83,17 @@ def append_note(args, cfg):
         raise SystemExit(f"Note not found: {note}")
     stamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
     block = f"\n### {stamp} — {args.speaker}\n\n{args.text.rstrip()}\n"
-    lock = note.with_suffix(note.suffix + ".lock")
-    with Lock(lock):
-        with note.open("a", encoding="utf-8") as f:
-            f.write(block)
+    if note.with_suffix('.state.json').exists():
+        from html_sessions import append_session
+        append_session(root, note.relative_to(root).as_posix(), block)
+    else:
+        meta, _ = parse_frontmatter(note.read_text(encoding='utf-8'))
+        if 'session' in meta.get('type', '').lower():
+            raise SystemExit('Legacy session requires HTML migration before appending.')
+        lock = note.with_suffix(note.suffix + ".lock")
+        with Lock(lock):
+            with note.open("a", encoding="utf-8") as f:
+                f.write(block)
     print(note.relative_to(root).as_posix())
 
 def open_note(args, cfg):

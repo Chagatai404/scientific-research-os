@@ -30,7 +30,7 @@ V08_AGENT_REFERENCES = {
 # Standard-library helpers the graph-first workflows call from an installed skill
 # directory (`python scripts/<helper>.py`); they import each other by module name.
 GRAPH_SKILLS = {"tutor", "course-study", "visualize", "research-session", "research-review", "defend-research"}
-GRAPH_HELPERS = ("knowledge.py", "ontology.py", "migrate_learning.py", "research.py", "visuals.py", "tutor_contract.py", "tutor_plan.py", "bootstrap.py",
+GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py", "migrate_learning.py", "research.py", "visuals.py", "tutor_contract.py", "tutor_plan.py", "bootstrap.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
                  "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py",
                  "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py")
@@ -88,6 +88,10 @@ def install_skills(base: Path, dry: bool) -> None:
         if skill.name in {"research-session", "research-review"}:
             copy_file(ROOT / "scripts" / "validate_evidence.py",
                       destination / "scripts" / "validate_evidence.py", dry)
+        # HTML sessions are mandatory for every substantive workflow.
+        for helper in ("html_sessions.py", "common.py"):
+            copy_file(ROOT / "scripts" / helper, destination / "scripts" / helper, dry)
+        copy_dir(ROOT / "assets/html-runtime", destination / "assets/html-runtime", dry)
         if skill.name in GRAPH_SKILLS:
             for helper in GRAPH_HELPERS:
                 copy_file(ROOT / "scripts" / helper, destination / "scripts" / helper, dry)
@@ -156,10 +160,30 @@ def install_obsidian(cfg: dict, dry: bool) -> None:
         copy_file(p, dst / p.name, dry)
 
 
+def install_html_companion(cfg: dict, dry: bool) -> None:
+    """Stage the desktop companion without changing the user's enabled plugins."""
+    vault = expand(cfg["vault"]["path"])
+    plugin = ROOT / "extensions/obsidian-html"
+    destination = vault / ".obsidian/plugins/research-os-html"
+    for name in ("main.js", "manifest.json", "styles.css"):
+        source = plugin / name
+        target = destination / name
+        # Never silently overwrite a locally modified plugin installation.
+        if target.exists() and target.read_bytes() != source.read_bytes():
+            raise ValueError(f"Existing companion differs; back it up before updating: {target}")
+        copy_file(source, target, dry)
+    from html_sessions import install_runtime
+    if dry:
+        print(f"[dry] shared HTML runtime -> {vault / '.research-os/runtime'}")
+    else:
+        install_runtime(vault)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", choices=["all", "claude", "codex"], default="all")
     ap.add_argument("--obsidian", action="store_true")
+    ap.add_argument("--html-companion", action="store_true", help="stage companion plugin/runtime; enable manually in Obsidian")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -176,6 +200,8 @@ def main() -> None:
 
     if args.obsidian:
         install_obsidian(cfg, args.dry_run)
+    if args.html_companion:
+        install_html_companion(cfg, args.dry_run)
 
 
 if __name__ == "__main__":
