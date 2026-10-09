@@ -6,11 +6,13 @@ browser interaction is pending review and cannot confer learning credit.
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import base64
 import datetime as dt
 import hashlib
 import html
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -109,6 +111,52 @@ def _json(data):
     return (json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False) + "\n").encode("utf-8")
 
 
+def _approved_module(root, path, resource):
+    registry = _path(root, '.research-os/runtime/extensions/trusted-modules.json')
+    approved = json.loads(registry.read_text(encoding='utf-8')) if registry.exists() else {}
+    relative = path.relative_to(Path(root).resolve()).as_posix()
+    digest = _hash(path.read_bytes())
+    if resource.get('sha256') != digest or approved.get(relative) != digest:
+        raise ValueError('Local module requires a matching independently approved SHA-256 trust entry')
+
+
+def validate_interaction(event, question_ids):
+    if not isinstance(event, dict) or set(event) - {'event_id','type','question_id','response','created_at','status'}:
+        raise ValueError('Unknown interaction event field')
+    if not isinstance(event.get('event_id'), str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', event['event_id']):
+        raise ValueError('Invalid interaction event ID')
+    if event.get('created_at') is not None:
+        try:
+            dt.datetime.fromisoformat(event['created_at'].replace('Z','+00:00'))
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError('Invalid interaction timestamp') from None
+    if event.get('type') in {'open-question','checkpoint'}:
+        if not isinstance(event.get('response'), str) or not event['response'].strip():
+            raise ValueError('Question/checkpoint requires bounded nonempty text')
+    else:
+        if event.get('question_id') not in question_ids:
+            raise ValueError('Unknown interaction question')
+    def bounded(value, depth=0):
+        if depth > 4:
+            raise ValueError('Response nesting limit exceeded')
+        if value is None or isinstance(value, (str,bool)):
+            return
+        if isinstance(value,(int,float)) and math.isfinite(value):
+            return
+        if isinstance(value,list) and len(value) <= 100:
+            for item in value: bounded(item,depth+1)
+            return
+        if isinstance(value,dict) and len(value) <= 100:
+            for key,item in value.items():
+                if key in {'__proto__','constructor','prototype'}: raise ValueError('Invalid response key')
+                bounded(item,depth+1)
+            return
+        raise ValueError('Invalid bounded response')
+    bounded(event.get('response'))
+    if len(json.dumps(event,ensure_ascii=False,allow_nan=False)) > 16384:
+        raise ValueError('Interaction event exceeds limit')
+
+
 def validate_state(state):
     if not isinstance(state, dict) or state.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("Unsupported HTML session schema")
@@ -142,17 +190,18 @@ def validate_state(state):
         raise ValueError("Session state exceeds limits")
     ids = set()
     for q in state["questions"]:
-        if not isinstance(q, dict) or not isinstance(q.get("id"), str) or q["id"] in ids:
+        if not isinstance(q, dict) or not isinstance(q.get("id"), str) or not q["id"] or len(q["id"]) > 128 or q["id"] in ids:
             raise ValueError("Invalid or duplicate question identity")
         ids.add(q["id"])
     event_ids = set()
     for event in state["events"]:
+        validate_interaction(event, ids)
         if not isinstance(event, dict) or event.get("type") not in {"response", "hint", "solution", "confidence", "checkpoint", "reset", "open-question"}:
             raise ValueError("Unsupported interaction event")
         if not isinstance(event.get("event_id"), str) or event["event_id"] in event_ids:
             raise ValueError("Invalid or duplicate event identity")
         event_ids.add(event["event_id"])
-        if event.get("type") != "open-question" and event.get("question_id") not in ids:
+        if event.get("type") not in {"open-question", "checkpoint"} and event.get("question_id") not in ids:
             raise ValueError("Unknown interaction question")
         if event.get("status") not in (None, "pending-review"):
             raise ValueError("Browser evidence must remain pending review")
@@ -164,12 +213,19 @@ def validate_state(state):
 
 
 def _inline(text):
-    # Escape first: source HTML, arbitrary links and scripts remain visible text.
-    text = html.escape(text)
-    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
-    text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
-    text = re.sub(r"\$([^$\n]+)\$", lambda m: '<span data-ros="equation" data-tex="' + m[1] + '" class="ros-math">$' + m[1] + '$</span>', text)
-    return text
+    # Tokenize math/code before prose styling: TeX must remain byte-for-byte literal.
+    tokens = re.split(r"(\$[^$\n]+\$|`[^`]+`)", text)
+    rendered = []
+    for token in tokens:
+        if token.startswith("$") and token.endswith("$") and len(token) > 2:
+            tex = html.escape(token[1:-1], quote=True)
+            rendered.append('<span data-ros="equation" data-tex="' + tex + '" class="ros-math">' + html.escape(token) + '</span>')
+        elif token.startswith("`") and token.endswith("`") and len(token) > 2:
+            rendered.append('<code>' + html.escape(token[1:-1]) + '</code>')
+        else:
+            prose = html.escape(token)
+            rendered.append(re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", prose))
+    return ''.join(rendered)
 
 
 def markdown_html(source):
@@ -177,6 +233,7 @@ def markdown_html(source):
     _, body = parse_frontmatter(source.replace("\r\n", "\n"))
     lines = body.splitlines()
     out, paragraph, code, equation = [], [], None, None
+    quoted_math = False
     def flush():
         if paragraph:
             out.append("<p>" + "<br>".join(_inline(x) for x in paragraph) + "</p>")
@@ -190,14 +247,20 @@ def markdown_html(source):
                 code.append(line)
             continue
         if equation is not None:
+            if quoted_math and line.startswith(">"):
+                line = re.sub(r"^> ?", "", line)
             equation.append(line)
             if line.strip().endswith("$$"):
                 equation_text = "\n".join(equation)
                 out.append('<div data-ros="equation" data-display="true" data-tex="' + html.escape(equation_text.strip()[2:-2], quote=True) + '" class="ros-math">' + html.escape(equation_text) + "</div>")
                 equation = None
+                quoted_math = False
             continue
         if line.startswith("```") or line.startswith("~~~"):
             flush(); code = []; continue
+        if re.match(r"^> ?\$\$", line):
+            line = re.sub(r"^> ?", "", line)
+            quoted_math = True
         if line.strip().startswith("$$"):
             flush()
             if len(line.strip()) > 4 and line.strip().endswith("$$"):
@@ -211,7 +274,8 @@ def markdown_html(source):
             heading_kind = heading[2].strip().lower().rstrip(":")
             kind = {"concept": "concept", "definition": "definition", "derivation": "derivation", "intuition": "intuition", "evidence": "evidence", "research decision": "decision", "decision": "decision", "questions": "question", "questions asked": "question", "open questions": "question", "code": "code", "reflection": "reflection", "checkpoint": "checkpoint"}.get(heading_kind)
             semantic = ' data-ros="' + kind + '"' if kind else ""
-            out.append(f"<h{level}" + semantic + ">" + _inline(heading[2]) + f"</h{level}>")
+            anchor = "section-" + _hash(heading[2].encode())[:12]
+            out.append(f"<h{level} id=\"{anchor}\"" + semantic + ">" + _inline(heading[2]) + f"</h{level}>")
         elif not line.strip():
             flush()
         elif line.startswith(">"):
@@ -261,6 +325,9 @@ def _widgets_html(state):
 
 def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, resource_markup="", resource_scripts=""):
     validate_state(state)
+    content = markdown_html(state["source_markdown"])
+    anchors = re.findall(r'<h[1-6] id="([^"]+)"[^>]*>(.*?)</h[1-6]>', content)
+    navigation = '<nav aria-label="Session sections"><details><summary>Contents</summary><ul>' + ''.join('<li><a href="#' + anchor + '">' + label + '</a></li>' for anchor,label in anchors) + '</ul></details></nav>'
     data = json.dumps(state, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
     if standalone:
         css = (RUNTIME / "session.css").read_text(encoding="utf-8")
@@ -272,10 +339,10 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
         resources = '<link rel="stylesheet" href="' + prefix + '/session.css">'
         script = '<script src="' + prefix + '/session.js"></script>'
     return ('<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-            + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'">'
+            + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; font-src data:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'">'
             + '<title>' + html.escape(state["title"]) + '</title>' + resources + '</head><body><main id="ros-session">'
             + '<header><p>Research OS session · ' + html.escape(state["type"]) + '</p><h1>' + html.escape(state["title"]) + '</h1></header>'
-            + markdown_html(state["source_markdown"]) + _questions_html(state) + _widgets_html(state) + resource_markup
+            + navigation + content + _questions_html(state) + _widgets_html(state) + resource_markup
             + '<details data-ros="legacy"><summary>Exact original Markdown</summary><pre>' + html.escape(state["source_markdown"]) + '</pre></details>'
             + '</main><script type="application/json" id="ros-session-data">' + data + '</script>' + script + resource_scripts + '</body></html>\n')
 
@@ -285,8 +352,40 @@ def render_bridge(state, relative_html):
     return state["source_markdown"] + BRIDGE_MARKER + '\n```ros-session\n' + relative_html + '\n```\n'
 
 
+def _transaction_path(root, relative_md):
+    md, _, _ = paths(root, relative_md)
+    relative = md.relative_to(Path(root).resolve()).as_posix()
+    return _path(root, '.research-os/transactions/' + _hash(relative.encode()) + '.json')
+
+
+def recover_session(root, relative_md, apply=False):
+    """Recover a journaled projection write only if no subsequent edits conflict."""
+    journal = _transaction_path(root, relative_md)
+    if not journal.exists():
+        return {"pending": False, "dry_run": not apply}
+    transaction = json.loads(journal.read_text(encoding='utf-8'))
+    expected = {p.relative_to(Path(root).resolve()).as_posix() for p in paths(root, relative_md)}
+    if transaction.get('schema_version') != 1 or {f['path'] for f in transaction.get('files', [])} != expected:
+        raise ValueError('Invalid session recovery journal')
+    for entry in transaction['files']:
+        path = _path(root, entry['path'])
+        raw = base64.b64decode(entry['after'], validate=True)
+        if _hash(raw) != entry['after_sha256']:
+            raise ValueError('Session recovery integrity failure')
+        current = _hash(path.read_bytes()) if path.exists() else None
+        if current not in {entry['before_sha256'], entry['after_sha256']}:
+            raise ValueError('Session recovery conflict; later edits preserved')
+    if apply:
+        for entry in transaction['files']:
+            _write(_path(root, entry['path']), base64.b64decode(entry['after'], validate=True))
+        journal.unlink()
+    return {"pending": True, "dry_run": not apply, "session": str(relative_md)}
+
+
 def load_session(root, relative_md, check_bridge=True):
     md, view, data = paths(root, relative_md)
+    if _transaction_path(root, relative_md).exists():
+        raise ValueError("Interrupted session write; run recover before resuming")
     state = validate_state(json.loads(data.read_text(encoding="utf-8")))
     if check_bridge and md.read_bytes() != render_bridge(state, view.relative_to(Path(root).resolve()).as_posix()).encode("utf-8"):
         raise ValueError(f"Conflicting manual Markdown bridge edit: {relative_md}")
@@ -304,14 +403,36 @@ def _save(root, relative_md, state):
         resource_path = _path(root, md.parent.relative_to(Path(root).resolve()) / value) if value.startswith(allowed[0]) else _path(root, value)
         if not resource_path.is_file() or resource_path.stat().st_size > 1024 * 1024:
             raise ValueError("Local session resource missing or exceeds limit")
+        if resource["kind"] == "module":
+            _approved_module(root, resource_path, resource)
     prefix = os.path.relpath(Path(root).resolve() / ".research-os/runtime", view.parent).replace(os.sep, "/")
-    _write(data, _json(state))
-    _write(view, render_html(state, prefix).encode("utf-8"))
-    _write(md, render_bridge(state, view.relative_to(Path(root).resolve()).as_posix()).encode("utf-8"))
+    outputs = {data: _json(state), view: render_html(state, prefix).encode("utf-8"),
+               md: render_bridge(state, view.relative_to(Path(root).resolve()).as_posix()).encode("utf-8")}
+    journal = _transaction_path(root, relative_md)
+    if journal.exists():
+        raise ValueError("Interrupted session write exists; use recover before updating")
+    transaction = {"schema_version": 1, "session": str(relative_md), "files": []}
+    for path, raw in outputs.items():
+        before = path.read_bytes() if path.exists() else None
+        transaction["files"].append({"path": path.relative_to(Path(root).resolve()).as_posix(),
+            "before_sha256": _hash(before) if before is not None else None,
+            "before": base64.b64encode(before).decode() if before is not None else None,
+            "after_sha256": _hash(raw), "after": base64.b64encode(raw).decode()})
+    _write(journal, _json(transaction))
+    for path, raw in outputs.items():
+        _write(path, raw)
+    journal.unlink()
     return state
 
 
 def create_session(root, relative_md, text, session_type=None, title=None, metadata=None, questions=None, widgets=None, resources=None):
+    md, _, _ = paths(root, relative_md)
+    md.parent.mkdir(parents=True, exist_ok=True)
+    with Lock(md.with_suffix('.session.lock')):
+        return _create_session(root, relative_md, text, session_type, title, metadata, questions, widgets, resources)
+
+
+def _create_session(root, relative_md, text, session_type=None, title=None, metadata=None, questions=None, widgets=None, resources=None):
     md, view, data = paths(root, relative_md)
     if data.exists() or view.exists():
         raise ValueError(f"Session already exists: {relative_md}")
@@ -337,9 +458,18 @@ def update_session(root, relative_md, text=None, **changes):
         allowed = {"title", "metadata", "questions", "open_questions", "lifecycle", "widgets", "resources"}
         if set(changes) - allowed:
             raise ValueError("Unsupported session update fields")
+        source = state["source_markdown"] if text is None else text
+        front, _ = parse_frontmatter(source.replace("\r\n", "\n"))
+        proposed_metadata = changes.get("metadata", {})
+        if any(key in front and value != front[key] for key,value in proposed_metadata.items()):
+            raise ValueError('Metadata contradicts source frontmatter; update the source explicitly')
+        if 'lifecycle' in changes and front.get('status', changes['lifecycle']) != changes['lifecycle']:
+            raise ValueError('Lifecycle contradicts source status; update the source explicitly')
         state.update(changes)
-        if text is not None:
-            state["source_markdown"] = text
+        state["source_markdown"] = source
+        state['metadata'].update(front)
+        state['type'] = front.get('type', state['type'])
+        state['lifecycle'] = front.get('status', state['lifecycle'])
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
 
@@ -365,7 +495,7 @@ def append_event(root, relative_md, event):
         event.setdefault("created_at", _now())
         state["events"].append(event)
         if event["type"] == "open-question":
-            state["open_questions"].append({"id": event["event_id"], "prompt": event.get("response", ""), "status": "open", "created_at": event["created_at"]})
+            state["open_questions"].append({"id": event["event_id"], "session_id": state["session_id"], "concept": state["metadata"].get("concept"), "prompt": event.get("response", ""), "status": "open", "created_at": event["created_at"], "explanation_refs": []})
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
 
@@ -389,8 +519,11 @@ def export_session(root, relative_md, destination):
             mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}[path.suffix.lower()]
             markup += '<figure><img src="data:' + mime + ';base64,' + base64.b64encode(raw).decode() + '" alt="' + html.escape(str(resource.get("alt", "Session illustration")), quote=True) + '"></figure>'
         else:
-            scripts += '<script>' + raw.decode("utf-8").replace("</script", "<\\/script") + '</script>'
+            _approved_module(root, path, resource)
+            scripts += '<script>document.addEventListener("DOMContentLoaded",function(){' + raw.decode("utf-8").replace("</script", "<\\/script") + '\n},{once:true});</script>'
     destination = Path(destination)
+    if destination.exists() or destination.is_symlink():
+        raise ValueError("Export destination already exists; choose a new file to preserve user data")
     _write(destination, render_html(state, standalone=True, resource_markup=markup, resource_scripts=scripts).encode("utf-8"))
     return destination
 
@@ -483,6 +616,9 @@ def inventory(root):
             continue
         signals = []
         type_ = front.get("type", "").lower()
+        # Explicit record types take precedence over incidental narrative mentions.
+        if type_ and "session" not in type_ and not front.get("session_type"):
+            continue
         if "session" in type_:
             signals.append("frontmatter type")
         if any(part.lower() in {"sessions", "00 tutor sessions", "tutor sessions", "research sessions", "learning sessions", "study sessions", "course sessions"} for part in md.relative_to(root).parts[:-1]):
@@ -494,7 +630,7 @@ def inventory(root):
         if not signals:
             continue
         state_path = md.with_suffix(".state.json")
-        status = "migrated" if state_path.exists() else ("ambiguous" if signals == ["session directory"] else "candidate")
+        status = "migrated" if state_path.exists() else ("ambiguous" if signals in (["session directory"], ["session heading"]) else "candidate")
         if rel in exceptions:
             status = "exception"
         candidate = {"path": rel, "signals": signals, "status": status, "sha256": _hash(md.read_bytes())}
@@ -533,6 +669,22 @@ def legacy_questions(source, metadata):
 
 
 def migrate(root, apply=False, journal=None, resume=False, rollback=False):
+    root = Path(root).resolve()
+    if not apply and not resume and not rollback:
+        return _migrate_locked(root, apply, journal, resume, rollback)
+    journal_path = _path(root, journal or '.research-os/migrations/v0.8.5/manifest.json')
+    candidates = {r['path'] for r in inventory(root)}
+    if journal_path.exists():
+        log = json.loads(journal_path.read_text(encoding='utf-8'))
+        candidates.update(r['path'] for r in log.get('records', []))
+    with ExitStack() as locks:
+        for relative in sorted(candidates):
+            md, _, _ = paths(root, relative)
+            locks.enter_context(Lock(md.with_suffix('.session.lock')))
+        return _migrate_locked(root, apply, journal, resume, rollback)
+
+
+def _migrate_locked(root, apply=False, journal=None, resume=False, rollback=False):
     """Journal all intended hashes and exact bytes before changing any candidate.
 
     Resume repairs only files whose hashes match either the recorded original or
@@ -542,6 +694,7 @@ def migrate(root, apply=False, journal=None, resume=False, rollback=False):
     journal = _path(root, journal or ".research-os/migrations/v0.8.5/manifest.json")
     if not apply and not resume and not rollback:
         return {"dry_run": True, "candidates": inventory(root)}
+    verify_only = False
     if journal.exists():
         log = json.loads(journal.read_text(encoding="utf-8"))
         if not resume and not rollback:
@@ -551,6 +704,7 @@ def migrate(root, apply=False, journal=None, resume=False, rollback=False):
                     raise ValueError("New unmigrated candidates found; use a new --journal for a new batch")
                 # A complete journal is still verified against current files below.
                 resume = True
+                verify_only = True
             else:
                 raise ValueError("Migration journal exists; use --resume or --rollback")
     else:
@@ -596,6 +750,8 @@ def migrate(root, apply=False, journal=None, resume=False, rollback=False):
                     raise ValueError(f"Migration conflict; refusing overwrite: {rel}")
             elif rel == record["path"]:
                 raise ValueError(f"Missing migration source: {rel}")
+    if verify_only:
+        return {"dry_run": False, "status": "complete", "candidates": inventory(root), "journal": journal.relative_to(root).as_posix()}
     for record in log["records"]:
         if rollback:
             _write(_path(root, record["path"]), _path(root, record["backup"]).read_bytes())
@@ -627,6 +783,7 @@ def main():
     update = sub.add_parser("update"); update.add_argument("session"); update.add_argument("--source", required=True, type=Path)
     append = sub.add_parser("append"); append.add_argument("session"); append.add_argument("--source", required=True, type=Path)
     event = sub.add_parser("event"); event.add_argument("session"); event.add_argument("--source", required=True, type=Path)
+    recovery = sub.add_parser("recover"); recovery.add_argument("session"); recovery.add_argument("--apply", action="store_true")
     bridge = sub.add_parser("import"); bridge.add_argument("session"); bridge.add_argument("--apply", action="store_true")
     export = sub.add_parser("export"); export.add_argument("session"); export.add_argument("destination", type=Path)
     migration = sub.add_parser("migrate")
@@ -650,6 +807,8 @@ def main():
         result = append_session(root, args.session, args.source.read_bytes().decode("utf-8"))
     elif args.command == "event":
         result = append_event(root, args.session, json.loads(args.source.read_text(encoding="utf-8")))
+    elif args.command == "recover":
+        result = recover_session(root, args.session, args.apply)
     elif args.command == "import":
         result = import_bridge(root, args.session, args.apply)
     else:

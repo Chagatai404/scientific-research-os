@@ -63,6 +63,70 @@ class SessionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 hs.create_session(self.root, name, "text")
 
+    def test_inline_tex_is_preserved_before_prose_styling(self):
+        markup = hs.markdown_html('$a**b**$ and $a`b`$')
+        self.assertIn('data-tex="a**b**"', markup)
+        self.assertIn('data-tex="a`b`"', markup)
+        self.assertNotIn('data-tex="a<strong>', markup)
+
+    def test_obsidian_quoted_formula_callout_keeps_matrix_tex(self):
+        source = '> [!formula] Matrix\n> $$\n> \\begin{pmatrix}1&0\\\\0&1\\end{pmatrix}\n> $$\n'
+        rendered = hs.markdown_html(source)
+        self.assertIn('data-display="true"', rendered)
+        self.assertIn('\\begin{pmatrix}1&amp;0\\\\0&amp;1\\end{pmatrix}', rendered)
+
+    def test_checkpoint_and_export_font_policy(self):
+        hs.create_session(self.root, 'a.md', '# Checkpoint')
+        hs.append_event(self.root, 'a.md', {'type': 'checkpoint', 'question_id': None, 'response': 'section-1'})
+        self.assertEqual(hs.validate_sessions(self.root), [])
+        self.assertIn('font-src data:', hs.render_html(hs.load_session(self.root, 'a.md')))
+
+    def test_concept_session_mentions_never_trigger_migration(self):
+        (self.root / 'concept.md').write_text('---\ntype: concept\n---\n## Update from the tutor session\nActual permanent understanding.\n')
+        self.assertEqual(hs.inventory(self.root), [])
+        self.assertEqual(hs.migrate(self.root)['candidates'], [])
+
+    def test_interrupted_update_recovers_only_unchanged_projections(self):
+        hs.create_session(self.root, 'a.md', '# Before')
+        real_write = hs._write
+        def crash(path, data):
+            if path.suffix == '.html':
+                raise OSError('synthetic update crash')
+            real_write(path, data)
+        with patch.object(hs, '_write', crash):
+            with self.assertRaises(OSError):
+                hs.append_session(self.root, 'a.md', '\nAfter')
+        with self.assertRaisesRegex(ValueError, 'Interrupted'):
+            hs.load_session(self.root, 'a.md')
+        self.assertTrue(hs.recover_session(self.root, 'a.md')['dry_run'])
+        hs.recover_session(self.root, 'a.md', apply=True)
+        self.assertIn('After', hs.load_session(self.root, 'a.md')['source_markdown'])
+        self.assertEqual(hs.validate_sessions(self.root), [])
+
+    def test_interrupted_update_preserves_later_manual_edits(self):
+        hs.create_session(self.root, 'a.md', 'Before')
+        real_write = hs._write
+        def crash(path, data):
+            if path.suffix == '.html':
+                raise OSError('crash')
+            real_write(path, data)
+        with patch.object(hs, '_write', crash):
+            with self.assertRaises(OSError):
+                hs.append_session(self.root, 'a.md', 'After')
+        (self.root / 'a.md').write_text('Later manual answer')
+        with self.assertRaisesRegex(ValueError, 'conflict'):
+            hs.recover_session(self.root, 'a.md', apply=True)
+        self.assertEqual((self.root / 'a.md').read_text(), 'Later manual answer')
+
+    def test_export_never_overwrites_existing_user_artifacts(self):
+        hs.create_session(self.root, 'a.md', 'Original')
+        for suffix in ('.md', '.html', '.state.json'):
+            destination = self.root / ('a' + suffix)
+            before = destination.read_bytes()
+            with self.assertRaisesRegex(ValueError, 'already exists'):
+                hs.export_session(self.root, 'a.md', destination)
+            self.assertEqual(destination.read_bytes(), before)
+
     def test_open_question_durable_no_credit(self):
         hs.create_session(self.root, "a.md", "Lesson")
         state = hs.append_event(self.root, "a.md", {"event_id": "ask", "type": "open-question", "response": "Why λ?"})

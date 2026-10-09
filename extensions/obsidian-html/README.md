@@ -21,8 +21,41 @@ It injects only the vault's installed `.research-os/runtime/session.js` and
 `session.css`; these files are trusted executable code and should come from the
 Research OS installer. Without them, content remains visible and the host reports
 that interactions are unavailable. SVG/Canvas markup is permitted. Links are
-inert in this first version. External images, frames and network requests are
-blocked. Bundled font data URLs are allowed for offline math.
+inert in this first version. External images, frames and fetch/network resources
+are blocked. Bundled font data URLs are allowed for offline math.
+
+Explicit local resources use `state.resources`, an array of
+`{id, path, kind: "module" | "image"}`. `id` is optional and defaults to `path`.
+Session asset paths are relative to the session's folder (`lesson.assets/a.png`
+beside `lesson.html`); vault-relative paths to that same directory are also accepted.
+Runtime extension paths are vault-relative under `.research-os/runtime/extensions/`.
+Optional `alt`/`title` supply image descriptions. Traversal, remote paths, hidden components,
+encoded paths and symlinks are rejected. Modules are denied by default. Each module
+requires a `sha256` declaration matching its actual UTF-8 content and an independent
+user-approved entry in `.research-os/runtime/extensions/trusted-modules.json`:
+
+```json
+{"Folder/lesson.assets/demo.js": "64-character-lowercase-sha256"}
+```
+
+Review the code, compute its SHA-256, and edit this host-owned trust registry
+manually. Registry keys are normalized vault-relative paths. The host reloads on
+registry modifications. State declarations alone never authorize code.
+Changed hashes fail closed. Approved code executes inside the same opaque iframe
+without Node, vault, parent DOM or filesystem capabilities; it can use
+the approved runtime's `ResearchOS.register` extension interface. Modules are
+classic scripts without import support, capped at 256 KiB each. CSP blocks external
+fetch/import/image/frame resources. Browser sandboxing does not comprehensively
+prevent a malicious approved script navigating its own frame; reviewing and approving
+code is therefore a trust boundary, not a claim of full network isolation.
+
+Image placeholders use `<img data-resource-id="diagram" alt="Description">`.
+Declared images without a placeholder are appended as captioned figures.
+Only declared PNG/JPEG/WebP resources with matching magic bytes become host-created
+data URLs. Existing `src`/`srcset` are always stripped. Unsupported images display
+a visible explanation, and missing/invalid declared resources fail the view.
+Resources are capped at 32 files, 2 MiB per image and 8 MiB total. Module/image
+changes reload; rename/delete invalidates the view with a repair instruction.
 
 Each load creates an opaque-origin iframe with `sandbox="allow-scripts"`, an early
 restrictive CSP and a fresh token. The runtime receives `window.ROS_HOST` with
@@ -36,7 +69,8 @@ updates mastery or canonical learning evidence. Replies return `type: 'state'`
 and `state`, or `type: 'error'` and `message`.
 
 Writes are queued and use Obsidian `Vault.process` to revalidate the latest state
-atomically, with an exclusive sibling `.session.lock` shared with Python tools.
+atomically, with a host filesystem `O_EXCL` sibling `.session.lock` shared with
+Python tools; this host capability is never exposed to the iframe.
 An existing lock rejects a write; do not remove one while another writer is active.
 Duplicate event IDs are ignored. Events are capped at 16 KiB each,
 10,000 per session, 32 pending messages, and 4 MiB state. Reloads invalidate old
