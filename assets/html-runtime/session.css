@@ -21,3 +21,9 @@ svg,canvas,img{max-width:100%;height:auto}canvas,svg{display:block;margin:1rem a
 @media(max-width:500px){:root{font-size:17px}main{padding:1rem}h1{font-size:1.75rem}h2{font-size:1.35rem}fieldset,[data-question-id],[data-ros=widget]{padding:.8rem}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 @media print{:root,:root[data-theme=dark]{--ros-bg:white;--ros-fg:black;--ros-muted:#444;--ros-panel:white;--ros-border:#bbb;--ros-code-bg:#f4f4f4;--ros-practice-bg:white;--ros-warning-bg:white;--ros-accent:#245d78;color-scheme:light}button,form,.ros-status{display:none}main{max-width:none;padding:0}h1,h2,h3{break-after:avoid}figure{break-inside:avoid}pre{white-space:pre-wrap;overflow-wrap:anywhere}}
+
+/* Structural callout contract; visual variants are refined in later slices. */
+.ros-callout{border:1px solid var(--ros-border);border-left:3px solid var(--ros-accent);border-radius:6px;margin:1.5rem 0;background:var(--ros-panel);overflow:hidden}
+.ros-callout-header{font:600 .9rem/1.5 var(--ros-ui);padding:.65rem 1rem;border-bottom:1px solid var(--ros-border);color:var(--ros-accent)}
+.ros-callout-body{padding:.2rem 1rem .6rem}.ros-callout-body>:first-child{margin-top:.65rem}.ros-callout-body>:last-child{margin-bottom:.65rem}
+.ros-list>li>p{margin:.35rem 0}.ros-heading-anchor{display:block;height:0}
