@@ -19,7 +19,7 @@ const content = '<main id="ros-session"><h1>Browser fixture</h1><div data-questi
  '<div data-ros="widget" data-widget="sampling"></div><div data-ros="widget" data-widget="vector"></div>' +
  '<script>parent.pwned=true;fetch("https://example.org/escape")</script><iframe src="https://example.org/"></iframe><img src="https://example.org/leak" onerror="parent.pwned=true"><style>body{display:none}</style><a href="javascript:parent.pwned=true">Attack</a></main>';
 async function main() {
-  const browser = await chromium.launch({headless:true});
+  const browser = await chromium.launch({headless:true,...(process.env.ROS_BROWSER ? {executablePath:process.env.ROS_BROWSER} : {})});
   try {
     const page = await browser.newPage();
     const requests=[]; page.on('request',req=>requests.push(req.url()));
