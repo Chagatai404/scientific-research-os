@@ -34,3 +34,13 @@ Ordinary course study does not require research agents, experiment design,
 adversarial review or research approval. If the learner explicitly moves into a
 substantive research question, use `references/RESEARCH_PROTOCOL.md` and
 `references/SOURCE_POLICY.md` for that work. Do not silently promote notes.
+
+
+## Mandatory session artifacts
+
+When this workflow creates or continues a substantive session, follow
+`references/HTML_SESSION_PROTOCOL.md`: use the centralized
+`scripts/html_sessions.py` API, preserve Markdown backlinks, produce HTML and
+structured state, and validate the artifacts. Read persisted answers and unresolved
+questions before resuming. Ordinary notes, evidence records and source files retain
+their canonical formats. Browser feedback never automatically establishes mastery.

@@ -36,3 +36,13 @@ verification, relevant specialist validation, adversarial review, and A–D tria
 before finalizing the build plan. Present it and explicitly ask the researcher to
 approve, modify, or reject it; STOP before coding, build agents, or execution.
 An isolated planning request does not authorize running the plan.
+
+
+## Mandatory session artifacts
+
+When this workflow creates or continues a substantive session, follow
+`references/HTML_SESSION_PROTOCOL.md`: use the centralized
+`scripts/html_sessions.py` API, preserve Markdown backlinks, produce HTML and
+structured state, and validate the artifacts. Read persisted answers and unresolved
+questions before resuming. Ordinary notes, evidence records and source files retain
+their canonical formats. Browser feedback never automatically establishes mastery.

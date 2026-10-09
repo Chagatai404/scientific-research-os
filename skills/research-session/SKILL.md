@@ -150,3 +150,13 @@ next question. Preserve retrieval history and suggested delayed reviews in worki
 learning records. Separate tentative findings from human-accepted conclusions.
 Use configured session notes only within the requested workflow; permanent
 Obsidian understanding remains human-reviewed, not an automatic session log.
+
+
+## Mandatory session artifacts
+
+When this workflow creates or continues a substantive session, follow
+`references/HTML_SESSION_PROTOCOL.md`: use the centralized
+`scripts/html_sessions.py` API, preserve Markdown backlinks, produce HTML and
+structured state, and validate the artifacts. Read persisted answers and unresolved
+questions before resuming. Ordinary notes, evidence records and source files retain
+their canonical formats. Browser feedback never automatically establishes mastery.

@@ -48,3 +48,13 @@ snapshot inside the chosen root without overwrite. Refresh from original records
 exports are views, not source-of-truth stores. Presentation parsing is optional;
 manual structured claims suffice. Keep fixtures/local preparation separate from
 the real vault, and respect the user's authorization for any durable edits.
+
+
+## Mandatory session artifacts
+
+When this workflow creates or continues a substantive session, follow
+`references/HTML_SESSION_PROTOCOL.md`: use the centralized
+`scripts/html_sessions.py` API, preserve Markdown backlinks, produce HTML and
+structured state, and validate the artifacts. Read persisted answers and unresolved
+questions before resuming. Ordinary notes, evidence records and source files retain
+their canonical formats. Browser feedback never automatically establishes mastery.

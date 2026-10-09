@@ -157,3 +157,12 @@ Its credential prohibition applies regardless of the general exception above.
 Specialists return reports to the main agent.
 The main agent synthesizes.
 The human decides.
+
+
+## HTML session interface
+
+Substantive sessions follow `HTML_SESSION_PROTOCOL.md` and the centralized
+`scripts/html_sessions.py` API. HTML and Markdown bridges are projections of
+structured session content; canonical learning/evidence/research records retain
+their existing ownership and human review gates. Validate HTML artifacts before
+claiming session completion. Preserve raw responses and unresolved questions.

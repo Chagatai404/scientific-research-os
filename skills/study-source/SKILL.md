@@ -43,3 +43,13 @@ Read `references/SOURCE_POLICY.md`.
 13. If the source is being used to choose or justify a scientific model, check whether an independent neutral literature-discovery pass occurred first. If not, request one before treating the source set as representative.
 14. If a key claim matters to research, ask the source-verifier to independently verify it. Provide the verifier the claim and source, but not your conclusion when practical.
 15. If a mechanistic interpretation is inferred from correlation or from evidence in a different regime, label it as an interpretation or transferred hypothesis rather than a verified source claim.
+
+
+## Mandatory session artifacts
+
+When this workflow creates or continues a substantive session, follow
+`references/HTML_SESSION_PROTOCOL.md`: use the centralized
+`scripts/html_sessions.py` API, preserve Markdown backlinks, produce HTML and
+structured state, and validate the artifacts. Read persisted answers and unresolved
+questions before resuming. Ordinary notes, evidence records and source files retain
+their canonical formats. Browser feedback never automatically establishes mastery.

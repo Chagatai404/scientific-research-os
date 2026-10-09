@@ -28,3 +28,13 @@ Installed helper: from this skill directory use
 for observed provenance. Supply reviewed choices with `--declared <config.json>`.
 Read `extensions/scientific-tools/geant4/GUIDE.md` for software semantics. Helpers
 and packs are bundled locally; no source checkout or scientific package is required.
+
+
+## Mandatory session artifacts
+
+When this workflow creates or continues a substantive session, follow
+`references/HTML_SESSION_PROTOCOL.md`: use the centralized
+`scripts/html_sessions.py` API, preserve Markdown backlinks, produce HTML and
+structured state, and validate the artifacts. Read persisted answers and unresolved
+questions before resuming. Ordinary notes, evidence records and source files retain
+their canonical formats. Browser feedback never automatically establishes mastery.

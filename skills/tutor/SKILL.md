@@ -253,3 +253,13 @@ Frontier is eligibility, not a mandate to rehearse every learned node.
 For university coursework, use `course-study` if available or follow
 `references/COURSE_LEARNING_PROTOCOL.md`. Ordinary course learning does not invoke
 the research cycle. Research-linked lessons retain the research protocol's gates.
+
+
+## Mandatory session artifacts
+
+When this workflow creates or continues a substantive session, follow
+`references/HTML_SESSION_PROTOCOL.md`: use the centralized
+`scripts/html_sessions.py` API, preserve Markdown backlinks, produce HTML and
+structured state, and validate the artifacts. Read persisted answers and unresolved
+questions before resuming. Ordinary notes, evidence records and source files retain
+their canonical formats. Browser feedback never automatically establishes mastery.

@@ -27,3 +27,13 @@ opts into its fixed capability query. Generate provenance with
 `python scripts/scientific_tools.py manifest --experiment <id> --repo <project> --tool pytorch`
 and reviewed `--declared <config.json>` where available. Bundled
 `extensions/scientific-tools/` contains the guides; no source checkout is assumed.
+
+
+## Mandatory session artifacts
+
+When this workflow creates or continues a substantive session, follow
+`references/HTML_SESSION_PROTOCOL.md`: use the centralized
+`scripts/html_sessions.py` API, preserve Markdown backlinks, produce HTML and
+structured state, and validate the artifacts. Read persisted answers and unresolved
+questions before resuming. Ordinary notes, evidence records and source files retain
+their canonical formats. Browser feedback never automatically establishes mastery.

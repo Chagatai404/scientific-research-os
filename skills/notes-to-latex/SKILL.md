@@ -27,3 +27,13 @@ references live at `../../references/`; installation bundles them under
 Do not build or require OCR, an AI API, or a LaTeX compiler. Use
 `references/VISUALIZATION_PROTOCOL.md` separately if diagram recreation is requested.
 Transcription alone does not invoke tutoring or the research cycle.
+
+
+## Mandatory session artifacts
+
+When this workflow creates or continues a substantive session, follow
+`references/HTML_SESSION_PROTOCOL.md`: use the centralized
+`scripts/html_sessions.py` API, preserve Markdown backlinks, produce HTML and
+structured state, and validate the artifacts. Read persisted answers and unresolved
+questions before resuming. Ordinary notes, evidence records and source files retain
+their canonical formats. Browser feedback never automatically establishes mastery.

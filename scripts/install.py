@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import shutil
+import datetime as dt
 
 from common import ROOT, load_config, expand, parse_frontmatter
 
@@ -30,7 +31,7 @@ V08_AGENT_REFERENCES = {
 # Standard-library helpers the graph-first workflows call from an installed skill
 # directory (`python scripts/<helper>.py`); they import each other by module name.
 GRAPH_SKILLS = {"tutor", "course-study", "visualize", "research-session", "research-review", "defend-research"}
-GRAPH_HELPERS = ("knowledge.py", "ontology.py", "migrate_learning.py", "research.py", "visuals.py", "tutor_contract.py", "tutor_plan.py", "bootstrap.py",
+GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py", "migrate_learning.py", "research.py", "visuals.py", "tutor_contract.py", "tutor_plan.py", "bootstrap.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
                  "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py",
                  "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py")
@@ -40,10 +41,11 @@ def copy_dir(src: Path, dst: Path, dry: bool) -> None:
     print(f"{'[dry] ' if dry else ''}{src} -> {dst}")
     if dry:
         return
-    if dst.exists():
-        shutil.rmtree(dst)
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(src, dst)
+    # Overlay known files, preserve extra user files, and back up changed files.
+    dst.mkdir(parents=True, exist_ok=True)
+    for source in sorted(src.rglob('*')):
+        if source.is_file():
+            copy_file(source, dst / source.relative_to(src), False)
 
 
 def copy_file(src: Path, dst: Path, dry: bool) -> None:
@@ -51,7 +53,23 @@ def copy_file(src: Path, dst: Path, dry: bool) -> None:
     if dry:
         return
     dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists() and dst.read_bytes() != src.read_bytes():
+        stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+        backup = dst.parent / '.research-os-install-backups' / stamp / dst.name
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(dst, backup)
     shutil.copy2(src, dst)
+
+
+def write_installed_text(dst: Path, content: str) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    payload = content.encode("utf-8")
+    if dst.exists() and dst.read_bytes() != payload:
+        stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+        backup = dst.parent / '.research-os-install-backups' / stamp / dst.name
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(dst, backup)
+    dst.write_bytes(payload)
 
 
 def codex_agent_toml(meta: dict[str, str], body: str) -> str:
@@ -88,6 +106,10 @@ def install_skills(base: Path, dry: bool) -> None:
         if skill.name in {"research-session", "research-review"}:
             copy_file(ROOT / "scripts" / "validate_evidence.py",
                       destination / "scripts" / "validate_evidence.py", dry)
+        # HTML sessions are mandatory for every substantive workflow.
+        for helper in ("html_sessions.py", "common.py"):
+            copy_file(ROOT / "scripts" / helper, destination / "scripts" / helper, dry)
+        copy_dir(ROOT / "assets/html-runtime", destination / "assets/html-runtime", dry)
         if skill.name in GRAPH_SKILLS:
             for helper in GRAPH_HELPERS:
                 copy_file(ROOT / "scripts" / helper, destination / "scripts" / helper, dry)
@@ -98,8 +120,7 @@ def install_agents_claude(base: Path, dry: bool) -> None:
         out = base / p.name
         print(f"{'[dry] ' if dry else ''}{p} -> {out}")
         if not dry:
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(p.read_text(encoding="utf-8") + agent_policy(p.stem), encoding="utf-8")
+            write_installed_text(out, p.read_text(encoding="utf-8") + agent_policy(p.stem))
 
 
 def agent_policy(role: str) -> str:
@@ -145,8 +166,7 @@ def install_agents_codex(base: Path, dry: bool) -> None:
         out = base / f'{meta["name"]}.toml'
         print(f"{'[dry] ' if dry else ''}{p} -> {out}")
         if not dry:
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(codex_agent_toml(meta, body + agent_policy(meta["name"])), encoding="utf-8")
+            write_installed_text(out, codex_agent_toml(meta, body + agent_policy(meta["name"])))
 
 
 def install_obsidian(cfg: dict, dry: bool) -> None:
@@ -156,10 +176,30 @@ def install_obsidian(cfg: dict, dry: bool) -> None:
         copy_file(p, dst / p.name, dry)
 
 
+def install_html_companion(cfg: dict, dry: bool) -> None:
+    """Stage the desktop companion without changing the user's enabled plugins."""
+    vault = expand(cfg["vault"]["path"])
+    plugin = ROOT / "extensions/obsidian-html"
+    destination = vault / ".obsidian/plugins/research-os-html"
+    for name in ("main.js", "manifest.json", "styles.css"):
+        source = plugin / name
+        target = destination / name
+        # Never silently overwrite a locally modified plugin installation.
+        if target.exists() and target.read_bytes() != source.read_bytes():
+            raise ValueError(f"Existing companion differs; back it up before updating: {target}")
+        copy_file(source, target, dry)
+    from html_sessions import install_runtime
+    if dry:
+        print(f"[dry] shared HTML runtime -> {vault / '.research-os/runtime'}")
+    else:
+        install_runtime(vault)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", choices=["all", "claude", "codex"], default="all")
     ap.add_argument("--obsidian", action="store_true")
+    ap.add_argument("--html-companion", action="store_true", help="stage companion plugin/runtime; enable manually in Obsidian")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
 
@@ -176,6 +216,8 @@ def main() -> None:
 
     if args.obsidian:
         install_obsidian(cfg, args.dry_run)
+    if args.html_companion:
+        install_html_companion(cfg, args.dry_run)
 
 
 if __name__ == "__main__":

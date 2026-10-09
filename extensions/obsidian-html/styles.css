@@ -1,0 +1,4 @@
+.ros-html-host { height: 100%; min-height: 360px; display: flex; flex-direction: column; }
+.ros-html-frame { width: 100%; flex: 1; min-height: 360px; border: 0; background: var(--background-primary); }
+.ros-html-status { padding: 8px 12px; color: var(--text-muted); }
+.ros-html-status.ros-error { color: var(--text-error); }

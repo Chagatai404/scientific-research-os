@@ -379,3 +379,12 @@ it never grades an answer or changes research approval.
 
 For university coursework use `COURSE_LEARNING_PROTOCOL.md`, which builds on this
 learning loop without requiring the research cycle. Course details belong there.
+
+
+## HTML session interface
+
+Substantive sessions follow `HTML_SESSION_PROTOCOL.md` and the centralized
+`scripts/html_sessions.py` API. HTML and Markdown bridges are projections of
+structured session content; canonical learning/evidence/research records retain
+their existing ownership and human review gates. Validate HTML artifacts before
+claiming session completion. Preserve raw responses and unresolved questions.

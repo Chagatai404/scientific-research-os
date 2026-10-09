@@ -1,0 +1,336 @@
+'use strict';
+const {Plugin, FileView, Component, normalizePath} = require('obsidian');
+const crypto = require('crypto');
+const fs = require('fs');
+const nodePath = require('path');
+const VIEW = 'research-os-html';
+const MAX_STATE = 4 * 1024 * 1024;
+const MAX_HTML = 4 * 1024 * 1024;
+const MAX_EVENTS = 10000;
+const RUNTIME = '.research-os/runtime/';
+const TRUST_REGISTRY = RUNTIME + 'extensions/trusted-modules.json';
+const TAGS = new Set(('a abbr article aside b blockquote br button caption code col colgroup dd details div dl dt em fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr i img input label legend li main mark nav ol option p pre section select small span strong sub summary sup table tbody td textarea th thead tr ul svg g path circle rect line polyline polygon ellipse text tspan canvas').split(' '));
+const ATTRS = new Set(('id class title alt role aria-label aria-labelledby aria-describedby aria-expanded aria-live aria-hidden tabindex type name value min max step placeholder checked disabled selected for open rows cols width height viewbox d x y x1 x2 y1 y2 cx cy r rx ry points fill stroke stroke-width transform xmlns').split(' '));
+
+function sibling(path) { return path.replace(/\.html$/i, '.state.json'); }
+function validateResources(resources, sessionPath) {
+  if (resources === undefined) return [];
+  if (!Array.isArray(resources) || resources.length > 32) throw new Error('At most 32 approved resources are allowed.');
+  const own = sessionPath.replace(/\.html$/i, '.assets/'); const folder = sessionPath.includes('/') ? sessionPath.slice(0, sessionPath.lastIndexOf('/') + 1) : ''; const relativeOwn = own.slice(folder.length); const ids = new Set();
+  return resources.map(resource => {
+    if (!resource || typeof resource !== 'object' || Object.keys(resource).some(k => !['id', 'path', 'kind', 'alt', 'title', 'sha256'].includes(k))) throw new Error('Invalid resource declaration.');
+    const p = resource.path; const id = resource.id || p;
+    if (typeof p !== 'string' || !p.length || p.length > 1024 || /[\\:%?#\x00-\x1f]/.test(p) || p.startsWith('/') || p.split('/').some((s, index) => !s || s === '.' || s === '..' || (s.startsWith('.') && !(index === 0 && s === '.research-os' && p.startsWith(RUNTIME + 'extensions/'))))) throw new Error('Unsafe resource path.');
+    const resolved = p.startsWith(relativeOwn) ? folder + p : p;
+    if (!resolved.startsWith(own) && !resolved.startsWith(RUNTIME + 'extensions/')) throw new Error('Resource is outside approved session/runtime extension directories.');
+    if (!['image', 'module'].includes(resource.kind) || (resource.kind === 'module' && !p.endsWith('.js')) || (resource.kind === 'image' && !/\.(png|jpe?g|webp)$/i.test(p))) throw new Error('Unsupported approved resource type.');
+    if (resource.kind === 'module' && (typeof resource.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(resource.sha256))) throw new Error('Local modules require an explicit SHA-256 declaration.');
+    if (typeof id !== 'string' || !id.length || id.length > 1024 || ids.has(id)) throw new Error('Invalid or duplicate resource ID.');
+    for (const key of ['alt', 'title']) if (resource[key] !== undefined && (typeof resource[key] !== 'string' || resource[key].length > 2048)) throw new Error('Invalid resource description.');
+    ids.add(id); return {id, path: resolved, kind: resource.kind, alt: resource.alt || resource.title || id, sha256: resource.sha256};
+  });
+}
+function approveModule(resource, code, trustedModules) {
+  const digest = crypto.createHash('sha256').update(code, 'utf8').digest('hex');
+  if (digest !== resource.sha256 || !trustedModules || !Object.prototype.hasOwnProperty.call(trustedModules, resource.path) || trustedModules[resource.path] !== digest) throw new Error('Local module is not approved or changed: ' + resource.path + '. Review its code and explicitly approve its SHA-256 in plugin settings.');
+  return code;
+}
+function imageData(bytes, path) {
+  const b = Buffer.from(bytes);
+  if (b.length > 2 * 1024 * 1024) throw new Error('Image exceeds 2 MiB limit.');
+  let mime;
+  if (/\.png$/i.test(path) && b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) mime = 'image/png';
+  else if (/\.jpe?g$/i.test(path) && b[0] === 255 && b[1] === 216 && b[2] === 255) mime = 'image/jpeg';
+  else if (/\.webp$/i.test(path) && b.subarray(0,4).toString() === 'RIFF' && b.subarray(8,12).toString() === 'WEBP') mime = 'image/webp';
+  else throw new Error('Image file signature does not match approved type.');
+  return 'data:' + mime + ';base64,' + b.toString('base64');
+}
+function acquireLock(vault, sessionPath, token) {
+  if (!vault.adapter || typeof vault.adapter.getBasePath !== 'function') throw new Error('Session persistence requires a desktop filesystem vault.');
+  const base = fs.realpathSync(vault.adapter.getBasePath());
+  const lockPath = nodePath.resolve(base, sessionPath.replace(/\.html$/i, '.session.lock'));
+  const parent = fs.realpathSync(nodePath.dirname(lockPath));
+  const compare = p => process.platform === 'win32' ? p.toLowerCase() : p;
+  if (!compare(lockPath).startsWith(compare(base + nodePath.sep)) || compare(parent) !== compare(nodePath.dirname(lockPath))) throw new Error('Unsafe session lock location.');
+  let fd;
+  try { fd = fs.openSync(lockPath, 'wx'); }
+  catch (error) { if (error.code === 'EEXIST') throw new Error('Session is locked by another writer. Retry after its operation completes.'); throw error; }
+  try { fs.writeFileSync(fd, JSON.stringify({owner: 'obsidian-html', token})); }
+  catch (error) { fs.closeSync(fd); fs.unlinkSync(lockPath); throw error; }
+  fs.closeSync(fd);
+  return () => {
+    const owner = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+    if (owner.token !== token) throw new Error('Session lock ownership changed; refusing to remove it.');
+    fs.unlinkSync(lockPath);
+  };
+}
+function parseState(text) {
+  if (typeof text !== 'string' || text.length > MAX_STATE) throw new Error('Session state exceeds size limit.');
+  const s = JSON.parse(text);
+  if (!s || s.schema_version !== 1 || typeof s.session_id !== 'string' || !s.session_id.length || s.session_id.length > 256 || !Array.isArray(s.questions) || !Array.isArray(s.events) || s.events.length > MAX_EVENTS) throw new Error('Unsupported or invalid session state.');
+  const ids = s.questions.map(q => q && q.id);
+  if (ids.some(id => typeof id !== 'string' || id.length > 128) || new Set(ids).size !== ids.length) throw new Error('Invalid question IDs.');
+  return s;
+}
+function validateEvent(event, state) {
+  if (!event || typeof event !== 'object' || Array.isArray(event)) throw new Error('Invalid event.');
+  const allowed = new Set(['event_id', 'type', 'question_id', 'response', 'created_at']);
+  if (Object.keys(event).some(k => !allowed.has(k))) throw new Error('Unknown event field.');
+  if (typeof event.event_id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(event.event_id)) throw new Error('Invalid event ID.');
+  if (!['response', 'hint', 'solution', 'confidence', 'checkpoint', 'reset', 'open-question'].includes(event.type)) throw new Error('Unsupported event type.');
+    if (event.type !== 'open-question' && !(event.type === 'checkpoint' && event.question_id == null) && !state.questions.some(q => q.id === event.question_id)) throw new Error('Unknown question.');
+    if (event.type === 'open-question' && (typeof event.response !== 'string' || !event.response.trim())) throw new Error('Open question must have a prompt.');
+    if (event.type === 'checkpoint' && (typeof event.response !== 'string' || !event.response.trim())) throw new Error('Checkpoint must include a raw explanation.');
+  if (event.question_id !== undefined && !(['checkpoint', 'open-question'].includes(event.type) && event.question_id === null) && (typeof event.question_id !== 'string' || event.question_id.length > 128)) throw new Error('Invalid question ID.');
+  function checkValue(value, depth = 0) {
+    if (depth > 4) throw new Error('Response nesting limit exceeded.');
+    if (value === null || ['string', 'boolean'].includes(typeof value)) return;
+    if (typeof value === 'number' && Number.isFinite(value)) return;
+    if (Array.isArray(value) && value.length <= 100) { value.forEach(v => checkValue(v, depth + 1)); return; }
+    if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype && Object.keys(value).length <= 100) {
+      for (const [key, v] of Object.entries(value)) { if (['__proto__', 'constructor', 'prototype'].includes(key)) throw new Error('Invalid response key.'); checkValue(v, depth + 1); } return;
+    }
+    throw new Error('Invalid response.');
+  }
+  if (event.response !== undefined) checkValue(event.response);
+  if (JSON.stringify(event).length > 16384) throw new Error('Event exceeds size limit.');
+  if (event.created_at !== undefined && (typeof event.created_at !== 'string' || !Number.isFinite(Date.parse(event.created_at)))) throw new Error('Invalid event time.');
+  return Object.assign({}, event, {created_at: new Date().toISOString(), status: 'pending-review'});
+}
+function sanitizeHtml(html, doc, images = new Map(), descriptions = new Map()) {
+  if (typeof html !== 'string' || html.length > MAX_HTML) throw new Error('Session HTML exceeds size limit.');
+  // Parse in a detached template: scripts cannot run and resources are never attached.
+  const template = doc.createElement('template');
+  template.innerHTML = html;
+  function visit(parent) {
+    for (const node of Array.from(parent.childNodes)) {
+      if (node.nodeType === 8) { node.remove(); continue; }
+      if (node.nodeType !== 1) continue;
+      const tag = node.localName.toLowerCase();
+      if (!TAGS.has(tag)) { node.remove(); continue; }
+      const anchor = tag === 'a' && /^#[A-Za-z0-9_-]+$/.test(node.getAttribute('href') || '') ? node.getAttribute('href') : null;
+      for (const attr of Array.from(node.attributes)) {
+        const key = attr.name.toLowerCase();
+        if (!(ATTRS.has(key) || /^data-[a-z0-9_-]+$/.test(key)) || /url\s*\(/i.test(attr.value)) node.removeAttribute(attr.name);
+      }
+      // All navigation is deliberately inert until mediated navigation is implemented.
+      if (tag === 'a') { node.removeAttribute('href'); if (anchor) node.setAttribute('href', anchor); }
+      if (tag === 'input' && !['text', 'number', 'range', 'radio', 'checkbox', 'button', 'submit', 'reset', 'hidden'].includes((node.getAttribute('type') || 'text').toLowerCase())) node.setAttribute('type', 'text');
+      if (tag === 'img') {
+        const id = node.getAttribute('data-resource-id');
+        if (!id || !images.has(id)) { const warning = doc.createElement('span'); warning.textContent = '[Image unavailable: declare an approved local image resource.]'; node.replaceWith(warning); continue; }
+        node.setAttribute('src', images.get(id)); node.setAttribute('alt', node.getAttribute('alt') || node.getAttribute('title') || 'Session image');
+      }
+      visit(node);
+    }
+  }
+  // Extract body before allowlisting removes the html/head wrappers.
+  const body = template.content.querySelector('body');
+  let root = template.content;
+  if (body) { const fragment = doc.createDocumentFragment(); while (body.firstChild) fragment.appendChild(body.firstChild); root = fragment; }
+  else {
+    const htmlNode = template.content.querySelector('html');
+    if (htmlNode) { const fragment = doc.createDocumentFragment(); while (htmlNode.firstChild) fragment.appendChild(htmlNode.firstChild); root = fragment; }
+  }
+  visit(root);
+  const used = new Set(Array.from(root.querySelectorAll('img[data-resource-id]')).map(n => n.getAttribute('data-resource-id')));
+  for (const [id, data] of images) {
+    if (used.has(id)) continue;
+    const figure = doc.createElement('figure'); const image = doc.createElement('img'); const caption = doc.createElement('figcaption');
+    image.setAttribute('src', data); image.setAttribute('alt', descriptions.get(id) || 'Approved session image: ' + id); image.setAttribute('data-resource-id', id);
+    caption.textContent = descriptions.get(id) || id; figure.appendChild(image); figure.appendChild(caption); root.appendChild(figure);
+  }
+  const wrapper = doc.createElement('div'); wrapper.appendChild(root); return wrapper.innerHTML;
+}
+function buildDocument(body, state, token, runtime, css, theme, modules = []) {
+  const nonce = crypto.randomBytes(24).toString('hex');
+  const safeJSON = JSON.stringify({token, session_id: state.session_id, state}).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const safeScript = runtime.replace(/<\/script/gi, '<\\/script');
+  const safeCSS = css.replace(/<\/style/gi, '<\\/style');
+  const moduleScripts = modules.map(code => '<script nonce="' + nonce + '">document.addEventListener("DOMContentLoaded",function(){"use strict";\n' + code.replace(/<\/script/gi, '<\\/script') + '\n},{once:true});</script>').join('');
+  return '<!doctype html><html data-theme="' + (theme === 'dark' ? 'dark' : 'light') + '"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'nonce-' + nonce + '\'; style-src \'nonce-' + nonce + '\'; style-src-attr \'unsafe-inline\'; img-src data:; connect-src \'none\'; font-src data:; frame-src \'none\'; object-src \'none\'; base-uri \'none\'; form-action \'none\'"><style nonce="' + nonce + '">' + safeCSS + '</style></head><body class="' + (theme === 'dark' ? 'theme-dark' : 'theme-light') + '">' + body + '<script nonce="' + nonce + '">window.ROS_HOST=' + safeJSON + ';</script><script nonce="' + nonce + '">' + safeScript + '</script>' + moduleScripts + '</body></html>';
+}
+
+class SessionHost extends Component {
+  constructor(plugin, container, path) { super(); this.plugin = plugin; this.container = container; this.path = path; this.queue = Promise.resolve(); this.generation = 0; this.pending = 0; }
+  onload() {
+    if (this.plugin.hosts) this.plugin.hosts.add(this);
+    this.container.classList.add('ros-html-host');
+    this.status = this.container.ownerDocument.createElement('div'); this.status.className = 'ros-html-status'; this.container.appendChild(this.status);
+    this.registerDomEvent(window, 'message', event => this.receive(event));
+    this.registerEvent(this.plugin.app.vault.on('modify', file => { if (file.path === TRUST_REGISTRY) this.plugin.loadTrust().then(() => this.reload()).catch(error => this.fail(error.message)); }));
+    this.registerEvent(this.plugin.app.vault.on('create', file => { if (file.path === TRUST_REGISTRY) this.plugin.loadTrust().then(() => this.reload()).catch(error => this.fail(error.message)); }));
+    this.registerEvent(this.plugin.app.vault.on('delete', file => { if (file.path === TRUST_REGISTRY) { this.plugin.trustedModules = {}; this.reload(); } }));
+    this.registerEvent(this.plugin.app.vault.on('rename', (file, old) => { if (old === TRUST_REGISTRY || file.path === TRUST_REGISTRY) this.plugin.loadTrust().then(() => this.reload()).catch(error => this.fail(error.message)); }));
+    this.registerEvent(this.plugin.app.vault.on('modify', async file => {
+      if (this.writing) return;
+      if ([this.path, sibling(this.path)].includes(file.path)) {
+        try {
+          const current = await this.read(file.path);
+          const prior = this.loaded && (file.path === this.path ? this.loaded.html : this.loaded.raw);
+          if (current !== prior) this.reload();
+        } catch (error) { this.fail(error.message); }
+      } else if ([RUNTIME + 'session.js', RUNTIME + 'session.css', ...(this.resources || []).map(r => r.path)].includes(file.path)) this.reload();
+    }));
+    this.registerEvent(this.plugin.app.vault.on('rename', (file, old) => { if ([this.path, sibling(this.path), ...(this.resources || []).map(r => r.path)].includes(old)) { this.invalidated = true; this.fail('Session/resource renamed. Repair all artifact and resource references together, then reopen.'); } }));
+    this.registerEvent(this.plugin.app.vault.on('delete', file => { if ([this.path, sibling(this.path), ...(this.resources || []).map(r => r.path)].includes(file.path)) { this.invalidated = true; this.fail('Session/resource artifact deleted. Reopen after repair.'); } }));
+    this.registerEvent(this.plugin.app.workspace.on('css-change', () => { const theme = this.container.ownerDocument.body.classList.contains('theme-dark') ? 'dark' : 'light'; if (!this.loaded || theme !== this.loaded.theme) this.reload(); }));
+    this.reload();
+  }
+  fail(message) { this.generation++; this.token = null; if (this.frame) { this.frame.remove(); this.frame = null; } this.status.textContent = message; this.status.classList.add('ros-error'); }
+  async read(path, required = true) {
+    if ([RUNTIME + 'session.js', RUNTIME + 'session.css', TRUST_REGISTRY].includes(path)) {
+      // Obsidian excludes dot directories from its indexed TFile inventory.
+      // Adapter reads are limited to these fixed, canonical host-owned paths.
+      try {
+        const adapter = this.plugin.app.vault.adapter;
+        const base = fs.realpathSync(adapter.getBasePath());
+        const expected = nodePath.resolve(base, path);
+        const actual = fs.realpathSync(expected);
+        const canonical = value => process.platform === 'win32' ? value.toLowerCase() : value;
+        if (canonical(expected) !== canonical(actual)) throw new Error('Symlinked runtime resource rejected.');
+        return await adapter.read(path);
+      } catch (error) { if (required) throw error; return ''; }
+    }
+    const file = this.plugin.app.vault.getAbstractFileByPath(path);
+    if (!file || file.children) { if (required) throw new Error('Missing session resource: ' + path); return ''; }
+    return this.plugin.app.vault.read(file);
+  }
+  async reload() {
+    if (this.invalidated) return;
+    const generation = ++this.generation; this.token = null;
+    try {
+      const [html, raw, runtime, css] = await Promise.all([this.read(this.path), this.read(sibling(this.path)), this.read(RUNTIME + 'session.js', false), this.read(RUNTIME + 'session.css', false)]);
+      if (generation !== this.generation) return;
+      const state = parseState(raw);
+      const resources = validateResources(state.resources, this.path); const images = new Map(); const modules = []; let total = 0;
+      for (const resource of resources) {
+        const adapter = this.plugin.app.vault.adapter;
+        if (!adapter || typeof adapter.getBasePath !== 'function') throw new Error('Approved resources require a desktop filesystem vault.');
+        const base = fs.realpathSync(adapter.getBasePath());
+        const expected = nodePath.resolve(base, resource.path);
+        const actual = fs.realpathSync(expected);
+        const canonical = value => process.platform === 'win32' ? value.toLowerCase() : value;
+        if (canonical(actual) !== canonical(expected)) throw new Error('Symlinked resources are not approved: ' + resource.path);
+        const file = this.plugin.app.vault.getAbstractFileByPath(resource.path);
+        if ((!file || file.children) && !resource.path.startsWith(RUNTIME + 'extensions/')) throw new Error('Missing approved resource: ' + resource.path);
+        if (resource.kind === 'module') {
+          if (!runtime) throw new Error('Approved modules require the installed session runtime.');
+          const code = file ? await this.plugin.app.vault.read(file) : await adapter.read(resource.path);
+          if (code.length > 256 * 1024) throw new Error('Local module exceeds 256 KiB limit.');
+          total += code.length; modules.push(approveModule(resource, code, this.plugin.trustedModules));
+        } else {
+          const bytes = file ? await this.plugin.app.vault.readBinary(file) : await adapter.readBinary(resource.path); total += bytes.byteLength;
+          images.set(resource.id, imageData(bytes, resource.path));
+        }
+        if (total > 8 * 1024 * 1024) throw new Error('Approved resources exceed 8 MiB total limit.');
+      }
+      if (generation !== this.generation) return;
+      this.loaded = {html, raw, theme: this.container.ownerDocument.body.classList.contains('theme-dark') ? 'dark' : 'light'};
+      this.state = state; this.resources = resources; this.token = crypto.randomBytes(32).toString('hex');
+      const doc = this.container.ownerDocument;
+      const body = sanitizeHtml(html, doc, images, new Map(resources.map(r => [r.id, r.alt])));
+      if (this.frame) this.frame.remove();
+      this.frame = doc.createElement('iframe'); this.frame.className = 'ros-html-frame'; this.frame.title = this.state.title || 'Research OS session'; this.frame.setAttribute('sandbox', 'allow-scripts'); this.frame.setAttribute('referrerpolicy', 'no-referrer');
+      this.frame.srcdoc = buildDocument(body, this.state, this.token, runtime, css, doc.body.classList.contains('theme-dark') ? 'dark' : 'light', modules);
+      this.container.appendChild(this.frame); this.status.classList.remove('ros-error'); this.status.textContent = runtime ? '' : 'Interactive runtime is not installed; showing isolated session content.';
+    } catch (error) { if (generation === this.generation) this.fail(error.message); }
+  }
+  receive(message) {
+    const data = message.data;
+    if (!this.frame || message.source !== this.frame.contentWindow || !data || data.channel !== 'research-os' || data.token !== this.token || data.session_id !== this.state.session_id) return;
+    if (this.pending >= 32) { this.reply(this.token, {type: 'error', message: 'Too many pending events.'}); return; }
+    this.pending++;
+    const token = this.token; const generation = this.generation;
+    this.queue = this.queue.then(async () => {
+      if (token !== this.token || generation !== this.generation || this.invalidated) { this.pending--; return; }
+      try {
+        const event = validateEvent(data.event, this.state);
+        const file = this.plugin.app.vault.getAbstractFileByPath(sibling(this.path));
+        if (!file || file.children) throw new Error('Session state is missing.');
+        this.writing = true;
+        const releaseLock = acquireLock(this.plugin.app.vault, this.path, token);
+        try {
+        await this.plugin.app.vault.process(file, raw => {
+          const state = parseState(raw);
+          if (token !== this.token || generation !== this.generation || this.invalidated) throw new Error('Session view changed before persistence.');
+          if (state.session_id !== data.session_id) throw new Error('Session identity changed.');
+          validateEvent(data.event, state);
+          if (!state.events.some(e => e.event_id === event.event_id)) {
+            if (state.events.length >= MAX_EVENTS) throw new Error('Session event limit reached.');
+            state.events.push(event); state.updated_at = event.created_at;
+            if (event.type === 'open-question') {
+              if (!Array.isArray(state.open_questions)) state.open_questions = [];
+              state.open_questions.push({id: event.event_id, prompt: event.response, status: 'open', created_at: event.created_at, session_id: state.session_id, concept: state.metadata && state.metadata.concept || null, explanation_refs: []});
+            }
+          }
+          const output = JSON.stringify(state, null, 2) + '\n'; if (output.length > MAX_STATE) throw new Error('Session state exceeds size limit.');
+          if (this.loaded) this.loaded.raw = output;
+          this.state = state; return output;
+        });
+        } finally { releaseLock(); }
+        this.reply(token, {type: 'state', state: this.state});
+      } catch (error) { this.reply(token, {type: 'error', message: error.message}); }
+      finally { this.writing = false; this.pending--; }
+    });
+  }
+  reply(token, payload) { if (this.frame && token === this.token) this.frame.contentWindow.postMessage(Object.assign({channel: 'research-os', token, session_id: this.state.session_id}, payload), '*'); }
+  onunload() { if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
+}
+class SessionView extends FileView {
+  constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }
+  getViewType() { return VIEW; }
+  getDisplayText() { return this.file ? this.file.basename : 'Research OS HTML'; }
+  async onLoadFile(file) { if (this.host) this.removeChild(this.host); this.contentEl.replaceChildren(); this.host = new SessionHost(this.plugin, this.contentEl, file.path); this.addChild(this.host); }
+  async onUnloadFile() { if (this.host) { this.removeChild(this.host); this.host = null; } }
+}
+class ResearchOSHTML extends Plugin {
+  async loadTrust() {
+    this.trustedModules = {};
+    const adapter = this.app.vault.adapter;
+    if (!await adapter.exists(TRUST_REGISTRY)) return;
+    const base = fs.realpathSync(adapter.getBasePath());
+    const expected = nodePath.resolve(base, TRUST_REGISTRY);
+    if (fs.realpathSync(expected).toLowerCase() !== expected.toLowerCase()) throw new Error('Symlinked trust registry rejected.');
+    const raw = await adapter.read(TRUST_REGISTRY);
+    if (raw.length > 65536) throw new Error('Module trust registry exceeds size limit.');
+    const registry = JSON.parse(raw);
+    if (!registry || typeof registry !== 'object' || Array.isArray(registry) || Object.keys(registry).length > 256 || Object.entries(registry).some(([path, hash]) => !path || typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash))) throw new Error('Invalid module trust registry.');
+    this.trustedModules = registry;
+  }
+  async onload() {
+    this.hosts = new Set();
+    await this.loadTrust();
+    const reload = async () => {
+      try { await this.loadTrust(); for (const host of this.hosts) host.reload(); }
+      catch (error) { for (const host of this.hosts) host.fail(error.message); }
+    };
+    this.addCommand({id:'reload-html-sessions', name:'Reload HTML sessions and trusted resources', callback:reload});
+    const runtimeDirectory = nodePath.resolve(this.app.vault.adapter.getBasePath(), RUNTIME);
+    try {
+      const hashes = new Map();
+      const digest = relative => {
+        try { const value = fs.readFileSync(nodePath.resolve(runtimeDirectory, relative)); return crypto.createHash('sha256').update(value).digest('hex'); }
+        catch (_) { return 'missing'; }
+      };
+      for (const relative of ['session.js','session.css','extensions/trusted-modules.json']) hashes.set(relative,digest(relative));
+      const watcher = fs.watch(runtimeDirectory, {recursive:true}, (_, filename) => {
+        const relative = String(filename || '').replace(/\\/g,'/');
+        if (!['session.js','session.css','extensions/trusted-modules.json'].includes(relative) && !/^extensions\/[A-Za-z0-9_/-]+\.js$/.test(relative)) return;
+        const current = digest(relative);
+        if (hashes.get(relative) === current) return; // Windows access/metadata events are not content updates.
+        hashes.set(relative,current); reload();
+      });
+      this.register(() => watcher.close());
+    } catch (_) { /* Missing runtime/watcher: explicit reload command remains available. */ }
+    this.registerView(VIEW, leaf => new SessionView(leaf, this)); this.registerExtensions(['html'], VIEW);
+    this.registerMarkdownCodeBlockProcessor('ros-session', (source, element, context) => {
+      const value = source.trim();
+      if (!value || /[\\\r\n]|(^|\/)\.\.(\/|$)|:|^\//.test(value) || !value.endsWith('.html')) { element.textContent = 'Invalid Research OS session embed path.'; return; }
+      context.addChild(new SessionHost(this, element, normalizePath(value)));
+    });
+  }
+  onunload() { this.app.workspace.detachLeavesOfType(VIEW); }
+}
+module.exports = ResearchOSHTML;
+module.exports._test = {parseState, validateEvent, validateResources, approveModule, imageData, acquireLock, sanitizeHtml, buildDocument, SessionHost, sibling};
