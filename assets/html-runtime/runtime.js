@@ -83,11 +83,15 @@
         const saved = new Set(data.state.events.map(e => e.event_id));
         for (const id of saved) pending.delete(id);
         status.textContent = pending.size ? 'Some progress is still awaiting confirmation.' : 'Progress saved. Human learning review remains pending.';
-      } else if (data.type === 'error') status.textContent = 'Progress could not be saved. Keep this page open and download progress: ' + String(data.message || 'host rejected update').slice(0, 300);
+      } else if (data.type === 'error') status.textContent = 'Progress could not be saved. Keep this page open and copy progress from the progress panel: ' + String(data.message || 'host rejected update').slice(0, 300);
     });
     function node(tag, text) { const el = doc.createElement(tag); if (text !== undefined) el.textContent = text; return el; }
     function button(text, callback) { const b = node('button', text); b.type = 'button'; b.addEventListener('click', callback); return b; }
-    const download = button('Download progress JSON', () => {
+    const download = button(host ? 'Show progress JSON to copy' : 'Download progress JSON', () => {
+      if (host) {
+        const panel = node('details'); panel.open = true; panel.append(node('summary', 'Progress recovery JSON'));
+        const text = node('textarea'); text.readOnly = true; text.rows = 12; text.value = JSON.stringify({schema_version:1,session_id:state.session_id,events:localEvents},null,2); text.setAttribute('aria-label','Progress JSON to copy'); panel.append(text); mount.append(panel); text.focus(); text.select(); return;
+      }
       const blob = new Blob([JSON.stringify({schema_version: 1, session_id: state.session_id, events: localEvents}, null, 2)], {type: 'application/json'});
       const link = node('a', 'Save progress'); link.download = 'research-os-progress.json'; link.href = URL.createObjectURL(blob);
       link.click(); root.setTimeout(() => URL.revokeObjectURL(link.href), 1000);

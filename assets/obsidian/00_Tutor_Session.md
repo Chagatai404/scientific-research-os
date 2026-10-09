@@ -12,6 +12,12 @@ tags:
 
 # {{title}}
 
+> [!info] HTML-native session
+> Create this session through `scripts/vault.py new` or `scripts/html_sessions.py`
+> so its HTML and structured state are generated. Manual template insertion alone
+> is incomplete and fails session validation. Use the HTML view for interactive
+> answers and open questions; this Markdown body preserves search and backlinks.
+
 > [!info] Tutor status: **LISTENING**
 > Write your answer in the answer slot, then **tick the `Send this answer` checkbox**
 > underneath it. That is what wakes the tutor — there is no timer, so think for as long as

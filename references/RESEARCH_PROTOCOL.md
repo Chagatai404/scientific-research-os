@@ -293,3 +293,12 @@ means remain at the gate. Review-only requests authorize review, not fixes or ru
 26. Atomize compound claims before verification. Do not hide unsupported causal or quantitative components inside a single `partially supported` verdict when the pieces can be judged separately.
 27. Correlation or covariance does not by itself establish the proposed causal mechanism. Label mechanistic explanations as interpretations or hypotheses until directly derived, isolated, or tested.
 28. Before adding a stochastic simulation variable, check whether its variance is already absorbed by another fitted or fluctuated parameter. Do not introduce independent latent variables without considering double counting and coordinate/origin conventions.
+
+
+## HTML session interface
+
+Substantive sessions follow `HTML_SESSION_PROTOCOL.md` and the centralized
+`scripts/html_sessions.py` API. HTML and Markdown bridges are projections of
+structured session content; canonical learning/evidence/research records retain
+their existing ownership and human review gates. Validate HTML artifacts before
+claiming session completion. Preserve raw responses and unresolved questions.

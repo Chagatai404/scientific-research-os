@@ -154,6 +154,7 @@ function buildDocument(body, state, token, runtime, css, theme, modules = []) {
 class SessionHost extends Component {
   constructor(plugin, container, path) { super(); this.plugin = plugin; this.container = container; this.path = path; this.queue = Promise.resolve(); this.generation = 0; this.pending = 0; }
   onload() {
+    if (this.plugin.hosts) this.plugin.hosts.add(this);
     this.container.classList.add('ros-html-host');
     this.status = this.container.ownerDocument.createElement('div'); this.status.className = 'ros-html-status'; this.container.appendChild(this.status);
     this.registerDomEvent(window, 'message', event => this.receive(event));
@@ -161,14 +162,36 @@ class SessionHost extends Component {
     this.registerEvent(this.plugin.app.vault.on('create', file => { if (file.path === TRUST_REGISTRY) this.plugin.loadTrust().then(() => this.reload()).catch(error => this.fail(error.message)); }));
     this.registerEvent(this.plugin.app.vault.on('delete', file => { if (file.path === TRUST_REGISTRY) { this.plugin.trustedModules = {}; this.reload(); } }));
     this.registerEvent(this.plugin.app.vault.on('rename', (file, old) => { if (old === TRUST_REGISTRY || file.path === TRUST_REGISTRY) this.plugin.loadTrust().then(() => this.reload()).catch(error => this.fail(error.message)); }));
-    this.registerEvent(this.plugin.app.vault.on('modify', file => { if ([this.path, sibling(this.path), RUNTIME + 'session.js', RUNTIME + 'session.css', ...(this.resources || []).map(r => r.path)].includes(file.path) && !this.writing) this.reload(); }));
+    this.registerEvent(this.plugin.app.vault.on('modify', async file => {
+      if (this.writing) return;
+      if ([this.path, sibling(this.path)].includes(file.path)) {
+        try {
+          const current = await this.read(file.path);
+          const prior = this.loaded && (file.path === this.path ? this.loaded.html : this.loaded.raw);
+          if (current !== prior) this.reload();
+        } catch (error) { this.fail(error.message); }
+      } else if ([RUNTIME + 'session.js', RUNTIME + 'session.css', ...(this.resources || []).map(r => r.path)].includes(file.path)) this.reload();
+    }));
     this.registerEvent(this.plugin.app.vault.on('rename', (file, old) => { if ([this.path, sibling(this.path), ...(this.resources || []).map(r => r.path)].includes(old)) { this.invalidated = true; this.fail('Session/resource renamed. Repair all artifact and resource references together, then reopen.'); } }));
     this.registerEvent(this.plugin.app.vault.on('delete', file => { if ([this.path, sibling(this.path), ...(this.resources || []).map(r => r.path)].includes(file.path)) { this.invalidated = true; this.fail('Session/resource artifact deleted. Reopen after repair.'); } }));
-    this.registerEvent(this.plugin.app.workspace.on('css-change', () => this.reload()));
+    this.registerEvent(this.plugin.app.workspace.on('css-change', () => { const theme = this.container.ownerDocument.body.classList.contains('theme-dark') ? 'dark' : 'light'; if (!this.loaded || theme !== this.loaded.theme) this.reload(); }));
     this.reload();
   }
   fail(message) { this.generation++; this.token = null; if (this.frame) { this.frame.remove(); this.frame = null; } this.status.textContent = message; this.status.classList.add('ros-error'); }
   async read(path, required = true) {
+    if ([RUNTIME + 'session.js', RUNTIME + 'session.css', TRUST_REGISTRY].includes(path)) {
+      // Obsidian excludes dot directories from its indexed TFile inventory.
+      // Adapter reads are limited to these fixed, canonical host-owned paths.
+      try {
+        const adapter = this.plugin.app.vault.adapter;
+        const base = fs.realpathSync(adapter.getBasePath());
+        const expected = nodePath.resolve(base, path);
+        const actual = fs.realpathSync(expected);
+        const canonical = value => process.platform === 'win32' ? value.toLowerCase() : value;
+        if (canonical(expected) !== canonical(actual)) throw new Error('Symlinked runtime resource rejected.');
+        return await adapter.read(path);
+      } catch (error) { if (required) throw error; return ''; }
+    }
     const file = this.plugin.app.vault.getAbstractFileByPath(path);
     if (!file || file.children) { if (required) throw new Error('Missing session resource: ' + path); return ''; }
     return this.plugin.app.vault.read(file);
@@ -190,19 +213,20 @@ class SessionHost extends Component {
         const canonical = value => process.platform === 'win32' ? value.toLowerCase() : value;
         if (canonical(actual) !== canonical(expected)) throw new Error('Symlinked resources are not approved: ' + resource.path);
         const file = this.plugin.app.vault.getAbstractFileByPath(resource.path);
-        if (!file || file.children) throw new Error('Missing approved resource: ' + resource.path);
+        if ((!file || file.children) && !resource.path.startsWith(RUNTIME + 'extensions/')) throw new Error('Missing approved resource: ' + resource.path);
         if (resource.kind === 'module') {
           if (!runtime) throw new Error('Approved modules require the installed session runtime.');
-          const code = await this.plugin.app.vault.read(file);
+          const code = file ? await this.plugin.app.vault.read(file) : await adapter.read(resource.path);
           if (code.length > 256 * 1024) throw new Error('Local module exceeds 256 KiB limit.');
           total += code.length; modules.push(approveModule(resource, code, this.plugin.trustedModules));
         } else {
-          const bytes = await this.plugin.app.vault.readBinary(file); total += bytes.byteLength;
+          const bytes = file ? await this.plugin.app.vault.readBinary(file) : await adapter.readBinary(resource.path); total += bytes.byteLength;
           images.set(resource.id, imageData(bytes, resource.path));
         }
         if (total > 8 * 1024 * 1024) throw new Error('Approved resources exceed 8 MiB total limit.');
       }
       if (generation !== this.generation) return;
+      this.loaded = {html, raw, theme: this.container.ownerDocument.body.classList.contains('theme-dark') ? 'dark' : 'light'};
       this.state = state; this.resources = resources; this.token = crypto.randomBytes(32).toString('hex');
       const doc = this.container.ownerDocument;
       const body = sanitizeHtml(html, doc, images, new Map(resources.map(r => [r.id, r.alt])));
@@ -241,6 +265,7 @@ class SessionHost extends Component {
             }
           }
           const output = JSON.stringify(state, null, 2) + '\n'; if (output.length > MAX_STATE) throw new Error('Session state exceeds size limit.');
+          if (this.loaded) this.loaded.raw = output;
           this.state = state; return output;
         });
         } finally { releaseLock(); }
@@ -250,7 +275,7 @@ class SessionHost extends Component {
     });
   }
   reply(token, payload) { if (this.frame && token === this.token) this.frame.contentWindow.postMessage(Object.assign({channel: 'research-os', token, session_id: this.state.session_id}, payload), '*'); }
-  onunload() { this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
+  onunload() { if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
 }
 class SessionView extends FileView {
   constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }
@@ -262,16 +287,42 @@ class SessionView extends FileView {
 class ResearchOSHTML extends Plugin {
   async loadTrust() {
     this.trustedModules = {};
-    const file = this.app.vault.getAbstractFileByPath(TRUST_REGISTRY);
-    if (!file) return;
-    const raw = await this.app.vault.read(file);
+    const adapter = this.app.vault.adapter;
+    if (!await adapter.exists(TRUST_REGISTRY)) return;
+    const base = fs.realpathSync(adapter.getBasePath());
+    const expected = nodePath.resolve(base, TRUST_REGISTRY);
+    if (fs.realpathSync(expected).toLowerCase() !== expected.toLowerCase()) throw new Error('Symlinked trust registry rejected.');
+    const raw = await adapter.read(TRUST_REGISTRY);
     if (raw.length > 65536) throw new Error('Module trust registry exceeds size limit.');
     const registry = JSON.parse(raw);
     if (!registry || typeof registry !== 'object' || Array.isArray(registry) || Object.keys(registry).length > 256 || Object.entries(registry).some(([path, hash]) => !path || typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash))) throw new Error('Invalid module trust registry.');
     this.trustedModules = registry;
   }
   async onload() {
+    this.hosts = new Set();
     await this.loadTrust();
+    const reload = async () => {
+      try { await this.loadTrust(); for (const host of this.hosts) host.reload(); }
+      catch (error) { for (const host of this.hosts) host.fail(error.message); }
+    };
+    this.addCommand({id:'reload-html-sessions', name:'Reload HTML sessions and trusted resources', callback:reload});
+    const runtimeDirectory = nodePath.resolve(this.app.vault.adapter.getBasePath(), RUNTIME);
+    try {
+      const hashes = new Map();
+      const digest = relative => {
+        try { const value = fs.readFileSync(nodePath.resolve(runtimeDirectory, relative)); return crypto.createHash('sha256').update(value).digest('hex'); }
+        catch (_) { return 'missing'; }
+      };
+      for (const relative of ['session.js','session.css','extensions/trusted-modules.json']) hashes.set(relative,digest(relative));
+      const watcher = fs.watch(runtimeDirectory, {recursive:true}, (_, filename) => {
+        const relative = String(filename || '').replace(/\\/g,'/');
+        if (!['session.js','session.css','extensions/trusted-modules.json'].includes(relative) && !/^extensions\/[A-Za-z0-9_/-]+\.js$/.test(relative)) return;
+        const current = digest(relative);
+        if (hashes.get(relative) === current) return; // Windows access/metadata events are not content updates.
+        hashes.set(relative,current); reload();
+      });
+      this.register(() => watcher.close());
+    } catch (_) { /* Missing runtime/watcher: explicit reload command remains available. */ }
     this.registerView(VIEW, leaf => new SessionView(leaf, this)); this.registerExtensions(['html'], VIEW);
     this.registerMarkdownCodeBlockProcessor('ros-session', (source, element, context) => {
       const value = source.trim();

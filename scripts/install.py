@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import shutil
+import datetime as dt
 
 from common import ROOT, load_config, expand, parse_frontmatter
 
@@ -40,10 +41,11 @@ def copy_dir(src: Path, dst: Path, dry: bool) -> None:
     print(f"{'[dry] ' if dry else ''}{src} -> {dst}")
     if dry:
         return
-    if dst.exists():
-        shutil.rmtree(dst)
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(src, dst)
+    # Overlay known files, preserve extra user files, and back up changed files.
+    dst.mkdir(parents=True, exist_ok=True)
+    for source in sorted(src.rglob('*')):
+        if source.is_file():
+            copy_file(source, dst / source.relative_to(src), False)
 
 
 def copy_file(src: Path, dst: Path, dry: bool) -> None:
@@ -51,7 +53,23 @@ def copy_file(src: Path, dst: Path, dry: bool) -> None:
     if dry:
         return
     dst.parent.mkdir(parents=True, exist_ok=True)
+    if dst.exists() and dst.read_bytes() != src.read_bytes():
+        stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+        backup = dst.parent / '.research-os-install-backups' / stamp / dst.name
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(dst, backup)
     shutil.copy2(src, dst)
+
+
+def write_installed_text(dst: Path, content: str) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    payload = content.encode("utf-8")
+    if dst.exists() and dst.read_bytes() != payload:
+        stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+        backup = dst.parent / '.research-os-install-backups' / stamp / dst.name
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(dst, backup)
+    dst.write_bytes(payload)
 
 
 def codex_agent_toml(meta: dict[str, str], body: str) -> str:
@@ -102,8 +120,7 @@ def install_agents_claude(base: Path, dry: bool) -> None:
         out = base / p.name
         print(f"{'[dry] ' if dry else ''}{p} -> {out}")
         if not dry:
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(p.read_text(encoding="utf-8") + agent_policy(p.stem), encoding="utf-8")
+            write_installed_text(out, p.read_text(encoding="utf-8") + agent_policy(p.stem))
 
 
 def agent_policy(role: str) -> str:
@@ -149,8 +166,7 @@ def install_agents_codex(base: Path, dry: bool) -> None:
         out = base / f'{meta["name"]}.toml'
         print(f"{'[dry] ' if dry else ''}{p} -> {out}")
         if not dry:
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(codex_agent_toml(meta, body + agent_policy(meta["name"])), encoding="utf-8")
+            write_installed_text(out, codex_agent_toml(meta, body + agent_policy(meta["name"])))
 
 
 def install_obsidian(cfg: dict, dry: bool) -> None:

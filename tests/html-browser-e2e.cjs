@@ -34,7 +34,7 @@ async function main() {
       new Function('require','module','process',plugin)(require,mod,{platform:'linux'});
       window.rosHelpers=mod.exports._test;
       window.rosFiles={'fixture.html':content,'fixture.state.json':JSON.stringify(state),'.research-os/runtime/session.js':runtime,'.research-os/runtime/session.css':css};
-      const vault={adapter:{getBasePath:()=>'/virtual-vault'},create:async(p,text)=>{if(Object.hasOwn(window.rosFiles,p))throw new Error('locked');window.rosFiles[p]=text;return{path:p};},delete:async f=>{delete window.rosFiles[f.path];},on:()=>({}),getAbstractFileByPath:p=>Object.hasOwn(window.rosFiles,p)?{path:p}:null,read:async f=>window.rosFiles[f.path],process:async(f,fn)=>{window.rosFiles[f.path]=fn(window.rosFiles[f.path]);}};
+      const vault={adapter:{getBasePath:()=>'/virtual-vault',read:async p=>window.rosFiles[p]},create:async(p,text)=>{if(Object.hasOwn(window.rosFiles,p))throw new Error('locked');window.rosFiles[p]=text;return{path:p};},delete:async f=>{delete window.rosFiles[f.path];},on:()=>({}),getAbstractFileByPath:p=>Object.hasOwn(window.rosFiles,p)?{path:p}:null,read:async f=>window.rosFiles[f.path],process:async(f,fn)=>{window.rosFiles[f.path]=fn(window.rosFiles[f.path]);}};
       window.rosHost=new mod.exports._test.SessionHost({app:{vault,workspace:{on:()=>({})}}},document.getElementById('mount'),'fixture.html');
       window.rosHost.onload();
     },{plugin,runtime,css,state,content});

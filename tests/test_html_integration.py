@@ -82,6 +82,20 @@ class HTMLIntegrationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             install.install_html_companion(self.config, False)
 
+    def test_installer_preserves_extra_files_and_backs_up_customized_known_files(self):
+        source = self.root / 'source'
+        target = self.root / 'target'
+        source.mkdir(); target.mkdir()
+        (source / 'SKILL.md').write_text('New canonical protocol')
+        (target / 'SKILL.md').write_text('Original user customization')
+        (target / 'personal.md').write_text('Keep this extra file')
+        with redirect_stdout(io.StringIO()):
+            install.copy_dir(source, target, False)
+        self.assertEqual((target / 'personal.md').read_text(), 'Keep this extra file')
+        backups = list((target / '.research-os-install-backups').rglob('SKILL.md'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(), 'Original user customization')
+
 
 if __name__ == '__main__':
     unittest.main()

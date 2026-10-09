@@ -359,6 +359,13 @@ def _transaction_path(root, relative_md):
 
 
 def recover_session(root, relative_md, apply=False):
+    """Recover under the same lock used by authoring and browser state writes."""
+    md, _, _ = paths(root, relative_md)
+    with Lock(md.with_suffix('.session.lock')):
+        return _recover_session_locked(root, relative_md, apply)
+
+
+def _recover_session_locked(root, relative_md, apply=False):
     """Recover a journaled projection write only if no subsequent edits conflict."""
     journal = _transaction_path(root, relative_md)
     if not journal.exists():
@@ -603,7 +610,7 @@ def inventory(root):
             continue
         if any(part.lower() in {"docs", "policies", "scripts", "tests", "skills"} for part in md.relative_to(root).parts[:-1]):
             continue
-        if any(part.startswith(".") or "template" in part.lower() for part in md.relative_to(root).parts):
+        if any(part.startswith(".") for part in md.relative_to(root).parts) or any(part.lower() in {"templates", "90 templates"} for part in md.relative_to(root).parts[:-1]):
             continue
         try:
             source = md.read_bytes().decode("utf-8")
@@ -612,7 +619,7 @@ def inventory(root):
                 report.append({"path": rel, "signals": ["session directory"], "status": "blocked", "error": str(exc)})
             continue
         front, body = parse_frontmatter(source.replace("\r\n", "\n"))
-        if "{{title}}" in source or "{{date}}" in source:
+        if rel.startswith("assets/obsidian/") and re.search(r"^# \{\{title\}\}", body, re.M):
             continue
         signals = []
         type_ = front.get("type", "").lower()
@@ -766,8 +773,8 @@ def _migrate_locked(root, apply=False, journal=None, resume=False, rollback=Fals
         _write(journal, _json(log))
     log["status"] = "rolled-back" if rollback else "complete"
     _write(journal, _json(log))
-    rows = ''.join('<tr><td>' + html.escape(r['path']) + '</td><td>' + html.escape(r['status']) + '</td><td>' + html.escape(', '.join(r['signals'])) + '</td></tr>' for r in log['records'])
-    _write(journal.parent / 'report.html', ('<!doctype html><meta charset="utf-8"><title>Research OS migration report</title><h1>v0.8.5 migration</h1><p>' + html.escape(log['status']) + '</p><table><thead><tr><th>Session</th><th>Status</th><th>Discovery</th></tr></thead><tbody>' + rows + '</tbody></table>').encode('utf-8'))
+    rows = ''.join('<tr><td>' + html.escape(r['path']) + '</td><td>' + html.escape(r['status']) + '</td><td>' + html.escape(', '.join(r['signals'])) + '</td><td>Conservative structural conversion. Original source retained in full; unknown question/solution pairings, tables, wikilinks and attachments remain legacy content. Historical answers are unreviewed.</td></tr>' for r in log['records'])
+    _write(journal.parent / 'report.html', ('<!doctype html><meta charset="utf-8"><title>Research OS migration report</title><h1>v0.8.5 migration</h1><p>' + html.escape(log['status']) + '</p><table><thead><tr><th>Session</th><th>Status</th><th>Discovery</th><th>Conversion limitations</th></tr></thead><tbody>' + rows + '</tbody></table>').encode('utf-8'))
     updated = {r["path"]: {"path": r["path"], "signals": r["signals"], "status": r["status"]} for r in log["records"]}
     candidates = [updated.get(r["path"], r) for r in log.get("discovery", [])]
     return {"dry_run": False, "status": log["status"], "candidates": candidates, "journal": journal.relative_to(root).as_posix(), "recovery": log.get("recovery")}
