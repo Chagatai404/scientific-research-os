@@ -44,6 +44,21 @@ const runtime=fs.readFileSync(path.join(root,'assets/html-runtime/session.js'),'
     assert.equal(await frame.locator('main > ul > li').count(),4);
     assert.equal(await frame.locator('main > ol').count(),2);
     assert.equal(await frame.locator('body').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
+    const documentShell=frame.locator('.ros-document');
+    if(await documentShell.count()){
+     assert.equal(await frame.locator('.ros-session-header .ros-status').count(),1);
+     assert.equal(await frame.locator('.ros-session-meta').count(),1);
+     const typography=await documentShell.evaluate(e=>{
+      const style=getComputedStyle(e);return {width:e.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight),fontSize:parseFloat(style.fontSize),lineHeight:parseFloat(style.lineHeight)};
+     });
+     if(width===1440)assert(typography.width>=760&&typography.width<=900,'desktop reading measure');
+     assert(typography.lineHeight/typography.fontSize>=1.6,'prose line height');
+     assert(await documentShell.evaluate(e=>{
+      const wide=document.createElement('figure');wide.className='ros-wide';e.append(wide);
+      const rect=wide.getBoundingClientRect(),bounded=rect.left>=0&&rect.right<=innerWidth;
+      wide.remove();return bounded;
+     }),'wide figure escapes viewport');
+    }
    }
    await page.screenshot({path:path.join(output,`session-${phase}-${width}.png`)});
    if(width===1440)console.log('Research OS:',await frame.locator('main').evaluate(e=>({h1:e.querySelectorAll('h1').length,lists:e.querySelectorAll('ul,ol').length,fakeItems:e.querySelectorAll('.ros-list-item').length,callouts:e.querySelectorAll('.ros-callout').length,articleWidth:e.getBoundingClientRect().width,bodyFont:getComputedStyle(e).fontFamily})));

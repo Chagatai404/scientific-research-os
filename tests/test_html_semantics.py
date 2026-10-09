@@ -29,6 +29,23 @@ class Tree(HTMLParser):
 
 
 class SemanticRenderingTests(unittest.TestCase):
+    def test_document_shell_separates_metadata_and_keeps_content_order(self):
+        state = {'schema_version': 1, 'session_id': 'shell-fixture', 'type': 'tutor-session',
+                 'title': 'Lesson', 'source_markdown': '# Lesson\n\n## Concept\n\nUnchanged prose.',
+                 'metadata': {'created': '2026-10-09', 'subtitle': '<script>Context</script>'},
+                 'lifecycle': 'active', 'questions': [], 'events': [], 'open_questions': []}
+        markup = hs.render_html(state)
+        tree = Tree(markup)
+        self.assertEqual(len(tree.tagged('h1')), 1)
+        header = tree.tagged('header')[0]
+        self.assertEqual(header['attrs']['class'], 'ros-session-header')
+        self.assertIn('ros-session-meta', markup)
+        self.assertIn('Active · 2026-10-09', markup)
+        self.assertNotIn('<script>Context</script>', markup)
+        self.assertIn('&lt;script&gt;Context&lt;/script&gt;', markup)
+        self.assertLess(markup.index('</header>'), markup.index('Unchanged prose.'))
+        self.assertEqual(state['source_markdown'], '# Lesson\n\n## Concept\n\nUnchanged prose.')
+
     def test_lists_are_semantic_and_nested_inside_parent_item(self):
         markup = hs.markdown_html('- Parent\n  - Child\n    1. Grandchild\n- Second\n\n3. Third\n4. Fourth')
         tree = Tree(markup)

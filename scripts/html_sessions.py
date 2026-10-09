@@ -407,6 +407,17 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
     content = markdown_html(state["source_markdown"], page_title=state["title"])
     anchors = re.findall(r'<h[1-6] id="([^"]+)"[^>]*>(.*?)</h[1-6]>', content)
     navigation = '<nav aria-label="Session sections"><details><summary>Contents</summary><ul>' + ''.join('<li><a href="#' + anchor + '">' + label + '</a></li>' for anchor,label in anchors) + '</ul></details></nav>'
+    metadata = state.get('metadata', {})
+    session_kind = state['type'].replace('-', ' ').capitalize()
+    status = str(state.get('lifecycle', '')).replace('-', ' ').capitalize()
+    created = str(metadata.get('created', '')).strip()
+    meta_text = ' · '.join(value for value in (status, created) if value)
+    subtitle = metadata.get('subtitle')
+    subtitle_markup = ('<p class="ros-session-context">' + html.escape(subtitle) + '</p>') if isinstance(subtitle, str) and subtitle.strip() else ''
+    header = ('<header class="ros-session-header"><div class="ros-session-meta">'
+              + '<p class="ros-session-kind">Research OS · ' + html.escape(session_kind) + '</p>'
+              + ('<p class="ros-session-details">' + html.escape(meta_text) + '</p>' if meta_text else '')
+              + '</div><h1>' + html.escape(state['title']) + '</h1>' + subtitle_markup + '</header>')
     data = json.dumps(state, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
     if standalone:
         css = (RUNTIME / "session.css").read_text(encoding="utf-8")
@@ -419,8 +430,8 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
         script = '<script src="' + prefix + '/session.js"></script>'
     return ('<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; font-src data:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'">'
-            + '<title>' + html.escape(state["title"]) + '</title>' + resources + '</head><body><main id="ros-session">'
-            + '<header><p>Research OS session · ' + html.escape(state["type"]) + '</p><h1>' + html.escape(state["title"]) + '</h1></header>'
+            + '<title>' + html.escape(state["title"]) + '</title>' + resources + '</head><body><main class="ros-document" id="ros-session">'
+            + header
             + navigation + content + _questions_html(state) + _widgets_html(state) + resource_markup
             + '<details data-ros="legacy"><summary>Exact original Markdown</summary><pre>' + html.escape(state["source_markdown"]) + '</pre></details>'
             + '</main><script type="application/json" id="ros-session-data">' + data + '</script>' + script + resource_scripts + '</body></html>\n')

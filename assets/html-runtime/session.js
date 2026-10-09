@@ -70,7 +70,9 @@
     let counter = 0;
     const status = doc.createElement('p'); status.className = 'ros-status'; status.setAttribute('role', 'status');
     status.textContent = host ? 'Connected to Research OS. Answers are stored as pending review.' : 'Standalone document: progress stays in this open page. Download it to preserve it; no Obsidian connection.';
-    mount.prepend(status);
+    const sessionHeader = mount.querySelector('.ros-session-header');
+    if (sessionHeader) sessionHeader.append(status);
+    else mount.prepend(status);
     const hasAttempt = id => localEvents.some(e => e.type === 'response' && e.question_id === id);
     const emit = (type, question_id, response) => {
       const event = {event_id: (root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : 'event-' + Date.now() + '-' + (++counter)), type, question_id: question_id || null, response, created_at: new Date().toISOString()};

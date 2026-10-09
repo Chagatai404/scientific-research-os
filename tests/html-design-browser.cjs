@@ -16,6 +16,8 @@ const state = session ? JSON.parse(fs.readFileSync(session.replace(/\.html$/,'.s
   const browser=await chromium.launch({headless:true,executablePath:process.env.ROS_BROWSER || 'C:/Program Files/Google/Chrome/Application/chrome.exe'});
   try {
     const page=await browser.newPage({viewport:{width:1200,height:1000}});
+    // Explicit host themes must override the operating system preference.
+    await page.emulateMedia({colorScheme:'dark'});
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.setContent('<iframe sandbox="allow-scripts" style="width:100%;height:940px;border:0"></iframe>');
     const headingSequences=[];
@@ -36,6 +38,19 @@ const state = session ? JSON.parse(fs.readFileSync(session.replace(/\.html$/,'.s
       assert.deepEqual(await frame.locator('h1,h2,h3,h4,h5,h6').allTextContents(),await page.evaluate(()=>window.expectedHeadings),'headings/order changed');
       headingSequences.push(await frame.locator('h1,h2,h3,h4,h5,h6').allTextContents());
       assert.equal(await frame.locator('body').evaluate(e=>getComputedStyle(e).backgroundColor),theme==='light'?'rgb(246, 245, 241)':'rgb(23, 27, 32)');
+      const contrast=await frame.locator('main').evaluate(e=>{
+        const style=getComputedStyle(e), root=getComputedStyle(document.documentElement);
+        const luminance=color=>{
+          const channels=color.match(/[\d.]+/g).slice(0,3).map(Number).map(c=>{c/=255;return c<=.04045?c/12.92:((c+.055)/1.055)**2.4;});
+          return channels[0]*.2126+channels[1]*.7152+channels[2]*.0722;
+        };
+        const probe=document.createElement('span');probe.style.color=root.getPropertyValue('--ros-text-muted');e.append(probe);
+        const muted=getComputedStyle(probe).color;probe.remove();
+        const background=style.backgroundColor==='rgba(0, 0, 0, 0)'?getComputedStyle(document.body).backgroundColor:style.backgroundColor;
+        const ratio=color=>{const a=luminance(color),b=luminance(background);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);};
+        return {body:ratio(style.color),muted:ratio(muted)};
+      });
+      assert(contrast.body>=4.5&&contrast.muted>=4.5,`text contrast: ${JSON.stringify(contrast)}`);
       if(await frame.locator('h2[data-ros]').count())
         assert.equal(await frame.locator('h2[data-ros]').first().evaluate(e=>getComputedStyle(e).borderLeftWidth),'0px');
       if(!session)assert.equal(await frame.locator('span[data-ros=equation]').evaluate(e=>getComputedStyle(e).display),'inline');
