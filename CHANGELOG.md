@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.5 - 2026-10-09
+
+- HTML-primary sessions with preserved Markdown bridges, structured state, offline math and semantic assessments/SVG/Canvas.
+- Opaque sandboxed Obsidian desktop companion, bounded authenticated event bridge and reviewed local resources.
+- Central authoring/export, missing-HTML validation, recoverable writes and exact-source reversible migration.
+- Mandatory installed agent protocols and expanded research templates; canonical evidence and retention remain unchanged.
+- Migrated 12 actual historical sessions with exact backups; verified Obsidian 1.14.4 including full restart. Mobile explicitly gated.
+- Full suite: 496 passed, followed by final core, integration, installer and browser checks. See docs/plans/v0.8.5-html-native-sessions.md for gates and limits.
+
+Prepared and installed locally; no remote publication.
+
 ## 0.8.0 — 2026-10-08 (local release preparation)
 
 - Architecture contracts for reliability, external authenticated access, task

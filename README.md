@@ -11,6 +11,8 @@ The human researcher is always the final authority. AI agents may search, explai
 
 ## Core design
 
+v0.8.5 adds offline HTML-primary sessions inside Obsidian, preserved Markdown bridges, interactive assessments, persistent raw progress, mathematics and SVG/Canvas. See [HTML sessions](docs/HTML_SESSIONS.md) for usage and [the verified release record](docs/plans/v0.8.5-html-native-sessions.md) for actual-vault and desktop results. Mobile is explicitly gated.
+
 v0.8 adds literature reliability, sanitized external access handoffs, durable task
 orchestration, researcher ownership and defense readiness. Its opt-in helpers keep
 scientific evidence, bibliographic storage, research state and human-learning
@@ -482,14 +484,15 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
-**v0.8.0 — Researcher Autonomy & Verified Parallel Research** is prepared locally
+**v0.8.5 - HTML-native Sessions** is implemented and installed locally. All 12 historical sessions in the configured vault were migrated with exact backups; actual desktop restart checks passed. [Release evidence](docs/plans/v0.8.5-html-native-sessions.md) records all 25 gates and known limits.
+
+**v0.8.0 — Researcher Autonomy & Verified Parallel Research** was prepared locally
 with literature/access reliability, durable bounded task orchestration, interruptible
 schema-3 tutoring, selective ownership and separate scientific/human defense axes.
 The [release exercise](examples/release/README.md) and
 [implementation record](references/V0.8_IMPLEMENTATION.md) document integration,
 provider parity, compatibility gates and remaining live-environment validation.
-VERSION is 0.8.0. Publishing, tagging, merging and global installation require
-separate deployment authorization.
+VERSION is 0.8.5. No remote publication, tag or merge has been performed.
 
 **v0.7.0 — Concept-first learning and connected research** adds the opt-in
 [knowledge model](references/KNOWLEDGE_MODEL.md), [concept-first tutor](references/TUTOR_PLANNING.md),
