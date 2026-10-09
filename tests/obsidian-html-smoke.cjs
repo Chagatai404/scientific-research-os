@@ -41,7 +41,7 @@ async function main() {
   assert(state.metadata.synthetic === 'true' || state.metadata.synthetic === true);
   assert(state.events.some(e=>e.response==='Synthetic renderer smoke response; not learner evidence.' && e.status==='pending-review'));
   await iframe.getByLabel('Ask an open question during this session:',{exact:true}).fill('Synthetic verification question');
-  await iframe.getByRole('button',{name:'Save open question'}).click();
+  await iframe.getByRole('button',{name:'Send',exact:true}).click();
   await iframe.getByText('Progress saved.',{exact:false}).waitFor();
   await page.evaluate(async path=>{
     const active=window.app.workspace.activeLeaf;

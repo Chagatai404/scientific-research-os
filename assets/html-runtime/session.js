@@ -83,8 +83,10 @@
       const data = message.data;
       if (message.source !== root.parent || !data || data.channel !== 'research-os' || data.token !== host.token || data.session_id !== state.session_id) return;
       if (data.type === 'state' && data.state && Array.isArray(data.state.events)) {
+        state = Object.assign({}, state, data.state);
         const saved = new Set(data.state.events.map(e => e.event_id));
         for (const id of saved) pending.delete(id);
+        renderConversation();
         status.textContent = pending.size ? 'Some progress is still awaiting confirmation.' : 'Progress saved. Human learning review remains pending.';
       } else if (data.type === 'error') status.textContent = 'Progress could not be saved. Keep this page open and copy progress from the progress panel: ' + String(data.message || 'host rejected update').slice(0, 300);
     });
@@ -93,9 +95,9 @@
     const download = button(host ? 'Show progress JSON to copy' : 'Download progress JSON', () => {
       if (host) {
         const panel = node('details'); panel.open = true; panel.append(node('summary', 'Progress recovery JSON'));
-        const text = node('textarea'); text.readOnly = true; text.rows = 12; text.value = JSON.stringify({schema_version:1,session_id:state.session_id,events:localEvents},null,2); text.setAttribute('aria-label','Progress JSON to copy'); panel.append(text); mount.append(panel); text.focus(); text.select(); return;
+        const text = node('textarea'); text.readOnly = true; text.rows = 12; text.value = JSON.stringify({schema_version:1,session_id:state.session_id,events:localEvents,open_questions:state.open_questions || []},null,2); text.setAttribute('aria-label','Progress JSON to copy'); panel.append(text); mount.append(panel); text.focus(); text.select(); return;
       }
-      const blob = new Blob([JSON.stringify({schema_version: 1, session_id: state.session_id, events: localEvents}, null, 2)], {type: 'application/json'});
+      const blob = new Blob([JSON.stringify({schema_version: 1, session_id: state.session_id, events: localEvents, open_questions: state.open_questions || []}, null, 2)], {type: 'application/json'});
       const link = node('a', 'Save progress'); link.download = 'research-os-progress.json'; link.href = URL.createObjectURL(blob);
       link.click(); root.setTimeout(() => URL.revokeObjectURL(link.href), 1000);
     });
@@ -181,11 +183,40 @@
       }
       solutions.forEach((hint, i) => { if (localEvents.some(e => e.type === 'hint' && e.question_id === q.id && Number(e.response) >= i + 1)) { hint.text.hidden = false; hint.reveal.disabled = true; } });
     }
-    const questionForm = node('form'); questionForm.dataset.ros = 'open-question'; const label = node('label', 'Ask an open question during this session: '); const question = node('textarea'); question.maxLength = 4000; question.required = true; label.append(question); questionForm.append(label);
-    const capture = node('button', 'Save open question'); capture.type = 'button'; questionForm.append(capture);
+    const questionForm = node('form'); questionForm.dataset.ros = 'open-question';
+    const label = node('label', 'Ask an open question during this session: ');
+    const composer = node('div'); composer.className = 'ros-question-composer';
+    const question = node('textarea'); question.id = 'ros-open-question-input'; question.maxLength = 4000; question.required = true;
+    label.htmlFor = question.id;
+    const capture = node('button', 'Send'); capture.type = 'button'; capture.className = 'ros-question-send';
+    composer.append(question, capture); questionForm.append(label, composer);
     const questionStatus = node('p'); questionStatus.setAttribute('role', 'status'); questionForm.append(questionStatus); mount.append(questionForm);
+    const history = node('section'); history.className = 'ros-question-history'; history.setAttribute('aria-label', 'Questions and answers'); mount.append(history);
+    function renderConversation() {
+      const records = new Map((state.open_questions || []).map(q => [q.id, q]));
+      for (const event of localEvents) if (event.type === 'open-question' && !records.has(event.event_id))
+        records.set(event.event_id, {id:event.event_id, prompt:event.response});
+      history.replaceChildren();
+      if (!records.size) return;
+      history.append(node('h2', 'Questions and answers'));
+      for (const record of records.values()) {
+        const entry = node('article'); entry.className = 'ros-question-entry'; entry.dataset.openQuestionId = record.id;
+        entry.append(node('h3', 'Question'), node('p', record.prompt));
+        const answer = node('div'); answer.className = 'ros-question-answer';
+        answer.append(node('h3', 'Answer'), node('p', typeof record.answer === 'string' && record.answer.trim() ? record.answer : 'Awaiting an answer from the session agent.'));
+        entry.append(answer);
+        if (pending.has(record.id)) entry.append(node('small', 'Saving question...'));
+        history.append(entry);
+      }
+    }
+    renderConversation();
     questionForm.addEventListener('submit', event => event.preventDefault());
-    capture.addEventListener('click', () => { const text = question.value.trim(); if (!text || !questionForm.reportValidity()) return; emit('open-question', null, text); questionStatus.textContent = 'Question recorded as unanswered for the next agent interaction.'; question.value = ''; });
+    capture.addEventListener('click', () => {
+      const text = question.value.trim(); if (!text || !questionForm.reportValidity()) return;
+      emit('open-question', null, text); renderConversation();
+      questionStatus.textContent = host ? 'Question sent. You can send another.' : 'Question recorded in this page. Download progress to keep it.';
+      question.value = ''; question.focus();
+    });
     for (const el of mount.querySelectorAll('[data-ros="checkpoint"]')) el.append(button('Record checkpoint completed', () => emit('checkpoint', null, el.id || 'checkpoint')));
     for (const widget of mount.querySelectorAll('[data-ros="widget"]')) {
       const type = widget.getAttribute('data-widget');

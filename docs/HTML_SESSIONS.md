@@ -206,3 +206,5 @@ are explicit. Keep unsaved progress open and use **Show progress JSON to copy** 
 Required verification: Python tests, host Node tests, real Chromium runtime/host
 tests, actual-vault source/hash checks and the explicit desktop operational smoke
 test. Responsive browser checks do not establish actual mobile support.
+
+Open questions use an inline **Send** button and chronological question/answer history below the composer. Send records for the session agent; it does not call an AI service. Read `open_questions`, answer the actual prompt, then use `answer_open_question(root, session, question_id, answer)` or `html_sessions.py --root VAULT answer SESSION QUESTION_ID --source answer.txt`. This preserves earlier answers and pending questions without awarding learning evidence. Reopening restores the recorded conversation.

@@ -16,6 +16,22 @@ class SessionTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
+    def test_open_question_answers_persist_and_do_not_replace_history(self):
+        hs.create_session(self.root, 'a.md', '# Session')
+        hs.append_event(self.root, 'a.md', {'event_id':'first', 'type':'open-question', 'question_id':None, 'response':'Why?'})
+        hs.answer_open_question(self.root, 'a.md', 'first', 'Because of the stated assumptions.')
+        hs.append_event(self.root, 'a.md', {'event_id':'second', 'type':'open-question', 'question_id':None, 'response':'What next?'})
+        state = hs.load_session(self.root, 'a.md')
+        self.assertEqual(len(state['open_questions']), 2)
+        self.assertEqual(state['open_questions'][0]['answer'], 'Because of the stated assumptions.')
+        self.assertEqual(state['open_questions'][0]['status'], 'answered')
+        self.assertNotIn('answer', state['open_questions'][1])
+        with self.assertRaisesRegex(ValueError, 'already answered'):
+            hs.answer_open_question(self.root, 'a.md', 'first', 'Overwrite')
+        with self.assertRaisesRegex(ValueError, 'Unknown'):
+            hs.answer_open_question(self.root, 'a.md', 'unknown', 'Answer')
+        self.assertEqual(hs.validate_sessions(self.root), [])
+
     def test_exact_source_structural_math_and_legacy_code(self):
         source = '---\r\ntype: tutor-session\r\nproject: Unicode λ\r\n---\r\n# Lesson\r\n\r\n$$x^2$$\r\n\r\n```python\r\nprint("λ")\r\n```\r\n\r\n<script>alert(1)</script>\r\n'
         state = hs.create_session(self.root, "Sessions/λ.md", source)

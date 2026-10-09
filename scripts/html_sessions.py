@@ -481,6 +481,24 @@ def update_session(root, relative_md, text=None, **changes):
         return _save(root, relative_md, state)
 
 
+def answer_open_question(root, relative_md, question_id, answer):
+    """Record an actual agent answer without inventing assessment evidence."""
+    if not isinstance(answer, str) or not answer.strip() or len(answer) > 32000:
+        raise ValueError('A nonempty bounded answer is required')
+    md, _, _ = paths(root, relative_md)
+    with Lock(md.with_suffix('.session.lock')):
+        state = load_session(root, relative_md)
+        record = next((q for q in state['open_questions'] if q.get('id') == question_id), None)
+        if record is None:
+            raise ValueError('Unknown open question')
+        if record.get('answer'):
+            if record['answer'] == answer:
+                return state
+            raise ValueError('Question already answered; existing answer preserved')
+        record.update(answer=answer, status='answered', answered_at=_now())
+        return _save(root, relative_md, state)
+
+
 def append_session(root, relative_md, block):
     md, _, _ = paths(root, relative_md)
     with Lock(md.with_suffix(".session.lock")):
@@ -790,6 +808,7 @@ def main():
     update = sub.add_parser("update"); update.add_argument("session"); update.add_argument("--source", required=True, type=Path)
     append = sub.add_parser("append"); append.add_argument("session"); append.add_argument("--source", required=True, type=Path)
     event = sub.add_parser("event"); event.add_argument("session"); event.add_argument("--source", required=True, type=Path)
+    answer = sub.add_parser("answer"); answer.add_argument("session"); answer.add_argument("question_id"); answer.add_argument("--source", required=True, type=Path)
     recovery = sub.add_parser("recover"); recovery.add_argument("session"); recovery.add_argument("--apply", action="store_true")
     bridge = sub.add_parser("import"); bridge.add_argument("session"); bridge.add_argument("--apply", action="store_true")
     export = sub.add_parser("export"); export.add_argument("session"); export.add_argument("destination", type=Path)
@@ -814,6 +833,8 @@ def main():
         result = append_session(root, args.session, args.source.read_bytes().decode("utf-8"))
     elif args.command == "event":
         result = append_event(root, args.session, json.loads(args.source.read_text(encoding="utf-8")))
+    elif args.command == "answer":
+        result = answer_open_question(root, args.session, args.question_id, args.source.read_text(encoding="utf-8"))
     elif args.command == "recover":
         result = recover_session(root, args.session, args.apply)
     elif args.command == "import":

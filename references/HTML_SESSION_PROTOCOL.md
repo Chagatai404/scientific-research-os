@@ -69,3 +69,5 @@ answers, confidence prose and decisions without inferring missing relationships.
 Uncertain structures remain legacy components and conversion warnings. Retry safely;
 rollback must refuse to discard subsequent edits. A fixture migration is not proof
 that the user's actual vault has been migrated.
+
+Open questions use an inline **Send** button and chronological question/answer history below the composer. Send records for the session agent; it does not call an AI service. Read `open_questions`, answer the actual prompt, then use `answer_open_question(root, session, question_id, answer)` or `html_sessions.py --root VAULT answer SESSION QUESTION_ID --source answer.txt`. This preserves earlier answers and pending questions without awarding learning evidence. Reopening restores the recorded conversation.
