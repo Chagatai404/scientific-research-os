@@ -63,7 +63,7 @@ const content=real?fs.readFileSync(real,'utf8'):'<main class="ros-document" id="
         assert.equal(await mcq.locator('input').first().isChecked(),true);
         assert.equal(await mcq.locator('[data-feedback]').count(),0);
         await snapshot('selected');
-        await mcq.getByRole('button',{name:'Reveal solution after attempting'}).click();
+        assert.equal(await mcq.getByRole('button',{name:'Show solution'}).isVisible(),false);
         assert.equal(await mcq.locator('[data-ros=solution]').isVisible(),false);
         assert.deepEqual(await page.evaluate(()=>window.events),[]);
         await mcq.getByRole('button',{name:'Submit response',exact:true}).click();
@@ -83,14 +83,19 @@ const content=real?fs.readFileSync(real,'utf8'):'<main class="ros-document" id="
         await mcq.getByRole('button',{name:'Clear response',exact:true}).click();
         assert.equal(await mcq.locator('input:checked').count(),0);
         assert.equal(await page.evaluate(()=>window.events.length),eventsBefore);
+        // Clearing is undoable in place, without a timer or a second confirmation.
+        await mcq.getByRole('button',{name:'Undo clear',exact:true}).click();
+        assert.equal(await mcq.locator('input:checked').count(),1);
+        await mcq.getByRole('button',{name:'Clear response',exact:true}).click();
+        assert.equal(await mcq.locator('input:checked').count(),0);
         assert.equal(await frame.getByRole('progressbar').getAttribute('aria-valuenow'),'1');
-        await mcq.getByRole('button',{name:'Reveal hint 2',exact:true}).click();
-        assert.match(await mcq.locator('.ros-feedback').textContent(),/previous hint/);
+        assert.equal(await mcq.getByRole('button',{name:'Reveal hint 2',exact:true}).isVisible(),false);
         await mcq.getByRole('button',{name:'Reveal hint 1',exact:true}).click();
+        assert.equal(await mcq.getByRole('button',{name:'Reveal hint 2',exact:true}).isVisible(),true);
         assert.equal(await mcq.getByRole('button',{name:'Reveal hint 1',exact:true}).getAttribute('aria-expanded'),'true');
-        await mcq.getByRole('button',{name:'Reveal solution after attempting'}).click();
+        await mcq.getByRole('button',{name:'Show solution'}).click();
         assert.equal(await mcq.locator('[data-ros=solution]').isVisible(),true);
-        assert(await mcq.getByRole('button',{name:'Reveal solution after attempting'}).isDisabled());
+        assert(await mcq.getByRole('button',{name:'Show solution'}).isDisabled());
         const pending=frame.locator('[data-question-id=pending]');await pending.locator('summary').click();
         assert.equal(await mcq.locator('details').getAttribute('open'),null);
         assert.equal(await frame.locator('.ros-question-disclosure[open]').count(),1);

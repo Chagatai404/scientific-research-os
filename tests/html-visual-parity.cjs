@@ -46,8 +46,8 @@ const runtime=fs.readFileSync(path.join(root,'assets/html-runtime/session.js'),'
     assert.equal(await frame.locator('body').evaluate(e=>e.scrollWidth<=e.clientWidth),true);
     const documentShell=frame.locator('.ros-document');
     if(await documentShell.count()){
-     assert.equal(await frame.locator('.ros-session-header .ros-status').count(),1);
-     assert.equal(await frame.locator('.ros-session-meta').count(),1);
+     assert.equal(await frame.locator('.ros-status').count(),1);
+     assert.equal(await frame.locator('.ros-session-meta').count(),0);
      const typography=await documentShell.evaluate(e=>{
       const style=getComputedStyle(e);return {width:e.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight),fontSize:parseFloat(style.fontSize),lineHeight:parseFloat(style.lineHeight)};
      });

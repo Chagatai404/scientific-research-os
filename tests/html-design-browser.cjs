@@ -37,7 +37,7 @@ const state = session ? JSON.parse(fs.readFileSync(session.replace(/\.html$/,'.s
       await frame.locator('.ros-status').waitFor();
       assert.deepEqual(await frame.locator('h1,h2,h3,h4,h5,h6').allTextContents(),await page.evaluate(()=>window.expectedHeadings),'headings/order changed');
       headingSequences.push(await frame.locator('h1,h2,h3,h4,h5,h6').allTextContents());
-      assert.equal(await frame.locator('body').evaluate(e=>getComputedStyle(e).backgroundColor),theme==='light'?'rgb(246, 245, 241)':'rgb(23, 27, 32)');
+      assert.equal(await frame.locator('body').evaluate(e=>getComputedStyle(e).backgroundColor),theme==='light'?'rgb(238, 236, 228)':'rgb(19, 26, 23)');
       const contrast=await frame.locator('main').evaluate(e=>{
         const style=getComputedStyle(e), root=getComputedStyle(document.documentElement);
         const luminance=color=>{

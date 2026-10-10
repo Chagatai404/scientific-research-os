@@ -466,17 +466,10 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
     navigation = ('<nav class="ros-toc" aria-label="Session sections"><details class="ros-toc-panel" open><summary>Contents</summary><ul>'
                   + ''.join('<li data-level="' + level + '"><a href="#' + anchor + '">' + label + '</a></li>' for level,anchor,label in anchors)
                   + '</ul></details></nav>') if anchors else ''
-    metadata = state.get('metadata', {})
-    session_kind = state['type'].replace('-', ' ').capitalize()
-    status = str(state.get('lifecycle', '')).replace('-', ' ').capitalize()
-    created = str(metadata.get('created', '')).strip()
-    meta_text = ' · '.join(value for value in (status, created) if value)
-    subtitle = metadata.get('subtitle')
+    # The title and optional subtitle are the whole header: kind/status/date badges added noise, not orientation.
+    subtitle = state.get('metadata', {}).get('subtitle')
     subtitle_markup = ('<p class="ros-session-context">' + html.escape(subtitle) + '</p>') if isinstance(subtitle, str) and subtitle.strip() else ''
-    header = ('<header class="ros-session-header"><div class="ros-session-meta">'
-              + '<p class="ros-session-kind">Research OS · ' + html.escape(session_kind) + '</p>'
-              + ('<p class="ros-session-details">' + html.escape(meta_text) + '</p>' if meta_text else '')
-              + '</div><h1>' + html.escape(state['title']) + '</h1>' + subtitle_markup + '</header>')
+    header = '<header class="ros-session-header"><h1>' + html.escape(state['title']) + '</h1>' + subtitle_markup + '</header>'
     data = json.dumps(state, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
     if standalone:
         css = (RUNTIME / "session.css").read_text(encoding="utf-8")

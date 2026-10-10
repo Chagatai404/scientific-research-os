@@ -67,7 +67,7 @@
     const questionPanels = [];
     let counter = 0;
     const status = doc.createElement('p'); status.className = 'ros-status'; status.setAttribute('role', 'status');
-    status.textContent = host ? 'Connected to Research OS. Answers are stored as pending review.' : 'Standalone document: progress stays in this open page. Download it to preserve it; no Obsidian connection.';
+    status.textContent = host ? 'Answers save automatically.' : 'Standalone page: progress stays in this open page. Download it before closing.';
     const sessionHeader = mount.querySelector('.ros-session-header');
     if (sessionHeader) sessionHeader.append(status);
     else mount.prepend(status);
@@ -75,7 +75,7 @@
     const emit = (type, question_id, response) => {
       const event = {event_id: (root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : 'event-' + Date.now() + '-' + (++counter)), type, question_id: question_id || null, response, created_at: new Date().toISOString()};
       localEvents.push(event);
-      if (host) { pending.set(event.event_id, event); root.parent.postMessage({channel: 'research-os', token: host.token, session_id: state.session_id, event}, '*'); status.textContent = 'Saving progress…'; }
+      if (host) { pending.set(event.event_id, event); root.parent.postMessage({channel: 'research-os', token: host.token, session_id: state.session_id, event}, '*'); status.textContent = 'Saving…'; }
       else status.textContent = 'Progress recorded in this page only. Download progress before closing.';
       updateProgress();
       return event;
@@ -89,18 +89,18 @@
         for (const id of saved) pending.delete(id);
         renderConversation();
         updateProgress();
-        status.textContent = pending.size ? 'Some progress is still awaiting confirmation.' : 'Progress saved. Human learning review remains pending.';
+        status.textContent = pending.size ? 'Saving…' : 'Progress saved.';
       } else if (data.type === 'error') status.textContent = 'Progress could not be saved. Keep this page open and copy progress from the progress panel: ' + String(data.message || 'host rejected update').slice(0, 300);
     });
     function node(tag, text) { const el = doc.createElement(tag); if (text !== undefined) el.textContent = text; return el; }
     function button(text, callback) { const b = node('button', text); b.type = 'button'; b.addEventListener('click', callback); return b; }
     const progress = node('aside'); progress.className = 'ros-progress'; progress.setAttribute('aria-label', 'Session response progress');
     const progressText = node('p'); progressText.className = 'ros-progress-label';
-    const progressNote = node('small', 'Human review pending');
     const progressBar = node('div'); progressBar.className = 'ros-progress-bar'; progressBar.setAttribute('role', 'progressbar'); progressBar.setAttribute('aria-label', 'Responses recorded');
     progressBar.setAttribute('aria-valuemin', '0'); progressBar.setAttribute('aria-valuemax', String(Math.max(1, questions.size)));
-    const progressFill = node('span'); progressBar.append(progressFill); progress.append(progressText, progressBar, progressNote);
-    if (questions.size) { if (sessionHeader) sessionHeader.after(progress); else mount.prepend(progress); }
+    const progressFill = node('span'); progressBar.append(progressFill); progress.append(progressText, progressBar);
+    // Save status shares the progress row, so the header holds only the title and its context.
+    if (questions.size) { progress.append(status); if (sessionHeader) sessionHeader.after(progress); else mount.prepend(progress); }
     function updateProgress() {
       const recorded = [...questions.keys()].filter(hasAttempt).length;
       progressText.textContent = recorded + ' / ' + questions.size + ' responses recorded';
@@ -237,35 +237,52 @@
         }
       }
       const submit = node('button', 'Submit response'); submit.type = 'button'; submit.className = 'ros-submit';
+      let cleared = null;
       const reset = button('Clear response', () => {
+        if (cleared) {
+          fields.forEach((field, i) => { if (field.type === 'radio' || field.type === 'checkbox') field.checked = cleared[i]; else field.value = cleared[i]; });
+          cleared = null; reset.textContent = 'Clear response'; showFeedback('Draft restored.'); fields[0]?.focus(); return;
+        }
+        cleared = fields.map(field => field.type === 'radio' || field.type === 'checkbox' ? field.checked : field.value);
         for (const field of fields) { if (field.type === 'radio' || field.type === 'checkbox') field.checked = false; else field.value = ''; }
+        reset.textContent = 'Undo clear';
         showFeedback('Draft cleared. Saved responses and revealed hints are preserved.');
         fields[0]?.focus();
       }); reset.className = 'ros-reset'; reset.title = 'Clear the draft without deleting saved attempts';
       const actions = node('div'); actions.className = 'ros-question-actions'; actions.append(submit, reset); form.append(actions);
       body.append(form, feedback);
       const solutions = [];
+      let offerSolution = () => {};
       (q.hints || []).forEach((hint, index) => {
         const text = node('p', hint); text.hidden = true; text.dataset.ros = 'hint'; text.className = 'ros-hint'; text.id = 'ros-hint-' + questionNumber + '-' + index;
         const reveal = button('Reveal hint ' + (index + 1), () => {
-          if (index && solutions[index - 1].text.hidden) { showFeedback('Reveal the previous hint first.'); return; }
           text.hidden = false; reveal.disabled = true; reveal.setAttribute('aria-expanded', 'true'); emit('hint', q.id, index + 1);
+          if (solutions[index + 1]) solutions[index + 1].reveal.hidden = false;
         });
+        reveal.hidden = index > 0;
         reveal.className = 'ros-reveal'; reveal.setAttribute('aria-controls', text.id); reveal.setAttribute('aria-expanded', 'false');
         solutions.push({text, reveal}); body.append(reveal, text);
       });
       if (q.solution) {
         const explanation = node('div', q.solution); explanation.hidden = true; explanation.dataset.ros = 'solution'; explanation.className = 'ros-explanation'; explanation.id = 'ros-solution-' + questionNumber;
-        const revealSolution = button('Reveal solution after attempting', () => { if (!hasAttempt(q.id)) { showFeedback('Try a response before revealing the solution.'); return; } explanation.hidden = false; revealSolution.disabled = true; revealSolution.setAttribute('aria-expanded', 'true'); emit('solution', q.id, true); });
+        const revealSolution = button('Show solution', () => { explanation.hidden = false; revealSolution.disabled = true; revealSolution.setAttribute('aria-expanded', 'true'); emit('solution', q.id, true); });
         revealSolution.className = 'ros-reveal'; revealSolution.setAttribute('aria-controls', explanation.id); revealSolution.setAttribute('aria-expanded', 'false');
+        revealSolution.hidden = !hasAttempt(q.id); offerSolution = () => { revealSolution.hidden = false; };
         if (hasAttempt(q.id) && localEvents.some(e => e.type === 'solution' && e.question_id === q.id)) { explanation.hidden = false; revealSolution.disabled = true; revealSolution.setAttribute('aria-expanded', 'true'); }
         body.append(revealSolution, explanation);
       }
-      const confidence = node('label', 'Confidence (optional): '); const rating = node('select');
-      ['Choose…', '1 — uncertain', '2', '3', '4', '5 — confident'].forEach((label, i) => { const o = node('option', label); o.value = i ? String(i) : ''; rating.append(o); });
-      rating.addEventListener('change', () => { if (rating.value) emit('confidence', q.id, Number(rating.value)); }); confidence.className = 'ros-confidence'; confidence.append(rating); body.append(confidence);
+      const confidence = node('div'); confidence.className = 'ros-confidence'; confidence.setAttribute('role', 'group');
+      const confidenceLabel = node('span', 'Confidence (optional)'); confidenceLabel.id = 'ros-confidence-' + questionNumber; confidence.setAttribute('aria-labelledby', confidenceLabel.id);
+      const scale = node('div'); scale.className = 'ros-confidence-scale';
+      const ratings = [1, 2, 3, 4, 5].map(value => {
+        const b = button(String(value), () => { if (b.getAttribute('aria-pressed') === 'true') return; ratings.forEach(r => r.setAttribute('aria-pressed', String(r === b))); emit('confidence', q.id, value); });
+        b.setAttribute('aria-pressed', 'false'); b.setAttribute('aria-label', value + (value === 1 ? ' — uncertain' : value === 5 ? ' — confident' : '') + ' of 5');
+        return b;
+      });
+      scale.append(node('span', 'Unsure'), ...ratings, node('span', 'Sure')); scale.firstChild.setAttribute('aria-hidden', 'true'); scale.lastChild.setAttribute('aria-hidden', 'true');
+      confidence.append(confidenceLabel, scale); body.append(confidence);
       const priorConfidence = [...localEvents].reverse().find(e => e.type === 'confidence' && e.question_id === q.id);
-      if (priorConfidence && Number.isInteger(priorConfidence.response) && priorConfidence.response >= 1 && priorConfidence.response <= 5) rating.value = String(priorConfidence.response);
+      if (priorConfidence && Number.isInteger(priorConfidence.response) && priorConfidence.response >= 1 && priorConfidence.response <= 5) ratings[priorConfidence.response - 1].setAttribute('aria-pressed', 'true');
       function readResponse() {
         if (q.kind === 'mcq') { const input = fields.find(f => f.checked); return input ? typeof q.answer === 'number' ? Number(input.dataset.index) : input.value : null; }
         if (q.kind === 'multi') return fields.filter(f => f.checked).map(f => Array.isArray(q.answer) && typeof q.answer[0] === 'number' ? Number(f.dataset.index) : f.value);
@@ -277,11 +294,11 @@
       function submitResponse(event) {
         event.preventDefault(); if (!form.reportValidity()) return; const response = readResponse();
         if (response === null || Array.isArray(response) && response.length === 0) { showFeedback('Choose a response first.'); return; }
-        emit('response', q.id, response); const result = assess(q, response); showFeedback(result.message, result.correct);
+        emit('response', q.id, response); const result = assess(q, response); showFeedback(result.message, result.correct); offerSolution();
       }
       submit.addEventListener('click', submitResponse);
       form.addEventListener('submit', event => event.preventDefault());
-      fields.forEach(field => field.addEventListener('input', () => { if (hasAttempt(q.id) || !feedback.hidden) showFeedback('Draft changed. Submit your response to record it.'); }));
+      fields.forEach(field => field.addEventListener('input', () => { if (cleared) { cleared = null; reset.textContent = 'Clear response'; } if (hasAttempt(q.id) || !feedback.hidden) showFeedback('Draft changed. Submit your response to record it.'); }));
       form.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target.tagName !== 'TEXTAREA' && event.target.tagName !== 'BUTTON') submitResponse(event); });
       const prior = [...localEvents].reverse().find(e => e.question_id === q.id && e.type === 'response');
       if (prior) {
@@ -292,7 +309,7 @@
         else fields[0].value = prior.response;
         const result = assess(q, prior.response); showFeedback('Previous response restored. ' + result.message, result.correct);
       }
-      solutions.forEach((hint, i) => { if (localEvents.some(e => e.type === 'hint' && e.question_id === q.id && Number(e.response) >= i + 1)) { hint.text.hidden = false; hint.reveal.disabled = true; hint.reveal.setAttribute('aria-expanded', 'true'); } });
+      solutions.forEach((hint, i) => { if (localEvents.some(e => e.type === 'hint' && e.question_id === q.id && Number(e.response) >= i + 1)) { hint.text.hidden = false; hint.reveal.hidden = false; hint.reveal.disabled = true; hint.reveal.setAttribute('aria-expanded', 'true'); if (solutions[i + 1]) solutions[i + 1].reveal.hidden = false; } });
     }
     updateProgress();
     const questionForm = node('form'); questionForm.dataset.ros = 'open-question'; questionForm.className = 'ros-open-question';

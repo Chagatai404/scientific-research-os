@@ -39,7 +39,7 @@ async function main() {
       window.rosHost.onload();
     },{plugin,runtime,css,state,content});
     const iframe=page.frameLocator('iframe.ros-html-frame');
-    await iframe.getByText('Connected to Research OS.',{exact:false}).waitFor();
+    await iframe.getByText('Answers save automatically.',{exact:false}).waitFor();
     assert.equal(await page.locator('iframe.ros-html-frame').getAttribute('sandbox'),'allow-scripts');
     assert.equal(await page.locator('#outside').textContent(),'Host intact');
     assert.equal(await page.evaluate(()=>window.pwned),undefined);
@@ -53,12 +53,12 @@ async function main() {
     assert.equal(requests.filter(x=>/^https?:/.test(x)).length,0);
     assert.equal(await iframe.locator('[data-math-status="rendered"]').count(),2);
     const mcq=iframe.locator('[data-question-id="mcq"]');
-    await mcq.getByRole('button',{name:'Reveal solution after attempting'}).click();
+    assert.equal(await mcq.getByRole('button',{name:'Show solution'}).isVisible(),false);
     assert.equal(await mcq.locator('[data-ros="solution"]').isVisible(),false);
     await mcq.getByLabel('two',{exact:true}).check();
     await mcq.getByRole('button',{name:'Submit response'}).click();
     await iframe.getByText('Progress saved.',{exact:false}).waitFor({timeout:3000});
-    await mcq.getByRole('button',{name:'Reveal solution after attempting'}).click();
+    await mcq.getByRole('button',{name:'Show solution'}).click();
     assert.equal(await mcq.locator('[data-ros="solution"]').isVisible(),true);
     const numeric=iframe.locator('[data-question-id="num"]');
     await numeric.locator('summary.ros-question-summary').click();
@@ -71,14 +71,14 @@ async function main() {
     await iframe.getByText('Progress saved.',{exact:false}).waitFor();
     // Recreate the view from persisted vault JSON: browser page memory is discarded.
     await page.evaluate(()=>{window.rosHost.onunload();window.rosHost=new window.rosHelpers.SessionHost(window.rosHost.plugin,document.getElementById('mount'),'fixture.html');window.rosHost.onload();});
-    await iframe.getByText('Connected to Research OS.',{exact:false}).waitFor();
+    await iframe.getByText('Answers save automatically.',{exact:false}).waitFor();
     const persisted=await page.evaluate(()=>JSON.parse(window.rosFiles['fixture.state.json']));
     assert.equal(persisted.events.filter(e=>e.type==='response').length,2);
     assert(persisted.events.every(e=>e.status==='pending-review'));
     assert.equal(persisted.open_questions[0].prompt,'Why is the variance finite?');
     assert(!Object.hasOwn(persisted,'mastery'));
     await page.evaluate(()=>{document.body.className='theme-dark';return window.rosHost.reload();});
-    await iframe.getByText('Connected to Research OS.',{exact:false}).waitFor();
+    await iframe.getByText('Answers save automatically.',{exact:false}).waitFor();
     assert.equal(await iframe.locator('body').getAttribute('class'),'theme-dark');
     assert.equal(await iframe.locator('html').getAttribute('data-theme'),'dark');
     assert(await iframe.locator('svg').count()>0,'SVG demonstration present');

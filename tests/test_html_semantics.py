@@ -29,7 +29,7 @@ class Tree(HTMLParser):
 
 
 class SemanticRenderingTests(unittest.TestCase):
-    def test_document_shell_separates_metadata_and_keeps_content_order(self):
+    def test_document_shell_shows_only_title_context_and_keeps_content_order(self):
         state = {'schema_version': 1, 'session_id': 'shell-fixture', 'type': 'tutor-session',
                  'title': 'Lesson', 'source_markdown': '# Lesson\n\n## Concept\n\nUnchanged prose.',
                  'metadata': {'created': '2026-10-09', 'subtitle': '<script>Context</script>'},
@@ -39,8 +39,8 @@ class SemanticRenderingTests(unittest.TestCase):
         self.assertEqual(len(tree.tagged('h1')), 1)
         header = tree.tagged('header')[0]
         self.assertEqual(header['attrs']['class'], 'ros-session-header')
-        self.assertIn('ros-session-meta', markup)
-        self.assertIn('Active · 2026-10-09', markup)
+        self.assertNotIn('ros-session-meta', markup)
+        self.assertNotIn('Active · 2026-10-09', markup)
         self.assertNotIn('<script>Context</script>', markup)
         self.assertIn('&lt;script&gt;Context&lt;/script&gt;', markup)
         self.assertLess(markup.index('</header>'), markup.index('Unchanged prose.'))

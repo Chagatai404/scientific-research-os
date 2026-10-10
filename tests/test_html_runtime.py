@@ -20,9 +20,14 @@ class HTMLRuntimeTests(unittest.TestCase):
         css = (RUNTIME / 'session.css').read_text(encoding='utf-8')
         fonts = re.findall(r'url\(data:font/woff2;base64,([A-Za-z0-9+/=]+)\)', css)
         import base64
-        self.assertEqual(len(fonts), len(inventory['fonts']))
+        document_fonts = inventory['document_fonts']
+        self.assertEqual(document_fonts['license'], 'OFL-1.1')
+        self.assertIn('SIL Open Font License', (RUNTIME / 'FONTS-LICENSE.txt').read_text(encoding='utf-8'))
+        for name, digest in document_fonts['fonts'].items():
+            self.assertEqual(hashlib.sha256((RUNTIME / 'fonts' / name).read_bytes()).hexdigest(), digest)
+        self.assertEqual(len(fonts), len(inventory['fonts']) + len(document_fonts['fonts']))
         self.assertEqual({hashlib.sha256(base64.b64decode(font)).hexdigest() for font in fonts},
-                         set(inventory['fonts'].values()))
+                         set(inventory['fonts'].values()) | set(document_fonts['fonts'].values()))
         self.assertNotRegex(css, r'url\([\"\']?(?:https?:|fonts/)')
         runtime = (RUNTIME / 'runtime.js').read_text(encoding='utf-8')
         self.assertNotIn('localStorage', runtime)
