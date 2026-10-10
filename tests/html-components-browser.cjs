@@ -7,7 +7,7 @@ const {chromium} = require(process.env.ROS_PLAYWRIGHT || 'playwright');
 const root = path.join(__dirname, '..');
 const read = p => fs.readFileSync(path.join(root,p),'utf8');
 const content = read('tests/fixtures/html/session-component-gallery.html');
-const state = JSON.parse(read('tests/fixtures/html/session-component-gallery.state.json'));
+const state = JSON.parse(read('tests/fixtures/html/session-component-gallery.json'));
 const plugin = read('extensions/obsidian-html/main.js');
 const css = read('assets/html-runtime/session.css');
 const runtime = read('assets/html-runtime/session.js');

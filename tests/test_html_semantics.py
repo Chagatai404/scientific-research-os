@@ -130,6 +130,14 @@ class SemanticRenderingTests(unittest.TestCase):
 
 
 class EducationalComponents(unittest.TestCase):
+    def test_links_keep_fragment_navigation_and_readable_offline_references(self):
+        markup = hs.markdown_html('[**Section**](#section-1) and [Source](https://example.org/paper) with [[Concept|label]].')
+        self.assertIn('<a href="#section-1"><strong>Section</strong></a>',markup)
+        self.assertIn('Source <span class="ros-link-target">(https://example.org/paper)</span>',markup)
+        self.assertIn('title="Concept">label</span>',markup)
+        self.assertNotIn('href="https:',markup)
+        self.assertNotIn('href="javascript:',hs.markdown_html('[label](javascript:unsafe)'))
+
     def test_contents_matches_attribute_order_and_preserves_heading_hierarchy(self):
         source = '# Lesson\n\n## First **section**\n\n### Detail\n\n## First **section**'
         state = {'schema_version':1,'session_id':'toc-fixture','type':'tutor-session','title':'Lesson',

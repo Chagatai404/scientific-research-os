@@ -1,5 +1,10 @@
 # Research OS HTML design system
 
+> Historical CSS-only rollout record. The subsequent user-requested v0.8.5
+> correction pass supersedes its implementation limits. The final system is
+> documented in [HTML_DESIGN_SYSTEM.md](../HTML_DESIGN_SYSTEM.md); template
+> structure and canonical content remain preserved.
+
 Status: implemented visual design; template/content structure is preserved.
 Date: 2026-10-09. Baseline: e50692b; planning commit: 1b36c15.
 

@@ -193,6 +193,19 @@ class SessionTests(unittest.TestCase):
         self.assertNotIn('src="', text)
         self.assertTrue((self.root / ".research-os/runtime/session.js").exists())
 
+    def test_refresh_projection_preserves_canonical_files_and_backups(self):
+        hs.create_session(self.root,'a.md','# Lesson\n\n## Section\n\nSource')
+        protected = {p:p.read_bytes() for p in [self.root/'a.md',self.root/'a.state.json']}
+        view=self.root/'a.html';view.write_text('old projection',encoding='utf-8')
+        backup=self.root/'backups'
+        self.assertTrue(hs.refresh_projection(self.root,'a.md',backup)['changed'])
+        self.assertEqual(view.read_text(),'old projection')
+        report=hs.refresh_projection(self.root,'a.md',backup,apply=True)
+        self.assertEqual(Path(report['backup']).read_text(),'old projection')
+        self.assertIn('ros-toc',view.read_text(encoding='utf-8'))
+        self.assertTrue(all(p.read_bytes()==raw for p,raw in protected.items()))
+        self.assertFalse(hs.refresh_projection(self.root,'a.md',backup,apply=True)['changed'])
+
     def test_inline_approved_image_export_preserves_placement_and_state(self):
         folder = self.root / 'a.assets'
         folder.mkdir()

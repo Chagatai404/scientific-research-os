@@ -99,6 +99,8 @@ main > h1 { font-size: 28px; }
 p { margin: var(--ros-space-4) 0; }
 strong { font-weight: 700; }
 a { color: var(--ros-accent); text-underline-offset: .2em; }
+.ros-link-target { color: var(--ros-text-muted); font-size: .85em; overflow-wrap: anywhere; }
+.ros-note-link { color: var(--ros-accent); }
 ul, ol { padding-left: 1.5em; margin: var(--ros-space-4) 0; }
 li { margin: .5em 0; padding-left: .2em; }
 li::marker { color: var(--ros-text-muted); font-variant-numeric: tabular-nums; }

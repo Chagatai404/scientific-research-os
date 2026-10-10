@@ -214,7 +214,7 @@ def validate_state(state):
 
 def _inline(text):
     """Render supported inline syntax without interpreting markup inside TeX/code."""
-    pattern = re.compile(r"\$[^$\n]+\$|`[^`\n]+`|\*\*.+?\*\*|__.+?__|(?<!\w)\*[^*\n]+\*(?!\w)|(?<!\w)_[^_\n]+_(?!\w)")
+    pattern = re.compile(r'\$[^$\n]+\$|`[^`\n]+`|\[\[[^\]\n]+\]\]|\[[^\]\n]+\]\([^()\s]+(?:\s+"[^"\n]*")?\)|\*\*.+?\*\*|__.+?__|(?<!\w)\*[^*\n]+\*(?!\w)|(?<!\w)_[^_\n]+_(?!\w)')
     result, position = [], 0
     for match in pattern.finditer(text):
         result.append(html.escape(text[position:match.start()]))
@@ -223,6 +223,16 @@ def _inline(text):
             result.append('<span data-ros="equation" data-tex="' + html.escape(token[1:-1], quote=True) + '" class="ros-math">' + html.escape(token) + '</span>')
         elif token.startswith('`'):
             result.append('<code>' + html.escape(token[1:-1]) + '</code>')
+        elif token.startswith('[['):
+            parts = token[2:-2].split('|', 1)
+            result.append('<span class="ros-note-link" title="' + html.escape(parts[0], quote=True) + '">' + _inline(parts[-1]) + '</span>')
+        elif token.startswith('['):
+            link = re.fullmatch(r'\[([^\]]+)\]\(([^\s]+)(?:\s+"([^"]*)")?\)', token)
+            label, target = _inline(link[1]), link[2]
+            if re.fullmatch(r'#[A-Za-z0-9_-]+', target):
+                result.append('<a href="' + target + '">' + label + '</a>')
+            else:
+                result.append('<span class="ros-link">' + label + ' <span class="ros-link-target">(' + html.escape(target) + ')</span></span>')
         elif token.startswith(('**', '__')):
             result.append('<strong>' + _inline(token[2:-2]) + '</strong>')
         else:
@@ -696,6 +706,28 @@ def export_session(root, relative_md, destination):
     return destination
 
 
+def refresh_projection(root, relative_md, backup_directory, apply=False):
+    """Refresh only generated HTML, preserving canonical JSON and Markdown bytes."""
+    md, view, data = paths(root, relative_md)
+    with Lock(md.with_suffix('.session.lock')):
+        state = load_session(root, relative_md)
+        protected = {md: md.read_bytes(), data: data.read_bytes()}
+        before = view.read_bytes()
+        prefix = os.path.relpath(Path(root).resolve() / '.research-os/runtime', view.parent).replace(os.sep, '/')
+        after = render_html(state, prefix).encode('utf-8')
+        report = {'path': view.relative_to(Path(root).resolve()).as_posix(), 'changed': before != after,
+                  'before_sha256': _hash(before), 'after_sha256': _hash(after), 'dry_run': not apply}
+        if apply and before != after:
+            backup = Path(backup_directory) / view.relative_to(Path(root).resolve())
+            if backup.exists(): raise ValueError('Projection backup already exists; choose a new backup directory')
+            _write(backup, before)
+            _write(view, after)
+            report['backup'] = str(backup)
+        if any(path.read_bytes() != raw for path, raw in protected.items()):
+            raise ValueError('Protected session content changed during projection refresh')
+        return report
+
+
 def import_bridge(root, relative_md, apply=False):
     """Explicitly review and import a bridge edit; normal updates reject it."""
     md, view, data = paths(root, relative_md)
@@ -955,6 +987,9 @@ def main():
     recovery = sub.add_parser("recover"); recovery.add_argument("session"); recovery.add_argument("--apply", action="store_true")
     bridge = sub.add_parser("import"); bridge.add_argument("session"); bridge.add_argument("--apply", action="store_true")
     export = sub.add_parser("export"); export.add_argument("session"); export.add_argument("destination", type=Path)
+    refresh = sub.add_parser("refresh-projection", help="Regenerate only HTML; preserve source and canonical state")
+    refresh.add_argument("session"); refresh.add_argument("--backup-directory", required=True, type=Path)
+    refresh.add_argument("--apply", action="store_true")
     migration = sub.add_parser("migrate")
     mode = migration.add_mutually_exclusive_group()
     mode.add_argument("--apply", action="store_true"); mode.add_argument("--resume", action="store_true"); mode.add_argument("--rollback", action="store_true")
@@ -967,6 +1002,8 @@ def main():
         result = validate_sessions(root)
     elif args.command == "export":
         result = str(export_session(root, args.session, args.destination))
+    elif args.command == "refresh-projection":
+        result = refresh_projection(root, args.session, args.backup_directory, args.apply)
     elif args.command == "create":
         install_runtime(root)
         result = create_session(root, args.session, args.source.read_bytes().decode("utf-8"), args.session_type, args.title)
