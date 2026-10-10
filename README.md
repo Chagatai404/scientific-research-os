@@ -486,6 +486,8 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
+**v0.8.7 - Live, Linear HTML Sessions** makes open sessions update in place without reloading, shows "Checking…" until each answer is checked with the verdict and explanation appearing under it, places questions in session order between teaching blocks, and requires a resume brief that loads the research and knowledge graphs before any session continues; see [HTML sessions](docs/HTML_SESSIONS.md) and the [session protocol](references/HTML_SESSION_PROTOCOL.md).
+
 **v0.8.6 - HTML Session Design v2** replaces the session look with Whiteboard/Chalkboard boards, bundled accessible fonts, a consistent button system and fewer clicks in tutor questions. It was rolled out to the configured vault's 13 existing sessions with backups; see the [design system](docs/HTML_DESIGN_SYSTEM.md).
 
 **v0.8.5 - HTML-native Sessions** is implemented and installed locally. All 12 historical sessions in the configured vault were migrated with exact backups; actual desktop restart checks passed. [Release evidence](docs/plans/v0.8.5-html-native-sessions.md) records all 25 gates and known limits.
@@ -496,7 +498,7 @@ schema-3 tutoring, selective ownership and separate scientific/human defense axe
 The [release exercise](examples/release/README.md) and
 [implementation record](references/V0.8_IMPLEMENTATION.md) document integration,
 provider parity, compatibility gates and remaining live-environment validation.
-VERSION is 0.8.6, merged to main and pushed; no release tag has been created.
+VERSION is 0.8.7, merged to main and pushed; no release tag has been created.
 
 **v0.7.0 — Concept-first learning and connected research** adds the opt-in
 [knowledge model](references/KNOWLEDGE_MODEL.md), [concept-first tutor](references/TUTOR_PLANNING.md),

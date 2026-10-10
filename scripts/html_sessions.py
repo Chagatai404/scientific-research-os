@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import sys
 import time
 import uuid
 
@@ -157,6 +158,29 @@ def validate_interaction(event, question_ids):
         raise ValueError('Interaction event exceeds limit')
 
 
+REVIEW_VERDICTS = ("correct", "partially-correct", "incorrect", "reviewed")
+QUESTION_KINDS = {"mcq", "multi", "numeric", "matching", "ordering", "free-response"}
+
+
+def _validate_reviews(reviews):
+    """Tutor verdicts on actual responses: shown beside the question, never ledger credit."""
+    if not isinstance(reviews, list) or len(reviews) > 200:
+        raise ValueError("Invalid question reviews")
+    for review in reviews:
+        if not isinstance(review, dict) or set(review) - {"response_event_id", "verdict", "feedback", "reviewed_at"}:
+            raise ValueError("Invalid question review")
+        if review.get("verdict") not in REVIEW_VERDICTS:
+            raise ValueError("Unsupported review verdict")
+        if not isinstance(review.get("feedback", ""), str) or len(review.get("feedback", "")) > 32000:
+            raise ValueError("Review feedback must be bounded text")
+        if review.get("response_event_id") is not None and not (isinstance(review["response_event_id"], str) and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", review["response_event_id"])):
+            raise ValueError("Invalid reviewed response identity")
+        try:
+            dt.datetime.fromisoformat(str(review.get("reviewed_at")).replace("Z", "+00:00"))
+        except ValueError:
+            raise ValueError("Invalid review timestamp") from None
+
+
 def validate_state(state):
     if not isinstance(state, dict) or state.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("Unsupported HTML session schema")
@@ -193,6 +217,7 @@ def validate_state(state):
         if not isinstance(q, dict) or not isinstance(q.get("id"), str) or not q["id"] or len(q["id"]) > 128 or q["id"] in ids:
             raise ValueError("Invalid or duplicate question identity")
         ids.add(q["id"])
+        _validate_reviews(q.get("reviews", []))
     event_ids = set()
     for event in state["events"]:
         validate_interaction(event, ids)
@@ -245,6 +270,8 @@ def _inline(text):
 _LIST_MARKER = re.compile(r'^( *)([-+*]|\d+[.)])\s+(.+)$')
 _HEADING = re.compile(r'^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$')
 _CALLOUT = re.compile(r'^\[!([a-zA-Z][\w-]*)\]([+-]?)\s*(.*)$')
+# A question sits where its marker is, so probes and teaching read in the order they happened.
+QUESTION_MARKER = re.compile(r'^<!--\s*ros-question:\s*([A-Za-z0-9_.:-]{1,128})\s*-->\s*$')
 _IMAGE = re.compile(r'^!\[([^\]]*)\]\(resource:([a-zA-Z0-9_-]+)(?:\s+"([^"]*)")?\)\s*$')
 
 
@@ -267,7 +294,7 @@ def _table_cells(line):
     return cells + [''.join(cell).strip()]
 
 
-def markdown_html(source, page_title=None):
+def markdown_html(source, page_title=None, questions=None, placed=None):
     """Component-oriented structural conversion; never infer assessments or answers.
 
     Authored source is unchanged. The renderer supports lists, quotations, callouts,
@@ -288,7 +315,7 @@ def markdown_html(source, page_title=None):
             return '<pre data-ros="legacy">' + html.escape('\n'.join(lines)) + '</pre>'
         out, i = [], 0
         def block_start(line):
-            return (not line.strip() or _HEADING.match(line) or _LIST_MARKER.match(line)
+            return (not line.strip() or _HEADING.match(line) or _LIST_MARKER.match(line) or QUESTION_MARKER.match(line.strip())
                     or line.startswith('>') or re.match(r'^\s*(?:```|~~~|\$\$)', line)
                     or re.fullmatch(r'\s*(?:---+|\*\*\*+|___+)\s*', line))
         while i < len(lines):
@@ -296,6 +323,13 @@ def markdown_html(source, page_title=None):
             if not line.strip():
                 i += 1
                 continue
+            marker = QUESTION_MARKER.match(line.strip())
+            if marker:
+                question = (questions or {}).get(marker[1])
+                if question is not None and (placed is None or marker[1] not in placed):
+                    out.append(_question_html(question))
+                    if placed is not None: placed.add(marker[1])
+                i += 1; continue
             image = _IMAGE.fullmatch(line.strip())
             if image:
                 out.append('<figure class="ros-figure" data-ros="figure"><img data-resource-id="' + html.escape(image[2], quote=True) + '" alt="' + html.escape(image[1], quote=True) + '">' + ('<figcaption>' + _inline(image[3]) + '</figcaption>' if image[3] else '') + '</figure>')
@@ -425,27 +459,30 @@ def markdown_html(source, page_title=None):
     return render(body.splitlines())
 
 
-def _questions_html(state):
-    chunks = []
-    for q in state["questions"]:
-        kind = q.get("kind", "free-response")
-        if kind not in {"mcq", "multi", "numeric", "matching", "ordering", "free-response"}:
-            kind = "free-response"
-        content = '<section data-ros="' + kind + '" data-question-id="' + html.escape(q["id"], quote=True) + '"><h3>' + html.escape(str(q.get("prompt", ""))) + '</h3><form>'
-        if kind in {"mcq", "multi"}:
-            for i, option in enumerate(q.get("options", [])):
-                value = option.get("value", str(i)) if isinstance(option, dict) else str(i)
-                label = option.get("label", "") if isinstance(option, dict) else str(option)
-                content += '<label><input name="answer" type="' + ("radio" if kind == "mcq" else "checkbox") + '" value="' + html.escape(str(value), quote=True) + '">' + html.escape(str(label)) + '</label>'
-        else:
-            content += '<textarea name="answer" aria-label="Your response"></textarea>'
-        content += '<button type="submit">Save response</button><button type="button" data-ros-action="reset">Reset</button><output data-ros-feedback></output></form>'
-        for hint in q.get("hints", []):
-            content += '<details data-ros="hint"><summary>Hint</summary>' + html.escape(str(hint)) + '</details>'
-        if "solution" in q:
-            content += '<details data-ros="solution"><summary>Solution</summary>' + html.escape(str(q["solution"])) + '</details>'
-        chunks.append(content + '</section>')
-    return "\n".join(chunks)
+def _question_html(q):
+    """Static fallback markup for one question; the runtime replaces it with the interactive panel."""
+    kind = q.get("kind", "free-response")
+    if kind not in QUESTION_KINDS:
+        kind = "free-response"
+    content = '<section data-ros="' + kind + '" data-question-id="' + html.escape(q["id"], quote=True) + '"><h3>' + html.escape(str(q.get("prompt", ""))) + '</h3><form>'
+    if kind in {"mcq", "multi"}:
+        for i, option in enumerate(q.get("options", [])):
+            value = option.get("value", str(i)) if isinstance(option, dict) else str(i)
+            label = option.get("label", "") if isinstance(option, dict) else str(option)
+            content += '<label><input name="answer" type="' + ("radio" if kind == "mcq" else "checkbox") + '" value="' + html.escape(str(value), quote=True) + '">' + html.escape(str(label)) + '</label>'
+    else:
+        content += '<textarea name="answer" aria-label="Your response"></textarea>'
+    content += '<button type="submit">Save response</button><button type="button" data-ros-action="reset">Reset</button><output data-ros-feedback></output></form>'
+    for hint in q.get("hints", []):
+        content += '<details data-ros="hint"><summary>Hint</summary>' + html.escape(str(hint)) + '</details>'
+    if "solution" in q:
+        content += '<details data-ros="solution"><summary>Solution</summary>' + html.escape(str(q["solution"])) + '</details>'
+    return content + '</section>'
+
+
+def _questions_html(state, placed=()):
+    """Questions without a marker in the source (older sessions) follow the content."""
+    return "\n".join(_question_html(q) for q in state["questions"] if q["id"] not in placed)
 
 
 def _widgets_html(state):
@@ -454,7 +491,8 @@ def _widgets_html(state):
 
 def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, resource_markup="", resource_scripts="", resource_images=None):
     validate_state(state)
-    content = markdown_html(state["source_markdown"], page_title=state["title"])
+    placed = set()
+    content = markdown_html(state["source_markdown"], page_title=state["title"], questions={q["id"]: q for q in state["questions"]}, placed=placed)
     if resource_images:
         def embed_image(match):
             image = match.group()
@@ -484,7 +522,7 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
             + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; font-src data:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'">'
             + '<title>' + html.escape(state["title"]) + '</title>' + resources + '</head><body><main class="ros-document" id="ros-session">'
             + header
-            + navigation + content + _questions_html(state) + _widgets_html(state) + resource_markup
+            + navigation + content + _questions_html(state, placed) + _widgets_html(state) + resource_markup
             + '<details data-ros="legacy"><summary>Exact original Markdown</summary><pre>' + html.escape(state["source_markdown"]) + '</pre></details>'
             + '</main><script type="application/json" id="ros-session-data">' + data + '</script>' + script + resource_scripts + '</body></html>\n')
 
@@ -665,6 +703,233 @@ def append_event(root, relative_md, event):
             state["open_questions"].append({"id": event["event_id"], "session_id": state["session_id"], "concept": state["metadata"].get("concept"), "prompt": event.get("response", ""), "status": "open", "created_at": event["created_at"], "explanation_refs": []})
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
+
+
+def _append_question(state, question):
+    if not isinstance(question, dict) or not isinstance(question.get("id"), str) or not question["id"]:
+        raise ValueError("A question needs a nonempty id")
+    if any(q["id"] == question["id"] for q in state["questions"]):
+        raise ValueError(f"Question already exists: {question['id']}")
+    if question.get("kind", "free-response") not in QUESTION_KINDS:
+        raise ValueError("Unsupported question kind")
+    if not isinstance(question.get("prompt"), str) or not question["prompt"].strip():
+        raise ValueError("A question needs a prompt")
+    if "reviews" in question:
+        raise ValueError("Reviews are recorded with review_response, not authored")
+    if not QUESTION_MARKER.match("<!-- ros-question: " + question["id"] + " -->"):
+        raise ValueError("Question ids use letters, digits, dot, underscore, colon or hyphen")
+    state["questions"].append(dict(question))
+    # Place the question where the session currently ends: after the teaching that led to it.
+    if not re.search(r"^<!--\s*ros-question:\s*" + re.escape(question["id"]) + r"\s*-->\s*$", state["source_markdown"], re.M):
+        source = state["source_markdown"]
+        separator = "" if source.endswith("\n\n") else "\n" if source.endswith("\n") else "\n\n"
+        state["source_markdown"] = source + separator + "<!-- ros-question: " + question["id"] + " -->\n"
+
+
+def add_question(root, relative_md, question):
+    """Post one new question; open session views show it live without reloading."""
+    md, _, _ = paths(root, relative_md)
+    with Lock(md.with_suffix(".session.lock")):
+        state = load_session(root, relative_md)
+        _append_question(state, question)
+        state["updated_at"] = _now()
+        return _save(root, relative_md, state)
+
+
+def review_response(root, relative_md, question_id, verdict, feedback="", next_question=None, transcript=None):
+    """Record the tutor's verdict on the learner's latest actual response.
+
+    The verdict and the question's prepared explanation appear in place of the
+    learner's "Checking..." state. It is pending tutor feedback, not ledger
+    evidence: canonical attempts still follow the learning protocol. One save can
+    also post the next question and a transcript entry so the page updates once.
+    """
+    if verdict not in REVIEW_VERDICTS:
+        raise ValueError("Verdict must be one of: " + ", ".join(REVIEW_VERDICTS))
+    if not isinstance(feedback, str) or len(feedback) > 32000:
+        raise ValueError("Feedback must be bounded text")
+    md, _, _ = paths(root, relative_md)
+    with Lock(md.with_suffix(".session.lock")):
+        state = load_session(root, relative_md)
+        question = next((q for q in state["questions"] if q["id"] == question_id), None)
+        if question is None:
+            raise ValueError("Unknown question")
+        response = next((e for e in reversed(state["events"]) if e["type"] == "response" and e.get("question_id") == question_id), None)
+        if response is None:
+            raise ValueError("No learner response to review; never invent an answer")
+        review = {"response_event_id": response["event_id"], "verdict": verdict, "feedback": feedback.strip(), "reviewed_at": _now()}
+        reviews = question.setdefault("reviews", [])
+        if not reviews or {k: v for k, v in reviews[-1].items() if k != "reviewed_at"} != {k: v for k, v in review.items() if k != "reviewed_at"}:
+            reviews.append(review)
+        # Transcript first, then the next question, so the page reads in the order things happened.
+        if transcript:
+            separator = "" if state["source_markdown"].endswith("\n\n") else "\n" if state["source_markdown"].endswith("\n") else "\n\n"
+            state["source_markdown"] += separator + transcript.strip("\n") + "\n"
+        if next_question is not None:
+            _append_question(state, next_question)
+        state["updated_at"] = _now()
+        return _save(root, relative_md, state)
+
+
+def pending_activity(state):
+    """Learner activity awaiting the session agent: unreviewed latest responses and unanswered questions."""
+    items = []
+    for q in state["questions"]:
+        events = [e for e in state["events"] if e.get("question_id") == q["id"]]
+        responses = [e for e in events if e["type"] == "response"]
+        if not responses:
+            continue
+        latest = responses[-1]
+        if latest["event_id"] in {r.get("response_event_id") for r in q.get("reviews", [])}:
+            continue
+        confidence = next((e["response"] for e in reversed(events) if e["type"] == "confidence"), None)
+        items.append({"kind": "response", "question_id": q["id"], "question_kind": q.get("kind", "free-response"),
+                      "prompt": q.get("prompt", ""), "event_id": latest["event_id"], "response": latest.get("response"),
+                      "created_at": latest.get("created_at"), "attempts": len(responses), "confidence": confidence,
+                      "hints_revealed": max([int(e["response"]) for e in events if e["type"] == "hint" and isinstance(e.get("response"), int)] or [0]),
+                      "solution_seen_before_response": any(e["type"] == "solution" and e.get("created_at", "") < latest.get("created_at", "") for e in events)})
+    for record in state.get("open_questions", []):
+        if not (isinstance(record.get("answer"), str) and record["answer"].strip()):
+            items.append({"kind": "open-question", "id": record.get("id"), "prompt": record.get("prompt"), "created_at": record.get("created_at")})
+    return items
+
+
+def wait_for_activity(root, relative_md, timeout=900.0, interval=1.0):
+    """Bounded poll for an explicit learner submission; returns immediately if work is pending.
+
+    Only explicit submissions count (Submit/Send), never idle timers or typing.
+    """
+    _, _, data = paths(root, relative_md)
+    deadline = time.monotonic() + max(0.0, float(timeout))
+    while True:
+        try:
+            items = pending_activity(validate_state(json.loads(data.read_text(encoding="utf-8"))))
+        except (OSError, ValueError, json.JSONDecodeError):
+            items = []  # A writer may be mid-replace; the next poll rereads.
+        if items or time.monotonic() >= deadline:
+            return {"session": str(relative_md), "pending": items, "timed_out": not items}
+        time.sleep(interval)
+
+
+def _wikilink_target(value):
+    if isinstance(value, list):
+        value = next((v for v in value if isinstance(v, str) and "[[" in v), value[0] if value else None)
+    if not isinstance(value, str):
+        return None
+    match = re.search(r"\[\[([^\]|#]+)", value)
+    return (match[1] if match else value).strip() or None
+
+
+def _project_note(root, metadata):
+    name = _wikilink_target(metadata.get("project")) or _wikilink_target(metadata.get("up"))
+    if not name:
+        return None
+    root = Path(root).resolve()
+    for candidate in (root / "01 Projects" / name / (name + ".md"), root / "01 Projects" / (name + ".md")):
+        if candidate.is_file():
+            return candidate
+    for directory, folders, files in os.walk(root):
+        folders[:] = [f for f in folders if not f.startswith(".")]
+        if name + ".md" in files:
+            return Path(directory) / (name + ".md")
+    return None
+
+
+def session_context(root, relative_md, project_root=None, learning_root=None, as_of=None):
+    """Resume brief: session state plus the project memory held in the research and knowledge graphs.
+
+    The HTML page is a view, not memory. Read-only: nothing here grades, accepts or writes.
+    """
+    root = Path(root).resolve()
+    state = load_session(root, relative_md)
+    brief = {"session": str(relative_md), "title": state["title"], "type": state["type"], "lifecycle": state.get("lifecycle"),
+             "updated_at": state.get("updated_at"), "pending": pending_activity(state), "questions": [], "project": None,
+             "research": None, "knowledge": None, "notes": []}
+    for q in state["questions"]:
+        responses = [e for e in state["events"] if e["type"] == "response" and e.get("question_id") == q["id"]]
+        review = (q.get("reviews") or [None])[-1]
+        brief["questions"].append({"id": q["id"], "kind": q.get("kind", "free-response"), "attempts": len(responses),
+                                   "latest_response": responses[-1].get("response") if responses else None,
+                                   "verdict": review["verdict"] if review and responses and review.get("response_event_id") == responses[-1]["event_id"] else None})
+    note = _project_note(root, state["metadata"])
+    front = parse_frontmatter(note.read_text(encoding="utf-8"))[0] if note else {}
+    if note:
+        project_id = front.get("project_id") or front.get("id") or re.sub(r"[^a-z0-9]+", "-", note.stem.lower()).strip("-")
+        brief["project"] = {"note": note.relative_to(root).as_posix(), "id": project_id, "path": front.get("path")}
+    elif state["metadata"].get("project"):
+        brief["notes"].append("Project link does not resolve to a vault note; locate the project note before teaching.")
+    project_root = Path(project_root) if project_root else Path(front["path"]) if front.get("path") else None
+    if learning_root is None:
+        learning_root = root / "02 Knowledge" if (root / "02 Knowledge").is_dir() else root
+    learning_root = Path(learning_root)
+    today = dt.date.fromisoformat(as_of) if as_of else dt.date.today()
+    mentioned = sorted(set(re.findall(r"\b(?:RQ|H|EXP|DEC)-\d{3,}\b", state["source_markdown"])))
+    try:
+        import research
+        if project_root is None or not project_root.is_dir():
+            brief["notes"].append("No project root resolved; pass --project-root to load the research graph.")
+        else:
+            registry = research.enrich(research.validate(project_root), project_root, None, learning_root, today, None)
+            if registry.records:
+                summary = research.status(registry, None)
+                brief["research"] = {"root": str(project_root), "records": len(registry.records),
+                    "errors": sum(d["severity"] == "ERROR" for d in summary["diagnostics"]),
+                    "active_questions": summary.get("active_questions", []), "active_hypotheses": summary.get("active_hypotheses", []),
+                    "frontier": research.frontier(registry),
+                    "pending_validation": summary.get("pending_validation", []), "pending_human_decisions": summary.get("pending_human_decisions", []),
+                    "session_records": [{"id": k, "type": registry.records[k].type, "status": registry.records[k].meta["status"], "title": registry.records[k].title}
+                                        for k in mentioned if k in registry.records]}
+            else:
+                brief["notes"].append(f"No schema-1 research records under {project_root}.")
+    except ImportError:
+        brief["notes"].append("research.py is not bundled here; run the research-session skill's research.py context.")
+    try:
+        import knowledge
+        project_id = brief["project"]["id"] if brief["project"] else None
+        if learning_root.is_dir() and project_id:
+            result = knowledge.query(knowledge.discover(learning_root.resolve(), today), "project", project_id, True)
+            nodes = result.get("nodes", [])
+            counts = {}
+            for node in nodes:
+                counts[node["state"]] = counts.get(node["state"], 0) + 1
+            pick = lambda test: [{"id": n["id"], "title": n["title"], "state": n["state"], "freshness": n["freshness"]} for n in nodes if test(n)][:15]
+            brief["knowledge"] = {"root": str(learning_root), "project": project_id, "capabilities": len(nodes), "states": counts,
+                                  "frontier": pick(lambda n: n.get("frontier")), "stale_or_due": pick(lambda n: n.get("freshness") in {"due", "overdue"} or n.get("state") in {"stale", "fragile"}),
+                                  "diagnostics": result.get("diagnostics", [])[:10]}
+    except ImportError:
+        brief["notes"].append("knowledge.py is not bundled here; run the tutor skill's knowledge.py query.")
+    return brief
+
+
+def render_context(brief):
+    """Compact Markdown for an agent resuming the session."""
+    lines = [f"# Resume brief: {brief['title']}", "", f"Session `{brief['session']}` ({brief['type']}, {brief['lifecycle']}), updated {brief['updated_at']}.", ""]
+    lines += ["## Awaiting you", ""]
+    for item in brief["pending"]:
+        if item["kind"] == "response":
+            lines.append(f"- Review `{item['question_id']}` ({item['question_kind']}, attempt {item['attempts']}, confidence {item['confidence']}, hints {item['hints_revealed']}): {json.dumps(item['response'], ensure_ascii=False)[:400]}")
+        else:
+            lines.append(f"- Answer open question `{item['id']}`: {str(item['prompt'])[:400]}")
+    if not brief["pending"]:
+        lines.append("- Nothing pending. Run `wait` to listen for the next submission.")
+    lines += ["", "## Questions", ""] + [f"- `{q['id']}` {q['kind']}: {q['attempts']} attempt(s), verdict {q['verdict'] or '-'}" for q in brief["questions"]]
+    if brief["project"]:
+        lines += ["", "## Project memory", "", f"- Project note: `{brief['project']['note']}` (read its current state before teaching or deciding)", f"- Project ID `{brief['project']['id']}`, root `{brief['project']['path']}`"]
+    research = brief["research"]
+    if research:
+        lines += ["", "## Research graph", "", f"- {research['records']} records under `{research['root']}`, {research['errors']} validation error(s)",
+                  "- Active questions: " + (", ".join(research["active_questions"]) or "none"), "- Active hypotheses: " + (", ".join(research["active_hypotheses"]) or "none"),
+                  "- Frontier (unranked): " + (", ".join(f"{f['id']} {f['transition']}" for f in research["frontier"]) or "none"),
+                  "- Awaiting human decision: " + (", ".join(research["pending_human_decisions"]) or "none") + "; awaiting result validation: " + (", ".join(research["pending_validation"]) or "none")]
+        for record in research["session_records"]:
+            lines.append(f"- Session refers to {record['id']} ({record['type']}, {record['status']}): {record['title']}; load it with `research.py context --root \"{research['root']}\" --{ {'research-question': 'question', 'research-decision': 'decision'}.get(record['type'], record['type'])} {record['id']}`")
+    knowledge = brief["knowledge"]
+    if knowledge:
+        lines += ["", "## Knowledge graph", "", f"- {knowledge['capabilities']} capabilities for `{knowledge['project']}` under `{knowledge['root']}`: " + ", ".join(f"{k} {v}" for k, v in sorted(knowledge["states"].items()))]
+        lines += [f"- Frontier: {n['title']} ({n['id']}, {n['state']})" for n in knowledge["frontier"]]
+        lines += [f"- Stale, fragile or due: {n['title']} ({n['id']}, {n['state']}, {n['freshness']})" for n in knowledge["stale_or_due"]]
+    lines += [f"- Note: {n}" for n in brief["notes"]]
+    return "\n".join(lines) + "\n"
 
 
 def export_session(root, relative_md, destination):
@@ -977,6 +1242,19 @@ def main():
     append = sub.add_parser("append"); append.add_argument("session"); append.add_argument("--source", required=True, type=Path)
     event = sub.add_parser("event"); event.add_argument("session"); event.add_argument("--source", required=True, type=Path)
     answer = sub.add_parser("answer"); answer.add_argument("session"); answer.add_argument("question_id"); answer.add_argument("--source", required=True, type=Path)
+    question = sub.add_parser("add-question", help="Post one question (JSON); open views show it live")
+    question.add_argument("session"); question.add_argument("--source", required=True, type=Path)
+    review = sub.add_parser("review", help="Record the tutor verdict on the latest response; shown in place of 'Checking...'")
+    review.add_argument("session"); review.add_argument("question_id")
+    review.add_argument("--verdict", required=True, choices=REVIEW_VERDICTS)
+    review.add_argument("--feedback", type=Path, help="UTF-8 text file with the feedback shown beside the question")
+    review.add_argument("--next-question", type=Path, help="JSON question posted in the same save")
+    review.add_argument("--transcript", type=Path, help="Markdown appended to the session transcript in the same save")
+    wait = sub.add_parser("wait", help="Block until an explicit learner submission awaits the agent (bounded)")
+    wait.add_argument("session"); wait.add_argument("--timeout", type=float, default=900.0)
+    resume = sub.add_parser("context", help="Resume brief: pending learner activity plus research and knowledge graph state")
+    resume.add_argument("session"); resume.add_argument("--project-root", type=Path); resume.add_argument("--learning-root", type=Path)
+    resume.add_argument("--as-of"); resume.add_argument("--json", action="store_true")
     recovery = sub.add_parser("recover"); recovery.add_argument("session"); recovery.add_argument("--apply", action="store_true")
     bridge = sub.add_parser("import"); bridge.add_argument("session"); bridge.add_argument("--apply", action="store_true")
     export = sub.add_parser("export"); export.add_argument("session"); export.add_argument("destination", type=Path)
@@ -1008,12 +1286,34 @@ def main():
         result = append_event(root, args.session, json.loads(args.source.read_text(encoding="utf-8")))
     elif args.command == "answer":
         result = answer_open_question(root, args.session, args.question_id, args.source.read_text(encoding="utf-8"))
+    elif args.command == "add-question":
+        result = add_question(root, args.session, json.loads(args.source.read_text(encoding="utf-8")))
+    elif args.command == "review":
+        result = review_response(root, args.session, args.question_id, args.verdict,
+                                 args.feedback.read_text(encoding="utf-8") if args.feedback else "",
+                                 json.loads(args.next_question.read_text(encoding="utf-8")) if args.next_question else None,
+                                 args.transcript.read_text(encoding="utf-8") if args.transcript else None)
+    elif args.command == "wait":
+        result = wait_for_activity(root, args.session, args.timeout)
+    elif args.command == "context":
+        brief = session_context(root, args.session, args.project_root, args.learning_root, args.as_of)
+        if not args.json:
+            if hasattr(sys.stdout, "reconfigure"):
+                sys.stdout.reconfigure(encoding="utf-8")
+            sys.stdout.write(render_context(brief))
+            return
+        result = brief
     elif args.command == "recover":
         result = recover_session(root, args.session, args.apply)
     elif args.command == "import":
         result = import_bridge(root, args.session, args.apply)
     else:
         result = migrate(root, args.apply, args.journal, args.resume, args.rollback)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if isinstance(result, dict) and "source_markdown" in result:
+        # Write commands report what changed, not the whole session body.
+        result = {"session": args.session, "updated_at": result.get("updated_at"), "questions": len(result["questions"]), "pending": pending_activity(result)}
     print(json.dumps(result, ensure_ascii=False, indent=2))
     if args.command == "validate" and result:
         raise SystemExit(1)

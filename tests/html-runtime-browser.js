@@ -46,23 +46,24 @@ function document(theme) {
     assert.match(await frame.locator('[data-math-status="unsupported"]').innerText(),/unknownmacro/);
     const mcq=frame.locator('[data-question-id="mcq"]');
     // Solutions and later hints are offered only once they can be used: no dead clicks.
-    assert.equal(await mcq.getByRole('button',{name:'Show solution'}).isVisible(),false);
+    // The explanation is not a button: it appears with the check, never before an attempt.
+    assert.equal(await mcq.getByRole('button',{name:'Show solution'}).count(),0);
     assert.equal(await mcq.locator('[data-ros="solution"]').isVisible(),false);
     assert.equal(await mcq.getByRole('button',{name:'Reveal hint 2'}).isVisible(),false);
     await mcq.getByRole('button',{name:'Reveal hint 1'}).click();
     await mcq.getByRole('button',{name:'Reveal hint 2'}).click();
     await mcq.locator('input[value="B"]').check();
     await mcq.getByRole('button',{name:'Submit response'}).click();
-    assert.match(await mcq.locator('[data-ros-feedback]').innerText(),/Matches/);
+    assert.match(await mcq.locator('[data-ros-feedback]').innerText(),/Correct/);
+    assert.equal(await mcq.locator('[data-ros="solution"]').isVisible(),true);
     await mcq.getByRole('button',{name:'4 of 5'}).click();
     assert.equal(await mcq.getByRole('button',{name:'4 of 5'}).getAttribute('aria-pressed'),'true');
-    await mcq.getByRole('button',{name:'Show solution'}).click();
     const multi=frame.locator('[data-question-id="multi"]');
     await multi.locator('input[value="A"]').check(); await multi.locator('input[value="C"]').check();await multi.getByRole('button',{name:'Submit response'}).click();
     const numeric=frame.locator('[data-question-id="numeric"]');await numeric.locator('input[type="number"]').fill('2.05');await numeric.locator('input:not([type="number"])').fill('m');await numeric.getByRole('button',{name:'Submit response'}).click();
     const matching=frame.locator('[data-question-id="matching"]');await matching.locator('select').nth(0).selectOption('x');await matching.locator('select').nth(1).selectOption('y');await matching.getByRole('button',{name:'Submit response'}).click();
     const ordering=frame.locator('[data-question-id="ordering"]');await ordering.locator('select').nth(0).selectOption('a');await ordering.locator('select').nth(1).selectOption('b');await ordering.getByRole('button',{name:'Submit response'}).click();
-    const free=frame.locator('[data-question-id="free"]');await free.locator('textarea').fill('Independent reasoning');await free.getByRole('button',{name:'Submit response'}).click();assert.match(await free.locator('[data-ros-feedback]').innerText(),/human review/);
+    const free=frame.locator('[data-question-id="free"]');await free.locator('textarea').fill('Independent reasoning');await free.getByRole('button',{name:'Submit response'}).click();assert.equal(await free.locator('[data-ros-feedback]').isVisible(),false);
     await frame.locator('form[data-ros="open-question"] textarea').fill('Why is the variance finite?');await frame.getByRole('button',{name:'Send',exact:true}).click();
     assert.equal(await frame.locator('.ros-question-composer button').innerText(),'Send');
     assert.equal(await frame.locator('#ros-open-question-input').inputValue(),'');

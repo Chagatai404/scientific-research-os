@@ -74,6 +74,9 @@ legacy notes are simply untracked), from this skill's directory:
 
 **Start:**
 
+0. When continuing a session, read its resume brief first
+   (`python scripts/html_sessions.py --root <vault> context <session>`): it shows
+   unchecked learner activity alongside this registry's state and the knowledge graph.
 1. Validate the registry: `python scripts/research.py validate --root <project>`.
    Errors are repaired before anything is built on them.
 2. Read the frontier: `research.py frontier --root <project>` (unranked; a
@@ -157,6 +160,9 @@ Obsidian understanding remains human-reviewed, not an automatic session log.
 When this workflow creates or continues a substantive session, follow
 `references/HTML_SESSION_PROTOCOL.md`: use the centralized
 `scripts/html_sessions.py` API, preserve Markdown backlinks, produce HTML and
-structured state, and validate the artifacts. Read persisted answers and unresolved
-questions before resuming. Ordinary notes, evidence records and source files retain
+structured state, and validate the artifacts. Before creating or resuming, run
+`scripts/html_sessions.py context <session>`: it lists unchecked answers and open
+questions and loads the project's research and knowledge graphs, which remain the
+memory; the page is only a view. Post questions, checks and teaching through the
+live loop in that protocol so the session reads in order and updates without reload. Ordinary notes, evidence records and source files retain
 their canonical formats. Browser feedback never automatically establishes mastery.

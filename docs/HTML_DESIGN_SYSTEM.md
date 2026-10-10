@@ -52,12 +52,16 @@ Scroll tracking and section focus are visual operations, without session events.
   readable, inert citations under the existing host policy.
 
 Tutor controls use whole-row choices with a letter key over the native input,
-native input labels, visible keyboard focus, and one open question at a time.
-Nothing asks for a dead click or a wait: the next hint button appears only after
-the previous hint, Show solution appears only after an attempt, confidence is a
-single-click 1–5 scale, and Clear response becomes Undo clear until the draft
-changes again (no timers). Feedback follows the existing assessment
-logic. Missing answer keys and free responses remain pending human review.
+native input labels and visible keyboard focus. Questions sit in session order
+(probe, teaching, next question) and stay open until the learner collapses one.
+Nothing asks for a dead click: the next hint button appears only after the previous
+hint, Submit shows "Checking…" until the response is checked, and the verdict and
+explanation then appear together under the answer with no extra button. Confidence
+is a single-click 1–5 scale, and Clear response becomes Undo clear until the draft
+changes again (no timers). An answer key gives an immediate local check; otherwise
+the tutor's recorded review supplies the verdict. There is no placeholder box while
+a response waits. New content arrives in place, briefly marked, with a "New question
+below" button when it lands out of view.
 Clear response clears the draft; it never deletes history. Progress counts
 recorded responses, without awarding mastery or evidence credit. Open questions
 remain available throughout the session.

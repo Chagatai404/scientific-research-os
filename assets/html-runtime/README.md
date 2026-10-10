@@ -17,33 +17,40 @@ controls are generated from structured questions. Supported kinds: `mcq`, `multi
 `{value,label}` objects. Answers are an option value or zero-based numeric index
 for MCQ; an array for multiple selection/ordering; a key/value map for matching;
 a finite number for numeric. Numeric tolerance is absolute; units are exact labels,
-without implicit unit conversion. Free responses await human review.
+without implicit unit conversion. Free responses await the tutor's review.
 
-Hints reveal progressively: only the next hint is offered. Show solution appears
-once a response is attempted. Confidence is a one-click 1–5 scale. These gates
+Hints reveal progressively: only the next hint is offered. Submitting shows
+"Checking…" until the response is checked: immediately after the save when the
+question has an answer key, otherwise when the tutor records a review
+(`question.reviews[]`: `response_event_id`, `verdict`, `feedback`, `reviewed_at`).
+The verdict and the prepared explanation then appear together under the answer; a
+`solution` event records that the explanation was shown. Confidence is a one-click 1–5 scale. These gates
 support teaching, not secrecy: prepared answers are present in the session data.
 Browser feedback never proves mastery or retained understanding. Session events
 record response, hint, solution, confidence, checkpoint and open-question actions.
 Canonical capability ledgers and existing human review remain authoritative.
 
-Tutor presentation uses a single-open native disclosure per question. Opening or
-closing a question changes only the view; it does not emit evidence or impose a
-new question-lock policy. Reopening starts with the first question without a
-recorded response (or the last question when all have responses). Other session
-types retain their expanded question layout. Recorded questions show a compact
-summary and can be reopened for review or another attempt.
+Tutor presentation uses a native disclosure per question, open by default; nothing
+collapses a question except the learner. Opening or closing changes only the view;
+it does not emit evidence or impose a question-lock policy. Questions render where
+their `<!-- ros-question: <id> -->` marker sits in the source, so the page follows
+the session's order; questions without a marker follow the content.
+
+Live updates: the host posts `{type:'update', state, body?}` after an external write.
+The runtime keeps every unchanged top-level node (drafts, open panels, focus, scroll),
+inserts only new or changed nodes and enhances them, renumbers questions and marks
+arrivals. It posts `{type:'ready'}` once it can accept updates.
 
 MCQ/multiple-selection rows have decorative letter badges; accessible input names
 remain the authored option labels. Selected rows show prepared-criteria feedback
-only after submission. A missing answer and free response always await human
-review. Changing a draft clears its old correctness styling. Clear response resets
+only after the check. Changing a draft clears its old correctness styling. Clear response resets
 only the draft fields (and offers Undo clear until the draft changes), preserving saved attempts, hints, solutions and confidence.
 It emits no reset event and does not decrement recorded-response progress.
 
 The progress bar counts distinct questions with a response event, including pending
 in-page attempts. It does not count correct answers, concepts learned, open questions,
 confidence or hint events. Host save acknowledgement/failure remains in the existing
-status line. Progress and the single-open view create no canonical state fields.
+status line. Progress and disclosure state create no canonical state fields.
 
 Generated section navigation preserves authored heading order and stable anchors,
 omitting the repeated document title. At 1440px and wider, Contents occupies a

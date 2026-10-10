@@ -53,19 +53,18 @@ async function main() {
     assert.equal(requests.filter(x=>/^https?:/.test(x)).length,0);
     assert.equal(await iframe.locator('[data-math-status="rendered"]').count(),2);
     const mcq=iframe.locator('[data-question-id="mcq"]');
-    assert.equal(await mcq.getByRole('button',{name:'Show solution'}).isVisible(),false);
+    assert.equal(await mcq.getByRole('button',{name:'Show solution'}).count(),0);
     assert.equal(await mcq.locator('[data-ros="solution"]').isVisible(),false);
     await mcq.getByLabel('two',{exact:true}).check();
     await mcq.getByRole('button',{name:'Submit response'}).click();
     await iframe.getByText('Progress saved.',{exact:false}).waitFor({timeout:3000});
-    await mcq.getByRole('button',{name:'Show solution'}).click();
-    assert.equal(await mcq.locator('[data-ros="solution"]').isVisible(),true);
+    // Once the save is confirmed the explanation is already on screen.
+    await mcq.locator('[data-ros="solution"]').waitFor();
     const numeric=iframe.locator('[data-question-id="num"]');
-    await numeric.locator('summary.ros-question-summary').click();
     await numeric.getByLabel('Value:',{exact:true}).fill('3.05');
     await numeric.getByLabel('Units:',{exact:true}).fill('m/s');
     await numeric.getByRole('button',{name:'Submit response'}).click();
-    await numeric.getByText('Matches the prepared criteria.',{exact:false}).waitFor();
+    await numeric.locator('.ros-feedback[data-state=matches]').waitFor();
     await iframe.getByLabel('Ask an open question during this session:',{exact:true}).fill('Why is the variance finite?');
     await iframe.getByRole('button',{name:'Send',exact:true}).click();
     await iframe.getByText('Progress saved.',{exact:false}).waitFor();

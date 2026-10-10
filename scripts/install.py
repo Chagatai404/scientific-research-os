@@ -37,6 +37,12 @@ GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py",
                  "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py")
 
 
+# Every substantive workflow writes HTML sessions, and `html_sessions.py context` loads the
+# research and knowledge graphs in-process, so each skill carries these helpers.
+SESSION_HELPERS = ("html_sessions.py", "common.py", "research.py", "knowledge.py", "ontology.py",
+                   "validate_evidence.py", "computational_manifest.py")
+
+
 def copy_dir(src: Path, dst: Path, dry: bool) -> None:
     print(f"{'[dry] ' if dry else ''}{src} -> {dst}")
     if dry:
@@ -107,7 +113,7 @@ def install_skills(base: Path, dry: bool) -> None:
             copy_file(ROOT / "scripts" / "validate_evidence.py",
                       destination / "scripts" / "validate_evidence.py", dry)
         # HTML sessions are mandatory for every substantive workflow.
-        for helper in ("html_sessions.py", "common.py"):
+        for helper in SESSION_HELPERS:
             copy_file(ROOT / "scripts" / helper, destination / "scripts" / helper, dry)
         copy_dir(ROOT / "assets/html-runtime", destination / "assets/html-runtime", dry)
         if skill.name in GRAPH_SKILLS:

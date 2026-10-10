@@ -28,6 +28,51 @@ Review actual reasoning and assistance through the existing learning protocol be
 adding ledger attempts. Never fabricate learning history or promote permanent notes.
 EvidenceAtoms, exact citations, provenance and research decisions stay authoritative.
 
+## Memory before the page
+
+The HTML page is a view of the session, not the agent's memory. Before creating,
+continuing or resuming any session, run
+`python scripts/html_sessions.py --root <vault> context <session>` and read the
+whole brief: learner activity awaiting you, the project note, the research graph
+(validation errors, active questions and hypotheses, frontier, decisions and
+validations awaiting the researcher, and the records this session refers to) and
+the knowledge graph (capability states, frontier, stale/fragile/due capabilities).
+Then run the workflow's own session-start steps: `research.py context` for the
+chosen branch, `knowledge.py`/`tutor_plan.py` for the target capability,
+`visuals.py --reusable`, retention checks and the project's Obsidian note. Never
+teach or decide from chat memory alone. At block end update the canonical records
+the workflow owns (learning ledger, research records, derived knowledge maps); the
+session state never substitutes for them. Pass `--project-root`/`--learning-root`
+when the project note does not resolve.
+
+## Live tutoring loop
+
+Open pages update in place when the session changes: no reload, the learner's
+drafts, open panels and scroll position survive, and new content is marked as it
+arrives. Write in increments as they are ready, so the learner sees the session
+develop instead of waiting for a whole block.
+
+1. Post one question at a time with `add-question <session> --source q.json`.
+   It is placed at the current end of the session (an invisible
+   `<!-- ros-question: <id> -->` marker), so the page reads in the order things
+   happened: probe questions, then the teaching block, then the next questions.
+   Append a teaching block with `append` before posting the question that follows it.
+   Give every question a `solution` that explains the reasoning, not only the key.
+2. Listen with `wait <session> --timeout 900` (run it in the background where the
+   host supports it). It returns only on an explicit Submit or Send.
+3. Read the actual response, confidence, hints and attempts it reports, then record
+   your check: `review <session> <question-id> --verdict correct|partially-correct|incorrect|reviewed
+   --feedback f.txt [--transcript t.md] [--next-question q.json]`. The learner sees
+   "Checking…" until then; your verdict, feedback and the prepared explanation then
+   appear under their answer, followed by the transcript entry and next question.
+4. Answer open questions with `answer`; they appear in place the same way.
+
+An `answer` key gives MCQ/numeric questions an immediate local check; omit it when
+the reasoning must be reviewed. Verdicts are pending tutor feedback, never ledger
+evidence: canonical attempts still follow the learning protocol. Keep the
+transcript chronological (append only). Questions created before markers existed
+render after the content; place them by adding their markers through `update`.
+
 ## Teaching and interaction
 
 Use this sequence: objectives/prerequisite recall → foundations → intuition →
