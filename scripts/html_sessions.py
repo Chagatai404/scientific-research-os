@@ -452,8 +452,10 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
             data = resource_images.get(identifier)
             return image[:-1] + ' src="' + html.escape(data, quote=True) + '">' if data else image
         content = re.sub(r'<img data-resource-id="[^"]+"[^>]*>', embed_image, content)
-    anchors = re.findall(r'<h[1-6] id="([^"]+)"[^>]*>(.*?)</h[1-6]>', content)
-    navigation = '<nav aria-label="Session sections"><details><summary>Contents</summary><ul>' + ''.join('<li><a href="#' + anchor + '">' + label + '</a></li>' for anchor,label in anchors) + '</ul></details></nav>'
+    anchors = re.findall(r'<h([1-6])\b[^>]*\bid="([^"]+)"[^>]*>(.*?)</h\1>', content, re.S)
+    navigation = ('<nav class="ros-toc" aria-label="Session sections"><details class="ros-toc-panel" open><summary>Contents</summary><ul>'
+                  + ''.join('<li data-level="' + level + '"><a href="#' + anchor + '">' + label + '</a></li>' for level,anchor,label in anchors)
+                  + '</ul></details></nav>') if anchors else ''
     metadata = state.get('metadata', {})
     session_kind = state['type'].replace('-', ' ').capitalize()
     status = str(state.get('lifecycle', '')).replace('-', ' ').capitalize()

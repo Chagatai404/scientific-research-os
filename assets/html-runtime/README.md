@@ -40,6 +40,15 @@ in-page attempts. It does not count correct answers, concepts learned, open ques
 confidence or hint events. Host save acknowledgement/failure remains in the existing
 status line. Progress and the single-open view create no canonical state fields.
 
+Generated section navigation preserves authored heading order and stable anchors,
+omitting the repeated document title. At 1440px and wider, Contents occupies a
+sticky margin rail; narrower panes use a keyboard-operable native disclosure.
+Scroll position sets `aria-current="location"` on the active visible section.
+Following a section link opens any authored ancestor disclosure, focuses the
+heading, and closes narrow Contents. Navigation emits no learning event, changes
+no canonical fields and uses no external navigation privileges. Without the
+runtime, the generated native Contents disclosure remains open and usable.
+
 Math elements carry `data-tex` and optional `data-display="true"`. Unsupported
 commands visibly preserve original TeX. KaTeX uses `trust:false` and bounded
 expansion/size; its geometry needs iframe-local style attributes. Numbered

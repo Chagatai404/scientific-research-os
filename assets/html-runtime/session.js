@@ -113,6 +113,43 @@
       for (const panel of questionPanels) panel.state.textContent = hasAttempt(panel.id) ? 'Response recorded · Review pending' : 'Awaiting response';
     }
     updateProgress();
+    const toc = mount.querySelector('.ros-toc');
+    if (toc) {
+      const disclosure = toc.querySelector('details');
+      const wide = root.matchMedia('(min-width: 1440px)');
+      const entries = [...toc.querySelectorAll('a[href^="#"]')].map(link => ({link, heading:doc.getElementById(link.getAttribute('href').slice(1))})).filter(entry=>entry.heading);
+      function updateSection() {
+        let active = entries.find(entry => entry.heading.getClientRects().length);
+        for (const entry of entries) if (entry.heading.getClientRects().length && entry.heading.getBoundingClientRect().top <= 120) active = entry;
+        for (const entry of entries) {
+          if (entry === active) entry.link.setAttribute('aria-current', 'location');
+          else entry.link.removeAttribute('aria-current');
+        }
+      }
+      let scheduled = false;
+      function scheduleSection() {
+        if (scheduled) return; scheduled = true;
+        root.requestAnimationFrame(() => { scheduled = false; updateSection(); });
+      }
+      const summary = disclosure?.querySelector('summary');
+      function resizeNavigation() {
+        if (disclosure) disclosure.open = wide.matches;
+        if (summary) summary.tabIndex = wide.matches ? -1 : 0;
+        scheduleSection();
+      }
+      summary?.addEventListener('click', event => { if (wide.matches) event.preventDefault(); });
+      wide.addEventListener('change', resizeNavigation); resizeNavigation();
+      root.addEventListener('scroll', scheduleSection, {passive:true});
+      root.addEventListener('resize', scheduleSection, {passive:true});
+      mount.addEventListener('toggle', scheduleSection, true);
+      for (const {link, heading} of entries) link.addEventListener('click', event => {
+        event.preventDefault();
+        if (!wide.matches && disclosure) disclosure.open = false;
+        for (let parent = heading.parentElement; parent && parent !== mount; parent = parent.parentElement) if (parent.tagName === 'DETAILS') parent.open = true;
+        if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+        heading.focus({preventScroll:true}); heading.scrollIntoView({block:'start', behavior:'auto'}); scheduleSection();
+      });
+    }
     const download = button(host ? 'Show progress JSON to copy' : 'Download progress JSON', () => {
       if (host) {
         const panel = node('details'); panel.open = true; panel.append(node('summary', 'Progress recovery JSON'));

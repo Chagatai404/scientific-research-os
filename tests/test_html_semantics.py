@@ -130,6 +130,23 @@ class SemanticRenderingTests(unittest.TestCase):
 
 
 class EducationalComponents(unittest.TestCase):
+    def test_contents_matches_attribute_order_and_preserves_heading_hierarchy(self):
+        source = '# Lesson\n\n## First **section**\n\n### Detail\n\n## First **section**'
+        state = {'schema_version':1,'session_id':'toc-fixture','type':'tutor-session','title':'Lesson',
+                 'source_markdown':source,'metadata':{},'questions':[],'events':[],'open_questions':[]}
+        markup = hs.render_html(state)
+        tree = Tree(markup)
+        headings = tree.tagged('h2') + tree.tagged('h3')
+        links = tree.tagged('a')
+        self.assertEqual(len(links),3)
+        self.assertEqual({n['attrs']['href'][1:] for n in links}, {n['attrs']['id'] for n in headings})
+        self.assertIn('data-level="3"',markup)
+        self.assertIn('<strong>section</strong>',markup)
+        self.assertNotIn('#section-' + hs._hash(b'Lesson')[:12],markup)
+        self.assertEqual(state['source_markdown'],source)
+        state['source_markdown']='# Lesson\n\nOnly prose.'
+        self.assertNotIn('class="ros-toc"',hs.render_html(state))
+
     def test_scientific_table_alignment_and_literal_pipes(self):
         markup = hs.markdown_html('| Quantity | Value |\n| --- | ---: |\n| `a|b` | 2.0 |\n| escaped\\|pipe | $x^2$ |')
         tree = Tree(markup)

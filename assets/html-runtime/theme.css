@@ -106,6 +106,25 @@ nav > details { border-radius: var(--ros-radius-sm); padding: var(--ros-space-2)
 nav ul { margin: var(--ros-space-3) 0; }
 nav a { text-decoration: none; }
 nav a:hover { text-decoration: underline; }
+.ros-toc { font: 13px/1.5 var(--ros-font-ui); }
+.ros-toc > details { border: 1px solid var(--ros-border); background: var(--ros-surface); padding: 0; border-radius: var(--ros-radius-md); }
+.ros-toc summary { padding: 12px 16px; min-height: 44px; color: var(--ros-text); font-size: 14px; }
+.ros-toc details[open] > summary { border-bottom: 1px solid var(--ros-border); margin-bottom: 0; }
+.ros-toc ul { list-style: none; padding: 8px; margin: 0; }
+.ros-toc li { padding: 0; margin: 0; }
+.ros-toc a { display: block; padding: 10px 12px; min-height: 44px; border-left: 2px solid transparent; border-radius: var(--ros-radius-sm); color: var(--ros-text-muted); overflow-wrap: anywhere; }
+.ros-toc a[aria-current=location] { color: var(--ros-accent); border-left-color: var(--ros-accent); background: var(--ros-surface-subtle); font-weight: 600; }
+.ros-toc li[data-level="3"] a { padding-left: 24px; }
+.ros-toc li:is([data-level="4"],[data-level="5"],[data-level="6"]) a { padding-left: 36px; }
+@media (min-width: 1440px) {
+  .ros-document:has(.ros-toc) { margin-left: calc((100vw - var(--ros-content-width) - 2 * var(--ros-space-7)) / 2 + 120px); }
+  .ros-toc { float: left; position: sticky; top: 24px; width: 208px; margin: 0 152px 0 -360px; max-height: calc(100vh - 48px); overflow-y: auto; }
+  .ros-toc > details { border: 0; background: transparent; }
+  .ros-toc summary { list-style: none; padding: 8px 12px; min-height: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--ros-text-muted); }
+  .ros-toc details[open] > summary { border-bottom: 0; }
+  .ros-toc ul { padding: 0; }
+  .ros-toc a { padding: 6px 12px; min-height: 44px; }
+}
 :is(h1,h2,h3,h4,h5,h6)[data-ros] { background: none; border: 0; border-radius: 0; }
 blockquote { margin: var(--ros-space-5) 0; border-left: 3px solid var(--ros-border-strong); padding: 0 var(--ros-space-5); color: var(--ros-text-muted); }
 .ros-callout { border: 1px solid var(--ros-border); border-left: 3px solid var(--ros-info); border-radius: var(--ros-radius-md); margin: var(--ros-space-5) 0; background: var(--ros-surface); overflow: hidden; }
@@ -269,6 +288,8 @@ form[data-ros=open-question]:not(.ros-open-question) { border-top: 1px solid var
     --ros-practice-bg: white; --ros-warning-bg: white; --ros-accent: #245d78;
   }
   button, form, .ros-status { display: none; }
+  .ros-toc { display: none; }
+  .ros-document:has(.ros-toc) { margin-left: 0; }
   main { max-width: none; padding: 0; margin: 0; box-shadow: none; }
   h1, h2, h3 { break-after: avoid; }
   figure { break-inside: avoid; }
