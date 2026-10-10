@@ -193,6 +193,36 @@ class SessionTests(unittest.TestCase):
         self.assertNotIn('src="', text)
         self.assertTrue((self.root / ".research-os/runtime/session.js").exists())
 
+    def test_refresh_projection_preserves_canonical_files_and_backups(self):
+        hs.create_session(self.root,'a.md','# Lesson\n\n## Section\n\nSource')
+        protected = {p:p.read_bytes() for p in [self.root/'a.md',self.root/'a.state.json']}
+        view=self.root/'a.html';view.write_text('old projection',encoding='utf-8')
+        backup=self.root/'backups'
+        self.assertTrue(hs.refresh_projection(self.root,'a.md',backup)['changed'])
+        self.assertEqual(view.read_text(),'old projection')
+        report=hs.refresh_projection(self.root,'a.md',backup,apply=True)
+        self.assertEqual(Path(report['backup']).read_text(),'old projection')
+        self.assertIn('ros-toc',view.read_text(encoding='utf-8'))
+        self.assertTrue(all(p.read_bytes()==raw for p,raw in protected.items()))
+        self.assertFalse(hs.refresh_projection(self.root,'a.md',backup,apply=True)['changed'])
+
+    def test_inline_approved_image_export_preserves_placement_and_state(self):
+        folder = self.root / 'a.assets'
+        folder.mkdir()
+        (folder / 'plot.png').write_bytes(b'local-image-fixture')
+        source = 'Before\n\n![Plot](resource:plot "Authored caption")\n\nAfter'
+        hs.create_session(self.root, 'a.md', source, resources=[{'id':'plot', 'kind':'image', 'path':'a.assets/plot.png'}])
+        before = (self.root / 'a.state.json').read_bytes()
+        hs.export_session(self.root, 'a.md', self.root / 'export.html')
+        output = (self.root / 'export.html').read_text(encoding='utf-8')
+        article = output.split('<main ', 1)[1].split('</main>', 1)[0]
+        self.assertEqual(article.count('<img '), 1)
+        self.assertIn('src="data:image/png;base64,', output)
+        self.assertLess(output.index('<p>Before</p>'), output.index('<img '))
+        self.assertLess(output.index('<img '), output.index('<p>After</p>'))
+        self.assertIn('<figcaption>Authored caption</figcaption>', output)
+        self.assertEqual((self.root / 'a.state.json').read_bytes(), before)
+
 
 class MigrationTests(SessionTests):
     def seed(self):

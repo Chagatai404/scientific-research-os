@@ -21,6 +21,34 @@ Browser feedback never proves mastery or retained understanding. Session events
 record response, hint, solution, confidence, checkpoint and open-question actions.
 Canonical capability ledgers and existing human review remain authoritative.
 
+Tutor presentation uses a single-open native disclosure per question. Opening or
+closing a question changes only the view; it does not emit evidence or impose a
+new question-lock policy. Reopening starts with the first question without a
+recorded response (or the last question when all have responses). Other session
+types retain their expanded question layout. Recorded questions show a compact
+summary and can be reopened for review or another attempt.
+
+MCQ/multiple-selection rows have decorative letter badges; accessible input names
+remain the authored option labels. Selected rows show prepared-criteria feedback
+only after submission. A missing answer and free response always await human
+review. Changing a draft clears its old correctness styling. Clear response resets
+only the draft fields, preserving saved attempts, hints, solutions and confidence.
+It emits no reset event and does not decrement recorded-response progress.
+
+The progress bar counts distinct questions with a response event, including pending
+in-page attempts. It does not count correct answers, concepts learned, open questions,
+confidence or hint events. Host save acknowledgement/failure remains in the existing
+status line. Progress and the single-open view create no canonical state fields.
+
+Generated section navigation preserves authored heading order and stable anchors,
+omitting the repeated document title. At 1440px and wider, Contents occupies a
+sticky margin rail; narrower panes use a keyboard-operable native disclosure.
+Scroll position sets `aria-current="location"` on the active visible section.
+Following a section link opens any authored ancestor disclosure, focuses the
+heading, and closes narrow Contents. Navigation emits no learning event, changes
+no canonical fields and uses no external navigation privileges. Without the
+runtime, the generated native Contents disclosure remains open and usable.
+
 Math elements carry `data-tex` and optional `data-display="true"`. Unsupported
 commands visibly preserve original TeX. KaTeX uses `trust:false` and bounded
 expansion/size; its geometry needs iframe-local style attributes. Numbered

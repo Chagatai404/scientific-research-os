@@ -213,87 +213,216 @@ def validate_state(state):
 
 
 def _inline(text):
-    # Tokenize math/code before prose styling: TeX must remain byte-for-byte literal.
-    tokens = re.split(r"(\$[^$\n]+\$|`[^`]+`)", text)
-    rendered = []
-    for token in tokens:
-        if token.startswith("$") and token.endswith("$") and len(token) > 2:
-            tex = html.escape(token[1:-1], quote=True)
-            rendered.append('<span data-ros="equation" data-tex="' + tex + '" class="ros-math">' + html.escape(token) + '</span>')
-        elif token.startswith("`") and token.endswith("`") and len(token) > 2:
-            rendered.append('<code>' + html.escape(token[1:-1]) + '</code>')
+    """Render supported inline syntax without interpreting markup inside TeX/code."""
+    pattern = re.compile(r'\$[^$\n]+\$|`[^`\n]+`|\[\[[^\]\n]+\]\]|\[[^\]\n]+\]\([^()\s]+(?:\s+"[^"\n]*")?\)|\*\*.+?\*\*|__.+?__|(?<!\w)\*[^*\n]+\*(?!\w)|(?<!\w)_[^_\n]+_(?!\w)')
+    result, position = [], 0
+    for match in pattern.finditer(text):
+        result.append(html.escape(text[position:match.start()]))
+        token = match.group()
+        if token.startswith('$'):
+            result.append('<span data-ros="equation" data-tex="' + html.escape(token[1:-1], quote=True) + '" class="ros-math">' + html.escape(token) + '</span>')
+        elif token.startswith('`'):
+            result.append('<code>' + html.escape(token[1:-1]) + '</code>')
+        elif token.startswith('[['):
+            parts = token[2:-2].split('|', 1)
+            result.append('<span class="ros-note-link" title="' + html.escape(parts[0], quote=True) + '">' + _inline(parts[-1]) + '</span>')
+        elif token.startswith('['):
+            link = re.fullmatch(r'\[([^\]]+)\]\(([^\s]+)(?:\s+"([^"]*)")?\)', token)
+            label, target = _inline(link[1]), link[2]
+            if re.fullmatch(r'#[A-Za-z0-9_-]+', target):
+                result.append('<a href="' + target + '">' + label + '</a>')
+            else:
+                result.append('<span class="ros-link">' + label + ' <span class="ros-link-target">(' + html.escape(target) + ')</span></span>')
+        elif token.startswith(('**', '__')):
+            result.append('<strong>' + _inline(token[2:-2]) + '</strong>')
         else:
-            prose = html.escape(token)
-            rendered.append(re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", prose))
-    return ''.join(rendered)
+            result.append('<em>' + _inline(token[1:-1]) + '</em>')
+        position = match.end()
+    result.append(html.escape(text[position:]))
+    return ''.join(result)
 
 
-def markdown_html(source):
-    """Conservative structural conversion; never infer assessments or answers."""
-    _, body = parse_frontmatter(source.replace("\r\n", "\n"))
-    lines = body.splitlines()
-    out, paragraph, code, equation = [], [], None, None
-    quoted_math = False
-    def flush():
-        if paragraph:
-            out.append("<p>" + "<br>".join(_inline(x) for x in paragraph) + "</p>")
-            paragraph.clear()
-    for line in lines:
-        if code is not None:
-            if line.startswith("```") or line.startswith("~~~"):
-                out.append('<pre data-ros="code"><code>' + html.escape("\n".join(code)) + "</code></pre>")
-                code = None
-            else:
-                code.append(line)
-            continue
-        if equation is not None:
-            if quoted_math and line.startswith(">"):
-                line = re.sub(r"^> ?", "", line)
-            equation.append(line)
-            if line.strip().endswith("$$"):
-                equation_text = "\n".join(equation)
-                out.append('<div data-ros="equation" data-display="true" data-tex="' + html.escape(equation_text.strip()[2:-2], quote=True) + '" class="ros-math">' + html.escape(equation_text) + "</div>")
-                equation = None
-                quoted_math = False
-            continue
-        if line.startswith("```") or line.startswith("~~~"):
-            flush(); code = []; continue
-        if re.match(r"^> ?\$\$", line):
-            line = re.sub(r"^> ?", "", line)
-            quoted_math = True
-        if line.strip().startswith("$$"):
-            flush()
-            if len(line.strip()) > 4 and line.strip().endswith("$$"):
-                out.append('<div data-ros="equation" data-display="true" data-tex="' + html.escape(line.strip()[2:-2], quote=True) + '" class="ros-math">' + html.escape(line) + "</div>")
-            else:
-                equation = [line]
-            continue
-        heading = re.match(r"^(#{1,6})\s+(.+)$", line)
-        if heading:
-            flush(); level = len(heading[1])
-            heading_kind = heading[2].strip().lower().rstrip(":")
-            kind = {"concept": "concept", "definition": "definition", "derivation": "derivation", "intuition": "intuition", "evidence": "evidence", "research decision": "decision", "decision": "decision", "questions": "question", "questions asked": "question", "open questions": "question", "code": "code", "reflection": "reflection", "checkpoint": "checkpoint"}.get(heading_kind)
-            semantic = ' data-ros="' + kind + '"' if kind else ""
-            anchor = "section-" + _hash(heading[2].encode())[:12]
-            out.append(f"<h{level} id=\"{anchor}\"" + semantic + ">" + _inline(heading[2]) + f"</h{level}>")
-        elif not line.strip():
-            flush()
-        elif line.startswith(">"):
-            flush()
-            label = re.match(r">\s*\[!(\w+)\]", line)
-            kind = label[1].lower() if label else "callout"
-            if kind not in {"concept", "definition", "equation", "derivation", "intuition", "warning", "evidence", "hint", "solution", "decision", "citation", "question"}:
-                kind = "callout"
-            out.append('<blockquote data-ros="' + kind + '">' + _inline(line.lstrip("> ")) + "</blockquote>")
-        elif re.match(r"^\s*(?:[-*+] |\d+\. )", line):
-            flush(); out.append('<div class="ros-list-item">' + _inline(line) + "</div>")
-        else:
-            paragraph.append(line)
-    flush()
-    for unfinished in (code, equation):
-        if unfinished is not None:
-            out.append('<pre data-ros="legacy">' + html.escape("\n".join(unfinished)) + "</pre>")
-    return "\n".join(out)
+_LIST_MARKER = re.compile(r'^( *)([-+*]|\d+[.)])\s+(.+)$')
+_HEADING = re.compile(r'^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$')
+_CALLOUT = re.compile(r'^\[!([a-zA-Z][\w-]*)\]([+-]?)\s*(.*)$')
+_IMAGE = re.compile(r'^!\[([^\]]*)\]\(resource:([a-zA-Z0-9_-]+)(?:\s+"([^"]*)")?\)\s*$')
+
+
+def _table_cells(line):
+    """Split unescaped pipes outside inline code; retain escaped literal pipes."""
+    cells, cell, code = [], [], False
+    line = line.strip()
+    if line.startswith('|'): line = line[1:]
+    if line.endswith('|') and not line.endswith('\\|'): line = line[:-1]
+    i = 0
+    while i < len(line):
+        char = line[i]
+        if char == '\\' and i + 1 < len(line) and line[i + 1] == '|':
+            cell.append('|'); i += 2; continue
+        if char == '`': code = not code
+        if char == '|' and not code:
+            cells.append(''.join(cell).strip()); cell = []
+        else: cell.append(char)
+        i += 1
+    return cells + [''.join(cell).strip()]
+
+
+def markdown_html(source, page_title=None):
+    """Component-oriented structural conversion; never infer assessments or answers.
+
+    Authored source is unchanged. The renderer supports lists, quotations, callouts,
+    fences, headings, emphasis and literal math; raw executable HTML is escaped.
+    """
+    _, body = parse_frontmatter(source.replace('\r\n', '\n'))
+    used_anchors = {}
+    source_h1_seen = False
+
+    def anchor_for(title):
+        base = 'section-' + _hash(title.encode())[:12]
+        used_anchors[base] = used_anchors.get(base, 0) + 1
+        return base if used_anchors[base] == 1 else base + '-' + str(used_anchors[base])
+
+    def render(lines, depth=0):
+        nonlocal source_h1_seen
+        if depth > 32:
+            return '<pre data-ros="legacy">' + html.escape('\n'.join(lines)) + '</pre>'
+        out, i = [], 0
+        def block_start(line):
+            return (not line.strip() or _HEADING.match(line) or _LIST_MARKER.match(line)
+                    or line.startswith('>') or re.match(r'^\s*(?:```|~~~|\$\$)', line)
+                    or re.fullmatch(r'\s*(?:---+|\*\*\*+|___+)\s*', line))
+        while i < len(lines):
+            line = lines[i]
+            if not line.strip():
+                i += 1
+                continue
+            image = _IMAGE.fullmatch(line.strip())
+            if image:
+                out.append('<figure class="ros-figure" data-ros="figure"><img data-resource-id="' + html.escape(image[2], quote=True) + '" alt="' + html.escape(image[1], quote=True) + '">' + ('<figcaption>' + _inline(image[3]) + '</figcaption>' if image[3] else '') + '</figure>')
+                i += 1; continue
+            if i + 1 < len(lines) and '|' in line:
+                headings, rules = _table_cells(line), _table_cells(lines[i + 1])
+                if len(headings) == len(rules) and all(re.fullmatch(r':?-{3,}:?', r) for r in rules):
+                    classes = ['ros-align-center' if r.startswith(':') and r.endswith(':') else 'ros-numeric' if r.endswith(':') else 'ros-align-left' for r in rules]
+                    table = '<div class="ros-table-wrap" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr>'
+                    table += ''.join('<th scope="col" class="' + c + '">' + _inline(h) + '</th>' for h, c in zip(headings, classes)) + '</tr></thead><tbody>'
+                    i += 2
+                    while i < len(lines) and '|' in lines[i] and lines[i].strip():
+                        cells = _table_cells(lines[i])
+                        if len(cells) != len(headings): break
+                        table += '<tr>' + ''.join('<td class="' + c + '">' + _inline(v) + '</td>' for v, c in zip(cells, classes)) + '</tr>'
+                        i += 1
+                    out.append(table + '</tbody></table></div>'); continue
+            fence = re.match(r'^\s*(`{3,}|~{3,})([^\s`]*)\s*$', line)
+            if fence:
+                code, i = [], i + 1
+                while i < len(lines) and not re.fullmatch(r'\s*' + re.escape(fence[1][0]) + '{' + str(len(fence[1])) + r',}\s*', lines[i]):
+                    code.append(lines[i]); i += 1
+                closed = i < len(lines)
+                if closed: i += 1
+                language = fence[2] if re.fullmatch(r'[\w+-]{1,32}', fence[2]) else ''
+                attr = ' data-language="' + language + '"' if language else ''
+                out.append('<pre class="ros-code" data-ros="' + ('code' if closed else 'legacy') + '"' + attr + '><code>' + html.escape('\n'.join(code)) + '</code></pre>')
+                continue
+            if line.strip().startswith('$$'):
+                equation, i = [line.strip()], i + 1
+                if len(equation[0]) <= 4 or not equation[0].endswith('$$'):
+                    while i < len(lines):
+                        equation.append(lines[i]); i += 1
+                        if equation[-1].strip().endswith('$$'): break
+                text = '\n'.join(equation)
+                if len(text) > 4 and text.endswith('$$'):
+                    out.append('<div class="ros-formula ros-math" data-ros="equation" data-display="true" data-tex="' + html.escape(text[2:-2].strip(), quote=True) + '">' + html.escape(text) + '</div>')
+                else:
+                    out.append('<pre data-ros="legacy">' + html.escape(text) + '</pre>')
+                continue
+            heading = _HEADING.match(line)
+            if heading:
+                level, title = len(heading[1]), heading[2]
+                anchor = anchor_for(title)
+                if level == 1:
+                    prior_h1 = source_h1_seen
+                    duplicate = page_title is not None and not source_h1_seen and title.strip() == page_title.strip()
+                    source_h1_seen = True
+                    if duplicate:
+                        # Keep historical fragment targets without a duplicate H1/TOC entry.
+                        out.append('<span class="ros-heading-anchor" aria-hidden="true" id="' + anchor + '"></span>')
+                        i += 1
+                        continue
+                    if page_title is not None or prior_h1: level = 2
+                kind = {'concept':'concept','definition':'definition','derivation':'derivation','intuition':'intuition','evidence':'evidence','decision':'decision','research decision':'decision','questions':'question','questions asked':'question','open questions':'question','code':'code','reflection':'reflection','checkpoint':'checkpoint'}.get(title.lower().rstrip(':'))
+                attr = ' data-ros="' + kind + '"' if kind else ''
+                out.append(f'<h{level} class="ros-section-heading" id="{anchor}"{attr}>' + _inline(title) + f'</h{level}>')
+                i += 1
+                continue
+            if line.startswith('>'):
+                quoted = []
+                while i < len(lines) and lines[i].startswith('>'):
+                    quoted.append(re.sub(r'^> ?', '', lines[i])); i += 1
+                callout = _CALLOUT.match(quoted[0])
+                if callout:
+                    kind, fold, title = callout[1].lower(), callout[2], callout[3]
+                    title = title or kind.replace('-', ' ').capitalize()
+                    component = 'details' if fold else 'aside'
+                    label = 'summary' if fold else 'div'
+                    opened = ' open' if fold == '+' else ''
+                    out.append('<' + component + ' class="ros-callout ros-callout-' + kind + '" data-ros="' + kind + '"' + opened + '><' + label + ' class="ros-callout-header">' + _inline(title) + '</' + label + '><div class="ros-callout-body">' + render(quoted[1:], depth + 1) + '</div></' + component + '>')
+                else:
+                    out.append('<blockquote class="ros-quotation">' + render(quoted, depth + 1) + '</blockquote>')
+                continue
+            marker = _LIST_MARKER.match(line)
+            if marker:
+                indent, ordered = len(marker[1]), marker[2][0].isdigit()
+                tag = 'ol' if ordered else 'ul'
+                start = int(re.match(r'\d+', marker[2])[0]) if ordered else 1
+                attrs = ' start="' + str(start) + '"' if ordered and start != 1 else ''
+                items = []
+                while i < len(lines):
+                    current = _LIST_MARKER.match(lines[i])
+                    if not current or len(current[1]) != indent or current[2][0].isdigit() != ordered: break
+                    content_indent = current.start(3)
+                    item = [current[3]]
+                    number = int(re.match(r'\d+', current[2])[0]) if ordered else None
+                    i += 1
+                    while i < len(lines):
+                        next_item = _LIST_MARKER.match(lines[i])
+                        if next_item and len(next_item[1]) <= indent: break
+                        if not lines[i].strip():
+                            probe = i + 1
+                            while probe < len(lines) and not lines[probe].strip(): probe += 1
+                            if probe >= len(lines): i = probe; break
+                            next_indent = len(lines[probe]) - len(lines[probe].lstrip(' '))
+                            if next_indent <= indent: i = probe; break
+                            item.append(''); i += 1; continue
+                        leading = len(lines[i]) - len(lines[i].lstrip(' '))
+                        if leading <= indent: break
+                        item.append(lines[i][min(leading, content_indent):]); i += 1
+                    task = re.match(r'^\[([ xX])\]\s+(.*)$', item[0])
+                    checkbox = ''
+                    if task:
+                        item[0] = task[2]
+                        checkbox = '<input type="checkbox" disabled aria-label="Recorded task status"' + (' checked' if task[1].lower() == 'x' else '') + '>'
+                    value = ' value="' + str(number) + '"' if ordered else ''
+                    items.append('<li' + value + '>' + checkbox + render(item, depth + 1) + '</li>')
+                out.append('<' + tag + ' class="ros-list"' + attrs + '>' + ''.join(items) + '</' + tag + '>')
+                continue
+            if re.fullmatch(r'\s*(?:---+|\*\*\*+|___+)\s*', line):
+                out.append('<hr>'); i += 1; continue
+            paragraph = [line]; i += 1
+            while i < len(lines) and not block_start(lines[i]) and not _IMAGE.fullmatch(lines[i].strip()):
+                if i + 1 < len(lines) and '|' in lines[i]:
+                    cells, rules = _table_cells(lines[i]), _table_cells(lines[i + 1])
+                    if len(cells) == len(rules) and all(re.fullmatch(r':?-{3,}:?', r) for r in rules): break
+                paragraph.append(lines[i]); i += 1
+            fragments = []
+            for j, text in enumerate(paragraph):
+                hard_break = text.endswith('  ') or text.endswith('\\')
+                fragments.append(_inline(text[:-1].rstrip() if text.endswith('\\') else text.rstrip()))
+                if j < len(paragraph) - 1: fragments.append('<br>' if hard_break else ' ')
+            out.append('<p>' + ''.join(fragments) + '</p>')
+        return '\n'.join(out)
+
+    return render(body.splitlines())
 
 
 def _questions_html(state):
@@ -323,11 +452,31 @@ def _widgets_html(state):
     return "".join('<section data-ros="widget" data-widget="' + html.escape(w["kind"], quote=True) + '" id="' + html.escape(w["id"], quote=True) + '"><h3>' + html.escape(w.get("title", w["kind"].title() + " demonstration")) + '</h3></section>' for w in state.get("widgets", []))
 
 
-def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, resource_markup="", resource_scripts=""):
+def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, resource_markup="", resource_scripts="", resource_images=None):
     validate_state(state)
-    content = markdown_html(state["source_markdown"])
-    anchors = re.findall(r'<h[1-6] id="([^"]+)"[^>]*>(.*?)</h[1-6]>', content)
-    navigation = '<nav aria-label="Session sections"><details><summary>Contents</summary><ul>' + ''.join('<li><a href="#' + anchor + '">' + label + '</a></li>' for anchor,label in anchors) + '</ul></details></nav>'
+    content = markdown_html(state["source_markdown"], page_title=state["title"])
+    if resource_images:
+        def embed_image(match):
+            image = match.group()
+            identifier = re.search(r'data-resource-id="([^"]+)"', image)[1]
+            data = resource_images.get(identifier)
+            return image[:-1] + ' src="' + html.escape(data, quote=True) + '">' if data else image
+        content = re.sub(r'<img data-resource-id="[^"]+"[^>]*>', embed_image, content)
+    anchors = re.findall(r'<h([1-6])\b[^>]*\bid="([^"]+)"[^>]*>(.*?)</h\1>', content, re.S)
+    navigation = ('<nav class="ros-toc" aria-label="Session sections"><details class="ros-toc-panel" open><summary>Contents</summary><ul>'
+                  + ''.join('<li data-level="' + level + '"><a href="#' + anchor + '">' + label + '</a></li>' for level,anchor,label in anchors)
+                  + '</ul></details></nav>') if anchors else ''
+    metadata = state.get('metadata', {})
+    session_kind = state['type'].replace('-', ' ').capitalize()
+    status = str(state.get('lifecycle', '')).replace('-', ' ').capitalize()
+    created = str(metadata.get('created', '')).strip()
+    meta_text = ' · '.join(value for value in (status, created) if value)
+    subtitle = metadata.get('subtitle')
+    subtitle_markup = ('<p class="ros-session-context">' + html.escape(subtitle) + '</p>') if isinstance(subtitle, str) and subtitle.strip() else ''
+    header = ('<header class="ros-session-header"><div class="ros-session-meta">'
+              + '<p class="ros-session-kind">Research OS · ' + html.escape(session_kind) + '</p>'
+              + ('<p class="ros-session-details">' + html.escape(meta_text) + '</p>' if meta_text else '')
+              + '</div><h1>' + html.escape(state['title']) + '</h1>' + subtitle_markup + '</header>')
     data = json.dumps(state, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
     if standalone:
         css = (RUNTIME / "session.css").read_text(encoding="utf-8")
@@ -340,8 +489,8 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
         script = '<script src="' + prefix + '/session.js"></script>'
     return ('<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; font-src data:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'">'
-            + '<title>' + html.escape(state["title"]) + '</title>' + resources + '</head><body><main id="ros-session">'
-            + '<header><p>Research OS session · ' + html.escape(state["type"]) + '</p><h1>' + html.escape(state["title"]) + '</h1></header>'
+            + '<title>' + html.escape(state["title"]) + '</title>' + resources + '</head><body><main class="ros-document" id="ros-session">'
+            + header
             + navigation + content + _questions_html(state) + _widgets_html(state) + resource_markup
             + '<details data-ros="legacy"><summary>Exact original Markdown</summary><pre>' + html.escape(state["source_markdown"]) + '</pre></details>'
             + '</main><script type="application/json" id="ros-session-data">' + data + '</script>' + script + resource_scripts + '</body></html>\n')
@@ -528,7 +677,8 @@ def append_event(root, relative_md, event):
 def export_session(root, relative_md, destination):
     state = load_session(root, relative_md)
     md, view, _ = paths(root, relative_md)
-    markup, scripts = "", ""
+    markup, scripts, images = "", "", {}
+    used_images = set(re.findall(r'data-resource-id="([^"]+)"', markdown_html(state['source_markdown'])))
     for resource in state.get("resources", []):
         value = resource["path"]
         if value.startswith(view.stem + ".assets/"):
@@ -542,15 +692,40 @@ def export_session(root, relative_md, destination):
             raise ValueError("Export resource exceeds limit")
         if resource["kind"] == "image":
             mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}[path.suffix.lower()]
-            markup += '<figure><img src="data:' + mime + ';base64,' + base64.b64encode(raw).decode() + '" alt="' + html.escape(str(resource.get("alt", "Session illustration")), quote=True) + '"></figure>'
+            data_url = 'data:' + mime + ';base64,' + base64.b64encode(raw).decode()
+            images[resource['id']] = data_url
+            if resource['id'] not in used_images:
+                markup += '<figure class="ros-figure"><img src="' + data_url + '" alt="' + html.escape(str(resource.get("alt", "Session illustration")), quote=True) + '"></figure>'
         else:
             _approved_module(root, path, resource)
             scripts += '<script>document.addEventListener("DOMContentLoaded",function(){' + raw.decode("utf-8").replace("</script", "<\\/script") + '\n},{once:true});</script>'
     destination = Path(destination)
     if destination.exists() or destination.is_symlink():
         raise ValueError("Export destination already exists; choose a new file to preserve user data")
-    _write(destination, render_html(state, standalone=True, resource_markup=markup, resource_scripts=scripts).encode("utf-8"))
+    _write(destination, render_html(state, standalone=True, resource_markup=markup, resource_scripts=scripts, resource_images=images).encode("utf-8"))
     return destination
+
+
+def refresh_projection(root, relative_md, backup_directory, apply=False):
+    """Refresh only generated HTML, preserving canonical JSON and Markdown bytes."""
+    md, view, data = paths(root, relative_md)
+    with Lock(md.with_suffix('.session.lock')):
+        state = load_session(root, relative_md)
+        protected = {md: md.read_bytes(), data: data.read_bytes()}
+        before = view.read_bytes()
+        prefix = os.path.relpath(Path(root).resolve() / '.research-os/runtime', view.parent).replace(os.sep, '/')
+        after = render_html(state, prefix).encode('utf-8')
+        report = {'path': view.relative_to(Path(root).resolve()).as_posix(), 'changed': before != after,
+                  'before_sha256': _hash(before), 'after_sha256': _hash(after), 'dry_run': not apply}
+        if apply and before != after:
+            backup = Path(backup_directory) / view.relative_to(Path(root).resolve())
+            if backup.exists(): raise ValueError('Projection backup already exists; choose a new backup directory')
+            _write(backup, before)
+            _write(view, after)
+            report['backup'] = str(backup)
+        if any(path.read_bytes() != raw for path, raw in protected.items()):
+            raise ValueError('Protected session content changed during projection refresh')
+        return report
 
 
 def import_bridge(root, relative_md, apply=False):
@@ -812,6 +987,9 @@ def main():
     recovery = sub.add_parser("recover"); recovery.add_argument("session"); recovery.add_argument("--apply", action="store_true")
     bridge = sub.add_parser("import"); bridge.add_argument("session"); bridge.add_argument("--apply", action="store_true")
     export = sub.add_parser("export"); export.add_argument("session"); export.add_argument("destination", type=Path)
+    refresh = sub.add_parser("refresh-projection", help="Regenerate only HTML; preserve source and canonical state")
+    refresh.add_argument("session"); refresh.add_argument("--backup-directory", required=True, type=Path)
+    refresh.add_argument("--apply", action="store_true")
     migration = sub.add_parser("migrate")
     mode = migration.add_mutually_exclusive_group()
     mode.add_argument("--apply", action="store_true"); mode.add_argument("--resume", action="store_true"); mode.add_argument("--rollback", action="store_true")
@@ -824,6 +1002,8 @@ def main():
         result = validate_sessions(root)
     elif args.command == "export":
         result = str(export_session(root, args.session, args.destination))
+    elif args.command == "refresh-projection":
+        result = refresh_projection(root, args.session, args.backup_directory, args.apply)
     elif args.command == "create":
         install_runtime(root)
         result = create_session(root, args.session, args.source.read_bytes().decode("utf-8"), args.session_type, args.title)

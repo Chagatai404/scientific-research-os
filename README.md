@@ -13,6 +13,8 @@ The human researcher is always the final authority. AI agents may search, explai
 
 v0.8.5 adds offline HTML-primary sessions inside Obsidian, preserved Markdown bridges, interactive assessments, persistent raw progress, mathematics and SVG/Canvas. See [HTML sessions](docs/HTML_SESSIONS.md) for usage and [the verified release record](docs/plans/v0.8.5-html-native-sessions.md) for actual-vault and desktop results. Mobile is explicitly gated.
 
+The HTML visual correction pass adds a shared [design system](docs/HTML_DESIGN_SYSTEM.md), semantic educational components, accessible tutor controls and responsive navigation. [Visual acceptance and rollout](docs/v0.8.5-html-visual-parity.md) records the update to existing session views while preserving template structure and canonical content.
+
 v0.8 adds literature reliability, sanitized external access handoffs, durable task
 orchestration, researcher ownership and defense readiness. Its opt-in helpers keep
 scientific evidence, bibliographic storage, research state and human-learning

@@ -89,7 +89,7 @@ function document(theme) {
     const firstQuestion=events.find(e=>e.type==='open-question');
     const record={id:firstQuestion.event_id,prompt:firstQuestion.response,answer:'The model assumes finite variance.',status:'answered'};
     await page.evaluate(payload=>document.getElementById('session').contentWindow.postMessage(payload,'*'),{channel:'research-os',token:'fixture-token',session_id:'browser-fixture',type:'state',state:{events,open_questions:[record]}});
-    assert.equal(await frame.locator('body').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(20, 26, 37)');
+    assert.equal(await frame.locator('body').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(23, 27, 32)');
     await page.setViewportSize({width:390,height:844});
     assert.equal(await frame.locator('body').evaluate(el=>el.scrollWidth<=el.clientWidth),true);
     await frame.locator('.ros-question-answer').getByText('The model assumes finite variance.',{exact:true}).waitFor();

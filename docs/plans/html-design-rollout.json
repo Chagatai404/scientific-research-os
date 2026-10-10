@@ -1,0 +1,680 @@
+{
+  "date": "2026-10-09",
+  "scope": "CSS only; existing templates and session triples untouched",
+  "session_count": 13,
+  "runtime_count": 33,
+  "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z",
+  "changes": [
+    {
+      "target": "C:\\Users\\ASUS\\Obsidian\\Knowledge\\.research-os\\runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\00-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\Obsidian\\Knowledge\\.research-os\\runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\01-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\course-study\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\02-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\course-study\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\03-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\defend-research\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\04-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\defend-research\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\05-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\derive\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\06-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\derive\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\07-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\design-experiment\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\08-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\design-experiment\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\09-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\form-hypothesis\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\10-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\form-hypothesis\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\11-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\geant4\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\12-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\geant4\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\13-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\ml-experiment\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\14-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\ml-experiment\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\15-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\notes-to-latex\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\16-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\notes-to-latex\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\17-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\physics-audit\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\18-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\physics-audit\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\19-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\qml-experiment\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\20-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\qml-experiment\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\21-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\research-review\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\22-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\research-review\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\23-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\research-session\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\24-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\research-session\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\25-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\stats-audit\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\26-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\stats-audit\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\27-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\study-source\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\28-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\study-source\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\29-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\tutor\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\30-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\tutor\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\31-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\visualize\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\32-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.agents\\skills\\visualize\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\33-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\course-study\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\34-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\course-study\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\35-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\defend-research\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\36-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\defend-research\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\37-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\derive\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\38-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\derive\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\39-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\design-experiment\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\40-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\design-experiment\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\41-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\form-hypothesis\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\42-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\form-hypothesis\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\43-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\geant4\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\44-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\geant4\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\45-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\ml-experiment\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\46-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\ml-experiment\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\47-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\notes-to-latex\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\48-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\notes-to-latex\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\49-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\physics-audit\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\50-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\physics-audit\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\51-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\qml-experiment\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\52-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\qml-experiment\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\53-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\research-review\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\54-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\research-review\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\55-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\research-session\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\56-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\research-session\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\57-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\stats-audit\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\58-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\stats-audit\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\59-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\study-source\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\60-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\study-source\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\61-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\tutor\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\62-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\tutor\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\63-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\visualize\\assets\\html-runtime\\theme.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\64-theme.css",
+      "before_sha256": "9ba43094a07dd7dec5db20b4c8bf6dd50593be6d86c3986d4be305bcb2af3cf2",
+      "after_sha256": "6d40beaf4ceba8be08c0b566fd96be14cef1ec7b4c29956af675bd8fb972dced"
+    },
+    {
+      "target": "C:\\Users\\ASUS\\.claude\\skills\\visualize\\assets\\html-runtime\\session.css",
+      "backup": "C:\\Users\\ASUS\\.agent-hub\\backups\\html-design-20261009T150321Z\\65-session.css",
+      "before_sha256": "d96a5537ce60d1b0e57bf0827dec91cf0b79c218c0cb58b306c4468fb769b783",
+      "after_sha256": "1eb71c050d1c65e91ca45d3f3f2e1c7e48e49b8552624897720ceb8759cc7268"
+    }
+  ],
+  "preserved": [
+    {
+      "path": "90 Templates\\13_Knowledge_Graph.md",
+      "sha256": "9c3eb4f6e076cca82ebed4632a4d25776af99ba044363b5b1b3ef40903532981"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-10-02 Partition Sum Learn Block.md",
+      "sha256": "cdccfe1444cb54f6af56e91cd1ba6a07d6972a56d805cbc5a37570aeed754184"
+    },
+    {
+      "path": "90 Templates\\14_Learning_Goal.md",
+      "sha256": "0cf5d3366cc5929416d5ba4455009c921e37c4ee7be36a55a9700dbf6544e5f3"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-30 Learn-Back Spatial Structure and the Fractal Connection.md",
+      "sha256": "3e343263a8c383d548886fada7350c10d4d7c3f366e1d7c92b94cbac354fc1d0"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Research Sessions\\2026-09-29 Geant4 Proton Calibration Pilot.state.json",
+      "sha256": "2dcf24f05a2b6aea8b21de2439009db7ed37958ac450c7021e18ee70ed396e50"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-10-01 Jensen Repair.html",
+      "sha256": "fdfb34ec854d2f00d8f7f6150647ecdb26d2f64bd68e3e3340aa2b1b9b8ecbcb"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Research Sessions\\2026-09-21 Block 6A Implementation and Block 7 Evidence Pass.state.json",
+      "sha256": "aab1b72290f31fef1e5370d81d5a9c56a8666768021abd5a64351615a9507c03"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-28 FastMC Block 6B Proton Showers.state.json",
+      "sha256": "c1dfeba244ebf4d0106198d74d4cf795ee47a85fe3af985f92afb8622afed90a"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-30 Learn-Back Spatial Structure and the Fractal Connection.html",
+      "sha256": "e094bf6bf539b86292648dbdade5b508253966ca423ea4c7af798718e8458381"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-10-02 Partition Sum Learn Block.html",
+      "sha256": "8d4a843ec0696f19ca503bf6a3358af5cff0099a40da7c65f923221e639e100d"
+    },
+    {
+      "path": "90 Templates\\08_Hypothesis.md",
+      "sha256": "41762302f8404309dff5417f22697d607a73f6fcafce2a6d089bf7110415497e"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-29 Codebase and Geant4 Probe.md",
+      "sha256": "a5fdf9f702a3e74822cc9077b96715e2c47b0983706b2b01c79e31fafe091804"
+    },
+    {
+      "path": "90 Templates\\05_Paper_Note.md",
+      "sha256": "77b7c63c19186767a4ff11b480bc5ac8b22c6c6fe2fb01abee487dd61f952b12"
+    },
+    {
+      "path": "90 Templates\\22_Planning_Session.md",
+      "sha256": "8877f517512ad5eacb29e2a6ea5aa5e28427686833a27c7c64c06e59359a9be7"
+    },
+    {
+      "path": "90 Templates\\Project.md",
+      "sha256": "dfb843be9c07afed22143f9b931756d474e9ec1adec732640793d4e53adc337a"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-10-09 Week Learn-Back Method and Decisions.html",
+      "sha256": "9fcaa564719b96b7ea81caa93a9f6964c30edced9d25df893f0ac965aa80054c"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-20 FastMC Block 6 Stochastic Shower Generation.md",
+      "sha256": "0e32f3f030240d53e6023af777a175641725098ab656a897f55f76bddd2a63a6"
+    },
+    {
+      "path": "90 Templates\\09_Experiment.md",
+      "sha256": "ae74bb9913eb47625a060365901b7b5eeb394c6770a44add02726d8f03ba73f6"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-28 Block 6A Teach-Back and Post-Build Probe.html",
+      "sha256": "7ed0acaef4d76653ce6ae38590f841294716d4bf6fca87df0c5e2c69e472d6a7"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-10-01 Retention Test.state.json",
+      "sha256": "346470450b3a81246cc0d42b6b8bda64e9f768df628602eebdc6d44a659d4638"
+    },
+    {
+      "path": "90 Templates\\02_Derivation.md",
+      "sha256": "382077b88f1441fc5dbd0a8c98740528d289dd1450f2d1c5d369c7dd28db0c21"
+    },
+    {
+      "path": "90 Templates\\15_Course.md",
+      "sha256": "47301bb168e143a61b579c9f54387c3e7def23ea399636e69fa918e566102c2e"
+    },
+    {
+      "path": "90 Templates\\12_Evidence_Map.md",
+      "sha256": "53be257db32a913a54c7a550809a17b2de00c1272ef9835eb56467153651c39c"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-20 FastMC Block 6 Stochastic Shower Generation.state.json",
+      "sha256": "f2f87c52d6fee85056b5b273a128508798503489f169c458574cc34a8cfefd67"
+    },
+    {
+      "path": "90 Templates\\00_Tutor_Session.md",
+      "sha256": "3acbb326242afde00e196a173b65b1eda87de41b9cd47be9345d212889ae0585"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-21 FastMC Block 7 Detector Response.html",
+      "sha256": "19fde8e1708b7171eab00b77c2921f1eb76d4b02249b1c17a20ae7669f00ea17"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-28 Block 6A Teach-Back and Post-Build Probe.md",
+      "sha256": "406819ae678a17c8574782d72c5a61931a7065f408c3530358cdf1dd709e27d0"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-10-02 Partition Sum Learn Block.state.json",
+      "sha256": "31c14339b8b9bd45493910432a3e70f0293652c53a3ee43d213aceb546f6893a"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-28 Block 6A Teach-Back and Post-Build Probe.state.json",
+      "sha256": "73630a15f8420d25af4c91fb7e6630ea0eaaffa1eb0b7eee70b1ca517d3cb9ef"
+    },
+    {
+      "path": "90 Templates\\01_Concept.md",
+      "sha256": "9f556bf3b106fefc4056b8fc3d8acbfb9ce23b75f8885b58ac84ab7f564309cd"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Research Sessions\\2026-09-29 Block 6B Implementation.state.json",
+      "sha256": "8af9086b95652539f6bc6c229924f50c6e8d4462d8b23fc5ca721769ab4374e9"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-28 FastMC Block 6B Proton Showers.md",
+      "sha256": "fdb8d160826c3c0bfa577c94d29d7ee92792e0351b77b09d90eff408dacfd81e"
+    },
+    {
+      "path": "90 Templates\\06_Learning_Map.md",
+      "sha256": "d50e1aa9fb3697c7fd40c368dc7612d762ce338fc694f01800fc5169765b7d94"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Research Sessions\\2026-09-29 Geant4 Proton Calibration Pilot.html",
+      "sha256": "e2d8aa960cf7e063b8ae0a31e6b93d5f258599a6059cff4ef981c5b418bfbeca"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-29 Codebase and Geant4 Probe.state.json",
+      "sha256": "ae417b60e78166add545cc05e7338ec8e637a00d62ec8894b735908dd2057b9d"
+    },
+    {
+      "path": "90 Templates\\04_Source_Note.md",
+      "sha256": "9bf6b3c35a073cd262f929dc6c6735380bbe473925fc110e1fccc6e3d4e31fea"
+    },
+    {
+      "path": "90 Templates\\18_Evidence_Session.md",
+      "sha256": "db9b828ce32d8e103b1bd73c7257ac78e5d34236edbb8417fd05dacc4b5ed2c3"
+    },
+    {
+      "path": "90 Templates\\Decision.md",
+      "sha256": "fa0378e55bff8ced47c276f2aeff05636de166e8ac7eb0327561c48fbdf9ee99"
+    },
+    {
+      "path": "90 Templates\\README.md",
+      "sha256": "b86e4c39105358879184a2b75e3ea4c4eca42de6486429791ba48858257759d8"
+    },
+    {
+      "path": "90 Templates\\20_Experiment_Session.md",
+      "sha256": "a6abf776f9ed9c01cfa0cddfacd86c25eb880162a91507ff05ccf26284fe1484"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-20 FastMC Block 6 Stochastic Shower Generation.html",
+      "sha256": "9768aea0905c0053f2a3216524b0f250366ca174ecd3ec9d439eaf47aa46860c"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-28 FastMC Block 6B Proton Showers.html",
+      "sha256": "f620bff7061ec7c06d96ba7ef98a6713463d24ecf3456e874a8d53e0e84eafdf"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-10-01 Jensen Repair.state.json",
+      "sha256": "7f4b899a112947ef8afeaea82f6457d49e571567ef0c89d8f1062bbbf7902f31"
+    },
+    {
+      "path": "90 Templates\\07_Research_Question.md",
+      "sha256": "aeda942de86bd621886d71077c3d3d10abe65bab731e06883cb7139d02fc5ff5"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Research Sessions\\2026-09-21 Block 6A Implementation and Block 7 Evidence Pass.html",
+      "sha256": "5fc902c414039e0753dc5422fd602828c0f54417c9e7754b216bf19768c757f0"
+    },
+    {
+      "path": "90 Templates\\19_Adversarial_Session.md",
+      "sha256": "ea6e60b071588d44053f7e6d29486ec626804be244400eff699164eeb5e0ccf4"
+    },
+    {
+      "path": "90 Templates\\21_Methodology_Session.md",
+      "sha256": "e234a5f74196ea42a38522f216a155cc619f8c72e777b720f85d5f8287c82db1"
+    },
+    {
+      "path": "90 Templates\\Daily Note.md",
+      "sha256": "f0636c4b99635e9fd4dfb27eea0cd15e2c83a00c634158eea0c4ca1181511c07"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-21 FastMC Block 7 Detector Response.state.json",
+      "sha256": "30768cc60ac2eb581c04f3761ac8ba17905e39bb619d88ecf6eeb2329a8a5baa"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-30 Learn-Back Spatial Structure and the Fractal Connection.state.json",
+      "sha256": "8cfaae6b87c9a06cebed2a50c93e9b52673d9823987ee58a2c29abbcd2803fa6"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-29 Codebase and Geant4 Probe.html",
+      "sha256": "2510de1fa940ef41d8bac6314dfcd75472b66661f7c66fd2e4ffbf5d0b29e74d"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-10-01 Jensen Repair.md",
+      "sha256": "8d1a3cb2a0aecbb1a9aa5ceafb163501fb7f3666a498f967c8d2c7686eadb5b5"
+    },
+    {
+      "path": "90 Templates\\23_Hypothesis_Session.md",
+      "sha256": "b453242b4c6e1ad87e30e09408a7d929f6e5fd3f8db1041f293d8a9688393ed7"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-10-09 Week Learn-Back Method and Decisions.md",
+      "sha256": "223b6d717ef270ea7efeae549fe846d80d816578f44002c35dc5369ba8e6d8bf"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Research Sessions\\2026-09-29 Block 6B Implementation.md",
+      "sha256": "6c116fdfb057d1da6f727f45a0218fa857dc73d26fb1a54d68ad37ca6a82a102"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-10-09 Week Learn-Back Method and Decisions.state.json",
+      "sha256": "f788dc3e9d15e7ef8f07da6dfd32a85b4120c33085069c10d52697636539d4b0"
+    },
+    {
+      "path": "90 Templates\\24_Retrospective_Session.md",
+      "sha256": "54fdc4962f69431018764603502b0114f10aaa97203f613cb256d774c31a7902"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Research Sessions\\2026-09-29 Geant4 Proton Calibration Pilot.md",
+      "sha256": "01868189f9ace97fdb51383f4a083cc7ca57cea4dcc86cb266910751d1104c9e"
+    },
+    {
+      "path": "90 Templates\\17_Literature_Session.md",
+      "sha256": "dc087510eea16fe2a10af2e8f683c55283ac58dfb41d956724a4bc8ca2c64eaf"
+    },
+    {
+      "path": "90 Templates\\03_Quizbook_Topic.md",
+      "sha256": "efb42c5e354956c383dc98882701c32939314f82714c26c152b06d767d0edbfa"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Research Sessions\\2026-09-21 Block 6A Implementation and Block 7 Evidence Pass.md",
+      "sha256": "d9f808095a67dfb06ffec85acc83442bc4f52b97b13ab605151696e1c65f86f0"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-10-01 Retention Test.html",
+      "sha256": "677e5d85e5c63dd258ecdbfd9df5dc0070acbebcb156aadd554f65923068fadf"
+    },
+    {
+      "path": "90 Templates\\16_Course_Session.md",
+      "sha256": "7683e72becdf173c4d7375b01cd6432fd3ee53d2ab45357424fb7c623d38bfda"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-10-01 Retention Test.md",
+      "sha256": "9f53f96b033a1ae75c7e6b29909c3f60a67dea265dcc9f08f8c458f8788f53f9"
+    },
+    {
+      "path": "90 Templates\\10_Research_Decision.md",
+      "sha256": "397032b5fddb0c0e71aeec54e0b88f347e88c48f6c443acfaff53003d66e6763"
+    },
+    {
+      "path": "90 Templates\\11_Research_Session.md",
+      "sha256": "0fc76aae648313f37c8eec75a91def1c069585af9ae5d32312cb0b8fc9c47cd5"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Research Sessions\\2026-09-29 Block 6B Implementation.html",
+      "sha256": "5920d1932d5fe5a0ec33cd6bdc8d6472cc149ebee4b90ba6d4a89ca58e6054ec"
+    },
+    {
+      "path": "01 Projects\\AMS ECAL QML\\Tutor Sessions\\2026-09-21 FastMC Block 7 Detector Response.md",
+      "sha256": "710bd61780456edb830a7b824e5c30305b3fb3f127d83d077609d971cae53275"
+    }
+  ],
+  "verification": "Installed CSS hashes match repository; all inventoried session HTML/Markdown/state and template bytes are unchanged."
+}
