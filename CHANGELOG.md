@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (html-live-sessions)
+## 0.8.7 - 2026-10-11
 
 - Memory before the page: `html_sessions.py context` prints a resume brief (unchecked answers, open questions, project note, research graph and knowledge graph state). Every skill and the session protocol require it before creating or resuming; the helpers it needs ship with every installed skill.
 - Live sessions: agent writes patch the open Obsidian view in place (no reload; drafts, open panels and scroll kept), new content is marked, and a "New question below" button appears when it lands out of view. A learner submission waits briefly for the agent's write lock instead of failing.
@@ -8,6 +8,8 @@
 - Submit shows "Checking…" until the response is checked; the verdict and explanation then appear under the answer with no "Show solution" click. The "recorded for human review" placeholder is gone. Questions stay open.
 - Linear sessions: questions render where their `<!-- ros-question: id -->` marker sits, and new questions are placed at the current end of the session, so probe, teaching and the next questions read in order.
 - The tutor skill and tutor template now describe the HTML loop; the retired checkbox loop remains readable for historical notes. A connectivity test checks every skill's protocols, helpers and agents against the installed bundle.
+- Rolled out to the shared vault runtime, the Obsidian companion and 32 skill bundles with backups; existing session HTML unchanged. The 2026-10-09 learn-back session was re-placed in order with its transcript verdicts recorded as reviews.
+- Full suite: 566 tests (one contract failure found and fixed, affected suites rerun), plus HTML browser suites.
 
 ## 0.8.6 - 2026-10-10
 
