@@ -9,3 +9,4 @@ __pycache__/
 Thumbs.db
 *.tmp
 *.lock
+graphify-out/
