@@ -71,11 +71,13 @@ and `state`, or `type: 'error'` and `message`.
 Writes are queued and use Obsidian `Vault.process` to revalidate the latest state
 atomically, with a host filesystem `O_EXCL` sibling `.session.lock` shared with
 Python tools; this host capability is never exposed to the iframe.
-An existing lock rejects a write; do not remove one while another writer is active.
+A write waits up to 3 s for another writer's lock, then fails visibly; do not remove a lock while another writer is active.
 Duplicate event IDs are ignored. Events are capped at 16 KiB each,
 10,000 per session, 32 pending messages, and 4 MiB state. Reloads invalidate old
-tokens; teardown removes listeners via Obsidian Component lifecycle. Changes to
-HTML/state/runtime and theme reload views. Rename/delete invalidates the view
+tokens; teardown removes listeners via Obsidian Component lifecycle. External
+HTML/state changes are coalesced (120 ms) and sent to the open frame as a live
+update with the newly sanitized body, so the page does not reload; changed
+resources, runtime or theme, or a frame that has not signalled ready, reload the view. Rename/delete invalidates the view
 with an explicit repair instruction: rename all artifacts and update Markdown
 references using the session tooling before reopening.
 

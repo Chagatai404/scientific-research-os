@@ -167,21 +167,26 @@ Do not use multiple choice exclusively. Deeper nodes should eventually be checke
 
 ## Obsidian as the tutoring interface
 
-When a vault is configured, the session note is the UI. Chat carries only control messages
-(start, pause, redirect, stop).
+When a vault is configured, the HTML session is the UI. Chat carries only control messages
+(start, pause, redirect, stop). Follow the live loop in `references/HTML_SESSION_PROTOCOL.md`.
 
 Setup:
 
-1. Use the configured template directory and project/session location (for example,
-   `90 Templates/00_Tutor_Session.md` and
-   `01 Projects/<Project>/Tutor Sessions/<date> <topic>.md`). Fall back to the
-   bundled tutor-session template if it has not been installed. Preserve its frontmatter
-   and section numbering so the note can be promoted later.
-2. Fill the learning goal and tutor contract from the actual task.
-3. Post **one** question at a time, with an answer slot and an unticked
-   `- [ ] **Send this answer**` checkbox. Never post a batch.
-4. During active probing append only the short verdict/hint and next question. At block end,
-   write the assessment synthesis and update the map, sources, and lesson log as needed.
+1. Run `scripts/html_sessions.py --root <vault> context <session>` before creating or
+   resuming, then the "Session start" steps above: the research graph, knowledge graph,
+   prerequisite plan, reusable visuals and retention state are the memory, not the page.
+2. Create the session through `html_sessions.py` from the configured template directory and
+   project/session location (for example `90 Templates/00_Tutor_Session.md` and
+   `01 Projects/<Project>/Tutor Sessions/<date> <topic>.md`), falling back to the bundled
+   tutor-session template. Preserve its frontmatter (including `project` and `up` links) and
+   section numbering so the note can be promoted later.
+3. Fill the learning goal and tutor contract from the actual task.
+4. Post **one** question at a time with `add-question`. Never post a batch. Each question goes
+   where the session currently ends, so probe, teaching block and next questions read in order:
+   append the teaching block first, then post the question that follows from it.
+5. During active probing record each check with `review` (verdict, short feedback and, when
+   continuing, `--next-question`). At block end write the assessment synthesis and update the
+   map, sources and lesson log as needed.
 
 **Installed Obsidian adapters are used, not just configured.** When the vault has Excalidraw, Bases or Breadcrumbs
 (detect from `.obsidian/community-plugins.json` and `core-plugins.json`), follow the visualization protocol's
@@ -189,35 +194,31 @@ Setup:
 embedded Base views, an `up` link on every new session note, and the prerequisite trail named when a capability is
 taught. Quantitative visuals remain verified figures.
 
-Teaching visuals appear **inline in the session note** where the vault supports it:
-embed the file with a valid Obsidian embed (`![[VIS-014-gamma-shape.svg]]`, name
-or vault-relative path) directly beside the question or explanation it serves,
-followed by a concise caption (`> **What to notice:** ...`). `scripts/visuals.py`
-provides `embed_block` and `broken_embeds`. Keep provenance and reproducibility
-in a linked record or one short line nearby, not in the lesson body. Embed only
-verified assets automatically; label anything else as a draft. Do not modify
-permanent concept notes to add visuals, and do not copy private research data into
-the vault: link the reproducible research artifact instead. A visual being shown is
-never retrieval evidence; still ask the learner to predict or explain.
+Teaching visuals appear **inline in the session** beside the question or explanation they serve:
+in the HTML view declare the verified image as a session resource and place it with
+`![alt](resource:<id> "caption")`; in Markdown notes and the session bridge use a valid Obsidian
+embed (`![[VIS-014-gamma-shape.svg]]`, name or vault-relative path). Follow either with a concise
+caption (`> **What to notice:** ...`). `scripts/visuals.py` provides `embed_block` and
+`broken_embeds`. Keep provenance and reproducibility
+in a linked record or one short line nearby, not in the lesson body. Embed only verified assets
+automatically; label anything else as a draft. Do not modify permanent concept notes to add
+visuals, and do not copy private research data into the vault: link the reproducible research
+artifact instead. A visual being shown is never retrieval evidence; still ask the learner to
+predict or explain.
 
-Answer submission is an explicit checkbox, never an idle timer:
-
-Use an available file watcher or bounded polling in the host's shell. Watch only
-the current ACTIVE question's exact `- [x] **Send this answer**` submission marker,
-not arbitrary checked boxes elsewhere in the note. On submission read the answer
-once, mark it ANSWERED, clear its submission marker, append the lightweight reply,
-and post the next ACTIVE question with an unticked marker. Stop watching on pause,
-stop, or a missing note. Do not assume Bash or a provider-specific background API.
-If file watching is unavailable, let the learner explicitly submit through chat.
+Answer submission is an explicit **Submit** or **Send**, never an idle timer. Listen with
+`html_sessions.py wait <session>` (bounded; run it in the background where the host allows) or
+let the learner say "submitted" in chat. React only to what it returns: the learner's latest
+submitted response for a question, or an unanswered open question. The learner sees
+"Checking…" until your `review` lands, so check promptly and do not leave a response unreviewed.
 
 Do **not** infer "finished" from file modification time going quiet. Composing an answer involves
 pauses for thought that are indistinguishable from completion, so no debounce threshold separates
 them — a short window interrupts mid-sentence, a long one wastes the learner's time. This was tried
 and rejected in practice. Prefer an explicit learner-controlled signal over inferred idleness.
 
-Never edit the note while the learner is mid-answer; an external write can collide with their
-unsaved buffer. If a watcher fires on an obviously incomplete answer, re-arm and wait rather than
-responding to the fragment.
+Open pages update live and keep the learner's drafts, but never change or remove a question the
+learner may be answering; post corrections as a new entry instead.
 
 **Keep the live transcript strictly chronological: oldest entry first, append at the bottom, never
 prepend.** Writing each new entry above the previous one is an easy habit to fall into when editing
@@ -260,6 +261,9 @@ the research cycle. Research-linked lessons retain the research protocol's gates
 When this workflow creates or continues a substantive session, follow
 `references/HTML_SESSION_PROTOCOL.md`: use the centralized
 `scripts/html_sessions.py` API, preserve Markdown backlinks, produce HTML and
-structured state, and validate the artifacts. Read persisted answers and unresolved
-questions before resuming. Ordinary notes, evidence records and source files retain
+structured state, and validate the artifacts. Before creating or resuming, run
+`scripts/html_sessions.py context <session>`: it lists unchecked answers and open
+questions and loads the project's research and knowledge graphs, which remain the
+memory; the page is only a view. Post questions, checks and teaching through the
+live loop in that protocol so the session reads in order and updates without reload. Ordinary notes, evidence records and source files retain
 their canonical formats. Browser feedback never automatically establishes mastery.

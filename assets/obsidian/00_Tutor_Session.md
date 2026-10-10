@@ -18,21 +18,16 @@ tags:
 > is incomplete and fails session validation. Use the HTML view for interactive
 > answers and open questions; this Markdown body preserves search and backlinks.
 
-> [!info] Tutor status: **LISTENING**
-> Write your answer in the answer slot, then **tick the `Send this answer` checkbox**
-> underneath it. That is what wakes the tutor — there is no timer, so think for as long as
-> you want before ticking. The reply and the next question appear in this note.
->
+> [!info] How this session works
+> Answer in the interactive view. Questions appear **one at a time**, in the order the
+> session unfolds: probe questions, then the teaching they lead to, then the next questions.
+> Press **Submit response** when you are ready; there is no timer, so think for as long as you
+> want. The button shows **Checking…** until the tutor's verdict arrives; the verdict and the
+> explanation then appear under your answer. The page updates live, without reloading.
+> Ask anything at any time with the open-question box; it costs no probe budget.
+> Say "I don't know" or "I recognise this but can't derive it" freely — that is a more
+> useful signal than a guess, and it is what the probe phase is for.
 > To pause or redirect, say so in chat.
-
-## How to use this note
-
-1. Scroll to **§3** and find the question marked `ACTIVE`.
-2. Write inside the `**My answer:**` block underneath it.
-3. **Tick the `Send this answer` checkbox.** The tutor responds when submission is detected.
-4. The assessment and the next `ACTIVE` question appear below.
-5. Say "I don't know" or "I recognise this but can't derive it" freely — that is a more
-   useful signal than a guess, and it is what the probe phase is for.
 
 ---
 
@@ -95,29 +90,14 @@ without turning the progression into a rigid script.
 
 ## 3. Prerequisite probe
 
-Questions are posted here **one at a time**, newest last. Exactly one carries `ACTIVE`.
-
-Pattern for each question — the tutor appends this, the learner fills the answer slot and
-ticks the box:
-
-```markdown
-### Qn — <short topic> — `ACTIVE`
-
-<one diagnostic question; do not hide extra questions in multipart prompts>
-
-**My answer:**
-
->
-
-- [ ] **Send this answer**
-```
-
-After the answer is submitted the tutor rewrites `ACTIVE` to `ANSWERED`, appends a
-short verdict/hint (for example, `Correct.` or `Partially correct. Hint: ...`),
-and posts the next question with a fresh unticked checkbox. Clear the old submission
-marker. Defer detailed analysis, source lookup, and map/log updates until block end.
-Give a minimal correction or pause for teaching/verification if continuation is
-blocked, prepared evidence is insufficient, or the learner requests explanation.
+Questions are posted here **one at a time**, in session order, with
+`html_sessions.py add-question`; each appears where the session currently ends. The
+tutor checks each submitted answer with `html_sessions.py review` (a short verdict and
+hint, for example `Correct.` or `Partially correct. Hint: ...`), which can post the next
+question in the same step. Defer detailed analysis, source lookup, and map/log updates
+until block end. Give a minimal correction or pause for teaching/verification if
+continuation is blocked, prepared evidence is insufficient, or the learner requests
+explanation; append that teaching before the next question so the page reads in order.
 Multiple choice is encouraged when it reduces typing or tests intuition.
 
 At block end synthesize understood/partly understood concepts, misconceptions,

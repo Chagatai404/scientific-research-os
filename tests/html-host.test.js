@@ -8,7 +8,7 @@ class Component { registerDomEvent() {} registerEvent() {} }
 const obsidian = {Plugin: Component, Component, FileView: Component, normalizePath: p => p};
 const file = path.join(__dirname, '../extensions/obsidian-html/main.js');
 const mod = {exports: {}};
-vm.runInNewContext(fs.readFileSync(file, 'utf8'), {require: name => name === 'obsidian' ? obsidian : require(name), module: mod, console, Date, Object, Set, Array, JSON, Number, Promise, Buffer, process});
+vm.runInNewContext(fs.readFileSync(file, 'utf8'), {require: name => name === 'obsidian' ? obsidian : require(name), module: mod, console, Date, Object, Set, Array, JSON, Number, Promise, Buffer, process, setTimeout, clearTimeout});
 const {parseState, validateEvent, validateResources, approveModule, imageData, acquireLock, buildDocument, SessionHost, sibling} = mod.exports._test;
 const base = {schema_version: 1, session_id: 'session-1', questions: [{id: 'q1'}], events: []};
 const state = () => parseState(JSON.stringify(base));
@@ -79,6 +79,26 @@ assert(!html.includes('title":"</script>'));
   assert.equal(JSON.parse(fs.readFileSync(path.join(vaultRoot, 'session.session.lock'), 'utf8')).token, 'other-owner');
   releaseLock();
   assert(!fs.existsSync(path.join(vaultRoot, 'session.session.lock')));
+  // A brief lock held by the agent's writer is waited out instead of failing the learner's submission.
+  const briefLock = acquireLock(vault, 'session.html', 'agent-writer'); setTimeout(briefLock, 200);
+  send(event('waited')); await host.queue;
+  assert.equal(replies.at(-1).type, 'state'); assert.equal(JSON.parse(raw).events.at(-1).event_id, 'waited');
+  // Agent writes patch the open page instead of rebuilding the iframe.
+  let reloads = 0; host.reload = () => { reloads++; };
+  const files = {'session.html': '<main id="ros-session"></main>', 'session.state.json': raw};
+  host.read = async p => files[p];
+  host.loaded = {html: files['session.html'], raw, theme: 'light'}; host.state = parseState(raw);
+  host.receive({source: host.frame.contentWindow, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'ready'}});
+  assert.equal(host.ready, true);
+  const reviewed = JSON.parse(raw); reviewed.questions[0].reviews = [{response_event_id: 'waited', verdict: 'correct', feedback: 'Good.', reviewed_at: new Date().toISOString()}];
+  files['session.state.json'] = JSON.stringify(reviewed); await host.refresh();
+  assert.equal(reloads, 0); assert.equal(replies.at(-1).type, 'update'); assert.equal(replies.at(-1).body, undefined);
+  assert.equal(replies.at(-1).state.questions[0].reviews[0].verdict, 'correct');
+  const sent = replies.length; await host.refresh(); assert.equal(replies.length, sent);
+  files['session.state.json'] = JSON.stringify({...reviewed, resources: [{path: 'session.assets/a.png', kind: 'image'}]}); await host.refresh();
+  assert.equal(reloads, 1);
+  host.ready = false; files['session.state.json'] = JSON.stringify({...reviewed, title: 'changed'}); await host.refresh();
+  assert.equal(reloads, 2);
   fs.rmdirSync(vaultRoot);
-  console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts.');
+  console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

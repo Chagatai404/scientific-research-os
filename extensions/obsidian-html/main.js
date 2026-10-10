@@ -64,6 +64,15 @@ function acquireLock(vault, sessionPath, token) {
     fs.unlinkSync(lockPath);
   };
 }
+// The agent's Python writer holds the same lock for milliseconds; wait briefly instead of failing a submission.
+async function acquireLockWithRetry(vault, sessionPath, token, timeout = 3000) {
+  const start = Date.now();
+  for (;;) {
+    try { return acquireLock(vault, sessionPath, token); }
+    catch (error) { if (!/locked by another writer/.test(error.message) || Date.now() - start > timeout) throw error; }
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+}
 function parseState(text) {
   if (typeof text !== 'string' || text.length > MAX_STATE) throw new Error('Session state exceeds size limit.');
   const s = JSON.parse(text);
@@ -168,7 +177,7 @@ class SessionHost extends Component {
         try {
           const current = await this.read(file.path);
           const prior = this.loaded && (file.path === this.path ? this.loaded.html : this.loaded.raw);
-          if (current !== prior) this.reload();
+          if (current !== prior) this.scheduleRefresh();
         } catch (error) { this.fail(error.message); }
       } else if ([RUNTIME + 'session.js', RUNTIME + 'session.css', ...(this.resources || []).map(r => r.path)].includes(file.path)) this.reload();
     }));
@@ -196,8 +205,28 @@ class SessionHost extends Component {
     if (!file || file.children) { if (required) throw new Error('Missing session resource: ' + path); return ''; }
     return this.plugin.app.vault.read(file);
   }
+  // Agent writes touch state, HTML and bridge in quick succession; coalesce them into one live update.
+  scheduleRefresh() { clearTimeout(this.refreshTimer); this.refreshTimer = setTimeout(() => this.refresh(), 120); }
+  async refresh() {
+    if (this.invalidated) return;
+    if (!this.frame || !this.ready || !this.loaded) { this.reload(); return; }
+    const generation = this.generation; const token = this.token;
+    try {
+      const [html, raw] = await Promise.all([this.read(this.path), this.read(sibling(this.path))]);
+      if (generation !== this.generation || token !== this.token) return;
+      if (html === this.loaded.html && raw === this.loaded.raw) return;
+      const state = parseState(raw);
+      // New resources need fresh approval and inlining; only content/state changes are patched live.
+      if (JSON.stringify(state.resources || []) !== JSON.stringify(this.state.resources || []) || state.session_id !== this.state.session_id) { this.reload(); return; }
+      const message = {type: 'update', state};
+      if (html !== this.loaded.html) message.body = sanitizeHtml(html, this.container.ownerDocument, this.images || new Map(), new Map((this.resources || []).map(r => [r.id, r.alt])));
+      this.loaded.html = html; this.loaded.raw = raw; this.state = state;
+      this.reply(token, message);
+    } catch (error) { if (generation === this.generation) this.fail(error.message); }
+  }
   async reload() {
     if (this.invalidated) return;
+    this.ready = false; clearTimeout(this.refreshTimer);
     const generation = ++this.generation; this.token = null;
     try {
       const [html, raw, runtime, css] = await Promise.all([this.read(this.path), this.read(sibling(this.path)), this.read(RUNTIME + 'session.js', false), this.read(RUNTIME + 'session.css', false)]);
@@ -227,7 +256,7 @@ class SessionHost extends Component {
       }
       if (generation !== this.generation) return;
       this.loaded = {html, raw, theme: this.container.ownerDocument.body.classList.contains('theme-dark') ? 'dark' : 'light'};
-      this.state = state; this.resources = resources; this.token = crypto.randomBytes(32).toString('hex');
+      this.state = state; this.resources = resources; this.images = images; this.token = crypto.randomBytes(32).toString('hex');
       const doc = this.container.ownerDocument;
       const body = sanitizeHtml(html, doc, images, new Map(resources.map(r => [r.id, r.alt])));
       if (this.frame) this.frame.remove();
@@ -239,6 +268,7 @@ class SessionHost extends Component {
   receive(message) {
     const data = message.data;
     if (!this.frame || message.source !== this.frame.contentWindow || !data || data.channel !== 'research-os' || data.token !== this.token || data.session_id !== this.state.session_id) return;
+    if (data.type === 'ready') { this.ready = true; return; }
     if (this.pending >= 32) { this.reply(this.token, {type: 'error', message: 'Too many pending events.'}); return; }
     this.pending++;
     const token = this.token; const generation = this.generation;
@@ -249,7 +279,7 @@ class SessionHost extends Component {
         const file = this.plugin.app.vault.getAbstractFileByPath(sibling(this.path));
         if (!file || file.children) throw new Error('Session state is missing.');
         this.writing = true;
-        const releaseLock = acquireLock(this.plugin.app.vault, this.path, token);
+        const releaseLock = await acquireLockWithRetry(this.plugin.app.vault, this.path, token);
         try {
         await this.plugin.app.vault.process(file, raw => {
           const state = parseState(raw);
@@ -275,7 +305,7 @@ class SessionHost extends Component {
     });
   }
   reply(token, payload) { if (this.frame && token === this.token) this.frame.contentWindow.postMessage(Object.assign({channel: 'research-os', token, session_id: this.state.session_id}, payload), '*'); }
-  onunload() { if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
+  onunload() { clearTimeout(this.refreshTimer); if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
 }
 class SessionView extends FileView {
   constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }
@@ -333,4 +363,4 @@ class ResearchOSHTML extends Plugin {
   onunload() { this.app.workspace.detachLeavesOfType(VIEW); }
 }
 module.exports = ResearchOSHTML;
-module.exports._test = {parseState, validateEvent, validateResources, approveModule, imageData, acquireLock, sanitizeHtml, buildDocument, SessionHost, sibling};
+module.exports._test = {parseState, validateEvent, validateResources, approveModule, imageData, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling};

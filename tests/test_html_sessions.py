@@ -224,6 +224,77 @@ class SessionTests(unittest.TestCase):
         self.assertEqual((self.root / 'a.state.json').read_bytes(), before)
 
 
+class LiveTutoringTests(SessionTests):
+    """Review, linear placement, explicit-submission waiting and the resume brief."""
+
+    def test_questions_follow_the_teaching_they_were_posted_after(self):
+        hs.create_session(self.root, 'S/t.md', '---\ntype: tutor-session\n---\n# T\n\n## Probe\n',
+                          questions=[{'id': 'legacy', 'kind': 'free-response', 'prompt': 'Unplaced'}])
+        hs.add_question(self.root, 'S/t.md', {'id': 'q1', 'kind': 'mcq', 'prompt': 'Probe?', 'options': ['a', 'b'], 'solution': 'Why.'})
+        hs.append_event(self.root, 'S/t.md', {'event_id': 'r1', 'type': 'response', 'question_id': 'q1', 'response': '0'})
+        hs.review_response(self.root, 'S/t.md', 'q1', 'correct', 'Good.', transcript='## Teaching block\n\nText.',
+                           next_question={'id': 'q2', 'kind': 'free-response', 'prompt': 'Transfer?'})
+        html = (self.root / 'S/t.html').read_text(encoding='utf-8')
+        main = html[html.index('</nav>'):html.index('Exact original Markdown')]
+        order = [main.index(marker) for marker in ('>Probe<', 'data-question-id="q1"', '>Teaching block<', 'data-question-id="q2"', 'data-question-id="legacy"')]
+        self.assertEqual(order, sorted(order))
+        self.assertEqual(main.count('data-question-id="q1"'), 1)
+        # Markers are HTML comments, so Obsidian's reading view of the bridge shows nothing extra.
+        self.assertIn('<!-- ros-question: q2 -->', (self.root / 'S/t.md').read_text(encoding='utf-8'))
+        self.assertEqual(hs.validate_sessions(self.root), [])
+
+    def test_review_targets_actual_latest_response_and_never_awards_credit(self):
+        hs.create_session(self.root, 'a.md', '# A', questions=[{'id': 'q', 'kind': 'free-response', 'prompt': 'Explain'}])
+        with self.assertRaisesRegex(ValueError, 'No learner response'):
+            hs.review_response(self.root, 'a.md', 'q', 'correct')
+        hs.append_event(self.root, 'a.md', {'event_id': 'r1', 'type': 'response', 'question_id': 'q', 'response': 'first'})
+        self.assertEqual([p['event_id'] for p in hs.pending_activity(hs.load_session(self.root, 'a.md'))], ['r1'])
+        state = hs.review_response(self.root, 'a.md', 'q', 'partially-correct', 'Half.')
+        state = hs.review_response(self.root, 'a.md', 'q', 'partially-correct', 'Half.')
+        self.assertEqual(len(state['questions'][0]['reviews']), 1)
+        self.assertEqual(state['questions'][0]['reviews'][0]['response_event_id'], 'r1')
+        self.assertEqual(hs.pending_activity(state), [])
+        hs.append_event(self.root, 'a.md', {'event_id': 'r2', 'type': 'response', 'question_id': 'q', 'response': 'second'})
+        self.assertEqual([p['event_id'] for p in hs.pending_activity(hs.load_session(self.root, 'a.md'))], ['r2'])
+        with self.assertRaisesRegex(ValueError, 'Verdict'):
+            hs.review_response(self.root, 'a.md', 'q', 'mastered')
+        bad = hs.load_session(self.root, 'a.md')
+        bad['questions'][0]['reviews'] = [{'response_event_id': 'r2', 'verdict': 'correct', 'feedback': '', 'reviewed_at': '2026-01-01T00:00:00+00:00', 'mastery': 1}]
+        with self.assertRaisesRegex(ValueError, 'Invalid question review'):
+            hs.validate_state(bad)
+        with self.assertRaisesRegex(ValueError, 'Reviews are recorded'):
+            hs.add_question(self.root, 'a.md', {'id': 'x', 'kind': 'mcq', 'prompt': 'P', 'reviews': []})
+
+    def test_wait_returns_explicit_submissions_only(self):
+        hs.create_session(self.root, 'a.md', '# A', questions=[{'id': 'q', 'kind': 'mcq', 'prompt': 'P', 'options': ['a']}])
+        hs.append_event(self.root, 'a.md', {'event_id': 'c1', 'type': 'confidence', 'question_id': 'q', 'response': 3})
+        self.assertTrue(hs.wait_for_activity(self.root, 'a.md', timeout=0)['timed_out'])
+        hs.append_event(self.root, 'a.md', {'event_id': 'o1', 'type': 'open-question', 'question_id': None, 'response': 'Why?'})
+        result = hs.wait_for_activity(self.root, 'a.md', timeout=0)
+        self.assertEqual([(p['kind'], p.get('id')) for p in result['pending']], [('open-question', 'o1')])
+
+    def test_resume_brief_loads_project_research_and_knowledge_graphs(self):
+        project = self.root / 'repo'
+        (project / 'research').mkdir(parents=True)
+        (project / 'research/RQ-001.md').write_text('---\nresearch_schema: 1\ntype: research-question\nid: RQ-001\nproject: demo-project\nstatus: active\ncreated: 2026-01-01\n---\n# Question one\n', encoding='utf-8')
+        note = self.root / '01 Projects/Demo Project/Demo Project.md'
+        note.parent.mkdir(parents=True)
+        note.write_text('---\ntype: project\npath: "' + project.as_posix() + '"\n---\n# Demo Project\n', encoding='utf-8')
+        (self.root / '02 Knowledge').mkdir()
+        hs.create_session(self.root, 'S/t.md', '---\ntype: tutor-session\nproject: "[[Demo Project]]"\n---\n# T\n\nContinues RQ-001.\n',
+                          questions=[{'id': 'q', 'kind': 'free-response', 'prompt': 'Explain'}])
+        hs.append_event(self.root, 'S/t.md', {'event_id': 'r1', 'type': 'response', 'question_id': 'q', 'response': 'answer'})
+        brief = hs.session_context(self.root, 'S/t.md')
+        self.assertEqual(brief['project']['id'], 'demo-project')
+        self.assertEqual(brief['research']['active_questions'], ['RQ-001'])
+        self.assertEqual(brief['research']['session_records'][0]['id'], 'RQ-001')
+        self.assertEqual(brief['pending'][0]['event_id'], 'r1')
+        self.assertIsNotNone(brief['knowledge'])
+        text = hs.render_context(brief)
+        self.assertIn('research.py context', text)
+        self.assertIn('Review `q`', text)
+
+
 class MigrationTests(SessionTests):
     def seed(self):
         session = self.root / "Sessions/old.md"

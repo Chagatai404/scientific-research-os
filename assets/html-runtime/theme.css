@@ -251,6 +251,29 @@ output[data-ros-feedback] { display: block; margin-top: var(--ros-space-3); font
 .ros-feedback[data-state=matches]::before { content: '✓' / ''; background: var(--ros-success); color: var(--ros-surface); }
 .ros-feedback[data-state=retry] { background: var(--ros-danger-bg); }
 .ros-feedback[data-state=retry]::before { content: '✕' / ''; background: var(--ros-danger); color: var(--ros-surface); }
+.ros-feedback { flex-wrap: wrap; }
+.ros-feedback > :not(.ros-verdict-label) { flex: 1 1 100%; padding-left: 36px; }
+.ros-verdict-label { font-weight: 700; align-self: center; }
+.ros-feedback[data-state=partial] { background: var(--ros-warning-bg); }
+.ros-feedback[data-state=partial]::before { content: '~' / ''; background: var(--ros-warning); color: var(--ros-surface); }
+/* The explanation appears with the verdict, directly under the answer it explains. */
+.ros-explanation { border-left: 3px solid var(--ros-accent); }
+.ros-explanation-title { margin: 0 0 4px; font: 700 12px/1.5 var(--ros-font-ui); letter-spacing: .09em; text-transform: uppercase; color: var(--ros-accent); }
+.ros-explanation > p:last-child { margin-bottom: 0; white-space: pre-line; }
+.ros-form-note { margin: var(--ros-space-2) 0 0; font: 14px/1.5 var(--ros-font-ui); color: var(--ros-danger); }
+.ros-question-heading { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ros-space-3); margin-bottom: var(--ros-space-3); }
+.ros-question-heading .ros-question-number { margin: 0; }
+.ros-question-state[data-state=matches] { color: var(--ros-success); font-weight: 600; }
+.ros-question-state[data-state=retry] { color: var(--ros-danger); font-weight: 600; }
+.ros-question-state[data-state=partial] { color: var(--ros-warning); font-weight: 600; }
+.ros-question-state[data-state=checking], .ros-submit[aria-busy=true] { animation: ros-checking 1.4s ease-in-out infinite; }
+.ros-submit[aria-busy=true]:disabled { background: var(--ros-accent-bg); border-color: var(--ros-accent); color: var(--ros-accent); }
+@keyframes ros-checking { 50% { opacity: .55; } }
+/* Content written while the page is open arrives in place, briefly marked. */
+[data-ros-arrived] { animation: ros-arrived 2.4s ease-out; }
+@keyframes ros-arrived { from { box-shadow: 0 0 0 4px var(--ros-accent-bg); background-color: var(--ros-accent-bg); } }
+.ros-arrival { position: fixed; z-index: 20; left: 50%; bottom: var(--ros-space-5); transform: translateX(-50%); margin: 0; border-radius: 999px; background: var(--ros-accent); border-color: var(--ros-accent); color: var(--ros-on-accent); box-shadow: var(--ros-shadow-sm); }
+.ros-arrival:hover:not(:disabled) { background: var(--ros-accent-hover); border-color: var(--ros-accent-hover); }
 .ros-hint, .ros-explanation { font-size: 16px; line-height: 1.65; margin: 8px 0 12px; padding: 12px 16px; background: var(--ros-surface-subtle); border-radius: var(--ros-radius-md); }
 .ros-reveal { font-size: 14px; margin: 4px 8px 4px 0; }
 .ros-confidence { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ros-space-2) var(--ros-space-4); font: 14px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); margin: var(--ros-space-4) 0 0; }
