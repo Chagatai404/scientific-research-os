@@ -193,6 +193,23 @@ class SessionTests(unittest.TestCase):
         self.assertNotIn('src="', text)
         self.assertTrue((self.root / ".research-os/runtime/session.js").exists())
 
+    def test_inline_approved_image_export_preserves_placement_and_state(self):
+        folder = self.root / 'a.assets'
+        folder.mkdir()
+        (folder / 'plot.png').write_bytes(b'local-image-fixture')
+        source = 'Before\n\n![Plot](resource:plot "Authored caption")\n\nAfter'
+        hs.create_session(self.root, 'a.md', source, resources=[{'id':'plot', 'kind':'image', 'path':'a.assets/plot.png'}])
+        before = (self.root / 'a.state.json').read_bytes()
+        hs.export_session(self.root, 'a.md', self.root / 'export.html')
+        output = (self.root / 'export.html').read_text(encoding='utf-8')
+        article = output.split('<main ', 1)[1].split('</main>', 1)[0]
+        self.assertEqual(article.count('<img '), 1)
+        self.assertIn('src="data:image/png;base64,', output)
+        self.assertLess(output.index('<p>Before</p>'), output.index('<img '))
+        self.assertLess(output.index('<img '), output.index('<p>After</p>'))
+        self.assertIn('<figcaption>Authored caption</figcaption>', output)
+        self.assertEqual((self.root / 'a.state.json').read_bytes(), before)
+
 
 class MigrationTests(SessionTests):
     def seed(self):

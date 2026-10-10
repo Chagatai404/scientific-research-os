@@ -129,5 +129,33 @@ class SemanticRenderingTests(unittest.TestCase):
         self.assertIn('legacy', markup)
 
 
+class EducationalComponents(unittest.TestCase):
+    def test_scientific_table_alignment_and_literal_pipes(self):
+        markup = hs.markdown_html('| Quantity | Value |\n| --- | ---: |\n| `a|b` | 2.0 |\n| escaped\\|pipe | $x^2$ |')
+        tree = Tree(markup)
+        self.assertEqual(len(tree.tagged('th')), 2)
+        self.assertEqual(len(tree.tagged('td')), 4)
+        self.assertIn('scope="col"', markup)
+        self.assertIn('class="ros-numeric"', markup)
+        self.assertIn('<code>a|b</code>', markup)
+        self.assertIn('escaped|pipe', markup)
+        self.assertIn('data-tex="x^2"', markup)
+
+    def test_only_declared_resource_syntax_creates_images(self):
+        markup = hs.markdown_html('![Diagram](resource:diagram "Authored **caption**")')
+        self.assertIn('data-resource-id="diagram"', markup)
+        self.assertIn('<figcaption>Authored <strong>caption</strong></figcaption>', markup)
+        self.assertNotIn('src=', markup)
+        for source in ['![x](https://example.com/x.png)', '![x](resource:../escape)', '<img src="file:///secret">']:
+            self.assertNotIn('<img ', hs.markdown_html(source))
+
+    def test_formula_callout_has_separate_math_target(self):
+        markup = hs.markdown_html('> [!formula] Standard error\n> $$\\sigma/\\sqrt{n}$$')
+        self.assertIn('data-ros="formula"', markup)
+        self.assertIn('data-ros="equation"', markup)
+        self.assertEqual(len(Tree(markup).tagged('aside')), 1)
+        self.assertIn('Standard error', markup)
+
+
 if __name__ == '__main__':
     unittest.main()

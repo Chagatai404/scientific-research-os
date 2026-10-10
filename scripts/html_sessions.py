@@ -235,6 +235,26 @@ def _inline(text):
 _LIST_MARKER = re.compile(r'^( *)([-+*]|\d+[.)])\s+(.+)$')
 _HEADING = re.compile(r'^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$')
 _CALLOUT = re.compile(r'^\[!([a-zA-Z][\w-]*)\]([+-]?)\s*(.*)$')
+_IMAGE = re.compile(r'^!\[([^\]]*)\]\(resource:([a-zA-Z0-9_-]+)(?:\s+"([^"]*)")?\)\s*$')
+
+
+def _table_cells(line):
+    """Split unescaped pipes outside inline code; retain escaped literal pipes."""
+    cells, cell, code = [], [], False
+    line = line.strip()
+    if line.startswith('|'): line = line[1:]
+    if line.endswith('|') and not line.endswith('\\|'): line = line[:-1]
+    i = 0
+    while i < len(line):
+        char = line[i]
+        if char == '\\' and i + 1 < len(line) and line[i + 1] == '|':
+            cell.append('|'); i += 2; continue
+        if char == '`': code = not code
+        if char == '|' and not code:
+            cells.append(''.join(cell).strip()); cell = []
+        else: cell.append(char)
+        i += 1
+    return cells + [''.join(cell).strip()]
 
 
 def markdown_html(source, page_title=None):
@@ -266,6 +286,23 @@ def markdown_html(source, page_title=None):
             if not line.strip():
                 i += 1
                 continue
+            image = _IMAGE.fullmatch(line.strip())
+            if image:
+                out.append('<figure class="ros-figure" data-ros="figure"><img data-resource-id="' + html.escape(image[2], quote=True) + '" alt="' + html.escape(image[1], quote=True) + '">' + ('<figcaption>' + _inline(image[3]) + '</figcaption>' if image[3] else '') + '</figure>')
+                i += 1; continue
+            if i + 1 < len(lines) and '|' in line:
+                headings, rules = _table_cells(line), _table_cells(lines[i + 1])
+                if len(headings) == len(rules) and all(re.fullmatch(r':?-{3,}:?', r) for r in rules):
+                    classes = ['ros-align-center' if r.startswith(':') and r.endswith(':') else 'ros-numeric' if r.endswith(':') else 'ros-align-left' for r in rules]
+                    table = '<div class="ros-table-wrap" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr>'
+                    table += ''.join('<th scope="col" class="' + c + '">' + _inline(h) + '</th>' for h, c in zip(headings, classes)) + '</tr></thead><tbody>'
+                    i += 2
+                    while i < len(lines) and '|' in lines[i] and lines[i].strip():
+                        cells = _table_cells(lines[i])
+                        if len(cells) != len(headings): break
+                        table += '<tr>' + ''.join('<td class="' + c + '">' + _inline(v) + '</td>' for v, c in zip(cells, classes)) + '</tr>'
+                        i += 1
+                    out.append(table + '</tbody></table></div>'); continue
             fence = re.match(r'^\s*(`{3,}|~{3,})([^\s`]*)\s*$', line)
             if fence:
                 code, i = [], i + 1
@@ -362,7 +399,10 @@ def markdown_html(source, page_title=None):
             if re.fullmatch(r'\s*(?:---+|\*\*\*+|___+)\s*', line):
                 out.append('<hr>'); i += 1; continue
             paragraph = [line]; i += 1
-            while i < len(lines) and not block_start(lines[i]):
+            while i < len(lines) and not block_start(lines[i]) and not _IMAGE.fullmatch(lines[i].strip()):
+                if i + 1 < len(lines) and '|' in lines[i]:
+                    cells, rules = _table_cells(lines[i]), _table_cells(lines[i + 1])
+                    if len(cells) == len(rules) and all(re.fullmatch(r':?-{3,}:?', r) for r in rules): break
                 paragraph.append(lines[i]); i += 1
             fragments = []
             for j, text in enumerate(paragraph):
@@ -402,9 +442,16 @@ def _widgets_html(state):
     return "".join('<section data-ros="widget" data-widget="' + html.escape(w["kind"], quote=True) + '" id="' + html.escape(w["id"], quote=True) + '"><h3>' + html.escape(w.get("title", w["kind"].title() + " demonstration")) + '</h3></section>' for w in state.get("widgets", []))
 
 
-def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, resource_markup="", resource_scripts=""):
+def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, resource_markup="", resource_scripts="", resource_images=None):
     validate_state(state)
     content = markdown_html(state["source_markdown"], page_title=state["title"])
+    if resource_images:
+        def embed_image(match):
+            image = match.group()
+            identifier = re.search(r'data-resource-id="([^"]+)"', image)[1]
+            data = resource_images.get(identifier)
+            return image[:-1] + ' src="' + html.escape(data, quote=True) + '">' if data else image
+        content = re.sub(r'<img data-resource-id="[^"]+"[^>]*>', embed_image, content)
     anchors = re.findall(r'<h[1-6] id="([^"]+)"[^>]*>(.*?)</h[1-6]>', content)
     navigation = '<nav aria-label="Session sections"><details><summary>Contents</summary><ul>' + ''.join('<li><a href="#' + anchor + '">' + label + '</a></li>' for anchor,label in anchors) + '</ul></details></nav>'
     metadata = state.get('metadata', {})
@@ -618,7 +665,8 @@ def append_event(root, relative_md, event):
 def export_session(root, relative_md, destination):
     state = load_session(root, relative_md)
     md, view, _ = paths(root, relative_md)
-    markup, scripts = "", ""
+    markup, scripts, images = "", "", {}
+    used_images = set(re.findall(r'data-resource-id="([^"]+)"', markdown_html(state['source_markdown'])))
     for resource in state.get("resources", []):
         value = resource["path"]
         if value.startswith(view.stem + ".assets/"):
@@ -632,14 +680,17 @@ def export_session(root, relative_md, destination):
             raise ValueError("Export resource exceeds limit")
         if resource["kind"] == "image":
             mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}[path.suffix.lower()]
-            markup += '<figure><img src="data:' + mime + ';base64,' + base64.b64encode(raw).decode() + '" alt="' + html.escape(str(resource.get("alt", "Session illustration")), quote=True) + '"></figure>'
+            data_url = 'data:' + mime + ';base64,' + base64.b64encode(raw).decode()
+            images[resource['id']] = data_url
+            if resource['id'] not in used_images:
+                markup += '<figure class="ros-figure"><img src="' + data_url + '" alt="' + html.escape(str(resource.get("alt", "Session illustration")), quote=True) + '"></figure>'
         else:
             _approved_module(root, path, resource)
             scripts += '<script>document.addEventListener("DOMContentLoaded",function(){' + raw.decode("utf-8").replace("</script", "<\\/script") + '\n},{once:true});</script>'
     destination = Path(destination)
     if destination.exists() or destination.is_symlink():
         raise ValueError("Export destination already exists; choose a new file to preserve user data")
-    _write(destination, render_html(state, standalone=True, resource_markup=markup, resource_scripts=scripts).encode("utf-8"))
+    _write(destination, render_html(state, standalone=True, resource_markup=markup, resource_scripts=scripts, resource_images=images).encode("utf-8"))
     return destination
 
 

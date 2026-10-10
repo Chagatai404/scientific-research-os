@@ -102,6 +102,26 @@
     });
     mount.append(download);
     for (const el of mount.querySelectorAll('[data-ros="equation"], [data-tex]')) renderMath(el);
+    for (const pre of mount.querySelectorAll('pre[data-ros="code"]')) {
+      const code = pre.querySelector('code'); if (!code) continue;
+      const source = code.textContent;
+      const shell = node('div'); shell.className = 'ros-code-block';
+      const toolbar = node('div'); toolbar.className = 'ros-code-toolbar';
+      toolbar.append(node('span', pre.dataset.language || 'Plain text'));
+      const copy = node('button', 'Copy code'); copy.type = 'button';
+      const result = node('span'); result.setAttribute('role', 'status');
+      toolbar.append(copy, result); pre.before(shell); shell.append(toolbar, pre);
+      copy.addEventListener('click', async () => {
+        try {
+          if (!root.navigator?.clipboard?.writeText) throw new Error('Clipboard unavailable');
+          await root.navigator.clipboard.writeText(source); result.textContent = 'Copied';
+        } catch (_) {
+          let selection = shell.querySelector('textarea');
+          if (!selection) { selection = node('textarea'); selection.readOnly = true; selection.value = source; selection.setAttribute('aria-label', 'Code to copy'); shell.append(selection); }
+          selection.focus(); selection.select(); result.textContent = 'Selected — press Ctrl+C or ⌘C';
+        }
+      });
+    }
     for (const el of mount.querySelectorAll('[data-question-id]')) {
       const q = questions.get(el.getAttribute('data-question-id')); if (!q) continue;
       if (!['mcq','multi','numeric','matching','ordering','free-response'].includes(q.kind)) { el.append(node('p', 'Unsupported assessment kind. Original content is preserved for human review.')); continue; }

@@ -113,12 +113,22 @@ blockquote { margin: var(--ros-space-5) 0; border-left: 3px solid var(--ros-bord
 .ros-callout-body { padding: var(--ros-space-1) var(--ros-space-4) var(--ros-space-2); }
 .ros-callout-body > :first-child { margin-top: var(--ros-space-3); }
 .ros-callout-body > :last-child { margin-bottom: var(--ros-space-3); }
+.ros-callout { --ros-callout-accent: var(--ros-info); border-left-color: var(--ros-callout-accent); }
+.ros-callout-header { color: var(--ros-callout-accent); }
+.ros-callout:is(.ros-callout-concept,.ros-callout-intuition,.ros-callout-interpretation,.ros-callout-open-question,.ros-callout-question,.ros-callout-experiment,.ros-callout-example,.ros-callout-hint) { --ros-callout-accent: var(--ros-practice); }
+.ros-callout:is(.ros-callout-definition,.ros-callout-established-fact,.ros-callout-fact,.ros-callout-answer,.ros-callout-reveal) { --ros-callout-accent: var(--ros-success); }
+.ros-callout:is(.ros-callout-warning,.ros-callout-assumption) { --ros-callout-accent: var(--ros-warning); }
+.ros-callout-formula { --ros-callout-accent: var(--ros-accent); }
+details.ros-callout > summary { list-style-position: inside; margin: 0; }
+details.ros-callout:not([open]) > summary { border-bottom: 0; }
 :is(section,div,aside)[data-ros=definition], :is(section,div,aside)[data-ros=concept], :is(section,div,aside)[data-ros=evidence], :is(section,div,aside)[data-ros=decision] { border-left: 3px solid var(--ros-info); padding: var(--ros-space-4); margin: var(--ros-space-5) 0; }
 [data-question-id], :is(section,div)[data-ros=checkpoint] { border: 1px solid var(--ros-border); border-left: 3px solid var(--ros-practice); border-radius: var(--ros-radius-md); background: var(--ros-practice-bg); padding: var(--ros-space-5); margin: var(--ros-space-6) 0; }
 [data-question-id] > h3, [data-ros=widget] > h3 { margin-top: 0; }
 [data-ros=widget] { border: 1px solid var(--ros-border); border-radius: var(--ros-radius-md); padding: var(--ros-space-5); margin: var(--ros-space-5) 0; }
 :is(blockquote,section,div,aside)[data-ros=warning] { border-left: 3px solid var(--ros-warning); background: var(--ros-warning-bg); padding: var(--ros-space-4); }
 [data-ros=hint], [data-ros=solution] { border-left: 3px solid var(--ros-border); padding-left: var(--ros-space-4); }
+/* Authored callouts already have a title/body shell; avoid legacy double padding. */
+:is(aside,div,section,details).ros-callout { padding: 0; border-left-color: var(--ros-callout-accent); background: var(--ros-surface); }
 details { margin: var(--ros-space-4) 0; }
 summary { cursor: pointer; font: 600 15px/1.5 var(--ros-font-ui); padding: var(--ros-space-1) 0; }
 details[open] > summary { margin-bottom: var(--ros-space-2); }
@@ -146,13 +156,32 @@ code, pre { font-family: var(--ros-font-mono); font-size: 14px; }
 code { background: var(--ros-surface-subtle); border: 1px solid var(--ros-border); padding: .08em .3em; border-radius: var(--ros-radius-sm); }
 pre { overflow: auto; white-space: pre; overflow-wrap: normal; padding: var(--ros-space-4); background: var(--ros-surface-subtle); border: 1px solid var(--ros-border); border-radius: var(--ros-radius-md); line-height: 1.65; }
 pre code { padding: 0; background: none; border: 0; }
+.ros-code-block { margin: var(--ros-space-5) 0; border: 1px solid var(--ros-border); border-radius: var(--ros-radius-md); overflow: hidden; }
+.ros-code-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ros-space-2); padding: 4px 12px; background: var(--ros-surface-subtle); border-bottom: 1px solid var(--ros-border); font: 13px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); }
+.ros-code-toolbar > span:first-child { margin-right: auto; }
+.ros-code-toolbar button { font-size: 13px; padding: 4px 12px; }
+.ros-code-block pre { margin: 0; border: 0; border-radius: 0; }
+.ros-code-block textarea { font: 14px/1.65 var(--ros-font-mono); }
 table { display: block; width: 100%; overflow-x: auto; border-collapse: collapse; font-size: 16px; margin: var(--ros-space-5) 0; }
 td, th { text-align: left; padding: var(--ros-space-3) var(--ros-space-4); border-bottom: 1px solid var(--ros-border); }
 th { font: 600 14px/1.5 var(--ros-font-ui); background: var(--ros-surface-subtle); }
+.ros-table-wrap { overflow-x: auto; margin: var(--ros-space-5) 0; }
+.ros-table-wrap table { display: table; margin: 0; overflow: visible; min-width: 100%; width: max-content; border-top: 2px solid var(--ros-border-strong); border-bottom: 2px solid var(--ros-border-strong); }
+.ros-table-wrap th { border-bottom: 2px solid var(--ros-border-strong); }
+.ros-table-wrap .ros-numeric { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ros-table-wrap .ros-align-center { text-align: center; }
+.ros-table-wrap.ros-compact :is(td,th) { padding: 6px 12px; }
 svg, canvas, img { max-width: 100%; height: auto; }
 canvas, svg { display: block; margin: var(--ros-space-4) auto; }
+/* KaTeX stretch SVGs are glyphs, not figure canvases. */
+.katex svg { display: inline; margin: 0; max-width: none; height: inherit; }
 figure { margin: var(--ros-space-5) 0; }
 figure img { display: block; margin: auto; }
+.ros-figure { padding: var(--ros-space-4); border: 1px solid var(--ros-border); border-radius: var(--ros-radius-md); background: var(--ros-surface); }
+.ros-figure-panels { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,240px),1fr)); gap: var(--ros-space-4); align-items: start; }
+.ros-figure-panels figure { margin: 0; }
+.ros-formula { border-block: 1px solid var(--ros-border); margin: var(--ros-space-5) 0; }
+.ros-callout-formula .ros-formula { border: 0; margin: var(--ros-space-3) 0; }
 figcaption, caption { font: 14px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); text-align: left; padding-top: var(--ros-space-3); }
 div[data-ros=equation], .katex-display { overflow-x: auto; overflow-y: hidden; padding: var(--ros-space-3) 0; }
 span[data-ros=equation] { padding: 0; }

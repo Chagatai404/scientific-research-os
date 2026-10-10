@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "session_id": "component-gallery",
+  "type": "tutor-session",
+  "title": "Educational component gallery",
+  "metadata": {
+    "subtitle": "Design verification fixture"
+  },
+  "source_markdown": "# Educational component gallery\n\nDeveloper examples only; no learner evidence or measured results.\n\n## Formula, code and table\n\n> [!formula] Standard error under independent sampling\n> $$\\mathrm{SE}=\\frac{\\sigma}{\\sqrt{n}}$$\n> Assumes independent observations with common finite variance.\n\n```python\nimport math\nstandard_error = sigma / math.sqrt(n)\nprint(standard_error)\n```\n\n| Quantity | Symbol | Illustrative value |\n| --- | :---: | ---: |\n| Population standard deviation | $\\sigma$ | 2.0 |\n| Sample size | $n$ | 25 |\n| Standard error | $\\mathrm{SE}$ | 0.4 |\n\n## Figures\n\n\n> [!info] Info\n> Authored info content stays in its original position.\n\n> [!concept] Concept\n> Authored concept content stays in its original position.\n\n> [!intuition] Intuition\n> Authored intuition content stays in its original position.\n\n> [!definition] Definition\n> Authored definition content stays in its original position.\n\n> [!assumption] Assumption\n> Authored assumption content stays in its original position.\n\n> [!established-fact] Established fact\n> Authored established fact content stays in its original position.\n\n> [!interpretation] Interpretation\n> Authored interpretation content stays in its original position.\n\n> [!open-question] Open question\n> Authored open question content stays in its original position.\n\n> [!warning] Warning\n> Authored warning content stays in its original position.\n\n> [!experiment] Experiment\n> Authored experiment content stays in its original position.\n\n> [!example] Example\n> Authored example content stays in its original position.\n\n> [!hint]- Hint\n> Authored hint content stays in its original position.\n\n> [!answer]- Answer\n> Authored answer content stays in its original position.\n\n> [!reveal]- Reveal\n> Authored reveal content stays in its original position.\n\n## Approved image placement\n\n![An authored image](resource:example-image \"An approved PNG, JPEG or WebP export can appear here, with its authored caption.\")\n",
+  "events": [],
+  "questions": [],
+  "widgets": [],
+  "open_questions": [],
+  "resources": [
+    {
+      "id": "example-image",
+      "kind": "image",
+      "path": "session-component-gallery.assets/example.png",
+      "alt": "An authored image"
+    }
+  ],
+  "lifecycle": "fixture"
+}
