@@ -61,6 +61,7 @@ async function main() {
     await mcq.getByRole('button',{name:'Reveal solution after attempting'}).click();
     assert.equal(await mcq.locator('[data-ros="solution"]').isVisible(),true);
     const numeric=iframe.locator('[data-question-id="num"]');
+    await numeric.locator('summary.ros-question-summary').click();
     await numeric.getByLabel('Value:',{exact:true}).fill('3.05');
     await numeric.getByLabel('Units:',{exact:true}).fill('m/s');
     await numeric.getByRole('button',{name:'Submit response'}).click();

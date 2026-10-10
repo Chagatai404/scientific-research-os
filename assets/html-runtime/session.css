@@ -155,6 +155,59 @@ textarea { display: block; width: 100%; min-height: 6rem; border: 1px solid var(
 .ros-status { color: var(--ros-text-muted); font-size: 13px; line-height: 1.5; }
 .ros-session-header .ros-status { margin: var(--ros-space-3) 0 0; }
 output[data-ros-feedback] { display: block; margin-top: var(--ros-space-3); font-size: 16px; }
+.ros-question { padding: 0; background: var(--ros-surface); }
+.ros-question-disclosure { margin: 0; }
+.ros-question-summary { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ros-space-2); padding: 16px 24px; background: var(--ros-practice-bg); border-radius: 0 var(--ros-radius-md) 0 0; }
+.ros-question-summary::before { content: '▸'; color: var(--ros-practice); }
+.ros-question-disclosure[open] > .ros-question-summary { margin-bottom: 0; border-bottom: 1px solid var(--ros-border); }
+.ros-question-disclosure[open] > .ros-question-summary::before { content: '▾'; }
+.ros-question-number { font: 650 12px/1.5 var(--ros-font-ui); letter-spacing: .07em; text-transform: uppercase; color: var(--ros-practice); }
+.ros-question > .ros-question-number { margin: 20px 24px 0; }
+.ros-question-state { margin-left: auto; color: var(--ros-text-muted); font: 13px/1.5 var(--ros-font-ui); }
+.ros-question-body, .ros-question:not(:has(.ros-question-disclosure)) { padding: var(--ros-space-5); }
+.ros-question-prompt { font: 600 20px/1.5 var(--ros-font-ui); margin: 0 0 var(--ros-space-5); }
+.ros-options { border: 0; padding: 0; margin: 0; }
+.ros-options legend { font: 14px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); margin-bottom: var(--ros-space-2); }
+.ros-option { display: flex; align-items: flex-start; gap: var(--ros-space-3); margin: 8px 0; padding: 14px 16px; border: 1px solid var(--ros-border); border-radius: var(--ros-radius-md); background: var(--ros-surface); cursor: pointer; min-height: 56px; font-size: 16px; line-height: 1.55; }
+.ros-option input { flex: 0 0 auto; margin: 7px 0 0; }
+.ros-option-letter { flex: 0 0 28px; display: grid; place-items: center; min-height: 28px; border: 1px solid var(--ros-border); border-radius: var(--ros-radius-sm); font: 600 13px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); background: var(--ros-surface-subtle); }
+.ros-option-text { flex: 1; min-width: 0; }
+.ros-option:hover:not(:has(:disabled)) { border-color: var(--ros-practice); background: var(--ros-practice-bg); }
+.ros-option:focus-within { outline: 3px solid var(--ros-accent); outline-offset: 2px; }
+.ros-option:has(:checked) { border-color: var(--ros-practice); box-shadow: inset 3px 0 var(--ros-practice); background: var(--ros-practice-bg); }
+.ros-option:has(:checked) .ros-option-letter { color: var(--ros-practice); border-color: var(--ros-practice); }
+.ros-option[data-feedback=matches] { border-color: var(--ros-success); box-shadow: inset 3px 0 var(--ros-success); }
+.ros-option[data-feedback=retry] { border-color: var(--ros-danger); box-shadow: inset 3px 0 var(--ros-danger); }
+.ros-option:has(:disabled) { opacity: .6; cursor: default; }
+.ros-question-actions { display: flex; flex-wrap: wrap; gap: var(--ros-space-2); margin-top: var(--ros-space-4); }
+.ros-question-actions button { margin: 0; }
+button.ros-submit { background: var(--ros-practice); color: var(--ros-surface); border-color: var(--ros-practice); }
+:root[data-theme=dark] button.ros-submit { color: var(--ros-bg); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme=light]) button.ros-submit { color: var(--ros-bg); } }
+.ros-feedback { font: 15px/1.6 var(--ros-font-ui); padding: 12px 16px; margin: var(--ros-space-4) 0; border: 1px solid var(--ros-border); border-left: 3px solid var(--ros-info); border-radius: var(--ros-radius-sm); background: var(--ros-surface-subtle); }
+.ros-feedback[data-state=matches] { border-left-color: var(--ros-success); }
+.ros-feedback[data-state=retry] { border-left-color: var(--ros-danger); }
+.ros-hint, .ros-explanation { font-size: 16px; line-height: 1.65; margin: 12px 0; padding: 12px 16px; background: var(--ros-surface-subtle); border-radius: var(--ros-radius-sm); }
+.ros-reveal { font-size: 14px; margin: 4px 8px 4px 0; }
+.ros-confidence { font-size: 14px; color: var(--ros-text-muted); margin: var(--ros-space-4) 0 0; }
+.ros-confidence select { margin-left: var(--ros-space-2); font-size: 14px; }
+.ros-progress { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; margin: 16px 0 24px; padding: 12px 16px; background: var(--ros-surface-subtle); border: 1px solid var(--ros-border); border-radius: var(--ros-radius-md); font: 13px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); }
+.ros-progress-label { margin: 0; font: inherit; color: var(--ros-text); }
+.ros-progress small { grid-column: 2; grid-row: 1; font-size: 12px; }
+.ros-progress-bar { grid-column: 1 / -1; height: 4px; background: var(--ros-border); border-radius: 2px; overflow: hidden; }
+.ros-progress-bar span { display: block; height: 100%; background: var(--ros-practice); }
+.ros-open-question { margin: var(--ros-space-6) 0; padding: var(--ros-space-5); border: 1px solid var(--ros-border); border-radius: var(--ros-radius-md); background: var(--ros-surface-subtle); }
+.ros-open-question > label { font-weight: 600; margin-top: 0; }
+.ros-open-question [role=status] { font: 14px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); }
+@media (max-width: 500px) {
+  .ros-question-summary, .ros-question-body { padding: var(--ros-space-4); }
+  .ros-question-state { margin-left: 0; flex-basis: 100%; }
+  .ros-option { gap: 8px; padding: 12px; }
+  .ros-option-letter { flex-basis: 24px; min-height: 24px; }
+  .ros-open-question { padding: var(--ros-space-4); }
+  .ros-progress { grid-template-columns: 1fr; }
+  .ros-progress small { grid-column: 1; grid-row: 3; }
+}
 code, pre { font-family: var(--ros-font-mono); font-size: 14px; }
 code { background: var(--ros-surface-subtle); border: 1px solid var(--ros-border); padding: .08em .3em; border-radius: var(--ros-radius-sm); }
 pre { overflow: auto; white-space: pre; overflow-wrap: normal; padding: var(--ros-space-4); background: var(--ros-surface-subtle); border: 1px solid var(--ros-border); border-radius: var(--ros-radius-md); line-height: 1.65; }
@@ -192,7 +245,7 @@ span[data-ros=equation] { padding: 0; }
 .ros-question-composer { position: relative; }
 .ros-question-composer textarea { min-height: 8rem; padding-bottom: 3.8rem; }
 .ros-question-send { position: absolute; right: var(--ros-space-3); bottom: var(--ros-space-3); margin: 0; }
-form[data-ros=open-question] { border-top: 1px solid var(--ros-border); padding-top: var(--ros-space-5); margin-top: var(--ros-space-7); }
+form[data-ros=open-question]:not(.ros-open-question) { border-top: 1px solid var(--ros-border); padding-top: var(--ros-space-5); margin-top: var(--ros-space-7); }
 .ros-question-entry { border-top: 1px solid var(--ros-border); padding: var(--ros-space-4) 0; }
 .ros-question-entry p { white-space: pre-wrap; overflow-wrap: anywhere; }
 .ros-question-entry h3 { font-size: 16px; margin: var(--ros-space-2) 0; color: var(--ros-accent); }
@@ -209,7 +262,7 @@ form[data-ros=open-question] { border-top: 1px solid var(--ros-border); padding-
   main { padding: var(--ros-space-4); }
   h1 { font-size: 29px; }
   h2 { font-size: 22px; }
-  fieldset, [data-question-id], [data-ros=widget] { padding: var(--ros-space-3); }
+  fieldset:not(.ros-options), [data-question-id]:not(.ros-question), [data-ros=widget] { padding: var(--ros-space-3); }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 @media print {

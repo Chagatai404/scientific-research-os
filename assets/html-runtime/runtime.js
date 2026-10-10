@@ -64,6 +64,7 @@
     const questions = new Map((state.questions || []).map(q => [q.id, q]));
     const localEvents = [...(state.events || [])];
     const pending = new Map();
+    const questionPanels = [];
     let counter = 0;
     const status = doc.createElement('p'); status.className = 'ros-status'; status.setAttribute('role', 'status');
     status.textContent = host ? 'Connected to Research OS. Answers are stored as pending review.' : 'Standalone document: progress stays in this open page. Download it to preserve it; no Obsidian connection.';
@@ -76,6 +77,7 @@
       localEvents.push(event);
       if (host) { pending.set(event.event_id, event); root.parent.postMessage({channel: 'research-os', token: host.token, session_id: state.session_id, event}, '*'); status.textContent = 'Saving progress…'; }
       else status.textContent = 'Progress recorded in this page only. Download progress before closing.';
+      updateProgress();
       return event;
     };
     if (host) root.addEventListener('message', message => {
@@ -86,11 +88,28 @@
         const saved = new Set(data.state.events.map(e => e.event_id));
         for (const id of saved) pending.delete(id);
         renderConversation();
+        updateProgress();
         status.textContent = pending.size ? 'Some progress is still awaiting confirmation.' : 'Progress saved. Human learning review remains pending.';
       } else if (data.type === 'error') status.textContent = 'Progress could not be saved. Keep this page open and copy progress from the progress panel: ' + String(data.message || 'host rejected update').slice(0, 300);
     });
     function node(tag, text) { const el = doc.createElement(tag); if (text !== undefined) el.textContent = text; return el; }
     function button(text, callback) { const b = node('button', text); b.type = 'button'; b.addEventListener('click', callback); return b; }
+    const progress = node('aside'); progress.className = 'ros-progress'; progress.setAttribute('aria-label', 'Session response progress');
+    const progressText = node('p'); progressText.className = 'ros-progress-label';
+    const progressNote = node('small', 'Human review pending');
+    const progressBar = node('div'); progressBar.className = 'ros-progress-bar'; progressBar.setAttribute('role', 'progressbar'); progressBar.setAttribute('aria-label', 'Responses recorded');
+    progressBar.setAttribute('aria-valuemin', '0'); progressBar.setAttribute('aria-valuemax', String(Math.max(1, questions.size)));
+    const progressFill = node('span'); progressBar.append(progressFill); progress.append(progressText, progressBar, progressNote);
+    if (questions.size) { if (sessionHeader) sessionHeader.after(progress); else mount.prepend(progress); }
+    function updateProgress() {
+      const recorded = [...questions.keys()].filter(hasAttempt).length;
+      progressText.textContent = recorded + ' / ' + questions.size + ' responses recorded';
+      progressBar.setAttribute('aria-valuenow', String(recorded));
+      progressBar.setAttribute('aria-valuetext', recorded + ' of ' + questions.size + ' responses recorded; human review pending');
+      progressFill.style.width = (questions.size ? 100 * recorded / questions.size : 0) + '%';
+      for (const panel of questionPanels) panel.state.textContent = hasAttempt(panel.id) ? 'Response recorded · Review pending' : 'Awaiting response';
+    }
+    updateProgress();
     const download = button(host ? 'Show progress JSON to copy' : 'Download progress JSON', () => {
       if (host) {
         const panel = node('details'); panel.open = true; panel.append(node('summary', 'Progress recovery JSON'));
@@ -122,18 +141,36 @@
         }
       });
     }
+    const firstUnanswered = [...questions.keys()].find(id => !hasAttempt(id)) || [...questions.keys()].at(-1);
+    let questionNumber = 0;
     for (const el of mount.querySelectorAll('[data-question-id]')) {
       const q = questions.get(el.getAttribute('data-question-id')); if (!q) continue;
       if (!['mcq','multi','numeric','matching','ordering','free-response'].includes(q.kind)) { el.append(node('p', 'Unsupported assessment kind. Original content is preserved for human review.')); continue; }
-      el.replaceChildren(node('h3', q.prompt));
-      const form = node('form'); const fieldset = node('fieldset'); fieldset.append(node('legend', 'Your response')); form.append(fieldset);
+      el.classList.add('ros-question'); el.replaceChildren();
+      let body = el;
+      if (state.type === 'tutor-session') {
+        const disclosure = node('details'); disclosure.className = 'ros-question-disclosure'; disclosure.open = q.id === firstUnanswered;
+        const summary = node('summary'); summary.className = 'ros-question-summary';
+        const number = node('span', 'Question ' + (++questionNumber)); number.className = 'ros-question-number';
+        const responseState = node('span'); responseState.className = 'ros-question-state'; summary.append(number, responseState);
+        body = node('div'); body.className = 'ros-question-body'; disclosure.append(summary, body); el.append(disclosure);
+        questionPanels.push({id:q.id, disclosure, state:responseState});
+        disclosure.addEventListener('toggle', () => { if (disclosure.open) for (const panel of questionPanels) if (panel.disclosure !== disclosure) panel.disclosure.open = false; });
+      } else {
+        const number = node('p', 'Question ' + (++questionNumber)); number.className = 'ros-question-number'; body.append(number);
+      }
+      const prompt = node('h3', q.prompt); prompt.className = 'ros-question-prompt'; body.append(prompt);
+      const form = node('form'); const fieldset = node('fieldset'); fieldset.className = 'ros-options'; fieldset.append(node('legend', q.kind === 'multi' ? 'Choose all that apply' : 'Your response')); form.append(fieldset);
       const fields = [];
       const optionValue = option => typeof option === 'object' ? String(option.value === undefined ? option.id : option.value) : String(option);
       const optionLabel = option => typeof option === 'object' ? String(option.label || optionValue(option)) : String(option);
       if (q.kind === 'mcq' || q.kind === 'multi') {
         (q.options || []).forEach((option, index) => {
-          const label = node('label'); const input = node('input'); input.type = q.kind === 'mcq' ? 'radio' : 'checkbox'; input.name = 'answer'; input.value = optionValue(option); input.dataset.index = String(index);
-          label.append(input, doc.createTextNode(optionLabel(option))); fieldset.append(label); fields.push(input);
+          const label = node('label'); label.className = 'ros-option'; const input = node('input'); input.type = q.kind === 'mcq' ? 'radio' : 'checkbox'; input.name = 'answer'; input.value = optionValue(option); input.dataset.index = String(index);
+          input.setAttribute('aria-label', optionLabel(option));
+          const letter = node('span', index < 26 ? String.fromCharCode(65 + index) : String(index + 1)); letter.className = 'ros-option-letter'; letter.setAttribute('aria-hidden', 'true');
+          const text = node('span', optionLabel(option)); text.className = 'ros-option-text';
+          label.append(input, letter, text); fieldset.append(label); fields.push(input);
         });
       } else if (q.kind === 'matching' || q.kind === 'ordering') {
         const keys = q.kind === 'matching' ? Object.keys(q.answer || {}) : (q.options || q.answer || []);
@@ -152,27 +189,44 @@
         label.append(input); fieldset.append(label); fields.push(input);
         if (q.units) { const units = node('label', 'Units: '); const unitInput = node('input'); unitInput.maxLength = 60; units.append(unitInput); fieldset.append(units); fields.push(unitInput); }
       }
-      const feedback = node('p'); feedback.setAttribute('role', 'status'); feedback.setAttribute('data-ros-feedback', '');
-      const submit = node('button', 'Submit response'); submit.type = 'button'; form.append(submit);
-      el.append(form, feedback);
+      const feedback = node('p'); feedback.className = 'ros-feedback'; feedback.hidden = true; feedback.setAttribute('role', 'status'); feedback.setAttribute('data-ros-feedback', '');
+      function showFeedback(message, result = null) {
+        feedback.hidden = false; feedback.textContent = message;
+        const visualState = result === null ? 'pending' : result ? 'matches' : 'retry';
+        feedback.dataset.state = visualState;
+        for (const field of fields) if (field.closest('.ros-option')) {
+          const option = field.closest('.ros-option'); delete option.dataset.feedback;
+          if (field.checked && result !== null) option.dataset.feedback = visualState;
+        }
+      }
+      const submit = node('button', 'Submit response'); submit.type = 'button'; submit.className = 'ros-submit';
+      const reset = button('Clear response', () => {
+        for (const field of fields) { if (field.type === 'radio' || field.type === 'checkbox') field.checked = false; else field.value = ''; }
+        showFeedback('Draft cleared. Saved responses and revealed hints are preserved.');
+        fields[0]?.focus();
+      }); reset.className = 'ros-reset'; reset.title = 'Clear the draft without deleting saved attempts';
+      const actions = node('div'); actions.className = 'ros-question-actions'; actions.append(submit, reset); form.append(actions);
+      body.append(form, feedback);
       const solutions = [];
       (q.hints || []).forEach((hint, index) => {
-        const text = node('p', hint); text.hidden = true; text.dataset.ros = 'hint';
+        const text = node('p', hint); text.hidden = true; text.dataset.ros = 'hint'; text.className = 'ros-hint'; text.id = 'ros-hint-' + questionNumber + '-' + index;
         const reveal = button('Reveal hint ' + (index + 1), () => {
-          if (index && solutions[index - 1].text.hidden) { feedback.textContent = 'Reveal the previous hint first.'; return; }
-          text.hidden = false; reveal.disabled = true; emit('hint', q.id, index + 1);
+          if (index && solutions[index - 1].text.hidden) { showFeedback('Reveal the previous hint first.'); return; }
+          text.hidden = false; reveal.disabled = true; reveal.setAttribute('aria-expanded', 'true'); emit('hint', q.id, index + 1);
         });
-        solutions.push({text, reveal}); el.append(reveal, text);
+        reveal.className = 'ros-reveal'; reveal.setAttribute('aria-controls', text.id); reveal.setAttribute('aria-expanded', 'false');
+        solutions.push({text, reveal}); body.append(reveal, text);
       });
       if (q.solution) {
-        const explanation = node('div', q.solution); explanation.hidden = true; explanation.dataset.ros = 'solution';
-        const revealSolution = button('Reveal solution after attempting', () => { if (!hasAttempt(q.id)) { feedback.textContent = 'Try a response before revealing the solution.'; return; } explanation.hidden = false; revealSolution.disabled = true; emit('solution', q.id, true); });
-        if (hasAttempt(q.id) && localEvents.some(e => e.type === 'solution' && e.question_id === q.id)) { explanation.hidden = false; revealSolution.disabled = true; }
-        el.append(revealSolution, explanation);
+        const explanation = node('div', q.solution); explanation.hidden = true; explanation.dataset.ros = 'solution'; explanation.className = 'ros-explanation'; explanation.id = 'ros-solution-' + questionNumber;
+        const revealSolution = button('Reveal solution after attempting', () => { if (!hasAttempt(q.id)) { showFeedback('Try a response before revealing the solution.'); return; } explanation.hidden = false; revealSolution.disabled = true; revealSolution.setAttribute('aria-expanded', 'true'); emit('solution', q.id, true); });
+        revealSolution.className = 'ros-reveal'; revealSolution.setAttribute('aria-controls', explanation.id); revealSolution.setAttribute('aria-expanded', 'false');
+        if (hasAttempt(q.id) && localEvents.some(e => e.type === 'solution' && e.question_id === q.id)) { explanation.hidden = false; revealSolution.disabled = true; revealSolution.setAttribute('aria-expanded', 'true'); }
+        body.append(revealSolution, explanation);
       }
       const confidence = node('label', 'Confidence (optional): '); const rating = node('select');
       ['Choose…', '1 — uncertain', '2', '3', '4', '5 — confident'].forEach((label, i) => { const o = node('option', label); o.value = i ? String(i) : ''; rating.append(o); });
-      rating.addEventListener('change', () => { if (rating.value) emit('confidence', q.id, Number(rating.value)); }); confidence.append(rating); el.append(confidence);
+      rating.addEventListener('change', () => { if (rating.value) emit('confidence', q.id, Number(rating.value)); }); confidence.className = 'ros-confidence'; confidence.append(rating); body.append(confidence);
       const priorConfidence = [...localEvents].reverse().find(e => e.type === 'confidence' && e.question_id === q.id);
       if (priorConfidence && Number.isInteger(priorConfidence.response) && priorConfidence.response >= 1 && priorConfidence.response <= 5) rating.value = String(priorConfidence.response);
       function readResponse() {
@@ -185,24 +239,26 @@
       }
       function submitResponse(event) {
         event.preventDefault(); if (!form.reportValidity()) return; const response = readResponse();
-        if (response === null || Array.isArray(response) && response.length === 0) { feedback.textContent = 'Choose a response first.'; return; }
-        emit('response', q.id, response); feedback.textContent = assess(q, response).message;
+        if (response === null || Array.isArray(response) && response.length === 0) { showFeedback('Choose a response first.'); return; }
+        emit('response', q.id, response); const result = assess(q, response); showFeedback(result.message, result.correct);
       }
       submit.addEventListener('click', submitResponse);
       form.addEventListener('submit', event => event.preventDefault());
+      fields.forEach(field => field.addEventListener('input', () => { if (hasAttempt(q.id) || !feedback.hidden) showFeedback('Draft changed. Submit your response to record it.'); }));
       form.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target.tagName !== 'TEXTAREA' && event.target.tagName !== 'BUTTON') submitResponse(event); });
       const prior = [...localEvents].reverse().find(e => e.question_id === q.id && e.type === 'response');
       if (prior) {
-        feedback.textContent = 'Previous response restored. ' + assess(q, prior.response).message;
         if (q.kind === 'mcq' || q.kind === 'multi') fields.forEach(f => { const value = typeof q.answer === 'number' || Array.isArray(q.answer) && typeof q.answer[0] === 'number' ? Number(f.dataset.index) : f.value; f.checked = q.kind === 'mcq' ? value === prior.response : prior.response.includes(value); });
         else if (q.kind === 'numeric') { fields[0].value = prior.response.value; if (fields[1]) fields[1].value = prior.response.units || ''; }
         else if (q.kind === 'matching') fields.forEach(f => { f.value = prior.response[f.dataset.key] || ''; });
         else if (q.kind === 'ordering') fields.forEach((f, i) => { f.value = prior.response[i] || ''; });
         else fields[0].value = prior.response;
+        const result = assess(q, prior.response); showFeedback('Previous response restored. ' + result.message, result.correct);
       }
-      solutions.forEach((hint, i) => { if (localEvents.some(e => e.type === 'hint' && e.question_id === q.id && Number(e.response) >= i + 1)) { hint.text.hidden = false; hint.reveal.disabled = true; } });
+      solutions.forEach((hint, i) => { if (localEvents.some(e => e.type === 'hint' && e.question_id === q.id && Number(e.response) >= i + 1)) { hint.text.hidden = false; hint.reveal.disabled = true; hint.reveal.setAttribute('aria-expanded', 'true'); } });
     }
-    const questionForm = node('form'); questionForm.dataset.ros = 'open-question';
+    updateProgress();
+    const questionForm = node('form'); questionForm.dataset.ros = 'open-question'; questionForm.className = 'ros-open-question';
     const label = node('label', 'Ask an open question during this session: ');
     const composer = node('div'); composer.className = 'ros-question-composer';
     const question = node('textarea'); question.id = 'ros-open-question-input'; question.maxLength = 4000; question.required = true;
