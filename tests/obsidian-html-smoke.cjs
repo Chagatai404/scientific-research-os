@@ -23,7 +23,7 @@ async function main() {
   const view=page.locator('.workspace-leaf.mod-active .ros-html-host');
   await view.locator('iframe').waitFor();
   const iframe=view.frameLocator('iframe');
-  await iframe.getByText('Connected to Research OS.',{exact:false}).waitFor();
+  await iframe.getByText('Answers save automatically.',{exact:false}).waitFor();
   assert.equal(await view.locator('iframe').getAttribute('sandbox'),'allow-scripts');
   assert(await iframe.locator('[data-math-status="rendered"]').count()>0);
   await iframe.locator('svg').first().waitFor();

@@ -1,7 +1,11 @@
 # Shared session runtime
 
 `session.js` and `session.css` are the complete offline bundles. KaTeX 0.16.22
-uses locally embedded WOFF2 fonts. `dependency-lock.json` records original
+uses locally embedded WOFF2 fonts. Document fonts (Atkinson Hyperlegible Next and
+Mono, Source Serif 4; Fontsource 5.3.0, SIL OFL 1.1, see `FONTS-LICENSE.txt`) are
+kept in `fonts/` and embedded the same way; `dependency-lock.json` lists their
+hashes. After editing `theme.css` or `runtime.js`, run `python build.py --refresh`
+to rebuild the bundles from the already verified KaTeX. `dependency-lock.json` records original
 distribution file hashes and the official npm source; `KATEX-LICENSE.txt` retains
 the license. Rebuild with `python build.py /path/to/extracted/katex/package`.
 `runtime.js` and `theme.css` are editable Research OS sources.
@@ -15,7 +19,8 @@ for MCQ; an array for multiple selection/ordering; a key/value map for matching;
 a finite number for numeric. Numeric tolerance is absolute; units are exact labels,
 without implicit unit conversion. Free responses await human review.
 
-Hints reveal progressively. Solutions require an attempted response. These gates
+Hints reveal progressively: only the next hint is offered. Show solution appears
+once a response is attempted. Confidence is a one-click 1–5 scale. These gates
 support teaching, not secrecy: prepared answers are present in the session data.
 Browser feedback never proves mastery or retained understanding. Session events
 record response, hint, solution, confidence, checkpoint and open-question actions.
@@ -32,7 +37,7 @@ MCQ/multiple-selection rows have decorative letter badges; accessible input name
 remain the authored option labels. Selected rows show prepared-criteria feedback
 only after submission. A missing answer and free response always await human
 review. Changing a draft clears its old correctness styling. Clear response resets
-only the draft fields, preserving saved attempts, hints, solutions and confidence.
+only the draft fields (and offers Undo clear until the draft changes), preserving saved attempts, hints, solutions and confidence.
 It emits no reset event and does not decrement recorded-response progress.
 
 The progress bar counts distinct questions with a response event, including pending

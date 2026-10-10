@@ -39,7 +39,7 @@ def rollout(vault, providers, backup, apply=False):
         after = (ROOT / source).read_bytes()
         if source not in known:
             known[source] = {normalized(after)}
-            for ref in ('e50692b', '188ce3d'):
+            for ref in ('e50692b', '188ce3d', 'b473868'):
                 known[source].add(normalized(subprocess.check_output(['git', 'show', f'{ref}:{source}'], cwd=ROOT)))
         before = target.read_bytes()
         if normalized(before) not in known[source]:
