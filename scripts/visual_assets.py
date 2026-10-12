@@ -60,6 +60,9 @@ def svg_problems(text: str) -> list[str]:
         return ['larger than 1 MiB']
     if re.search(r'<!\s*(doctype|entity)', text, re.I):
         return ['DOCTYPE and ENTITY declarations are not allowed']
+    # The XML parser drops processing instructions, so an xml-stylesheet reference would pass unseen; only the declaration is allowed.
+    if '<?' in re.sub(r'\A\s*<\?xml\s[^>]*\?>', '', text, count=1):
+        return ['processing instructions (such as xml-stylesheet) are not allowed']
     try:
         root = ElementTree.fromstring(text)
     except ElementTree.ParseError as exc:

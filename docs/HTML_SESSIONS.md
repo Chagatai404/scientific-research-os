@@ -61,6 +61,9 @@ from html_sessions import create_session, install_runtime, update_session
 
 root = Path("C:/path/to/vault")
 install_runtime(root)
+# prepared_markdown places the widget where it is explained: a line `<!-- ros-widget: vector-demo -->`
+# (figures use `![alt](resource:ID "caption")`). A new session never appends a declared visual silently;
+# an unplaced one is shown as a diagnostic and reported by `validate`.
 create_session(root, "Sessions/Velocity.md", prepared_markdown,
     questions=[{
         "id": "velocity-1", "kind": "numeric", "prompt": "Compute velocity",

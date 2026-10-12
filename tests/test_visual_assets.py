@@ -44,12 +44,17 @@ class SvgSafety(unittest.TestCase):
             'import': wrap('<style>@import "https://example.org/a.css";</style>'),
             'animation': wrap('<animate attributeName="x" to="1"/>'),
             'doctype': '<!DOCTYPE svg [<!ENTITY a "b">]><svg xmlns="http://www.w3.org/2000/svg">&a;</svg>',
+            'stylesheet instruction': '<?xml-stylesheet href="https://example.org/a.css"?><svg xmlns="http://www.w3.org/2000/svg"/>',
             'wrong root': '<html xmlns="http://www.w3.org/1999/xhtml"/>',
             'not xml': '<svg',
         }
         for name, text in cases.items():
             with self.subTest(name):
                 self.assertTrue(va.svg_problems(text), name)
+
+    def test_xml_declaration_is_allowed_but_no_other_instruction(self):
+        self.assertEqual(va.svg_problems('<?xml version="1.0" encoding="UTF-8"?>\n' + SAFE), [])
+        self.assertTrue(va.svg_problems('<?xml version="1.0"?><?xml-stylesheet href="x.css"?>' + SAFE))
 
     def test_internal_references_are_allowed(self):
         text = '<svg xmlns="http://www.w3.org/2000/svg"><defs><marker id="m"/></defs><line marker-end="url(#m)"/><use href="#m"/></svg>'

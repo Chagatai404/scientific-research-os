@@ -42,6 +42,7 @@ function approveModule(resource, code, trustedModules) {
 const SVG_ELEMENTS = new Set('svg g defs title desc rect circle ellipse line polyline polygon path text tspan marker lineargradient radialgradient stop clippath use style'.split(' '));
 function svgProblems(text) {
   if (/<!\s*(doctype|entity)/i.test(text)) return ['DOCTYPE and ENTITY declarations are not allowed'];
+  if (text.replace(/^\s*<\?xml\s[^>]*\?>/, '').includes('<?')) return ['processing instructions (such as xml-stylesheet) are not allowed'];
   const problems = [];
   const tags = text.replace(/<!--[\s\S]*?-->/g, '').match(/<\s*[A-Za-z][^>]*>/g) || [];
   if (!tags.length || !/^<\s*svg[\s>]/i.test(tags[0]) || !/xmlns\s*=\s*["']http:\/\/www\.w3\.org\/2000\/svg["']/.test(tags[0])) problems.push('the root element is not an SVG svg element');
