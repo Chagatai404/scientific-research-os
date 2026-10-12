@@ -70,14 +70,12 @@ class SessionPlacementAndContextBaseline(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         self.root = Path(temp.name)
 
-    @unittest.expectedFailure
-    def test_unplaced_widget_is_diagnosed_not_silently_appended(self):  # complaint 3
+    def test_unplaced_widget_is_diagnosed_not_silently_appended(self):  # complaint 3 (repaired in Slice 4)
         hs.create_session(self.root, 'a.md', '# A\n\nText', widgets=[{'id': 'w1', 'kind': 'sampling'}])
         errors = hs.validate_sessions(self.root)
         self.assertTrue(any('placement' in e for e in errors), errors)
 
-    @unittest.expectedFailure
-    def test_unreferenced_image_is_diagnosed_not_silently_appended(self):  # complaint 3
+    def test_unreferenced_image_is_diagnosed_not_silently_appended(self):  # complaint 3 (repaired in Slice 4)
         (self.root / 'a.assets').mkdir()
         (self.root / 'a.assets/p.png').write_bytes(b'fixture')
         hs.create_session(self.root, 'a.md', '# A\n\nText',

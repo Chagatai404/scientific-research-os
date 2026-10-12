@@ -217,6 +217,8 @@ def validate_state(state):
             raise ValueError("Unsupported session widget")
     if "context" in state:
         _validate_context(state["context"])
+    if state.get("placement") not in (None, "explicit"):
+        raise ValueError("Unsupported placement mode")
     if not isinstance(state.get("resources", []), list):
         raise ValueError("Invalid session resources")
     for resource in state.get("resources", []):
@@ -226,8 +228,14 @@ def validate_state(state):
         if re.search(r"[:\\\\%?#]", value) or value.startswith("/") or any(part in {"", ".", ".."} for part in value.split("/")):
             raise ValueError("Unsafe local session resource path")
         suffix = Path(value).suffix.lower()
-        if resource["kind"] == "image" and suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+        if resource["kind"] == "image" and suffix not in {".png", ".jpg", ".jpeg", ".webp", ".svg"}:
             raise ValueError("Unsupported session image")
+        if resource.get("visual_id") is not None and not (isinstance(resource["visual_id"], str) and re.fullmatch(r"VIS-[A-Za-z0-9][A-Za-z0-9._-]*", resource["visual_id"])):
+            raise ValueError("Invalid visual identity")
+        if resource.get("visual_class") is not None and resource["visual_class"] not in VISUAL_CLASSES:
+            raise ValueError("Unsupported visual class")
+        if resource.get("verification_outcome") is not None and not (isinstance(resource["verification_outcome"], str) and re.fullmatch(r"[a-z-]{1,40}", resource["verification_outcome"])):
+            raise ValueError("Invalid verification outcome")
         if resource["kind"] == "module" and suffix != ".js":
             raise ValueError("Unsupported session module")
     if len(state["events"]) > MAX_EVENTS or len(_json(state)) > MAX_STATE_BYTES:
@@ -268,6 +276,10 @@ _CALLOUT = re.compile(r'^\[!([a-zA-Z][\w-]*)\]([+-]?)\s*(.*)$')
 # A question sits where its marker is, so probes and teaching read in the order they happened.
 QUESTION_MARKER = re.compile(r'^<!--\s*ros-question:\s*([A-Za-z0-9_.:-]{1,128})\s*-->\s*$')
 _IMAGE = re.compile(r'^!\[([^\]]*)\]\(resource:([a-zA-Z0-9_-]+)(?:\s+"([^"]*)")?\)\s*$')
+# A widget sits where its marker is, exactly like a question: the explanation it belongs to, not the end of the page.
+WIDGET_MARKER = re.compile(r'^<!--\s*ros-widget:\s*([A-Za-z0-9_.:-]{1,128})\s*-->\s*$')
+VISUAL_CLASSES = {'schematic': 'Schematic, not to scale', 'analytic': 'Model-driven: computed from stated equations',
+                  'empirical': 'Data-derived', 'source': 'Figure from a cited source'}
 
 
 def _table_cells(line):
@@ -293,8 +305,11 @@ def _table_cells(line):
     return cells + [''.join(cell).strip()]
 
 
-def markdown_html(source, page_title=None, questions=None, placed=None):
+def markdown_html(source, page_title=None, questions=None, placed=None, widgets=None, figures=None, placement=None):
     """Component-oriented structural conversion; never infer assessments or answers.
+
+    ``widgets`` / ``figures`` map declared IDs to their declarations so markers resolve in place;
+    ``placement`` (a dict) collects which markers were seen, for diagnostics.
 
     Authored source is unchanged. Inline text follows the shared scientific grammar (rich_text.py):
     nested emphasis, TeX in four delimiter styles, labelled and numbered equations with references,
@@ -302,16 +317,18 @@ def markdown_html(source, page_title=None, questions=None, placed=None):
     equations in document order so a reference may precede the equation it cites.
     """
     found = []
-    _markdown_html(source, page_title, questions, set(), {}, found)
+    _markdown_html(source, page_title, questions, set(), {}, found, widgets, figures, None)
     labels = {name: number for number, name in enumerate(found, 1)}
-    return _markdown_html(source, page_title, questions, placed, labels, None)
+    return _markdown_html(source, page_title, questions, placed, labels, None, widgets, figures, placement)
 
 
-def _markdown_html(source, page_title, questions, placed, labels, found):
+def _markdown_html(source, page_title, questions, placed, labels, found, widgets=None, figures=None, placement=None):
     _, body = parse_frontmatter(source.replace('\r\n', '\n'))
+    if placement is not None:
+        placement.setdefault('figures', []), placement.setdefault('widgets', []), placement.setdefault('questions', [])
     used_anchors = {}
     source_h1_seen = False
-    emitted = set()
+    emitted, widgets_seen = set(), set()
     inline = lambda text: _inline(text, labels)
 
     def anchor_for(title):
@@ -326,6 +343,7 @@ def _markdown_html(source, page_title, questions, placed, labels, found):
         out, i = [], 0
         def block_start(line):
             return (not line.strip() or _HEADING.match(line) or _LIST_MARKER.match(line) or QUESTION_MARKER.match(line.strip())
+                    or WIDGET_MARKER.match(line.strip())
                     or line.startswith('>') or re.match(r'^\s*(?:```|~~~)', line) or rich_text.starts_display_math(line)
                     or re.fullmatch(r'\s*(?:---+|\*\*\*+|___+)\s*', line))
         while i < len(lines):
@@ -335,14 +353,24 @@ def _markdown_html(source, page_title, questions, placed, labels, found):
                 continue
             marker = QUESTION_MARKER.match(line.strip())
             if marker:
+                if placement is not None: placement['questions'].append(marker[1])
                 question = (questions or {}).get(marker[1])
                 if question is not None and (placed is None or marker[1] not in placed):
                     out.append(_question_html(question))
                     if placed is not None: placed.add(marker[1])
                 i += 1; continue
+            widget_marker = WIDGET_MARKER.match(line.strip())
+            if widget_marker:
+                if placement is not None: placement['widgets'].append(widget_marker[1])
+                widget = (widgets or {}).get(widget_marker[1])
+                if widget is not None and widget_marker[1] not in widgets_seen:
+                    widgets_seen.add(widget_marker[1])
+                    out.append(_widget_html(widget))
+                i += 1; continue
             image = _IMAGE.fullmatch(line.strip())
             if image:
-                out.append('<figure class="ros-figure" data-ros="figure"><img data-resource-id="' + html.escape(image[2], quote=True) + '" alt="' + html.escape(image[1], quote=True) + '">' + ('<figcaption>' + inline(image[3]) + '</figcaption>' if image[3] else '') + '</figure>')
+                if placement is not None: placement['figures'].append(image[2])
+                out.append(_figure_html(image, (figures or {}).get(image[2]), inline))
                 i += 1; continue
             if i + 1 < len(lines) and '|' in line:
                 headings, rules = _table_cells(line), _table_cells(lines[i + 1])
@@ -491,14 +519,90 @@ def _questions_html(state, placed=()):
     return "\n".join(_question_html(q) for q in state["questions"] if q["id"] not in placed)
 
 
-def _widgets_html(state):
-    return "".join('<section data-ros="widget" data-widget="' + html.escape(w["kind"], quote=True) + '" id="' + html.escape(w["id"], quote=True) + '"><h3>' + html.escape(w.get("title", w["kind"].title() + " demonstration")) + '</h3></section>' for w in state.get("widgets", []))
+def _widget_html(w):
+    return '<section data-ros="widget" data-widget="' + html.escape(w["kind"], quote=True) + '" id="' + html.escape(w["id"], quote=True) + '"><h3>' + html.escape(w.get("title", w["kind"].title() + " demonstration")) + '</h3></section>'
+
+
+def _widgets_html(state, placed=()):
+    """Legacy sessions only: widgets with no marker follow the content, as they always did."""
+    return "".join(_widget_html(w) for w in state.get("widgets", []) if w["id"] not in placed)
+
+
+def _figure_html(image, declared, inline):
+    """A figure in place. A declared visual states what kind of evidence it is, so a schematic cannot pass for data."""
+    attributes, label = '', ''
+    if declared:
+        if declared.get('visual_id'):
+            attributes += ' data-visual-id="' + html.escape(declared['visual_id'], quote=True) + '"'
+        if declared.get('visual_class') in VISUAL_CLASSES:
+            attributes += ' data-visual-class="' + declared['visual_class'] + '"'
+            text = VISUAL_CLASSES[declared['visual_class']]
+            if declared['visual_class'] in ('analytic', 'empirical'):
+                # A computed figure says whether its computation was independently checked; silence would imply it was.
+                outcome = declared.get('verification_outcome')
+                text += ' (verification: ' + outcome.replace('-', ' ') + ')' if outcome else ' (not independently verified)'
+            label = '<span class="ros-visual-class" data-ros="visual-class">' + html.escape(text) + '</span>'
+    caption = inline(image[3]) if image[3] else ''
+    figcaption = '<figcaption>' + caption + (' ' if caption and label else '') + label + '</figcaption>' if caption or label else ''
+    return ('<figure class="ros-figure" data-ros="figure"' + attributes + '><img data-resource-id="' + html.escape(image[2], quote=True)
+            + '" alt="' + html.escape(image[1], quote=True) + '">' + figcaption + '</figure>')
+
+
+def placements(state):
+    """The figures, widgets and questions the lesson's Markdown actually places, in document order."""
+    seen = {}
+    markdown_html(state['source_markdown'], page_title=state['title'], questions={q['id']: q for q in state['questions']}, placed=set(),
+                  widgets={w['id']: w for w in state.get('widgets', [])},
+                  figures={r['id']: r for r in state.get('resources', []) if r.get('kind') == 'image'}, placement=seen)
+    return seen
+
+
+def placement_issues(state, seen=None):
+    """Where each declared visual is (or is not) placed in the lesson. Pure and deterministic.
+
+    Returns dicts with ``code``, ``id`` and an actionable ``message``. A session with ``placement: explicit``
+    never has a visual appended silently; these are what it shows and what ``validate`` reports instead.
+    """
+    if seen is None:
+        seen = placements(state)
+    declared_figures = {r['id'] for r in state.get('resources', []) if r.get('kind') == 'image'}
+    declared_widgets = {w['id'] for w in state.get('widgets', [])}
+    issues = []
+    for identifier in sorted(declared_figures - set(seen['figures'])):
+        issues.append({'code': 'unplaced-figure', 'id': identifier,
+                       'message': f"figure '{identifier}' is declared but has no placeholder in the lesson; add ![description](resource:{identifier} \"caption\") "
+                                  f"where it belongs (html_sessions.py place --figure {identifier} --after-heading ...)"})
+    for identifier in sorted(declared_widgets - set(seen['widgets'])):
+        issues.append({'code': 'unplaced-widget', 'id': identifier,
+                       'message': f"widget '{identifier}' is declared but has no marker in the lesson; add <!-- ros-widget: {identifier} --> "
+                                  f"where it belongs (html_sessions.py place --widget {identifier} --after-heading ...)"})
+    for identifier in sorted(set(seen['figures']) - declared_figures):
+        issues.append({'code': 'undeclared-figure', 'id': identifier,
+                       'message': f"the lesson places figure '{identifier}' but no image resource with that id is declared"})
+    for identifier in sorted(set(seen['widgets']) - declared_widgets):
+        issues.append({'code': 'undeclared-widget', 'id': identifier,
+                       'message': f"the lesson places widget '{identifier}' but no widget with that id is declared"})
+    for kind in ('figures', 'widgets'):
+        for identifier in sorted({i for i in seen[kind] if seen[kind].count(i) > 1}):
+            issues.append({'code': 'duplicate-placement', 'id': identifier, 'message': f"{kind[:-1]} '{identifier}' is placed more than once"})
+    return issues
+
+
+def _placement_notice(issues):
+    """The visible, never-silent form of a placement problem."""
+    return ''.join('<aside class="ros-diagnostic" data-ros="diagnostic" data-code="' + html.escape(i['code'], quote=True) + '" role="note">'
+                   + html.escape(i['message']) + '</aside>' for i in issues)
 
 
 def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, resource_markup="", resource_scripts="", resource_images=None):
     validate_state(state)
-    placed = set()
-    content = markdown_html(state["source_markdown"], page_title=state["title"], questions={q["id"]: q for q in state["questions"]}, placed=placed)
+    placed, seen = set(), {}
+    content = markdown_html(state["source_markdown"], page_title=state["title"], questions={q["id"]: q for q in state["questions"]}, placed=placed,
+                            widgets={w["id"]: w for w in state.get("widgets", [])},
+                            figures={r["id"]: r for r in state.get("resources", []) if r.get("kind") == "image"}, placement=seen)
+    # New sessions never append a visual silently: a visual with no place becomes a visible diagnostic. Historical
+    # sessions (no placement mode) keep their old behaviour so their pages do not change under their authors.
+    tail = _placement_notice(placement_issues(state, seen)) if state.get("placement") == "explicit" else _widgets_html(state, set(seen["widgets"]))
     if resource_images:
         def embed_image(match):
             image = match.group()
@@ -529,7 +633,7 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
             + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; font-src data:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'">'
             + '<title>' + html.escape(state["title"]) + '</title>' + resources + '</head><body><main class="ros-document" id="ros-session">'
             + header
-            + navigation + content + _questions_html(state, placed) + _widgets_html(state) + resource_markup
+            + navigation + content + _questions_html(state, placed) + tail + resource_markup
             + '<details data-ros="legacy"><summary>Exact original Markdown</summary><pre>' + html.escape(state["source_markdown"]) + '</pre></details>'
             + '</main><script type="application/json" id="ros-session-data">' + data + '</script>' + script + resource_scripts + '</body></html>\n')
 
@@ -586,6 +690,15 @@ def load_session(root, relative_md, check_bridge=True):
     return state
 
 
+def _check_image(path, raw):
+    """An SVG is drawing, never a carrier for script or outside references; it is checked whenever it is read for display."""
+    if path.suffix.lower() == ".svg":
+        import visual_assets  # imports this module, so it is loaded on demand
+        problems = visual_assets.svg_problems(raw.decode("utf-8", errors="replace"))
+        if problems:
+            raise ValueError("Unsafe SVG resource " + path.name + ": " + "; ".join(problems))
+
+
 def _save(root, relative_md, state):
     md, view, data = paths(root, relative_md)
     validate_state(state)
@@ -599,8 +712,10 @@ def _save(root, relative_md, state):
             raise ValueError("Local session resource missing or exceeds limit")
         if resource["kind"] == "module":
             _approved_module(root, resource_path, resource)
+        else:
+            _check_image(resource_path, resource_path.read_bytes())
     prefix = os.path.relpath(Path(root).resolve() / ".research-os/runtime", view.parent).replace(os.sep, "/")
-    outputs = {data: _json(state), view: render_html(state, prefix).encode("utf-8"),
+    outputs ={data: _json(state), view: render_html(state, prefix).encode("utf-8"),
                md: render_bridge(state, view.relative_to(Path(root).resolve()).as_posix()).encode("utf-8")}
     journal = _transaction_path(root, relative_md)
     if journal.exists():
@@ -640,6 +755,7 @@ def _create_session(root, relative_md, text, session_type=None, title=None, meta
              "open_questions": [], "lifecycle": front.get("status", "active"), "created_at": _now(), "updated_at": _now()}
     state["widgets"] = list(widgets or [])
     state["resources"] = list(resources or [])
+    state["placement"] = "explicit"  # visuals sit where the lesson puts them; nothing is appended silently
     if context is not None:
         state["context"] = context
     if front.get("session_id"):
@@ -1000,10 +1116,12 @@ def export_session(root, relative_md, destination):
         if len(raw) > 1024 * 1024:
             raise ValueError("Export resource exceeds limit")
         if resource["kind"] == "image":
-            mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}[path.suffix.lower()]
+            _check_image(path, raw)
+            mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml"}[path.suffix.lower()]
             data_url = 'data:' + mime + ';base64,' + base64.b64encode(raw).decode()
             images[resource['id']] = data_url
-            if resource['id'] not in used_images:
+            # Only a historical session appends an unplaced figure; a new one reports it instead (see placement_issues).
+            if resource['id'] not in used_images and state.get('placement') != 'explicit':
                 markup += '<figure class="ros-figure"><img src="' + data_url + '" alt="' + html.escape(str(resource.get("alt", "Session illustration")), quote=True) + '"></figure>'
         else:
             _approved_module(root, path, resource)
@@ -1098,6 +1216,11 @@ def validate_sessions(root, exceptions=None):
                 return re.sub(r'(<script type="application/json" id="ros-session-data">).*?(</script>)', r'\1\2', value, flags=re.S)
             if without_bootstrap(view.read_bytes().decode("utf-8")) != without_bootstrap(render_html(state, prefix)):
                 raise ValueError("HTML projection differs from structured state")
+            # Only sessions created with explicit placement are held to it; older sessions keep their appended visuals.
+            if state.get("placement") == "explicit":
+                problems = placement_issues(state)
+                if problems:
+                    raise ValueError("visual placement: " + "; ".join(p["message"] for p in problems))
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             errors.append(f"{data.relative_to(root)}: {exc}")
     return errors
@@ -1309,6 +1432,18 @@ def main():
     review.add_argument("--transcript", type=Path, help="Markdown appended to the session transcript in the same save")
     wait = sub.add_parser("wait", help="Block until an explicit learner submission awaits the agent (bounded)")
     wait.add_argument("session"); wait.add_argument("--timeout", type=float, default=900.0)
+    attach = sub.add_parser("attach-visual", help="Declare a registered visual (VIS-...) as an image of this session; place it next")
+    attach.add_argument("session"); attach.add_argument("visual_id"); attach.add_argument("--resource-id")
+    place = sub.add_parser("place", help="Put a declared figure or widget at an exact position in the lesson")
+    place.add_argument("session")
+    target = place.add_mutually_exclusive_group(required=True)
+    target.add_argument("--figure", metavar="RESOURCE_ID"); target.add_argument("--widget", metavar="WIDGET_ID")
+    position = place.add_mutually_exclusive_group(required=True)
+    position.add_argument("--after-heading", metavar="TEXT", help="directly after the heading that reads exactly this")
+    position.add_argument("--after-text", metavar="PHRASE", help="after the paragraph containing this (unique) phrase")
+    position.add_argument("--at-end", action="store_true")
+    place.add_argument("--alt", help="required for a figure: what a reader who cannot see it needs to know")
+    place.add_argument("--caption")
     resume = sub.add_parser("context", help="Resume brief: pending learner activity plus research and knowledge graph state")
     resume.add_argument("session"); resume.add_argument("--project-root", type=Path); resume.add_argument("--learning-root", type=Path)
     resume.add_argument("--library-root", type=Path)
@@ -1356,6 +1491,17 @@ def main():
                 raise SystemExit(2)
             context = bind_context(receipt)
         result = create_session(root, args.session, text, args.session_type, args.title, context=context)
+    elif args.command in ("attach-visual", "place"):
+        import visual_assets
+        try:
+            if args.command == "attach-visual":
+                result = visual_assets.attach_visual(root, args.session, args.visual_id, args.resource_id)
+            else:
+                result = visual_assets.place_visual(root, args.session, figure=args.figure, widget=args.widget, after_heading=args.after_heading,
+                                                    after_text=args.after_text, at_end=args.at_end, alt=args.alt, caption=args.caption)
+        except visual_assets.VisualError as exc:
+            print(json.dumps({"error": str(exc)}, ensure_ascii=False))
+            raise SystemExit(2)
     elif args.command == "update":
         result = update_session(root, args.session, args.source.read_bytes().decode("utf-8"))
     elif args.command == "append":

@@ -18,12 +18,15 @@ function validateResources(resources, sessionPath) {
   if (!Array.isArray(resources) || resources.length > 32) throw new Error('At most 32 approved resources are allowed.');
   const own = sessionPath.replace(/\.html$/i, '.assets/'); const folder = sessionPath.includes('/') ? sessionPath.slice(0, sessionPath.lastIndexOf('/') + 1) : ''; const relativeOwn = own.slice(folder.length); const ids = new Set();
   return resources.map(resource => {
-    if (!resource || typeof resource !== 'object' || Object.keys(resource).some(k => !['id', 'path', 'kind', 'alt', 'title', 'sha256'].includes(k))) throw new Error('Invalid resource declaration.');
+    if (!resource || typeof resource !== 'object' || Object.keys(resource).some(k => !['id', 'path', 'kind', 'alt', 'title', 'sha256', 'visual_id', 'visual_class', 'verification_outcome'].includes(k))) throw new Error('Invalid resource declaration.');
     const p = resource.path; const id = resource.id || p;
     if (typeof p !== 'string' || !p.length || p.length > 1024 || /[\\:%?#\x00-\x1f]/.test(p) || p.startsWith('/') || p.split('/').some((s, index) => !s || s === '.' || s === '..' || (s.startsWith('.') && !(index === 0 && s === '.research-os' && p.startsWith(RUNTIME + 'extensions/'))))) throw new Error('Unsafe resource path.');
     const resolved = p.startsWith(relativeOwn) ? folder + p : p;
     if (!resolved.startsWith(own) && !resolved.startsWith(RUNTIME + 'extensions/')) throw new Error('Resource is outside approved session/runtime extension directories.');
-    if (!['image', 'module'].includes(resource.kind) || (resource.kind === 'module' && !p.endsWith('.js')) || (resource.kind === 'image' && !/\.(png|jpe?g|webp)$/i.test(p))) throw new Error('Unsupported approved resource type.');
+    if (!['image', 'module'].includes(resource.kind) || (resource.kind === 'module' && !p.endsWith('.js')) || (resource.kind === 'image' && !/\.(png|jpe?g|webp|svg)$/i.test(p))) throw new Error('Unsupported approved resource type.');
+    if (resource.visual_id !== undefined && !(typeof resource.visual_id === 'string' && /^VIS-[A-Za-z0-9][A-Za-z0-9._-]*$/.test(resource.visual_id))) throw new Error('Invalid visual identity.');
+    if (resource.visual_class !== undefined && !['schematic', 'analytic', 'empirical', 'source'].includes(resource.visual_class)) throw new Error('Unsupported visual class.');
+    if (resource.verification_outcome !== undefined && !(typeof resource.verification_outcome === 'string' && /^[a-z-]{1,40}$/.test(resource.verification_outcome))) throw new Error('Invalid verification outcome.');
     if (resource.kind === 'module' && (typeof resource.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(resource.sha256))) throw new Error('Local modules require an explicit SHA-256 declaration.');
     if (typeof id !== 'string' || !id.length || id.length > 1024 || ids.has(id)) throw new Error('Invalid or duplicate resource ID.');
     for (const key of ['alt', 'title']) if (resource[key] !== undefined && (typeof resource[key] !== 'string' || resource[key].length > 2048)) throw new Error('Invalid resource description.');
@@ -35,10 +38,36 @@ function approveModule(resource, code, trustedModules) {
   if (digest !== resource.sha256 || !trustedModules || !Object.prototype.hasOwnProperty.call(trustedModules, resource.path) || trustedModules[resource.path] !== digest) throw new Error('Local module is not approved or changed: ' + resource.path + '. Review its code and explicitly approve its SHA-256 in plugin settings.');
   return code;
 }
+// Static drawing only, mirroring scripts/visual_assets.py: no scripting, embedding, animation or outside references.
+const SVG_ELEMENTS = new Set('svg g defs title desc rect circle ellipse line polyline polygon path text tspan marker lineargradient radialgradient stop clippath use style'.split(' '));
+function svgProblems(text) {
+  if (/<!\s*(doctype|entity)/i.test(text)) return ['DOCTYPE and ENTITY declarations are not allowed'];
+  const problems = [];
+  const tags = text.replace(/<!--[\s\S]*?-->/g, '').match(/<\s*[A-Za-z][^>]*>/g) || [];
+  if (!tags.length || !/^<\s*svg[\s>]/i.test(tags[0]) || !/xmlns\s*=\s*["']http:\/\/www\.w3\.org\/2000\/svg["']/.test(tags[0])) problems.push('the root element is not an SVG svg element');
+  for (const tag of tags) {
+    const name = tag.match(/^<\s*([A-Za-z][\w:.-]*)/)[1].toLowerCase();
+    if (!SVG_ELEMENTS.has(name)) problems.push('element not allowed: ' + name);
+    for (const attribute of tag.matchAll(/([A-Za-z_:][\w:.-]*)\s*=\s*("([^"]*)"|'([^']*)')/g)) {
+      const key = attribute[1].toLowerCase().replace(/^.*:/, ''); const value = attribute[3] !== undefined ? attribute[3] : attribute[4];
+      if (key.startsWith('on')) problems.push('event handler attribute: ' + key);
+      else if (key === 'href' && !value.startsWith('#')) problems.push('link to something outside the figure');
+      else if (/javascript:|expression\s*\(|@import|behavior\s*:|-moz-binding|url\(\s*(?!['"]?#)/i.test(value)) problems.push('attribute ' + key + ' reaches outside the figure');
+    }
+  }
+  const sheets = text.match(/<style[\s\S]*?<\/style>/gi) || [];
+  if (sheets.some(s => /javascript:|expression\s*\(|@import|behavior\s*:|-moz-binding|url\(\s*(?!['"]?#)/i.test(s))) problems.push('style sheet reaches outside the figure');
+  return Array.from(new Set(problems)).sort();
+}
 function imageData(bytes, path) {
   const b = Buffer.from(bytes);
   if (b.length > 2 * 1024 * 1024) throw new Error('Image exceeds 2 MiB limit.');
   let mime;
+  if (/\.svg$/i.test(path)) {
+    const problems = svgProblems(b.toString('utf8'));
+    if (problems.length) throw new Error('SVG is not safe to show inline: ' + problems.join('; '));
+    return 'data:image/svg+xml;base64,' + b.toString('base64');
+  }
   if (/\.png$/i.test(path) && b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) mime = 'image/png';
   else if (/\.jpe?g$/i.test(path) && b[0] === 255 && b[1] === 216 && b[2] === 255) mime = 'image/jpeg';
   else if (/\.webp$/i.test(path) && b.subarray(0,4).toString() === 'RIFF' && b.subarray(8,12).toString() === 'WEBP') mime = 'image/webp';
@@ -106,7 +135,9 @@ function validateEvent(event, state) {
   if (event.created_at !== undefined && (typeof event.created_at !== 'string' || !Number.isFinite(Date.parse(event.created_at)))) throw new Error('Invalid event time.');
   return Object.assign({}, event, {created_at: new Date().toISOString(), status: 'pending-review'});
 }
-function sanitizeHtml(html, doc, images = new Map(), descriptions = new Map()) {
+// appendUnplaced keeps the historical behaviour (an image with no place follows the content); a session with
+// explicit placement shows a visible diagnostic from its own page instead and never appends.
+function sanitizeHtml(html, doc, images = new Map(), descriptions = new Map(), appendUnplaced = true) {
   if (typeof html !== 'string' || html.length > MAX_HTML) throw new Error('Session HTML exceeds size limit.');
   // Parse in a detached template: scripts cannot run and resources are never attached.
   const template = doc.createElement('template');
@@ -144,7 +175,7 @@ function sanitizeHtml(html, doc, images = new Map(), descriptions = new Map()) {
   visit(root);
   const used = new Set(Array.from(root.querySelectorAll('img[data-resource-id]')).map(n => n.getAttribute('data-resource-id')));
   for (const [id, data] of images) {
-    if (used.has(id)) continue;
+    if (used.has(id) || !appendUnplaced) continue;
     const figure = doc.createElement('figure'); const image = doc.createElement('img'); const caption = doc.createElement('figcaption');
     image.setAttribute('src', data); image.setAttribute('alt', descriptions.get(id) || 'Approved session image: ' + id); image.setAttribute('data-resource-id', id);
     caption.textContent = descriptions.get(id) || id; figure.appendChild(image); figure.appendChild(caption); root.appendChild(figure);
@@ -262,7 +293,7 @@ class SessionHost extends Component {
       this.loaded = {html, raw, theme: this.container.ownerDocument.body.classList.contains('theme-dark') ? 'dark' : 'light'};
       this.state = state; this.resources = resources; this.images = images; this.token = crypto.randomBytes(32).toString('hex');
       const doc = this.container.ownerDocument;
-      const body = sanitizeHtml(html, doc, images, new Map(resources.map(r => [r.id, r.alt])));
+      const body = sanitizeHtml(html, doc, images, new Map(resources.map(r => [r.id, r.alt])), state.placement !== 'explicit');
       if (this.frame) this.frame.remove();
       this.frame = doc.createElement('iframe'); this.frame.className = 'ros-html-frame'; this.frame.title = this.state.title || 'Research OS session'; this.frame.setAttribute('sandbox', 'allow-scripts'); this.frame.setAttribute('referrerpolicy', 'no-referrer');
       this.frame.srcdoc = buildDocument(body, this.state, this.token, runtime, css, doc.body.classList.contains('theme-dark') ? 'dark' : 'light', modules);
@@ -367,4 +398,4 @@ class ResearchOSHTML extends Plugin {
   onunload() { this.app.workspace.detachLeavesOfType(VIEW); }
 }
 module.exports = ResearchOSHTML;
-module.exports._test = {pageState, parseState, validateEvent, validateResources, approveModule, imageData, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling};
+module.exports._test = {pageState, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling};

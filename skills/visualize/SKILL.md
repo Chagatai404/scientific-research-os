@@ -25,8 +25,11 @@ local copies of the shared references.
 3. Choose the simplest adequate form/backend from the protocol. Use the existing
    visualizer agent for a bounded production task when delegation adds value; the
    skill also works directly without an agent or a specific provider. For a schematic
-   in an Obsidian vault with Excalidraw installed, use `scripts/excalidraw_schematic.py`
-   and the protocol's section on the vault's installed adapters.
+   in an Obsidian vault with Excalidraw installed, use `scripts/visual_assets.py schematic`
+   (it wraps `scripts/excalidraw_schematic.py`) and the protocol's sections on the vault's
+   installed adapters and on figures inside an HTML session. Put the figure in the lesson
+   where it is explained with `html_sessions.py attach-visual` then `place`; an unplaced
+   visual is reported, never appended.
    Use `scripts/visual_intent.py` for an intent-level representation decision when
    useful: scale dependence may need geometric panels, relationships a schematic,
    and motion an animation only with a justified basis. No material benefit means

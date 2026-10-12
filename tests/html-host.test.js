@@ -9,7 +9,7 @@ const obsidian = {Plugin: Component, Component, FileView: Component, normalizePa
 const file = path.join(__dirname, '../extensions/obsidian-html/main.js');
 const mod = {exports: {}};
 vm.runInNewContext(fs.readFileSync(file, 'utf8'), {require: name => name === 'obsidian' ? obsidian : require(name), module: mod, console, Date, Object, Set, Array, JSON, Number, Promise, Buffer, process, setTimeout, clearTimeout});
-const {pageState, parseState, validateEvent, validateResources, approveModule, imageData, acquireLock, buildDocument, SessionHost, sibling} = mod.exports._test;
+const {pageState, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, acquireLock, buildDocument, SessionHost, sibling} = mod.exports._test;
 const base = {schema_version: 1, session_id: 'session-1', questions: [{id: 'q1'}], events: []};
 const state = () => parseState(JSON.stringify(base));
 const event = (event_id = 'event-1') => ({event_id, type: 'response', question_id: 'q1', response: 'answer'});
@@ -34,7 +34,20 @@ assert.equal(validateResources([{path:'session.assets/image.png',kind:'image',al
 assert.equal(validateEvent({event_id:'checkpoint-1',type:'checkpoint',question_id:null,response:'raw checkpoint'},state()).type,'checkpoint');
 assert.throws(() => validateEvent({event_id:'checkpoint-1',type:'checkpoint',question_id:null,response:''},state()), /raw explanation/);
 for (const p of ['https://evil/a.js', 'session.assets/../secret.js', '.obsidian/secret.js', 'other.assets/a.js', 'session.assets\\a.js', 'session.assets/%2e%2e/a.js', 'session.assets/.hidden/a.js', 'session.assets/.research-os/a.js', '.research-os/runtime/session.js']) assert.throws(() => validateResources([{path:p,kind:'module'}], 'session.html'));
-assert.throws(() => validateResources([{path:'session.assets/a.svg',kind:'image'}], 'session.html'), /Unsupported/);
+assert.throws(() => validateResources([{path:'session.assets/a.gif',kind:'image'}], 'session.html'), /Unsupported/);
+// v0.9 inline visuals: an SVG is accepted as static drawing only, and a figure's evidence class travels with it.
+const safeSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs><marker id="m"/></defs><rect width="10" height="10"/><line marker-end="url(#m)"/></svg>';
+assert.deepEqual(svgProblems(safeSvg), []);
+for (const bad of ['<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', '<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/></svg>',
+  '<svg xmlns="http://www.w3.org/2000/svg"><rect onload="x()"/></svg>', '<svg xmlns="http://www.w3.org/2000/svg"><use href="https://example.org/a.svg#x"/></svg>',
+  '<svg xmlns="http://www.w3.org/2000/svg"><rect fill="url(https://example.org/p)"/></svg>', '<svg xmlns="http://www.w3.org/2000/svg"><style>@import "https://example.org/a.css";</style></svg>',
+  '<svg xmlns="http://www.w3.org/2000/svg"><animate attributeName="x"/></svg>', '<!DOCTYPE svg [<!ENTITY a "b">]><svg xmlns="http://www.w3.org/2000/svg">&a;</svg>',
+  '<html xmlns="http://www.w3.org/1999/xhtml"/>', '<svg><rect/></svg>']) assert(svgProblems(bad).length, bad);
+assert(imageData(Buffer.from(safeSvg), 'session.assets/a.svg').startsWith('data:image/svg+xml;base64,'));
+assert.throws(() => imageData(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>x</script></svg>'), 'session.assets/a.svg'), /not safe/);
+const figure = validateResources([{id:'VIS-a',path:'session.assets/a.svg',kind:'image',visual_id:'VIS-a',visual_class:'analytic',verification_outcome:'verified-in-scope'}], 'session.html')[0];
+assert.equal(figure.path, 'session.assets/a.svg');
+for (const bad of [{visual_id:'nope'}, {visual_class:'photo'}, {verification_outcome:'Verified!'}]) assert.throws(() => validateResources([{path:'session.assets/a.svg',kind:'image',...bad}], 'session.html'));
 assert.throws(() => validateResources([{id:'same',path:'session.assets/a.png',kind:'image'},{id:'same',path:'session.assets/b.png',kind:'image'}], 'session.html'), /duplicate/);
 assert.throws(() => imageData(Buffer.from('<svg/>'), 'session.assets/a.png'), /signature/);
 assert(imageData(Buffer.from([137,80,78,71,13,10,26,10]), 'session.assets/a.png').startsWith('data:image/png;base64,'));

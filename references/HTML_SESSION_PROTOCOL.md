@@ -91,6 +91,16 @@ to learning value; mark schematic/model-driven demonstrations and assumptions. D
 not portray illustrative mathematics as experimentally validated simulation data.
 Preserve literal LaTeX; report unsupported syntax instead of changing an expression.
 
+## Where visuals go
+
+A figure or interactive widget is part of the explanation it serves. Sessions created by v0.9 record
+`placement: explicit`: put a figure with `![alt](resource:ID "caption")` and a widget with
+`<!-- ros-widget: ID -->` where the lesson uses it (`html_sessions.py place` writes these for you), and declare it
+in the session's `resources` / `widgets`. A declared visual that the lesson never places, a placeholder with no
+declaration, and a visual placed twice are shown as visible diagnostics and reported by `validate`; nothing is
+appended to the end of the page. Sessions without the `placement` field keep their earlier behaviour. How figures are
+produced, labelled by evidence class and kept safe is in `references/VISUALIZATION_PROTOCOL.md`.
+
 ## Obsidian and fallback
 
 Install the companion plugin and shared runtime using the documented installer.

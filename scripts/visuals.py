@@ -23,7 +23,20 @@ MODES = {'plot', 'diagram', 'geometric-construction', 'scientific-illustration',
 SOURCE_TYPES = {'source', 'generated', 'schematic'}
 STATUSES = ('candidate', 'rendered', 'inspected', 'verified')
 FIELDS = {'visual_schema', 'visual_id', 'title', 'kind', 'concepts', 'source_type', 'verification_status',
-          'artifact', 'quantitative', 'provenance', 'basis', 'verified_by', 'verified_at', 'mode'}
+          'artifact', 'quantitative', 'provenance', 'basis', 'verified_by', 'verified_at', 'mode',
+          # v0.9: an editable source and the inline exports generated from it, so one drawing is one visual.
+          'exports', 'verification_record', 'spec_sha256', 'source_sha256', 'generator'}
+EXPORT_FORMATS = {'svg', 'png'}
+# What a figure on the page says about itself; a schematic must never read as data.
+CLASS_BY_KIND = {'source-figure': 'source', 'conceptual-schematic': 'schematic',
+                 'model-driven-plot': 'analytic', 'simulation-data-visual': 'empirical'}
+
+
+def visual_class(record: dict) -> str:
+    """The evidence class a figure displays: derived from the record, never chosen by the lesson."""
+    if record['kind'] == 'animation':
+        return 'schematic' if record['source_type'] == 'schematic' else 'analytic'
+    return CLASS_BY_KIND[record['kind']]
 REQUIRED = {'visual_schema', 'visual_id', 'title', 'kind', 'concepts', 'source_type',
             'verification_status', 'artifact'}
 EMBED = re.compile(r'!\[\[([^\]\n]+)\]\]')
@@ -43,7 +56,7 @@ def issues(record: object, root: Path) -> list[str]:
         result.append('unsupported visual_schema; expected integer 1')
     if not isinstance(record['visual_id'], str) or not VISUAL_ID.fullmatch(record['visual_id']):
         result.append('invalid visual_id')
-    for key in ('title', 'artifact', 'provenance', 'basis', 'verified_by'):
+    for key in ('title', 'artifact', 'provenance', 'basis', 'verified_by', 'generator', 'verification_record'):
         if key in record and (not isinstance(record[key], str) or not record[key].strip()):
             result.append(f'{key}: expected nonempty string')
     if record['kind'] not in KINDS:
@@ -92,6 +105,28 @@ def issues(record: object, root: Path) -> list[str]:
     if record['verification_status'] == 'verified' and not all(
             record.get(k) for k in ('verified_by', 'verified_at')):
         result.append('verified requires verified_by and verified_at')
+    if 'exports' in record:
+        exports = record['exports']
+        if not isinstance(exports, list) or not exports:
+            result.append('exports: expected a nonempty list')
+        else:
+            for item in exports:
+                if not isinstance(item, dict) or set(item) != {'path', 'format'} or item.get('format') not in EXPORT_FORMATS:
+                    result.append('exports: each export needs exactly path and format (svg or png)')
+                    continue
+                try:
+                    local_file(root, item['path'])
+                except (ValueError, TypeError) as exc:
+                    result.append(f"exports: {exc}")
+    for key in ('verification_record',):
+        if key in record and isinstance(record[key], str):
+            try:
+                local_file(root, record[key])
+            except ValueError as exc:
+                result.append(f'{key}: {exc}')
+    for key in ('spec_sha256', 'source_sha256'):
+        if key in record and not (isinstance(record[key], str) and re.fullmatch(r'[0-9a-f]{64}', record[key])):
+            result.append(f'{key}: expected 64 hexadecimal digits')
     return result
 
 

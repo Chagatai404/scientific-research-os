@@ -23,7 +23,7 @@ CHROME_CANDIDATES = (
 )
 BROWSER_TESTS = ('html-runtime-browser.js', 'html-browser-e2e.cjs', 'html-components-browser.cjs',
                  'html-design-browser.cjs', 'html-gallery-browser.cjs', 'html-navigation-browser.cjs',
-                 'html-tutor-browser.cjs', 'html-richtext-browser.cjs', 'html-visual-parity.cjs')
+                 'html-tutor-browser.cjs', 'html-richtext-browser.cjs', 'html-visuals-browser.cjs', 'html-visual-parity.cjs')
 NODE_TESTS = ('html-host.test.js', 'html-runtime-unit.js', 'richtext-conformance.js')
 SESSION_INPUT_TESTS = {'html-navigation-browser.cjs'}
 # Needs material the repository cannot supply; reported as SKIPPED, never as passed.

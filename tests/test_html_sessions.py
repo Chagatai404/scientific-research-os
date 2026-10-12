@@ -161,8 +161,11 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(hs.load_session(self.root, "a.md")["source_markdown"], "# After\n")
 
     def test_opt_in_widgets_and_legacy_question_no_invented_grade(self):
-        hs.create_session(self.root, "a.md", "Lesson", widgets=[{"id": "sample", "kind": "sampling"}])
-        self.assertIn('data-widget="sampling"', (self.root / "a.html").read_text())
+        hs.create_session(self.root, "a.md", "Before\n\n<!-- ros-widget: sample -->\n\nAfter", widgets=[{"id": "sample", "kind": "sampling"}])
+        page = (self.root / "a.html").read_text()
+        self.assertIn('data-widget="sampling"', page)
+        self.assertLess(page.index("<p>Before</p>"), page.index('data-widget="sampling"'))
+        self.assertLess(page.index('data-widget="sampling"'), page.index("<p>After</p>"))
         questions = hs.legacy_questions("## Q1 — Explain λ\n**My answer:** Historic reasoning\n", {"status": "active"})
         self.assertEqual(questions[0]["historical_response"], "Historic reasoning")
         self.assertNotIn("answer", questions[0])

@@ -348,6 +348,9 @@ figure img { display: block; margin: auto; border-radius: var(--ros-radius-sm); 
 .ros-formula { border-block: 1px solid var(--ros-border); margin: var(--ros-space-5) 0; }
 .ros-callout-formula .ros-formula { border: 0; margin: var(--ros-space-3) 0; }
 figcaption, caption { font: 14px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); text-align: left; padding-top: var(--ros-space-3); }
+/* A figure says what kind of evidence it is; a placement problem is shown in the lesson, never hidden. */
+.ros-visual-class { display: inline-block; margin-inline-start: var(--ros-space-2); padding: 0 .55em; border: 1px solid var(--ros-border); border-radius: 999px; font-size: 12px; white-space: normal; }
+aside.ros-diagnostic { display: block; margin: var(--ros-space-4) 0; padding: var(--ros-space-3) var(--ros-space-4); border: 1px dashed currentColor; border-radius: var(--ros-radius-sm); overflow-wrap: anywhere; }
 div[data-ros=equation], .katex-display { overflow-x: auto; overflow-y: hidden; padding: var(--ros-space-3) 0; }
 span[data-ros=equation] { padding: 0; }
 [data-math-status=unsupported] { white-space: pre-wrap; border: 1px solid var(--ros-warning); border-radius: var(--ros-radius-sm); padding: var(--ros-space-3); }
