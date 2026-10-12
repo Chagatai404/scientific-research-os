@@ -21,20 +21,16 @@ import paper_library as pl
 
 
 class ScientificBaseline(unittest.TestCase):
-    @unittest.expectedFailure
-    def test_alternate_inline_delimiter(self):  # complaint 1
+    def test_alternate_inline_delimiter(self):  # complaint 1 (repaired in Slice 3)
         self.assertIn('data-tex=', hs.markdown_html(r'Energy \(E_i\).'))
 
-    @unittest.expectedFailure
-    def test_alternate_display_delimiter(self):  # complaint 1
+    def test_alternate_display_delimiter(self):  # complaint 1 (repaired in Slice 3)
         self.assertIn('data-display="true"', hs.markdown_html('\\[\nx_i^2\n\\]'))
 
-    @unittest.expectedFailure
-    def test_nested_emphasis(self):  # complaint 2
+    def test_nested_emphasis(self):  # complaint 2 (repaired in Slice 3)
         self.assertIn('<strong>bold <em>italic</em></strong>', hs.markdown_html('**bold *italic***'))
 
-    @unittest.expectedFailure
-    def test_static_question_surfaces_render_scientific_markup(self):  # complaints 2, 11
+    def test_static_question_surfaces_render_scientific_markup(self):  # complaints 2, 11 (static surfaces repaired in Slice 3)
         rendered = hs._question_html({'id': 'q', 'kind': 'mcq', 'prompt': 'Value of **$x$**?',
                                       'options': ['$x^2$'], 'hints': ['Use *units*'], 'solution': 'See $E=mc^2$'})
         self.assertGreaterEqual(rendered.count('data-tex='), 3)

@@ -40,12 +40,14 @@
   }
   function renderMath(element) {
     const tex = element.getAttribute('data-tex') || element.textContent;
+    // Keep the authored text (delimiters included) so a failure shows exactly what was written, however often this runs.
+    if (!element.hasAttribute('data-source')) element.setAttribute('data-source', element.textContent);
     try {
       if (!root.katex) throw new Error('Bundled mathematical renderer unavailable');
       element.innerHTML = root.katex.renderToString(tex, {displayMode: element.getAttribute('data-display') === 'true', throwOnError: true, trust: false, strict: 'warn', maxExpand: 1000, maxSize: 20, output: 'htmlAndMathml'});
       element.setAttribute('data-math-status', 'rendered');
     } catch (error) {
-      element.textContent = tex;
+      element.textContent = element.getAttribute('data-source') || tex;
       element.setAttribute('data-math-status', 'unsupported');
       element.setAttribute('title', 'Mathematics could not render. Original LaTeX preserved.');
       const warning = root.document.createElement('small');
@@ -74,6 +76,18 @@
     let contentNodes = [...mount.children];
     for (const child of contentNodes) keys.set(child, child.outerHTML);
     function node(tag, text) { const el = doc.createElement(tag); if (text !== undefined) el.textContent = text; return el; }
+    // Authored scientific text (prompts, options, hints, explanations, feedback, open questions) uses the shared inline grammar.
+    const Rich = root.ResearchOSRich;
+    function resolveReference(label) {
+      for (const target of mount.querySelectorAll('[data-eq-label]')) if (target.getAttribute('data-eq-label') === label) return target.getAttribute('data-eq-number');
+      return undefined;
+    }
+    function rich(tag, text) {
+      const el = doc.createElement(tag);
+      if (Rich) Rich.renderInto(el, Rich.parseInline(String(text)), doc, {onMath: renderMath, resolveReference}); else el.textContent = String(text);
+      return el;
+    }
+    function plain(text) { return Rich ? Rich.plainText(Rich.parseInline(String(text))) : String(text); }
     function button(text, callback) { const b = node('button', text); b.type = 'button'; b.addEventListener('click', callback); return b; }
     function within(scope, selector) { return [...(scope.matches && scope.matches(selector) ? [scope] : []), ...scope.querySelectorAll(selector)]; }
     const status = node('p'); status.className = 'ros-status'; status.setAttribute('role', 'status');
@@ -226,7 +240,7 @@
       if (showVerdict) {
         panel.feedback.dataset.state = VERDICTS[verdict][1];
         const label = node('strong', VERDICTS[verdict][0]); label.className = 'ros-verdict-label';
-        panel.feedback.replaceChildren(label, ...(feedback ? [node('span', feedback)] : []));
+        panel.feedback.replaceChildren(label, ...(feedback ? [rich('span', feedback)] : []));
       }
       for (const field of panel.fields) if (field.closest('.ros-option')) {
         const option = field.closest('.ros-option'); delete option.dataset.feedback;
@@ -257,7 +271,7 @@
         number = node('p'); number.className = 'ros-question-number';
         chip = node('span'); chip.className = 'ros-question-state'; heading.append(number, chip); body.append(heading);
       }
-      const prompt = node('h3', q.prompt); prompt.className = 'ros-question-prompt'; body.append(prompt);
+      const prompt = rich('h3', q.prompt); prompt.className = 'ros-question-prompt'; body.append(prompt);
       const form = node('form'); const fieldset = node('fieldset'); fieldset.className = 'ros-options'; fieldset.append(node('legend', q.kind === 'multi' ? 'Choose all that apply' : 'Your response')); form.append(fieldset);
       const fields = [];
       const optionValue = option => typeof option === 'object' ? String(option.value === undefined ? option.id : option.value) : String(option);
@@ -266,19 +280,19 @@
         const group = 'answer-' + (++uid);
         (q.options || []).forEach((option, index) => {
           const label = node('label'); label.className = 'ros-option'; const input = node('input'); input.type = q.kind === 'mcq' ? 'radio' : 'checkbox'; input.name = group; input.value = optionValue(option); input.dataset.index = String(index);
-          input.setAttribute('aria-label', optionLabel(option));
+          input.setAttribute('aria-label', plain(optionLabel(option)));
           const letter = node('span', index < 26 ? String.fromCharCode(65 + index) : String(index + 1)); letter.className = 'ros-option-letter'; letter.setAttribute('aria-hidden', 'true');
-          const text = node('span', optionLabel(option)); text.className = 'ros-option-text';
+          const text = rich('span', optionLabel(option)); text.className = 'ros-option-text';
           label.append(input, letter, text); fieldset.append(label); fields.push(input);
         });
       } else if (q.kind === 'matching' || q.kind === 'ordering') {
         const keys = q.kind === 'matching' ? Object.keys(q.answer || {}) : (q.options || q.answer || []);
         const choices = q.kind === 'matching' ? q.options || [...new Set(Object.values(q.answer || {}))] : keys;
         keys.forEach((key, index) => {
-          const label = node('label', q.kind === 'matching' ? key + ': ' : 'Position ' + (index + 1) + ': ');
+          const label = q.kind === 'matching' ? rich('label', key + ': ') : node('label', 'Position ' + (index + 1) + ': ');
           const select = node('select'); select.dataset.key = String(key); select.required = true; select.append(node('option', 'Choose…'));
           select.firstChild.value = '';
-          choices.forEach(value => { const o = node('option', optionLabel(value)); o.value = optionValue(value); select.append(o); });
+          choices.forEach(value => { const o = node('option', plain(optionLabel(value))); o.value = optionValue(value); select.append(o); });
           label.append(select); fieldset.append(label); fields.push(select);
         });
       } else {
@@ -307,7 +321,7 @@
       body.append(form);
       const hints = [];
       (q.hints || []).forEach((hint, index) => {
-        const text = node('p', hint); text.hidden = true; text.dataset.ros = 'hint'; text.className = 'ros-hint'; text.id = 'ros-hint-' + (++uid);
+        const text = rich('p', hint); text.hidden = true; text.dataset.ros = 'hint'; text.className = 'ros-hint'; text.id = 'ros-hint-' + (++uid);
         const reveal = button('Reveal hint ' + (index + 1), () => {
           text.hidden = false; reveal.disabled = true; reveal.setAttribute('aria-expanded', 'true'); emit('hint', q.id, index + 1);
           if (hints[index + 1]) hints[index + 1].reveal.hidden = false;
@@ -321,7 +335,7 @@
         // The explanation follows the check directly: no extra click between an answer and why.
         const explanation = node('div'); explanation.hidden = true; explanation.dataset.ros = 'solution'; explanation.className = 'ros-explanation';
         const title = node('p', 'Explanation'); title.className = 'ros-explanation-title';
-        explanation.append(title, node('p', q.solution)); panel.explanation = explanation; body.append(explanation);
+        explanation.append(title, rich('p', q.solution)); panel.explanation = explanation; body.append(explanation);
       }
       const confidence = node('div'); confidence.className = 'ros-confidence'; confidence.setAttribute('role', 'group');
       const confidenceLabel = node('span', 'Confidence (optional)'); confidenceLabel.id = 'ros-confidence-' + (++uid); confidence.setAttribute('aria-labelledby', confidenceLabel.id);
@@ -461,9 +475,9 @@
       history.append(node('h2', 'Questions and answers'));
       for (const record of records.values()) {
         const entry = node('article'); entry.className = 'ros-question-entry'; entry.dataset.openQuestionId = record.id;
-        entry.append(node('h3', 'Question'), node('p', record.prompt));
+        entry.append(node('h3', 'Question'), rich('p', record.prompt));
         const answer = node('div'); answer.className = 'ros-question-answer';
-        answer.append(node('h3', 'Answer'), node('p', typeof record.answer === 'string' && record.answer.trim() ? record.answer : 'Awaiting an answer from the session agent.'));
+        answer.append(node('h3', 'Answer'), typeof record.answer === 'string' && record.answer.trim() ? rich('p', record.answer) : node('p', 'Awaiting an answer from the session agent.'));
         entry.append(answer);
         if (pending.has(record.id)) entry.append(node('small', 'Saving question...'));
         history.append(entry);

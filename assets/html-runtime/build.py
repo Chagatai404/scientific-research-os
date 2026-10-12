@@ -55,7 +55,10 @@ def document_fonts():
 
 def write_bundle(katex_css, katex_js, inventory):
     fonts_css, inventory['document_fonts'] = document_fonts()
-    (TARGET / 'session.js').write_bytes(KATEX_HEADER.encode() + katex_js + b'\n;\n' + (TARGET / 'runtime.js').read_bytes())
+    # KaTeX, then the shared inline grammar, then the runtime that uses both. refresh() splits on the first
+    # "/* Research OS runtime" marker, which richtext.js carries, so the bundle round-trips.
+    (TARGET / 'session.js').write_bytes(KATEX_HEADER.encode() + katex_js + b'\n;\n' + (TARGET / 'richtext.js').read_bytes()
+                                        + b'\n' + (TARGET / 'runtime.js').read_bytes())
     (TARGET / 'session.css').write_text(KATEX_HEADER + katex_css + '\n' + fonts_css + (TARGET / 'theme.css').read_text(encoding='utf-8'), encoding='utf-8')
     (TARGET / 'dependency-lock.json').write_text(json.dumps(inventory, indent=2) + '\n', encoding='utf-8')
 

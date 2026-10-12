@@ -112,6 +112,14 @@ a { color: var(--ros-accent); text-underline-offset: .2em; }
 a:hover { color: var(--ros-accent-hover); }
 .ros-link-target { color: var(--ros-text-muted); font-size: .85em; overflow-wrap: anywhere; }
 .ros-note-link { color: var(--ros-accent); }
+/* Unsupported or unterminated syntax stays visible exactly as authored, marked rather than hidden or silently repaired. */
+.ros-diagnostic, .ros-math[data-math-status="unsupported"] { background: var(--ros-warning-bg); color: var(--ros-warning); border-bottom: 1px dotted currentColor; border-radius: 3px; padding: 0 .2em; font-family: var(--ros-font-mono); font-size: .92em; }
+.ros-math[data-math-status="unsupported"] small { font-family: var(--ros-font-ui); }
+.ros-eqref { color: var(--ros-accent); text-decoration: none; }
+.ros-eqref:hover, .ros-eqref:focus-visible { text-decoration: underline; }
+.ros-formula[data-eq-label]:target { outline: 2px solid var(--ros-focus); outline-offset: 4px; }
+del { text-decoration-thickness: .08em; color: var(--ros-text-muted); }
+mark { background: var(--ros-warning-bg); color: inherit; padding: 0 .15em; border-radius: 3px; }
 ul, ol { padding-left: 1.5em; margin: var(--ros-space-4) 0; }
 li { margin: .5em 0; padding-left: .2em; }
 li::marker { color: var(--ros-text-muted); font-variant-numeric: tabular-nums; }

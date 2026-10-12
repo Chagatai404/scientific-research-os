@@ -22,6 +22,7 @@ import time
 import uuid
 
 from common import load_config, parse_frontmatter
+import rich_text
 
 SCHEMA_VERSION = 1
 MAX_STATE_BYTES = 8 * 1024 * 1024
@@ -256,34 +257,9 @@ def validate_state(state):
     return state
 
 
-def _inline(text):
-    """Render supported inline syntax without interpreting markup inside TeX/code."""
-    pattern = re.compile(r'\$[^$\n]+\$|`[^`\n]+`|\[\[[^\]\n]+\]\]|\[[^\]\n]+\]\([^()\s]+(?:\s+"[^"\n]*")?\)|\*\*.+?\*\*|__.+?__|(?<!\w)\*[^*\n]+\*(?!\w)|(?<!\w)_[^_\n]+_(?!\w)')
-    result, position = [], 0
-    for match in pattern.finditer(text):
-        result.append(html.escape(text[position:match.start()]))
-        token = match.group()
-        if token.startswith('$'):
-            result.append('<span data-ros="equation" data-tex="' + html.escape(token[1:-1], quote=True) + '" class="ros-math">' + html.escape(token) + '</span>')
-        elif token.startswith('`'):
-            result.append('<code>' + html.escape(token[1:-1]) + '</code>')
-        elif token.startswith('[['):
-            parts = token[2:-2].split('|', 1)
-            result.append('<span class="ros-note-link" title="' + html.escape(parts[0], quote=True) + '">' + _inline(parts[-1]) + '</span>')
-        elif token.startswith('['):
-            link = re.fullmatch(r'\[([^\]]+)\]\(([^\s]+)(?:\s+"([^"]*)")?\)', token)
-            label, target = _inline(link[1]), link[2]
-            if re.fullmatch(r'#[A-Za-z0-9_-]+', target):
-                result.append('<a href="' + target + '">' + label + '</a>')
-            else:
-                result.append('<span class="ros-link">' + label + ' <span class="ros-link-target">(' + html.escape(target) + ')</span></span>')
-        elif token.startswith(('**', '__')):
-            result.append('<strong>' + _inline(token[2:-2]) + '</strong>')
-        else:
-            result.append('<em>' + _inline(token[1:-1]) + '</em>')
-        position = match.end()
-    result.append(html.escape(text[position:]))
-    return ''.join(result)
+def _inline(text, labels=None):
+    """Inline rendering is the shared scientific grammar in rich_text.py (mirrored by the runtime's richtext.js)."""
+    return rich_text.render_inline(text, labels)
 
 
 _LIST_MARKER = re.compile(r'^( *)([-+*]|\d+[.)])\s+(.+)$')
@@ -305,6 +281,10 @@ def _table_cells(line):
         char = line[i]
         if char == '\\' and i + 1 < len(line) and line[i + 1] == '|':
             cell.append('|'); i += 2; continue
+        if char == '$' and not code and i + 1 < len(line) and not line[i + 1].isspace():
+            end = rich_text.closing_dollar(line, i + 1)  # |x| inside $...$ is mathematics, not a column break
+            if end != -1:
+                cell.append(line[i:end + 1]); i = end + 1; continue
         if char == '`': code = not code
         if char == '|' and not code:
             cells.append(''.join(cell).strip()); cell = []
@@ -316,12 +296,23 @@ def _table_cells(line):
 def markdown_html(source, page_title=None, questions=None, placed=None):
     """Component-oriented structural conversion; never infer assessments or answers.
 
-    Authored source is unchanged. The renderer supports lists, quotations, callouts,
-    fences, headings, emphasis and literal math; raw executable HTML is escaped.
+    Authored source is unchanged. Inline text follows the shared scientific grammar (rich_text.py):
+    nested emphasis, TeX in four delimiter styles, labelled and numbered equations with references,
+    sub/superscripts. Raw executable HTML is escaped. Two passes: the first discovers labelled
+    equations in document order so a reference may precede the equation it cites.
     """
+    found = []
+    _markdown_html(source, page_title, questions, set(), {}, found)
+    labels = {name: number for number, name in enumerate(found, 1)}
+    return _markdown_html(source, page_title, questions, placed, labels, None)
+
+
+def _markdown_html(source, page_title, questions, placed, labels, found):
     _, body = parse_frontmatter(source.replace('\r\n', '\n'))
     used_anchors = {}
     source_h1_seen = False
+    emitted = set()
+    inline = lambda text: _inline(text, labels)
 
     def anchor_for(title):
         base = 'section-' + _hash(title.encode())[:12]
@@ -335,7 +326,7 @@ def markdown_html(source, page_title=None, questions=None, placed=None):
         out, i = [], 0
         def block_start(line):
             return (not line.strip() or _HEADING.match(line) or _LIST_MARKER.match(line) or QUESTION_MARKER.match(line.strip())
-                    or line.startswith('>') or re.match(r'^\s*(?:```|~~~|\$\$)', line)
+                    or line.startswith('>') or re.match(r'^\s*(?:```|~~~)', line) or rich_text.starts_display_math(line)
                     or re.fullmatch(r'\s*(?:---+|\*\*\*+|___+)\s*', line))
         while i < len(lines):
             line = lines[i]
@@ -351,19 +342,19 @@ def markdown_html(source, page_title=None, questions=None, placed=None):
                 i += 1; continue
             image = _IMAGE.fullmatch(line.strip())
             if image:
-                out.append('<figure class="ros-figure" data-ros="figure"><img data-resource-id="' + html.escape(image[2], quote=True) + '" alt="' + html.escape(image[1], quote=True) + '">' + ('<figcaption>' + _inline(image[3]) + '</figcaption>' if image[3] else '') + '</figure>')
+                out.append('<figure class="ros-figure" data-ros="figure"><img data-resource-id="' + html.escape(image[2], quote=True) + '" alt="' + html.escape(image[1], quote=True) + '">' + ('<figcaption>' + inline(image[3]) + '</figcaption>' if image[3] else '') + '</figure>')
                 i += 1; continue
             if i + 1 < len(lines) and '|' in line:
                 headings, rules = _table_cells(line), _table_cells(lines[i + 1])
                 if len(headings) == len(rules) and all(re.fullmatch(r':?-{3,}:?', r) for r in rules):
                     classes = ['ros-align-center' if r.startswith(':') and r.endswith(':') else 'ros-numeric' if r.endswith(':') else 'ros-align-left' for r in rules]
                     table = '<div class="ros-table-wrap" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr>'
-                    table += ''.join('<th scope="col" class="' + c + '">' + _inline(h) + '</th>' for h, c in zip(headings, classes)) + '</tr></thead><tbody>'
+                    table += ''.join('<th scope="col" class="' + c + '">' + inline(h) + '</th>' for h, c in zip(headings, classes)) + '</tr></thead><tbody>'
                     i += 2
                     while i < len(lines) and '|' in lines[i] and lines[i].strip():
                         cells = _table_cells(lines[i])
                         if len(cells) != len(headings): break
-                        table += '<tr>' + ''.join('<td class="' + c + '">' + _inline(v) + '</td>' for v, c in zip(cells, classes)) + '</tr>'
+                        table += '<tr>' + ''.join('<td class="' + c + '">' + inline(v) + '</td>' for v, c in zip(cells, classes)) + '</tr>'
                         i += 1
                     out.append(table + '</tbody></table></div>'); continue
             fence = re.match(r'^\s*(`{3,}|~{3,})([^\s`]*)\s*$', line)
@@ -377,18 +368,18 @@ def markdown_html(source, page_title=None, questions=None, placed=None):
                 attr = ' data-language="' + language + '"' if language else ''
                 out.append('<pre class="ros-code" data-ros="' + ('code' if closed else 'legacy') + '"' + attr + '><code>' + html.escape('\n'.join(code)) + '</code></pre>')
                 continue
-            if line.strip().startswith('$$'):
-                equation, i = [line.strip()], i + 1
-                if len(equation[0]) <= 4 or not equation[0].endswith('$$'):
-                    while i < len(lines):
-                        equation.append(lines[i]); i += 1
-                        if equation[-1].strip().endswith('$$'): break
-                text = '\n'.join(equation)
-                if len(text) > 4 and text.endswith('$$'):
-                    out.append('<div class="ros-formula ros-math" data-ros="equation" data-display="true" data-tex="' + html.escape(text[2:-2].strip(), quote=True) + '">' + html.escape(text) + '</div>')
-                else:
-                    out.append('<pre data-ros="legacy">' + html.escape(text) + '</pre>')
-                continue
+            if rich_text.starts_display_math(line):
+                block = rich_text.read_display_math(lines, i)
+                if block:
+                    label = block['label'] if block['label'] and block['label'] not in emitted else None
+                    if label:
+                        emitted.add(label)
+                        if found is not None:
+                            found.append(label)
+                    out.append(rich_text.display_math_html(dict(block, label=label), labels.get(label)))
+                    i = block['next']
+                    continue
+                # Not a well-formed display block (for example "$$ x $$ and more"): read it as an ordinary paragraph.
             heading = _HEADING.match(line)
             if heading:
                 level, title = len(heading[1]), heading[2]
@@ -405,7 +396,7 @@ def markdown_html(source, page_title=None, questions=None, placed=None):
                     if page_title is not None or prior_h1: level = 2
                 kind = {'concept':'concept','definition':'definition','derivation':'derivation','intuition':'intuition','evidence':'evidence','decision':'decision','research decision':'decision','questions':'question','questions asked':'question','open questions':'question','code':'code','reflection':'reflection','checkpoint':'checkpoint'}.get(title.lower().rstrip(':'))
                 attr = ' data-ros="' + kind + '"' if kind else ''
-                out.append(f'<h{level} class="ros-section-heading" id="{anchor}"{attr}>' + _inline(title) + f'</h{level}>')
+                out.append(f'<h{level} class="ros-section-heading" id="{anchor}"{attr}>' + inline(title) + f'</h{level}>')
                 i += 1
                 continue
             if line.startswith('>'):
@@ -419,7 +410,7 @@ def markdown_html(source, page_title=None, questions=None, placed=None):
                     component = 'details' if fold else 'aside'
                     label = 'summary' if fold else 'div'
                     opened = ' open' if fold == '+' else ''
-                    out.append('<' + component + ' class="ros-callout ros-callout-' + kind + '" data-ros="' + kind + '"' + opened + '><' + label + ' class="ros-callout-header">' + _inline(title) + '</' + label + '><div class="ros-callout-body">' + render(quoted[1:], depth + 1) + '</div></' + component + '>')
+                    out.append('<' + component + ' class="ros-callout ros-callout-' + kind + '" data-ros="' + kind + '"' + opened + '><' + label + ' class="ros-callout-header">' + inline(title) + '</' + label + '><div class="ros-callout-body">' + render(quoted[1:], depth + 1) + '</div></' + component + '>')
                 else:
                     out.append('<blockquote class="ros-quotation">' + render(quoted, depth + 1) + '</blockquote>')
                 continue
@@ -467,12 +458,8 @@ def markdown_html(source, page_title=None, questions=None, placed=None):
                     cells, rules = _table_cells(lines[i]), _table_cells(lines[i + 1])
                     if len(cells) == len(rules) and all(re.fullmatch(r':?-{3,}:?', r) for r in rules): break
                 paragraph.append(lines[i]); i += 1
-            fragments = []
-            for j, text in enumerate(paragraph):
-                hard_break = text.endswith('  ') or text.endswith('\\')
-                fragments.append(_inline(text[:-1].rstrip() if text.endswith('\\') else text.rstrip()))
-                if j < len(paragraph) - 1: fragments.append('<br>' if hard_break else ' ')
-            out.append('<p>' + ''.join(fragments) + '</p>')
+            # One parse for the whole paragraph, so emphasis, links and math can span soft line breaks.
+            out.append('<p>' + inline('\n'.join(paragraph).rstrip()) + '</p>')
         return '\n'.join(out)
 
     return render(body.splitlines())
@@ -483,19 +470,19 @@ def _question_html(q):
     kind = q.get("kind", "free-response")
     if kind not in QUESTION_KINDS:
         kind = "free-response"
-    content = '<section data-ros="' + kind + '" data-question-id="' + html.escape(q["id"], quote=True) + '"><h3>' + html.escape(str(q.get("prompt", ""))) + '</h3><form>'
+    content = '<section data-ros="' + kind + '" data-question-id="' + html.escape(q["id"], quote=True) + '"><h3>' + _inline(str(q.get("prompt", ""))) + '</h3><form>'
     if kind in {"mcq", "multi"}:
         for i, option in enumerate(q.get("options", [])):
             value = option.get("value", str(i)) if isinstance(option, dict) else str(i)
             label = option.get("label", "") if isinstance(option, dict) else str(option)
-            content += '<label><input name="answer" type="' + ("radio" if kind == "mcq" else "checkbox") + '" value="' + html.escape(str(value), quote=True) + '">' + html.escape(str(label)) + '</label>'
+            content += '<label><input name="answer" type="' + ("radio" if kind == "mcq" else "checkbox") + '" value="' + html.escape(str(value), quote=True) + '">' + _inline(str(label)) + '</label>'
     else:
         content += '<textarea name="answer" aria-label="Your response"></textarea>'
     content += '<button type="submit">Save response</button><button type="button" data-ros-action="reset">Reset</button><output data-ros-feedback></output></form>'
     for hint in q.get("hints", []):
-        content += '<details data-ros="hint"><summary>Hint</summary>' + html.escape(str(hint)) + '</details>'
+        content += '<details data-ros="hint"><summary>Hint</summary>' + _inline(str(hint)) + '</details>'
     if "solution" in q:
-        content += '<details data-ros="solution"><summary>Solution</summary>' + html.escape(str(q["solution"])) + '</details>'
+        content += '<details data-ros="solution"><summary>Solution</summary>' + _inline(str(q["solution"])) + '</details>'
     return content + '</section>'
 
 

@@ -39,7 +39,7 @@ GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
                  "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py",
                  "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py",
-                 "context_kernel.py", "scientific_verify.py")
+                 "context_kernel.py", "scientific_verify.py", "rich_text.py")
 
 
 # Every substantive workflow writes HTML sessions, and `html_sessions.py context` loads the
@@ -49,7 +49,9 @@ SESSION_HELPERS = ("html_sessions.py", "common.py", "research.py", "knowledge.py
                    # The context kernel gates every session; this is its complete import closure.
                    "context_kernel.py", "migrate_learning.py", "paper_library.py", "visuals.py",
                    # Stdlib-only verification engine: every review workflow can execute its checks.
-                   "scientific_verify.py")
+                   "scientific_verify.py",
+                   # The shared scientific inline grammar html_sessions renders with.
+                   "rich_text.py")
 
 
 def copy_dir(src: Path, dst: Path, dry: bool) -> None:
