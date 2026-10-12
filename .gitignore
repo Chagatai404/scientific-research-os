@@ -10,3 +10,5 @@ Thumbs.db
 *.tmp
 *.lock
 graphify-out/
+.test-temp/
+baseline-*.log

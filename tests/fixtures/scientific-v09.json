@@ -1,0 +1,21 @@
+{
+  "fixture_schema": 1,
+  "scope": "Synthetic known examples; no project results or learner evidence",
+  "cases": [
+    {"id":"arithmetic-valid","family":"arithmetic","expression":"2 + 2","expected":4,"outcome":"verified"},
+    {"id":"arithmetic-invalid","family":"arithmetic","expression":"2 + 2","expected":5,"outcome":"invalidated"},
+    {"id":"gamma-normalization","family":"gamma-profile","a":3,"b":2,"integral":1,"outcome":"verified"},
+    {"id":"gamma-missing-rate","family":"gamma-profile","a":3,"b":2,"integral":0.5,"outcome":"invalidated"},
+    {"id":"depth-origin","family":"reasoning","claim":"Shifting shower depth preserves fitted shape parameters","outcome":"requires-assumptions"},
+    {"id":"correlated-parameters","family":"reasoning","claim":"Propagate correlated a,b as independent","outcome":"invalidated"},
+    {"id":"dimensions","family":"reasoning","claim":"Energy plus length is energy","outcome":"invalidated"},
+    {"id":"simulation-observable","family":"reasoning","claim":"Deposited energy equals calibrated measured signal without response modeling","outcome":"unresolved"},
+    {"id":"zero-false-positives","family":"reasoning","claim":"Zero observed false positives proves infinite rejection","outcome":"invalidated"},
+    {"id":"dependent-bootstrap","family":"reasoning","claim":"IID bootstrap of correlated shower layers estimates event uncertainty","outcome":"invalidated"},
+    {"id":"classification-leakage","family":"reasoning","claim":"Fit scaler on train and test before evaluation","outcome":"invalidated"},
+    {"id":"rejection-uncertainty","family":"reasoning","claim":"Invert a zero false-positive count with zero uncertainty","outcome":"invalidated"},
+    {"id":"observable-mismatch","family":"reasoning","claim":"Compare total energy to one-layer signal without a mapping","outcome":"unresolved"},
+    {"id":"regime-mismatch","family":"reasoning","claim":"Transfer detector calibration across energies and geometries without checks","outcome":"unresolved"},
+    {"id":"square-root-domain","family":"reasoning","claim":"sqrt(x*x) = x for all real x","counterexample":-1,"outcome":"invalidated"}
+  ]
+}
