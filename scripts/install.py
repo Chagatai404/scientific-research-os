@@ -26,6 +26,10 @@ V08_AGENT_REFERENCES = {
     "source-verifier": ("LITERATURE_RELIABILITY_PROTOCOL.md", "AUTHENTICATED_ACCESS_PROTOCOL.md"),
     "adversarial-reviewer": ("LITERATURE_RELIABILITY_PROTOCOL.md",),
 }
+# v0.9: the verification protocol travels with every role that audits a quantitative claim.
+V09_AGENT_REFERENCES = {role: ("VERIFICATION_PROTOCOL.md",) for role in (
+    "mathematics-reviewer", "statistics-reviewer", "physics-reviewer", "adversarial-reviewer",
+    "ml-reviewer", "simulation-reviewer", "qml-reviewer")}
 
 
 # Standard-library helpers the graph-first workflows call from an installed skill
@@ -35,7 +39,7 @@ GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
                  "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py",
                  "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py",
-                 "context_kernel.py")
+                 "context_kernel.py", "scientific_verify.py")
 
 
 # Every substantive workflow writes HTML sessions, and `html_sessions.py context` loads the
@@ -43,7 +47,9 @@ GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py",
 SESSION_HELPERS = ("html_sessions.py", "common.py", "research.py", "knowledge.py", "ontology.py",
                    "validate_evidence.py", "computational_manifest.py",
                    # The context kernel gates every session; this is its complete import closure.
-                   "context_kernel.py", "migrate_learning.py", "paper_library.py", "visuals.py")
+                   "context_kernel.py", "migrate_learning.py", "paper_library.py", "visuals.py",
+                   # Stdlib-only verification engine: every review workflow can execute its checks.
+                   "scientific_verify.py")
 
 
 def copy_dir(src: Path, dst: Path, dry: bool) -> None:
@@ -145,7 +151,7 @@ def agent_policy(role: str) -> str:
     evidence_policy = ""
     compute_policy = ""
     v08_policy = ""
-    for name in ("ORCHESTRATION_PROTOCOL.md", *V08_AGENT_REFERENCES.get(role, ())):
+    for name in ("ORCHESTRATION_PROTOCOL.md", *V08_AGENT_REFERENCES.get(role, ()), *V09_AGENT_REFERENCES.get(role, ())):
         v08_policy += "\n" + (ROOT / "references" / name).read_text(encoding="utf-8")
     if role in COMPUTE_AGENTS:
         for name in ("COMPUTATIONAL_PROTOCOL.md", "SOURCE_POLICY.md", *COMPUTE_AGENTS[role]):

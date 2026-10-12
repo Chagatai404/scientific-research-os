@@ -432,6 +432,7 @@ def _research_view(req, registry, records, learner):
              if e.source in keep and e.target in keep][:limits['max_edges']]
     evidence = {ref: {'state': state, 'claim_text': registry.claims.get(ref)}
                 for k in kept for ref, state in registry.links.get(k, {}).get('evidence', {}).items()}
+    verifications = {ref: state for k in kept for ref, state in registry.links.get(k, {}).get('verifications', {}).items()}
     code_refs = [dict(c, record=k) for k in kept for c in registry.code.get(k, [])][:limits['max_edges']]
     by_type = {}
     for r in records:
@@ -445,6 +446,7 @@ def _research_view(req, registry, records, learner):
             'active_hypotheses': status['active_hypotheses'], 'experiments': status['experiments'],
             'pending_human_decisions': status['pending_human_decisions'], 'pending_validation': status['pending_validation'],
             'accepted_decisions': decisions, 'relevant_records': shown, 'edges': edges, 'evidence': evidence,
+            'verifications': verifications,
             'code_refs': code_refs,
             'frontier': [f for f in research.frontier(registry) if f['id'] in inside][:limits['max_records']],
             'unresolved_relationships': status['unresolved_relationships'][:limits['max_diagnostics']],

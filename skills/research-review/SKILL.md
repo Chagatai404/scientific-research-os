@@ -60,6 +60,21 @@ unknown, never demonstrated. Dependent actions check the receipt themselves (`ht
 `tasks.py` stages 7/8/14/15), so skipping this step fails rather than passes silently.
 See `references/CONTEXT_PROTOCOL.md`.
 
+## Executable verification
+
+Check what can be computed instead of asserting it. Write a verification spec and run it:
+
+```
+python scripts/scientific_verify.py run spec.json [--out result.verification.json] [--receipt <context receipt>]
+```
+
+Check kinds: evaluate, equivalent, integral, derivative, limit, dimensional, rate-interval, propagation,
+resampling-unit, fit-partition, assumption-declared, regime-match, mapping-declared. The outcome is scoped
+(`verified-in-scope`, `partially-verified`, `invalidated`, `unresolved`, `not-checked`) and the record lists what
+was **not** verified. Symbolic simplification and sampling are evidence, not proof; a consequential claim needs
+two independent method classes, a bounded-context reviewer and a context receipt. Report both lists: what you
+verified and what you did not. See `references/VERIFICATION_PROTOCOL.md`.
+
 ## Mandatory session artifacts
 
 When this workflow creates or continues a substantive session, follow

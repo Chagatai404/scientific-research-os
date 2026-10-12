@@ -6,7 +6,6 @@ stale marker cannot linger. Complaint numbers follow docs/plans/v0.9-implementat
 Items that need a live provider or a desktop Obsidian are skips with the reason, so
 they appear in every test report instead of living only in prose.
 """
-import importlib.util
 import json
 from pathlib import Path
 import sys
@@ -110,9 +109,13 @@ class LibraryAndVerificationBaseline(unittest.TestCase):
         record = cm.create('false-arithmetic', declared={'a': 2, 'b': 2}, derived={'sum': 5})
         cm.validate(record)
 
-    @unittest.expectedFailure
-    def test_a_verification_engine_exists_to_execute_checks(self):  # complaint 12
-        self.assertIsNotNone(importlib.util.find_spec('scientific_verify'))
+    def test_a_verification_engine_executes_checks_and_rejects_false_arithmetic(self):  # complaint 12 (repaired in Slice 2)
+        import scientific_verify as sv
+        spec = {'verification_schema': 1, 'verification_id': 'V', 'claim': {'id': 'C', 'statement': '2 + 2 = 5'},
+                'checks': [{'id': 'sum', 'kind': 'evaluate', 'expression': '2 + 2', 'expected': 5}]}
+        self.assertEqual(sv.run(spec)['outcome'], 'invalidated')
+        spec['checks'][0]['expected'] = 4
+        self.assertEqual(sv.run(spec)['outcome'], 'verified-in-scope')
 
     def test_reasoning_fixture_is_well_formed(self):
         data = json.loads((ROOT / 'tests/fixtures/scientific-v09.json').read_text(encoding='utf-8'))

@@ -264,6 +264,19 @@ def link_state(registry: ResearchRegistry, root: Path, evidence: Path | None = N
             entry.setdefault('manifests', {})[ref] = state
             if state != 'valid':
                 registry.diagnostics.append(Diagnostic('WARNING', 'LINK_MANIFEST', record.path, f'{key}: manifest {ref} is {state}'))
+        for ref in record.meta.get('artifacts', []):
+            if not ref.endswith('.verification.json'):
+                continue
+            # A verification record reports what was checked and its scoped outcome; it never accepts a result.
+            try:
+                import scientific_verify
+                verification = scientific_verify.validate_record(json.loads(local_file(root, ref).read_text(encoding='utf-8')))
+                state = verification['outcome']
+            except (ValueError, OSError, ImportError):
+                state = 'missing' if not (root / ref).is_file() else 'invalid'
+            entry.setdefault('verifications', {})[ref] = state
+            if state in {'missing', 'invalid', 'invalidated'}:
+                registry.diagnostics.append(Diagnostic('WARNING', 'LINK_VERIFICATION', record.path, f'{key}: verification {ref} is {state}'))
         if entry:
             registry.links[key] = entry
     registry.diagnostics.sort()
@@ -393,6 +406,7 @@ def context(registry: ResearchRegistry, key: str, root: Path) -> dict:
         'evidence': {ref: {'state': state, 'claim_text': registry.claims.get(ref)}
                      for k in members for ref, state in registry.links.get(k, {}).get('evidence', {}).items()},
         'manifests': {ref: state for k in members for ref, state in registry.links.get(k, {}).get('manifests', {}).items()},
+        'verifications': {ref: state for k in members for ref, state in registry.links.get(k, {}).get('verifications', {}).items()},
         'learning_dependencies': {dep: next((registry.learning[k][dep] for k in region
                                              if dep in registry.learning.get(k, {})), {'state': 'unresolved'})
                                   for dep in dependencies},
@@ -421,6 +435,7 @@ def render_context(data: dict) -> str:
     section('Evidence', [f"- {k}: {v['state']}" + (f" — {safe_text(v['claim_text'])}" if v['claim_text'] else '')
                          for k, v in data['evidence'].items()])
     section('Manifests', [f'- {k}: {v}' for k, v in data['manifests'].items()])
+    section('Verification records (scoped outcomes, not acceptance)', [f'- {k}: {v}' for k, v in data['verifications'].items()])
     section('Learning dependencies (advisory)', [f"- {k}: {v['state']}" for k, v in data['learning_dependencies'].items()])
     section('Verified visuals', [f"- {v['visual_id']}: {v['kind']} {v['artifact']}" for v in data['visuals']])
     section('Code references', [f"- {c['path']} ({c['relation']}{'' if c['exists'] else ', not found'})" for c in data['code_refs']])
