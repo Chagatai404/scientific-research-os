@@ -181,6 +181,23 @@ def _validate_reviews(reviews):
             raise ValueError("Invalid review timestamp") from None
 
 
+def _validate_context(context):
+    """Optional binding to a context receipt; absent in historical sessions, never required to read one."""
+    if not isinstance(context, dict):
+        raise ValueError("Invalid session context")
+    if context.get("waived") is True:
+        if set(context) - {"waived", "reason", "bound_at"} or not isinstance(context.get("reason"), str) or not context["reason"].strip():
+            raise ValueError("A context waiver needs a reason")
+        return
+    if set(context) - {"binding", "request", "bound_at", "refreshed_at"} or not isinstance(context.get("binding"), dict) \
+            or not isinstance(context.get("request"), dict):
+        raise ValueError("Invalid session context binding")
+    binding = context["binding"]
+    if not isinstance(binding.get("receipt_id"), str) or binding.get("outcome") not in {"ready", "degraded"} \
+            or not isinstance(binding.get("sources"), list) or not isinstance(binding.get("workflow"), str):
+        raise ValueError("Invalid session context binding")
+
+
 def validate_state(state):
     if not isinstance(state, dict) or state.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("Unsupported HTML session schema")
@@ -197,6 +214,8 @@ def validate_state(state):
     for widget in state.get("widgets", []):
         if not isinstance(widget, dict) or widget.get("kind") not in {"sampling", "vector"} or not isinstance(widget.get("id"), str):
             raise ValueError("Unsupported session widget")
+    if "context" in state:
+        _validate_context(state["context"])
     if not isinstance(state.get("resources", []), list):
         raise ValueError("Invalid session resources")
     for resource in state.get("resources", []):
@@ -508,7 +527,8 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
     subtitle = state.get('metadata', {}).get('subtitle')
     subtitle_markup = ('<p class="ros-session-context">' + html.escape(subtitle) + '</p>') if isinstance(subtitle, str) and subtitle.strip() else ''
     header = '<header class="ros-session-header"><h1>' + html.escape(state['title']) + '</h1>' + subtitle_markup + '</header>'
-    data = json.dumps(state, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
+    # The context binding holds local paths and is for agents, not the page or a shared export.
+    data = json.dumps({k: v for k, v in state.items() if k != "context"}, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
     if standalone:
         css = (RUNTIME / "session.css").read_text(encoding="utf-8")
         js = (RUNTIME / "session.js").read_text(encoding="utf-8")
@@ -612,14 +632,14 @@ def _save(root, relative_md, state):
     return state
 
 
-def create_session(root, relative_md, text, session_type=None, title=None, metadata=None, questions=None, widgets=None, resources=None):
+def create_session(root, relative_md, text, session_type=None, title=None, metadata=None, questions=None, widgets=None, resources=None, context=None):
     md, _, _ = paths(root, relative_md)
     md.parent.mkdir(parents=True, exist_ok=True)
     with Lock(md.with_suffix('.session.lock')):
-        return _create_session(root, relative_md, text, session_type, title, metadata, questions, widgets, resources)
+        return _create_session(root, relative_md, text, session_type, title, metadata, questions, widgets, resources, context)
 
 
-def _create_session(root, relative_md, text, session_type=None, title=None, metadata=None, questions=None, widgets=None, resources=None):
+def _create_session(root, relative_md, text, session_type=None, title=None, metadata=None, questions=None, widgets=None, resources=None, context=None):
     md, view, data = paths(root, relative_md)
     if data.exists() or view.exists():
         raise ValueError(f"Session already exists: {relative_md}")
@@ -633,6 +653,8 @@ def _create_session(root, relative_md, text, session_type=None, title=None, meta
              "open_questions": [], "lifecycle": front.get("status", "active"), "created_at": _now(), "updated_at": _now()}
     state["widgets"] = list(widgets or [])
     state["resources"] = list(resources or [])
+    if context is not None:
+        state["context"] = context
     if front.get("session_id"):
         state["session_id"] = front["session_id"]
     return _save(root, relative_md, state)
@@ -661,6 +683,51 @@ def update_session(root, relative_md, text=None, **changes):
         return _save(root, relative_md, state)
 
 
+def bind_context(receipt, request=None):
+    """The durable form of a context receipt stored in a session (a binding, not the receipt)."""
+    import context_kernel as ck
+    return {"binding": ck.summary(receipt), "request": request or receipt["request"], "bound_at": _now(), "refreshed_at": None}
+
+
+def waive_context(reason):
+    """An explicit, recorded decision to work without graph context (never a default)."""
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("A context waiver needs a reason")
+    return {"waived": True, "reason": reason.strip(), "bound_at": _now()}
+
+
+def bind_session_context(root, relative_md, receipt):
+    """Adopt a context binding for an existing (e.g. historical) session; refuses a blocked receipt."""
+    import context_kernel as ck
+    ck.require(receipt)
+    md, _, _ = paths(root, relative_md)
+    with Lock(md.with_suffix(".session.lock")):
+        state = load_session(root, relative_md)
+        state["context"] = bind_context(receipt)
+        state["updated_at"] = _now()
+        return _save(root, relative_md, state)
+
+
+def _ensure_context(state):
+    """Precondition for tutoring actions: the bound context must still describe the canonical records.
+
+    Sessions created without a binding (historical ones) are unaffected. A stale binding is rebuilt from
+    its stored request; if the rebuilt context is blocked, the action is refused and nothing is written.
+    """
+    bound = state.get("context")
+    if bound is None or bound.get("waived"):
+        return
+    import context_kernel as ck
+    try:
+        ck.require(bound["binding"], summary_only=True)
+    except ck.ContextError as exc:
+        if exc.code != "CONTEXT_STALE":
+            raise
+        receipt = ck.build(bound["request"])
+        ck.require(receipt)
+        state["context"] = dict(bound, binding=ck.summary(receipt), refreshed_at=_now())
+
+
 def answer_open_question(root, relative_md, question_id, answer):
     """Record an actual agent answer without inventing assessment evidence."""
     if not isinstance(answer, str) or not answer.strip() or len(answer) > 32000:
@@ -683,6 +750,7 @@ def append_session(root, relative_md, block):
     md, _, _ = paths(root, relative_md)
     with Lock(md.with_suffix(".session.lock")):
         state = load_session(root, relative_md)
+        _ensure_context(state)
         state["source_markdown"] += block
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
@@ -731,6 +799,7 @@ def add_question(root, relative_md, question):
     md, _, _ = paths(root, relative_md)
     with Lock(md.with_suffix(".session.lock")):
         state = load_session(root, relative_md)
+        _ensure_context(state)
         _append_question(state, question)
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
@@ -754,6 +823,8 @@ def review_response(root, relative_md, question_id, verdict, feedback="", next_q
         question = next((q for q in state["questions"] if q["id"] == question_id), None)
         if question is None:
             raise ValueError("Unknown question")
+        if transcript or next_question is not None:
+            _ensure_context(state)  # a verdict alone teaches nothing new; new teaching or probes need current context
         response = next((e for e in reversed(state["events"]) if e["type"] == "response" and e.get("question_id") == question_id), None)
         if response is None:
             raise ValueError("No learner response to review; never invent an answer")
@@ -811,99 +882,90 @@ def wait_for_activity(root, relative_md, timeout=900.0, interval=1.0):
         time.sleep(interval)
 
 
-def _wikilink_target(value):
-    if isinstance(value, list):
-        value = next((v for v in value if isinstance(v, str) and "[[" in v), value[0] if value else None)
-    if not isinstance(value, str):
-        return None
-    match = re.search(r"\[\[([^\]|#]+)", value)
-    return (match[1] if match else value).strip() or None
+SESSION_WORKFLOWS = {"tutor-session": "tutor", "course-session": "course-study", "research-session": "research-plan"}
 
 
-def _project_note(root, metadata):
-    name = _wikilink_target(metadata.get("project")) or _wikilink_target(metadata.get("up"))
-    if not name:
-        return None
-    root = Path(root).resolve()
-    for candidate in (root / "01 Projects" / name / (name + ".md"), root / "01 Projects" / (name + ".md")):
-        if candidate.is_file():
-            return candidate
-    for directory, folders, files in os.walk(root):
-        folders[:] = [f for f in folders if not f.startswith(".")]
-        if name + ".md" in files:
-            return Path(directory) / (name + ".md")
-    return None
+def context_request(root, metadata, session_type=None, session=None, **overrides):
+    """Kernel request for a session: its project and concept come from its own frontmatter."""
+    import context_kernel as ck
+    request = {"workflow": SESSION_WORKFLOWS.get(session_type, "tutor"), "vault": str(Path(root).resolve())}
+    project = ck.wikilink_target(metadata.get("project")) or ck.wikilink_target(metadata.get("up"))
+    if project:
+        request["project"] = project
+    concept = ck.wikilink_target(metadata.get("concept"))
+    if concept and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", concept):
+        request["target"] = {"kind": "concept", "id": concept}
+    if session:
+        request["session"] = session
+    request.update({k: v for k, v in overrides.items() if v is not None})
+    return request
 
 
-def session_context(root, relative_md, project_root=None, learning_root=None, as_of=None):
-    """Resume brief: session state plus the project memory held in the research and knowledge graphs.
+def session_context(root, relative_md, project_root=None, learning_root=None, as_of=None, library_root=None):
+    """Resume brief built on the context kernel; also works before the session exists (bootstrap).
 
-    The HTML page is a view, not memory. Read-only: nothing here grades, accepts or writes.
+    The HTML page is a view, not memory. Nothing here grades, accepts or edits a session; the only
+    write is the kernel's receipt cache under the vault's .research-os/context.
     """
+    import context_kernel as ck
     root = Path(root).resolve()
-    state = load_session(root, relative_md)
-    brief = {"session": str(relative_md), "title": state["title"], "type": state["type"], "lifecycle": state.get("lifecycle"),
-             "updated_at": state.get("updated_at"), "pending": pending_activity(state), "questions": [], "project": None,
-             "research": None, "knowledge": None, "notes": []}
-    for q in state["questions"]:
+    md, _, data = paths(root, relative_md)
+    state = load_session(root, relative_md) if data.exists() else None
+    if state is not None:
+        metadata, session_type, source = state["metadata"], state["type"], state["source_markdown"]
+    else:
+        metadata, source = parse_frontmatter(md.read_text(encoding="utf-8").replace("\r\n", "\n")) if md.exists() else ({}, "")
+        session_type = metadata.get("type")
+    mentioned = sorted(set(re.findall(r"\b(?:RQ|H|EXP|DEC)-\d{3,}\b", source)))
+    request = context_request(root, metadata, session_type, str(relative_md), project_root=project_root,
+                              learning_root=learning_root, library_root=library_root, as_of=as_of, records=mentioned or None)
+    receipt, receipt_file, _ = ck.preflight(request)
+    retrieval = receipt["retrieval"]
+    learner, research = retrieval["learner"], retrieval["research"]
+    sources = {s["name"]: s for s in receipt["sources"]}
+    brief = {"session": str(relative_md), "exists": state is not None,
+             "title": state["title"] if state else metadata.get("title", md.stem),
+             "type": session_type, "lifecycle": state.get("lifecycle") if state else None,
+             "updated_at": state.get("updated_at") if state else None,
+             "pending": pending_activity(state) if state else [], "questions": [], "project": retrieval["project"],
+             "research": None, "knowledge": None, "notes": [], "receipt": receipt,
+             "receipt_file": str(receipt_file) if receipt_file else None, "blocked": receipt["outcome"] == "blocked"}
+    for q in (state["questions"] if state else []):
         responses = [e for e in state["events"] if e["type"] == "response" and e.get("question_id") == q["id"]]
         review = (q.get("reviews") or [None])[-1]
         brief["questions"].append({"id": q["id"], "kind": q.get("kind", "free-response"), "attempts": len(responses),
                                    "latest_response": responses[-1].get("response") if responses else None,
                                    "verdict": review["verdict"] if review and responses and review.get("response_event_id") == responses[-1]["event_id"] else None})
-    note = _project_note(root, state["metadata"])
-    front = parse_frontmatter(note.read_text(encoding="utf-8"))[0] if note else {}
-    if note:
-        project_id = front.get("project_id") or front.get("id") or re.sub(r"[^a-z0-9]+", "-", note.stem.lower()).strip("-")
-        brief["project"] = {"note": note.relative_to(root).as_posix(), "id": project_id, "path": front.get("path")}
-    elif state["metadata"].get("project"):
-        brief["notes"].append("Project link does not resolve to a vault note; locate the project note before teaching.")
-    project_root = Path(project_root) if project_root else Path(front["path"]) if front.get("path") else None
-    if learning_root is None:
-        learning_root = root / "02 Knowledge" if (root / "02 Knowledge").is_dir() else root
-    learning_root = Path(learning_root)
-    today = dt.date.fromisoformat(as_of) if as_of else dt.date.today()
-    mentioned = sorted(set(re.findall(r"\b(?:RQ|H|EXP|DEC)-\d{3,}\b", state["source_markdown"])))
-    try:
-        import research
-        if project_root is None or not project_root.is_dir():
-            brief["notes"].append("No project root resolved; pass --project-root to load the research graph.")
-        else:
-            registry = research.enrich(research.validate(project_root), project_root, None, learning_root, today, None)
-            if registry.records:
-                summary = research.status(registry, None)
-                brief["research"] = {"root": str(project_root), "records": len(registry.records),
-                    "errors": sum(d["severity"] == "ERROR" for d in summary["diagnostics"]),
-                    "active_questions": summary.get("active_questions", []), "active_hypotheses": summary.get("active_hypotheses", []),
-                    "frontier": research.frontier(registry),
-                    "pending_validation": summary.get("pending_validation", []), "pending_human_decisions": summary.get("pending_human_decisions", []),
-                    "session_records": [{"id": k, "type": registry.records[k].type, "status": registry.records[k].meta["status"], "title": registry.records[k].title}
-                                        for k in mentioned if k in registry.records]}
-            else:
-                brief["notes"].append(f"No schema-1 research records under {project_root}.")
-    except ImportError:
-        brief["notes"].append("research.py is not bundled here; run the research-session skill's research.py context.")
-    try:
-        import knowledge
-        project_id = brief["project"]["id"] if brief["project"] else None
-        if learning_root.is_dir() and project_id:
-            result = knowledge.query(knowledge.discover(learning_root.resolve(), today), "project", project_id, True)
-            nodes = result.get("nodes", [])
-            counts = {}
-            for node in nodes:
-                counts[node["state"]] = counts.get(node["state"], 0) + 1
-            pick = lambda test: [{"id": n["id"], "title": n["title"], "state": n["state"], "freshness": n["freshness"]} for n in nodes if test(n)][:15]
-            brief["knowledge"] = {"root": str(learning_root), "project": project_id, "capabilities": len(nodes), "states": counts,
-                                  "frontier": pick(lambda n: n.get("frontier")), "stale_or_due": pick(lambda n: n.get("freshness") in {"due", "overdue"} or n.get("state") in {"stale", "fragile"}),
-                                  "diagnostics": result.get("diagnostics", [])[:10]}
-    except ImportError:
-        brief["notes"].append("knowledge.py is not bundled here; run the tutor skill's knowledge.py query.")
+    if research:
+        brief["research"] = {"root": sources["research"]["path"], "records": research["records_total"],
+                             "errors": sources["research"]["counts"].get("errors", 0),
+                             "active_questions": research["active_questions"], "active_hypotheses": research["active_hypotheses"],
+                             "frontier": research["frontier"], "pending_validation": research["pending_validation"],
+                             "pending_human_decisions": research["pending_human_decisions"],
+                             "accepted_decisions": research["accepted_decisions"],
+                             "session_records": [{"id": r["id"], "type": r["type"], "status": r["status"], "title": r["title"]}
+                                                 for r in research["relevant_records"] if "requested" in r["relevance"]]}
+    if learner:
+        pick = lambda test: [{"id": n["id"], "title": n["title"], "state": n["state"], "freshness": n["freshness"]}
+                             for n in learner["nodes"] if test(n)][:15]
+        brief["knowledge"] = {"root": sources["learning"]["path"], "project": receipt["request"].get("project_id"),
+                              "capabilities": learner["capabilities_total"], "states": learner["states"],
+                              "frontier": pick(lambda n: n["frontier"]),
+                              "stale_or_due": pick(lambda n: n["freshness"] in {"due", "overdue"} or n["state"] in {"stale", "fragile"}),
+                              "diagnostics": learner["diagnostics"][:10]}
     return brief
 
 
 def render_context(brief):
     """Compact Markdown for an agent resuming the session."""
-    lines = [f"# Resume brief: {brief['title']}", "", f"Session `{brief['session']}` ({brief['type']}, {brief['lifecycle']}), updated {brief['updated_at']}.", ""]
+    lines = [f"# Resume brief: {brief['title']}", "", f"Session `{brief['session']}` ({brief['type']}, {brief['lifecycle']}), updated {brief['updated_at']}." + ("" if brief.get("exists", True) else " Not created yet (bootstrap)."), ""]
+    receipt = brief.get("receipt")
+    if receipt:
+        lines += [f"## Context: {receipt['outcome'].upper()}", "",
+                  f"- Receipt `{receipt['receipt_id']}` ({receipt['workflow']}, {receipt['mode']})" + (f", file `{brief['receipt_file']}`" if brief.get("receipt_file") else "")]
+        if receipt["outcome"] == "blocked":
+            lines.append("- BLOCKED: essential context is unavailable (" + ", ".join(receipt["blocking"]) + "). Do not teach, post questions or edit this session until it is repaired.")
+        lines += [f"- Limitation: {x}" for x in receipt["limitations"]] + [""]
     lines += ["## Awaiting you", ""]
     for item in brief["pending"]:
         if item["kind"] == "response":
@@ -921,6 +983,8 @@ def render_context(brief):
                   "- Active questions: " + (", ".join(research["active_questions"]) or "none"), "- Active hypotheses: " + (", ".join(research["active_hypotheses"]) or "none"),
                   "- Frontier (unranked): " + (", ".join(f"{f['id']} {f['transition']}" for f in research["frontier"]) or "none"),
                   "- Awaiting human decision: " + (", ".join(research["pending_human_decisions"]) or "none") + "; awaiting result validation: " + (", ".join(research["pending_validation"]) or "none")]
+        lines += [f"- Accepted decision {d['id']}: {d['title']}" + (f" ({'; '.join(d['relevance'])})" if d["relevance"] else "")
+                  for d in research.get("accepted_decisions", [])]
         for record in research["session_records"]:
             lines.append(f"- Session refers to {record['id']} ({record['type']}, {record['status']}): {record['title']}; load it with `research.py context --root \"{research['root']}\" --{ {'research-question': 'question', 'research-decision': 'decision'}.get(record['type'], record['type'])} {record['id']}`")
     knowledge = brief["knowledge"]
@@ -1237,7 +1301,13 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("inventory")
     sub.add_parser("validate")
-    create = sub.add_parser("create"); create.add_argument("session"); create.add_argument("--source", required=True, type=Path); create.add_argument("--type", dest="session_type"); create.add_argument("--title")
+    create = sub.add_parser("create", help="Create a session after a context preflight; refused when essential context is blocked")
+    create.add_argument("session"); create.add_argument("--source", required=True, type=Path); create.add_argument("--type", dest="session_type"); create.add_argument("--title")
+    create.add_argument("--workflow", help="context workflow (default follows the session type)")
+    create.add_argument("--project"); create.add_argument("--target", help="concept:ID, capability:ID or record:ID")
+    create.add_argument("--project-root", type=Path); create.add_argument("--learning-root", type=Path); create.add_argument("--library-root", type=Path)
+    create.add_argument("--expect-empty", action="store_true", help="a new learner or project: empty graphs are expected")
+    create.add_argument("--waive-context", metavar="REASON", help="record an explicit decision to work without graph context")
     update = sub.add_parser("update"); update.add_argument("session"); update.add_argument("--source", required=True, type=Path)
     append = sub.add_parser("append"); append.add_argument("session"); append.add_argument("--source", required=True, type=Path)
     event = sub.add_parser("event"); event.add_argument("session"); event.add_argument("--source", required=True, type=Path)
@@ -1254,7 +1324,9 @@ def main():
     wait.add_argument("session"); wait.add_argument("--timeout", type=float, default=900.0)
     resume = sub.add_parser("context", help="Resume brief: pending learner activity plus research and knowledge graph state")
     resume.add_argument("session"); resume.add_argument("--project-root", type=Path); resume.add_argument("--learning-root", type=Path)
+    resume.add_argument("--library-root", type=Path)
     resume.add_argument("--as-of"); resume.add_argument("--json", action="store_true")
+    resume.add_argument("--bind", action="store_true", help="store this context as the session's binding (adopts a historical session)")
     recovery = sub.add_parser("recover"); recovery.add_argument("session"); recovery.add_argument("--apply", action="store_true")
     bridge = sub.add_parser("import"); bridge.add_argument("session"); bridge.add_argument("--apply", action="store_true")
     export = sub.add_parser("export"); export.add_argument("session"); export.add_argument("destination", type=Path)
@@ -1277,7 +1349,26 @@ def main():
         result = refresh_projection(root, args.session, args.backup_directory, args.apply)
     elif args.command == "create":
         install_runtime(root)
-        result = create_session(root, args.session, args.source.read_bytes().decode("utf-8"), args.session_type, args.title)
+        text = args.source.read_bytes().decode("utf-8")
+        if args.waive_context:
+            context = waive_context(args.waive_context)
+        else:
+            import context_kernel as ck
+            front = parse_frontmatter(text.replace("\r\n", "\n"))[0]
+            request = context_request(root, front, args.session_type or front.get("type"), args.session, workflow=args.workflow,
+                                      project=args.project, target=ck.parse_target(args.target), project_root=args.project_root,
+                                      learning_root=args.learning_root, library_root=args.library_root,
+                                      expect_empty=True if args.expect_empty else None)
+            receipt, receipt_file, _ = ck.preflight(request)
+            if receipt["outcome"] == "blocked":
+                if hasattr(sys.stdout, "reconfigure"):
+                    sys.stdout.reconfigure(encoding="utf-8")
+                print(json.dumps({"created": False, "reason": "essential context is unavailable", "blocking": receipt["blocking"],
+                                  "limitations": receipt["limitations"], "receipt_file": str(receipt_file) if receipt_file else None},
+                                 ensure_ascii=False, indent=2))
+                raise SystemExit(2)
+            context = bind_context(receipt)
+        result = create_session(root, args.session, text, args.session_type, args.title, context=context)
     elif args.command == "update":
         result = update_session(root, args.session, args.source.read_bytes().decode("utf-8"))
     elif args.command == "append":
@@ -1296,13 +1387,18 @@ def main():
     elif args.command == "wait":
         result = wait_for_activity(root, args.session, args.timeout)
     elif args.command == "context":
-        brief = session_context(root, args.session, args.project_root, args.learning_root, args.as_of)
+        brief = session_context(root, args.session, args.project_root, args.learning_root, args.as_of, args.library_root)
+        if args.bind:
+            if brief["blocked"] or not brief["exists"]:
+                raise SystemExit("Cannot bind: " + ("essential context is blocked" if brief["blocked"] else "the session does not exist yet"))
+            bind_session_context(root, args.session, brief["receipt"])
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
         if not args.json:
-            if hasattr(sys.stdout, "reconfigure"):
-                sys.stdout.reconfigure(encoding="utf-8")
             sys.stdout.write(render_context(brief))
-            return
-        result = brief
+        else:
+            print(json.dumps(brief, ensure_ascii=False, indent=2))
+        raise SystemExit(2 if brief["blocked"] else 0)
     elif args.command == "recover":
         result = recover_session(root, args.session, args.apply)
     elif args.command == "import":

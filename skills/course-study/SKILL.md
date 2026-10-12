@@ -36,6 +36,22 @@ substantive research question, use `references/RESEARCH_PROTOCOL.md` and
 `references/SOURCE_POLICY.md` for that work. Do not silently promote notes.
 
 
+## Context preflight (required)
+
+Before any teaching or assessing, load context from the canonical records instead of relying on the chat:
+
+```
+python scripts/context_kernel.py preflight --workflow course-study --target concept:<id>     --project "<project>" --vault "<vault>" [--session <path>] [--record <RQ-id>] [--expect-empty]
+```
+
+Read the receipt it prints. **BLOCKED** (exit 2) means an essential source is missing, invalid,
+unreadable or unconfigured: stop, report which source and why, and do not continue from memory.
+**DEGRADED** means continue only where the limitations do not reach, and say so. Empty is not
+unavailable: declare a new learner or project with `--expect-empty`. An unresolved concept is
+unknown, never demonstrated. Dependent actions check the receipt themselves (`html_sessions.py create`,
+`tasks.py` stages 7/8/14/15), so skipping this step fails rather than passes silently.
+See `references/CONTEXT_PROTOCOL.md`.
+
 ## Mandatory session artifacts
 
 When this workflow creates or continues a substantive session, follow

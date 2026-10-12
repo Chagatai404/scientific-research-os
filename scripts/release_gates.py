@@ -78,7 +78,7 @@ def gates(only=None):
     node = shutil.which('node')
     wanted = lambda name: only is None or any(part in name for part in only)
     if wanted('python'):
-        yield run('python-unittest', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'], env)
+        yield run('python-unittest', [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py'], env, timeout=3600)
     if wanted('validate'):
         yield run('repository-validate', [sys.executable, 'scripts/validate.py'], env)
     for test in NODE_TESTS:

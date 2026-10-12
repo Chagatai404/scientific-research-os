@@ -10,6 +10,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import tasks as t
+import context_kernel as ck
 from literature_fixture import atom, reviewed
 
 NOW = '2026-10-08T10:00:00Z'
@@ -51,10 +52,30 @@ class TaskTests(unittest.TestCase):
         self.fake = FakeDetached()
         self.providers = {'fake': self.fake, 'manual': t.Manual()}
 
-    def task(self, key='A', role='visualizer', stage=6, dependencies=None):
+    CONTEXT_WORKFLOW = {7: 'literature', 8: 'decision-synthesis', 14: 'research-implement', 15: 'research-implement'}
+
+    def context_ref(self, workflow, name=None, **request):
+        """Bind a real kernel receipt built over a disposable vault (a new project: empty graphs expected)."""
+        vault, repo, library = self.base / 'vault', self.base / 'repo', self.base / 'library'
+        note = vault / '01 Projects/Demo/Demo.md'
+        if not note.exists():
+            note.parent.mkdir(parents=True)
+            repo.mkdir()
+            library.mkdir()
+            note.write_text('---\ntype: project\nproject_id: demo\npath: "' + repo.as_posix() + '"\n---\n# Demo\n', encoding='utf-8')
+        body = dict(workflow=workflow, vault=vault, project='Demo', library_root=library, expect_empty=True, as_of='2026-10-02')
+        body.update(request)
+        path = name or f'context-{workflow}.json'
+        if not (self.root / path).exists():  # one immutable receipt per name: re-binding must not change its hash
+            ck.save(ck.build(body), self.root / path)
+        return t.bind(self.root, path, 'context-receipt')
+
+    def task(self, key='A', role='visualizer', stage=6, dependencies=None, context=True):
         refs = [t.bind(self.root, 'question.txt', 'question')]
         if role == 'source-verifier':
             refs = [t.bind(self.root, 'source.txt', 'source'), t.bind(self.root, 'claim.txt', 'claim')]
+        if context and stage in self.CONTEXT_WORKFLOW:
+            refs.append(self.context_ref(self.CONTEXT_WORKFLOW[stage]))
         return dict(task_id=key, role=role, goal='Prepare a synthetic bounded result', stage=stage,
                     research_refs=[], input_refs=refs, dependencies=dependencies or [],
                     independence_group='verify' if role == 'source-verifier' else None,
@@ -469,6 +490,72 @@ class TaskTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertNotIn('synthetic-private-value', result.stdout + result.stderr)
         self.assertEqual(result.stderr, '')
+
+    def reason(self, key='A'):
+        return self.op('status')['tasks'][[r['task_id'] for r in self.op('status')['tasks']].index(key)]['reason']
+
+    def test_graph_dependent_stages_are_blocked_without_a_context_receipt(self):
+        for stage, role in ((14, 'build'), (15, 'experiment'), (7, 'reconciliation')):
+            with self.subTest(stage=stage):
+                key = f'T{stage}'
+                self.plan(self.task(key, role, stage, context=False))
+                self.assertEqual(self.rows()[key]['state'], 'BLOCKED')
+                self.assertEqual(self.reason(key), 'CONTEXT_REQUIRED')
+
+    def test_a_fresh_receipt_of_the_right_workflow_unblocks_the_stage(self):
+        self.plan(self.task('B', 'build', 14))
+        # Context is satisfied; the only thing left between this task and execution is the human's approval.
+        self.assertEqual(self.reason('B'), 'APPROVAL_REQUIRED')
+
+    def test_blocked_stale_and_wrong_workflow_receipts_each_name_their_reason(self):
+        shutil_repo = self.base / 'repo'
+        cases = {'wrong': ('CONTEXT_WORKFLOW_MISMATCH', dict(workflow='tutor'))}
+        for key, (reason, request) in cases.items():
+            item = self.task(key, 'build', 14, context=False)
+            item['input_refs'].append(self.context_ref(request['workflow'], name=f'{key}.json'))
+            item['context_exposure']['input_paths'].append(f'{key}.json')
+            self.plan(item)
+            self.assertEqual(self.reason(key), reason)
+        # Staleness: the project's graph changes after the receipt was taken.
+        self.plan(self.task('S', 'build', 14))
+        (shutil_repo / 'RQ-9.md').write_text('---\nresearch_schema: 1\ntype: research-question\nid: RQ-9\nproject: demo\n'
+                                              'status: active\ncreated: 2026-10-01\n---\n# New question\n', encoding='utf-8')
+        self.assertEqual(self.reason('S'), 'CONTEXT_STALE')
+
+    def test_a_receipt_for_inaccessible_essential_context_blocks_the_stage(self):
+        shutil_repo = self.base / 'repo'
+        item = self.task('X', 'build', 14, context=False)
+        self.context_ref('research-implement', name='ok.json')  # creates the vault, repo and library fixtures
+        shutil_repo.rmdir()
+        item['input_refs'].append(self.context_ref('research-implement', name='blocked.json'))
+        item['context_exposure']['input_paths'].append('blocked.json')
+        self.plan(item)
+        self.assertEqual(self.reason('X'), 'CONTEXT_BLOCKED')
+
+    def test_an_edited_receipt_is_rejected_even_when_its_hash_was_bound_after_the_edit(self):
+        item = self.task('F', 'build', 14, context=False)
+        ref = self.context_ref('research-implement', name='forged.json')
+        path = self.root / 'forged.json'
+        data = json.loads(path.read_text(encoding='utf-8'))
+        data['limitations'].append('edited after the kernel wrote it')
+        path.write_text(json.dumps(data), encoding='utf-8')
+        item['input_refs'].append(t.bind(self.root, 'forged.json', 'context-receipt'))
+        item['context_exposure']['input_paths'].append('forged.json')
+        self.plan(item)
+        self.assertEqual(self.reason('F'), 'CONTEXT_INVALID')
+
+    def test_stages_without_graph_dependence_and_completed_history_are_unaffected(self):
+        self.plan(self.task('scout', 'literature-scout', 3, context=False))
+        self.assertEqual(self.rows()['scout']['state'], 'READY')
+        self.assertIn('context-receipt', t.KINDS)
+        self.assertEqual(t.context_gate(self.root, dict(stage=14, state='COMPLETE', input_refs=[])), 'CONTEXT_REQUIRED')
+        # A completed task is never re-blocked for missing context: earlier results stay collectible.
+        done = self.task('H', 'build', 14, context=False)
+        self.plan(done)
+        state = t.load(self.root)
+        self.assertEqual(t.gate(self.root, state['tasks']['H'], state['tasks'], self.providers), ('BLOCKED', 'CONTEXT_REQUIRED'))
+        state['tasks']['H']['state'] = 'COMPLETE'
+        self.assertNotEqual(t.gate(self.root, state['tasks']['H'], state['tasks'], self.providers)[1], 'CONTEXT_REQUIRED')
 
     def test_cli_invalid_arguments_never_echo_private_values(self):
         command = [sys.executable, '-S', '-B', str(ROOT / 'scripts/tasks.py'), '--root', str(self.root)]

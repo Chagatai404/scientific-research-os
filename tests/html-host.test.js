@@ -9,7 +9,7 @@ const obsidian = {Plugin: Component, Component, FileView: Component, normalizePa
 const file = path.join(__dirname, '../extensions/obsidian-html/main.js');
 const mod = {exports: {}};
 vm.runInNewContext(fs.readFileSync(file, 'utf8'), {require: name => name === 'obsidian' ? obsidian : require(name), module: mod, console, Date, Object, Set, Array, JSON, Number, Promise, Buffer, process, setTimeout, clearTimeout});
-const {parseState, validateEvent, validateResources, approveModule, imageData, acquireLock, buildDocument, SessionHost, sibling} = mod.exports._test;
+const {pageState, parseState, validateEvent, validateResources, approveModule, imageData, acquireLock, buildDocument, SessionHost, sibling} = mod.exports._test;
 const base = {schema_version: 1, session_id: 'session-1', questions: [{id: 'q1'}], events: []};
 const state = () => parseState(JSON.stringify(base));
 const event = (event_id = 'event-1') => ({event_id, type: 'response', question_id: 'q1', response: 'answer'});
@@ -44,6 +44,12 @@ assert(html.includes("default-src 'none'"));
 assert(html.includes("connect-src 'none'"));
 assert(html.includes('img-src data:'));
 assert(buildDocument('', base, 't', '', '', '', ['window.moduleRan=true']).includes('window.moduleRan=true'));
+// The agent-only context binding holds local paths: the page never receives it, and the host's own copy is untouched.
+const bound = {...base, context: {binding: {receipt_id: 'r'}, request: {vault: 'C:/Users/private/vault'}}};
+assert(!('context' in pageState(bound)));
+assert('context' in bound);
+assert(!buildDocument('', bound, 't', '', '', '').includes('C:/Users/private/vault'));
+assert.equal(parseState(JSON.stringify(bound)).context.binding.receipt_id, 'r');
 assert(!html.includes('allow-same-origin'));
 assert(!html.includes('title":"</script>'));
 

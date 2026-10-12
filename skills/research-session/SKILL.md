@@ -67,6 +67,22 @@ Complete the literature session only after each selected useful paper has a save
 PDF/metadata, existing-library match, unavailable PDF with citation, or explicit
 reviewed rejection. Report per-paper outcomes; a dry-run plan does not complete ingestion.
 
+## Context preflight (required)
+
+Before any planning or delegating, load context from the canonical records instead of relying on the chat:
+
+```
+python scripts/context_kernel.py preflight --workflow research-plan --target concept:<id>     --project "<project>" --vault "<vault>" [--session <path>] [--record <RQ-id>] [--expect-empty]
+```
+
+Read the receipt it prints. **BLOCKED** (exit 2) means an essential source is missing, invalid,
+unreadable or unconfigured: stop, report which source and why, and do not continue from memory.
+**DEGRADED** means continue only where the limitations do not reach, and say so. Empty is not
+unavailable: declare a new learner or project with `--expect-empty`. An unresolved concept is
+unknown, never demonstrated. Dependent actions check the receipt themselves (`html_sessions.py create`,
+`tasks.py` stages 7/8/14/15), so skipping this step fails rather than passes silently.
+See `references/CONTEXT_PROTOCOL.md`.
+
 ## Session start and end with the research registry
 
 For projects with schema-1 research records (`references/RESEARCH_GRAPH_PROTOCOL.md`;

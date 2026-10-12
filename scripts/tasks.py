@@ -21,7 +21,12 @@ LOCK = '.research-tasks/update.lock'
 ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z')
 HASH = re.compile(r'[a-f0-9]{64}\Z')
 KINDS = {'question', 'source', 'claim', 'scope', 'criteria', 'data', 'code', 'plan',
-         'verified-evidence', 'scout-rationale', 'coordinator-history', 'approval', 'result', 'artifact'}
+         'verified-evidence', 'scout-rationale', 'coordinator-history', 'approval', 'result', 'artifact',
+         'context-receipt'}
+# Stages whose work depends on the project's graphs; each needs one fresh, usable receipt of a matching workflow.
+# Stage 3 (independent discovery) is deliberately absent: scouts get neutral questions, not project preferences.
+CONTEXT_STAGES = {7: {'literature'}, 8: {'decision-synthesis', 'research-review'}, 14: {'research-implement'},
+                  15: {'research-implement'}}
 STATES = {'READY', 'WAITING', 'BLOCKED', 'RUNNING', 'COMPLETE', 'FAILED', 'CANCELLED'}
 SPEC = {'task_id', 'role', 'goal', 'stage', 'research_refs', 'input_refs', 'dependencies',
         'independence_group', 'context_exposure', 'permissions', 'provider', 'writer_workspace'}
@@ -361,6 +366,25 @@ def snapshot(root, task, reference, name):
     return dict(path=path, sha256=reference['sha256'], kind=reference['kind'])
 
 
+def context_gate(root, task):
+    """Reason code when a graph-dependent task lacks a fresh, usable context receipt; None when it has one."""
+    allowed = CONTEXT_STAGES.get(task['stage'])
+    if not allowed:
+        return None
+    refs = [i for i in task['input_refs'] if i['kind'] == 'context-receipt']
+    if len(refs) != 1:
+        return 'CONTEXT_REQUIRED'
+    import context_kernel as kernel
+    try:
+        receipt = kernel.load(relative(root, refs[0]['path']))
+        kernel.require(receipt)
+    except kernel.ContextError as exc:
+        return exc.code
+    except (OSError, ValueError, TypeError):
+        return 'CONTEXT_INVALID'
+    return None if receipt['workflow'] in allowed else 'CONTEXT_WORKFLOW_MISMATCH'
+
+
 def gate(root, task, tasks, providers, active=None, checked=None):
     active = set() if active is None else active
     checked = {} if checked is None else checked
@@ -388,6 +412,10 @@ def gate(root, task, tasks, providers, active=None, checked=None):
         state, reason = gate(root, dependency, tasks, providers, active, checked)
         if state != 'READY':
             return 'BLOCKED', 'DEPENDENCY_INVALID'
+    # Completed tasks keep their result without context; anything still to run needs it before approval is asked for.
+    reason = context_gate(root, task) if task['state'] != 'COMPLETE' else None
+    if reason:
+        return 'BLOCKED', reason
     try:
         approval(root, task)
     except (OSError, ValueError, TypeError):

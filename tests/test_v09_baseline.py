@@ -90,10 +90,10 @@ class SessionPlacementAndContextBaseline(unittest.TestCase):
         errors = hs.validate_sessions(self.root)
         self.assertTrue(any('placement' in e for e in errors), errors)
 
-    @unittest.expectedFailure
-    def test_context_can_bootstrap_a_session_that_does_not_exist_yet(self):  # complaint 7
+    def test_context_can_bootstrap_a_session_that_does_not_exist_yet(self):  # complaint 7 (repaired in Slice 1)
         brief = hs.session_context(self.root, 'new-session.md')
         self.assertIn('receipt', brief)
+        self.assertFalse(brief['exists'])
 
 
 class LibraryAndVerificationBaseline(unittest.TestCase):

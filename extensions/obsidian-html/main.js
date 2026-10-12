@@ -151,9 +151,13 @@ function sanitizeHtml(html, doc, images = new Map(), descriptions = new Map()) {
   }
   const wrapper = doc.createElement('div'); wrapper.appendChild(root); return wrapper.innerHTML;
 }
+// The context binding is for agents (it holds local paths); the sandboxed page never needs it.
+function pageState(state) {
+  const visible = Object.assign({}, state); delete visible.context; return visible;
+}
 function buildDocument(body, state, token, runtime, css, theme, modules = []) {
   const nonce = crypto.randomBytes(24).toString('hex');
-  const safeJSON = JSON.stringify({token, session_id: state.session_id, state}).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const safeJSON = JSON.stringify({token, session_id: state.session_id, state: pageState(state)}).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const safeScript = runtime.replace(/<\/script/gi, '<\\/script');
   const safeCSS = css.replace(/<\/style/gi, '<\\/style');
   const moduleScripts = modules.map(code => '<script nonce="' + nonce + '">document.addEventListener("DOMContentLoaded",function(){"use strict";\n' + code.replace(/<\/script/gi, '<\\/script') + '\n},{once:true});</script>').join('');
@@ -218,7 +222,7 @@ class SessionHost extends Component {
       const state = parseState(raw);
       // New resources need fresh approval and inlining; only content/state changes are patched live.
       if (JSON.stringify(state.resources || []) !== JSON.stringify(this.state.resources || []) || state.session_id !== this.state.session_id) { this.reload(); return; }
-      const message = {type: 'update', state};
+      const message = {type: 'update', state: pageState(state)};
       if (html !== this.loaded.html) message.body = sanitizeHtml(html, this.container.ownerDocument, this.images || new Map(), new Map((this.resources || []).map(r => [r.id, r.alt])));
       this.loaded.html = html; this.loaded.raw = raw; this.state = state;
       this.reply(token, message);
@@ -299,7 +303,7 @@ class SessionHost extends Component {
           this.state = state; return output;
         });
         } finally { releaseLock(); }
-        this.reply(token, {type: 'state', state: this.state});
+        this.reply(token, {type: 'state', state: pageState(this.state)});
       } catch (error) { this.reply(token, {type: 'error', message: error.message}); }
       finally { this.writing = false; this.pending--; }
     });
@@ -363,4 +367,4 @@ class ResearchOSHTML extends Plugin {
   onunload() { this.app.workspace.detachLeavesOfType(VIEW); }
 }
 module.exports = ResearchOSHTML;
-module.exports._test = {parseState, validateEvent, validateResources, approveModule, imageData, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling};
+module.exports._test = {pageState, parseState, validateEvent, validateResources, approveModule, imageData, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling};
