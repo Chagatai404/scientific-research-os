@@ -374,6 +374,15 @@ figcaption, caption { font: 14px/1.5 var(--ros-font-ui); color: var(--ros-text-m
 .ros-nav-extra { display: grid; gap: var(--ros-space-2); margin: 0; padding: var(--ros-space-3) var(--ros-space-2) var(--ros-space-2); border-top: 1px solid var(--ros-border); font: 14px/1.4 var(--ros-font-ui); }
 .ros-nav-steps { display: grid; grid-template-columns: 1fr 1fr; gap: var(--ros-space-2); }
 .ros-nav-extra button { min-height: 44px; padding: 0 var(--ros-space-2); font-size: 14px; white-space: nowrap; }
+.ros-listen { display: grid; gap: var(--ros-space-2); }
+.ros-listen-row { display: grid; grid-template-columns: 1fr auto; gap: var(--ros-space-2); }
+.ros-listen-note { margin: 0; font-size: 13px; color: var(--ros-text-muted); overflow-wrap: anywhere; }
+.ros-listen-note:empty { display: none; }
+.ros-listen-options[hidden] { display: none; }
+.ros-listen-options label { display: grid; gap: 2px; margin-top: var(--ros-space-2); font-size: 13px; }
+.ros-listen-options select { min-height: 40px; max-width: 100%; }
+.ros-speaking { background: var(--ros-accent-bg); box-shadow: -4px 0 0 var(--ros-accent); border-radius: var(--ros-radius-sm); }
+@media (forced-colors: active) { .ros-speaking { outline: 2px solid Highlight; } }
 .ros-where { margin: 0; padding: var(--ros-space-3); background: var(--ros-surface-strong); border-radius: var(--ros-radius-sm); overflow-wrap: anywhere; color: var(--ros-text); }
 .ros-where[hidden], .ros-nav-related[hidden] { display: none; }
 .ros-nav-heading { margin: var(--ros-space-3) 0 var(--ros-space-1); font: 700 12px/1.4 var(--ros-font-ui); text-transform: uppercase; letter-spacing: .09em; color: var(--ros-text-muted); }

@@ -24,8 +24,11 @@ canonical fields count, and only through the canonical CLIs.
 Breadcrumbs reads note fields whose values are wikilinks; the canonical fields
 hold IDs. Human-authored link fields therefore duplicate a canonical relation for
 display. Use them only for relationships you have recorded explicitly, name the
-edge field as below, and set the plugin to use **explicit edges only** (no
-implied relations, no transitive rules).
+edge field as below, and use **explicit edges only**: in Breadcrumbs 4 implied
+relations come from implied-edge builders and transitive rules, so leave those
+unconfigured for these fields (it is not a single switch). Breadcrumbs 4.15 and later
+need Obsidian 1.13 or newer; `obsidian_plugins.py` reports a version the running
+Obsidian cannot use as incompatible rather than assuming it works.
 
 | Breadcrumbs edge field | Canonical source | Notes |
 |---|---|---|
@@ -58,3 +61,7 @@ Use a quoted string or a JSON-style list so the value stays valid YAML.
 When the plugin is installed, every new session, plan and dashboard note gets an `up` link to its project note, and
 the learner is pointed to the `prerequisite` trail of the capability being taught. Edges stay explicit and are
 navigation only. See "Using the vault's installed Obsidian adapters" in the visualization protocol.
+
+## Detection and fallback
+
+Whether this adapter is installed, enabled and compatible with the running Obsidian is read from the vault's files by `python scripts/obsidian_plugins.py report --vault <vault>`; every resume brief lists it. When it is absent or incompatible the built-in route is used and nothing breaks. See `references/OBSIDIAN_INTEGRATIONS.md`.

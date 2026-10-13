@@ -12,6 +12,7 @@ Read:
 - `references/EVIDENCE_FORMAT.md` when handling consequential structured evidence
 - `references/PAPER_LIBRARY.md` when screening or saving selected papers
 - `references/LITERATURE_SCOUTING.md` for any literature search (inventory first, neutral discovery, then reconciliation)
+- `references/OBSIDIAN_INTEGRATIONS.md` for optional Obsidian plugins (detected from the vault's files; each has a built-in fallback)
 
 v0.8 contracts (literature/access/tasks/learning/ownership/defense helpers available):
 `references/LITERATURE_RELIABILITY_PROTOCOL.md`,

@@ -1257,6 +1257,15 @@ def context_request(root, metadata, session_type=None, session=None, **overrides
     return request
 
 
+def _adapter_lines(root, project_root=None):
+    """Which optional Obsidian adapters the vault has, from its files alone. Detection never blocks or changes a session."""
+    try:
+        import obsidian_plugins
+        return obsidian_plugins.render(obsidian_plugins.summary(root, project_root=project_root))
+    except Exception as exc:  # an optional convenience must not be able to break resuming
+        return ["Adapter detection was unavailable (" + type(exc).__name__ + "); use the built-in routes."]
+
+
 def session_context(root, relative_md, project_root=None, learning_root=None, as_of=None, library_root=None):
     """Resume brief built on the context kernel; also works before the session exists (bootstrap).
 
@@ -1285,7 +1294,8 @@ def session_context(root, relative_md, project_root=None, learning_root=None, as
              "updated_at": state.get("updated_at") if state else None,
              "pending": pending_activity(state) if state else [], "questions": [], "project": retrieval["project"],
              "research": None, "knowledge": None, "notes": [], "receipt": receipt,
-             "receipt_file": str(receipt_file) if receipt_file else None, "blocked": receipt["outcome"] == "blocked"}
+             "receipt_file": str(receipt_file) if receipt_file else None, "blocked": receipt["outcome"] == "blocked",
+             "adapters": _adapter_lines(root, project_root)}
     for q in (state["questions"] if state else []):
         responses = [e for e in state["events"] if e["type"] == "response" and e.get("question_id") == q["id"]]
         review = (q.get("reviews") or [None])[-1]
@@ -1388,6 +1398,9 @@ def render_context(brief):
         lines += [f"- Frontier: {n['title']} ({n['id']}, {n['state']})" for n in knowledge["frontier"]]
         lines += [f"- Stale, fragile or due: {n['title']} ({n['id']}, {n['state']}, {n['freshness']})" for n in knowledge["stale_or_due"]]
     lines += [f"- Note: {n}" for n in brief["notes"]]
+    if brief.get("adapters"):
+        lines += ["", "## Obsidian adapters", ""] + [x if x.startswith("-") else "- " + x for x in brief["adapters"]]
+        lines.append("- Use what is listed; otherwise use the built-in route. Plugin output is a presentation or a suggestion and never changes canonical state. Details: `python scripts/obsidian_plugins.py report --vault <vault>`.")
     return "\n".join(lines) + "\n"
 
 

@@ -127,11 +127,14 @@ class Schematic(Vault):
         self.assertFalse(va.detect_excalidraw(self.root)['plugin_files_present'])
         plugin = self.root / '.obsidian/plugins/obsidian-excalidraw-plugin'
         plugin.mkdir(parents=True)
-        (plugin / 'manifest.json').write_text('{"version": "2.5.0"}', encoding='utf-8')
+        (plugin / 'manifest.json').write_text('{"id": "obsidian-excalidraw-plugin", "version": "2.5.0"}', encoding='utf-8')
         found = va.detect_excalidraw(self.root)
         self.assertTrue(found['plugin_files_present'])
         self.assertEqual(found['version'], '2.5.0')
         self.assertFalse(found['checked_in_obsidian'])
+        # A manifest that does not name the plugin is not trusted (the detection is shared with obsidian_plugins.py).
+        (plugin / 'manifest.json').write_text('{"version": "2.5.0"}', encoding='utf-8')
+        self.assertIsNone(va.detect_excalidraw(self.root)['version'])
 
 
 class Placement(Vault):

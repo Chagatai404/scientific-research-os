@@ -214,18 +214,11 @@ def svg_from_scene(scene: dict, title: str, note: str = '') -> tuple[str, list[s
 
 def detect_excalidraw(root: Path) -> dict:
     """What can be said about the Excalidraw plugin from files alone. Presence is not proof it works."""
-    folder = Path(root) / '.obsidian/plugins/obsidian-excalidraw-plugin'
-    result = {'plugin_files_present': folder.is_dir(), 'version': None, 'enabled': None, 'checked_in_obsidian': False,
-              'note': 'determined from files only; this was not run inside Obsidian'}
-    try:
-        result['version'] = json.loads((folder / 'manifest.json').read_text(encoding='utf-8')).get('version')
-    except (OSError, ValueError):
-        pass
-    try:
-        result['enabled'] = 'obsidian-excalidraw-plugin' in json.loads((Path(root) / '.obsidian/community-plugins.json').read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        pass
-    return result
+    import obsidian_plugins  # the one place that reads the vault's plugin configuration
+    entry = obsidian_plugins.detect(root)['excalidraw']
+    return {'plugin_files_present': entry['state'] in ('enabled', 'installed-disabled', 'invalid'), 'version': entry['version'],
+            'enabled': entry['listed'], 'checked_in_obsidian': False,
+            'note': 'determined from files only; this was not run inside Obsidian'}
 
 
 # -------------------------------------------------------------------- registry

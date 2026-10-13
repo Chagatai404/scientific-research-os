@@ -286,6 +286,101 @@
       if (toc.summary) toc.summary.tabIndex = wide.matches ? -1 : 0;
       scheduleSection();
     }
+    // Optional narration: the browser's own speech synthesis reads the section in view. Nothing leaves the device unless the learner
+    // picks an online voice, which is labelled as one. Equations are read from their TeX in words only where that is unambiguous.
+    const Narration = root.ResearchOSNarration;
+    const narrator = Narration ? Narration.create(root) : null;
+    let speaking = null;
+    function markSpeaking(element) {
+      if (speaking && speaking !== element) speaking.classList.remove('ros-speaking');
+      speaking = element || null;
+      if (speaking) { speaking.classList.add('ros-speaking'); if (speaking.scrollIntoView) speaking.scrollIntoView({block: 'nearest'}); }
+    }
+    function stopNarration() { if (narrator) narrator.stop(); markSpeaking(null); }
+    root.addEventListener('pagehide', stopNarration);
+    function listenTarget() {
+      const entry = toc && toc.active;
+      if (!entry) return null;
+      const levelOf = i => Number(toc.entries[i].link.closest('li').dataset.level) || 2;
+      const endAfter = from => { for (let i = from + 1; i < toc.entries.length; i++) if (levelOf(i) <= levelOf(from)) return i; return -1; };
+      let last = toc.entries.indexOf(entry), end = endAfter(last), chunks = Narration.chunksFor(mount, entry.heading, end < 0 ? null : toc.entries[end].heading);
+      // A section that is only a heading (such as the lesson title) is read together with the section that follows it.
+      while (end >= 0 && chunks.every(chunk => /^H[1-6]$/.test(chunk.element.tagName))) {
+        last = end; end = endAfter(last);
+        chunks = Narration.chunksFor(mount, entry.heading, end < 0 ? null : toc.entries[end].heading);
+      }
+      return {entry, chunks};
+    }
+    function setupListen() {
+      const group = node('div'); group.className = 'ros-listen'; group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'Listen to this section');
+      const note = node('p'); note.className = 'ros-listen-note'; note.setAttribute('role', 'status');
+      if (!narrator || !narrator.supported) {
+        note.textContent = 'Reading aloud needs speech synthesis, which this window does not provide. The page reads the same without it.';
+        group.append(note); return group;
+      }
+      const row = node('div'); row.className = 'ros-listen-row';
+      const play = button('▶ Listen', () => onPlay()); play.className = 'ros-listen-play';
+      const stopButton = button('■ Stop', () => stopNarration()); stopButton.className = 'ros-listen-stop'; stopButton.disabled = true; stopButton.setAttribute('aria-label', 'Stop reading aloud');
+      row.append(play, stopButton);
+      // Not a <details>: the navigation is itself a disclosure, and a nested one would make "the contents control" ambiguous.
+      const toggle = button('Voice and speed', () => showOptions(options.hidden)); toggle.className = 'ros-listen-toggle';
+      toggle.setAttribute('aria-expanded', 'false'); toggle.setAttribute('aria-controls', 'ros-listen-options');
+      const options = node('div'); options.className = 'ros-listen-options'; options.id = 'ros-listen-options'; options.hidden = true;
+      function showOptions(open) { options.hidden = !open; toggle.setAttribute('aria-expanded', String(open)); }
+      const voiceLabel = node('label', 'Voice'), voiceSelect = node('select'); voiceLabel.append(voiceSelect);
+      const rateLabel = node('label', 'Speed'), rateSelect = node('select'); rateLabel.append(rateSelect);
+      for (const [value, label] of [['0.75', 'Slower'], ['1', 'Normal'], ['1.25', 'Faster'], ['1.5', 'Fastest']]) { const o = node('option', label); o.value = value; rateSelect.append(o); }
+      rateSelect.value = '1';
+      options.append(voiceLabel, rateLabel);
+      group.append(row, toggle, options, note);
+      function render() {
+        const state = narrator.state;
+        play.textContent = state === 'speaking' ? '⏸ Pause' : state === 'paused' ? '▶ Resume' : '▶ Listen';
+        play.setAttribute('aria-label', state === 'speaking' ? 'Pause reading' : state === 'paused' ? 'Resume reading' : 'Listen to this section');
+        stopButton.disabled = state === 'idle';
+      }
+      function fillVoices() {
+        const list = narrator.voices(), kept = voiceSelect.value;
+        voiceSelect.replaceChildren();
+        const local = list.filter(v => v.local), online = list.filter(v => !v.local);
+        const language = doc.documentElement.lang || (root.navigator && root.navigator.language) || '';
+        const preferred = narrator.defaultVoice(language);
+        const add = (parent, v, suffix) => { const o = node('option', v.name + (v.lang ? ' (' + v.lang + ')' : '') + suffix); o.value = v.voiceURI; parent.append(o); };
+        if (!preferred) { const o = node('option', list.length ? 'Choose a voice' : 'No voices found'); o.value = ''; voiceSelect.append(o); }
+        if (local.length) { const g = node('optgroup'); g.label = 'On this device'; local.forEach(v => add(g, v, '')); voiceSelect.append(g); }
+        if (online.length) { const g = node('optgroup'); g.label = 'Online (the text is sent to a speech service)'; online.forEach(v => add(g, v, ' — online')); voiceSelect.append(g); }
+        voiceSelect.value = list.some(v => v.voiceURI === kept) ? kept : (preferred || '');
+        narrator.setVoice(voiceSelect.value || null);
+      }
+      fillVoices();
+      if (root.speechSynthesis && root.speechSynthesis.addEventListener) root.speechSynthesis.addEventListener('voiceschanged', fillVoices);
+      voiceSelect.addEventListener('change', () => {
+        narrator.setVoice(voiceSelect.value || null);
+        const chosen = narrator.voices().find(v => v.voiceURI === voiceSelect.value);
+        if (chosen && !chosen.local) note.textContent = 'This is an online voice: the text you listen to is sent to a speech service.';
+      });
+      rateSelect.addEventListener('change', () => narrator.setRate(Number(rateSelect.value)));
+      function onPlay() {
+        if (narrator.state === 'speaking') { narrator.pause(); render(); return; }
+        if (narrator.state === 'paused') { narrator.resume(); render(); return; }
+        const target = listenTarget();
+        if (!target || !target.chunks.length) { note.textContent = 'There is nothing to read aloud in this section.'; return; }
+        if (!voiceSelect.value) { note.textContent = narrator.voices().length ? 'Choose a voice first (Voice and speed).' : 'No speech voices were found on this device.'; showOptions(true); return; }
+        const title = sectionTitle(target.entry);
+        narrator.setVoice(voiceSelect.value); narrator.setRate(Number(rateSelect.value));
+        narrator.start(target.chunks, {rate: Number(rateSelect.value), voiceURI: voiceSelect.value}, {
+          part(item, position, total) { markSpeaking(item.chunk.element); note.textContent = 'Reading “' + title + '” aloud (part ' + (position + 1) + ' of ' + total + ').'; },
+          paused() { note.textContent = 'Paused.'; },
+          end(reason, detail) {
+            markSpeaking(null);
+            note.textContent = reason === 'finished' ? 'Finished reading “' + title + '”.' : reason === 'stopped' ? 'Stopped.' : reason === 'error' ? 'Speech stopped: ' + (detail || 'the speech engine reported an error') + '.' : 'There is nothing to read aloud in this section.';
+            render();
+          }
+        });
+        render();
+      }
+      return group;
+    }
     function setupToc(nav) {
       const disclosure = nav.querySelector('details');
       const entries = [...nav.querySelectorAll('a[href^="#"]')].map(link => ({link, heading:doc.getElementById(link.getAttribute('href').slice(1))})).filter(entry=>entry.heading);
@@ -301,7 +396,7 @@
         const ask = button('Where am I?', () => { where.hidden = !where.hidden; ask.setAttribute('aria-expanded', String(!where.hidden)); if (!where.hidden) where.textContent = locationText(); });
         ask.setAttribute('aria-expanded', 'false'); ask.setAttribute('aria-controls', 'ros-where'); ask.className = 'ros-where-button';
         const related = node('section'); related.className = 'ros-nav-related'; related.hidden = true; related.setAttribute('aria-label', 'Related lessons and notes');
-        steps.append(previous, next); extra.append(steps, ask, where, related); disclosure.append(extra);
+        steps.append(previous, next); extra.append(steps, setupListen(), ask, where, related); disclosure.append(extra);
         Object.assign(toc, {extra, previous, next, where, related});
         renderRelated(); updateSectionProgress();
       }
@@ -583,7 +678,7 @@
         previous = child;
       }
       contentNodes = ordered;
-      if (fresh.some(child => child.matches('.ros-toc'))) toc = null;
+      if (fresh.some(child => child.matches('.ros-toc'))) { stopNarration(); toc = null; }
       for (const child of fresh) enhance(child);
       placeProgress(); renumber();
       const arrived = fresh.filter(child => !child.matches('.ros-toc, .ros-session-header, [data-ros="legacy"]'));

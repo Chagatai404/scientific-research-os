@@ -41,7 +41,9 @@ GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py",
                  "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py",
                  "context_kernel.py", "scientific_verify.py", "rich_text.py", "visual_assets.py", "tutor_gate.py", "supervision.py",
                  # tasks.py gates reconciliation on the library inventory receipt that scout.py produces.
-                 "scout.py")
+                 "scout.py",
+                 # Optional Obsidian adapters: detection, vault search, and generated cards/canvas (all degrade to built-in routes).
+                 "obsidian_plugins.py", "vault_search.py", "plugin_exports.py")
 
 
 # Every substantive workflow writes HTML sessions, and `html_sessions.py context` loads the
@@ -59,7 +61,9 @@ SESSION_HELPERS = ("html_sessions.py", "common.py", "research.py", "knowledge.py
                    # Concept-first gates for tutoring sessions (prerequisites, probe contracts, evidence proposals).
                    "tutor_gate.py", "tutor_contract.py",
                    # html_sessions validates a session's supervision record and renews its lease while waiting.
-                   "supervision.py")
+                   "supervision.py",
+                   # The resume brief names which optional Obsidian adapters the vault has; visual_assets shares the detection.
+                   "obsidian_plugins.py")
 
 
 def copy_dir(src: Path, dst: Path, dry: bool) -> None:

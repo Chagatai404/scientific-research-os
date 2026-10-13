@@ -154,6 +154,21 @@ Obsidian resolves a wikilink, and opens it in a **new tab** so the lesson stays 
 standalone page cannot open notes and says so next to the link. Malformed targets stay visible but are not links. The
 host also remembers the reading position in memory so a rebuilt page (theme change, reload) returns to it.
 
+## Listening
+
+Each page offers a **Listen** control in the navigation: it reads the section in view (with its subsections, and a section that is
+only a title together with the one after it) using the browser's own speech synthesis. Nothing is installed or sent anywhere: voices
+on the device come first and are chosen by default; an online voice appears in its own group, is labelled as sending the text to a
+speech service, and is never selected for the learner. Pause remembers the place, Stop ends it, speed is adjustable, and the part
+being read is marked. What is read is the lesson text: question prompts, hints and solutions, interactive widgets, code (announced
+as a code block) and anything hidden are skipped. Equations are read from their TeX in words only where the spoken form is
+unambiguous (powers, fractions, roots, sums, Greek letters, common relations); any other expression is announced as an equation to
+read on the page rather than half-spoken. With no speech engine or no voice the control says so and the page is unaffected. The
+audio is a rendering of the page and adds no content; it is tested with a recording fake engine, not on a real device.
+
+Other optional Obsidian integrations (search, retention cards, Canvas, suggestions) and how they degrade are in
+`OBSIDIAN_INTEGRATIONS.md`.
+
 ## Obsidian and fallback
 
 Install the companion plugin and shared runtime using the documented installer.

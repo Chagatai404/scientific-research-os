@@ -210,6 +210,13 @@ Required verification: Python tests, host Node tests, real Chromium runtime/host
 tests, actual-vault source/hash checks and the explicit desktop operational smoke
 test. Responsive browser checks do not establish actual mobile support.
 
+## Listening and other Obsidian integrations
+
+The navigation has a **Listen** control that reads the section in view with the browser's speech synthesis (on-device voices first;
+online voices only when chosen and labelled; question prompts, hints and solutions are never read). `python scripts/obsidian_plugins.py
+report --vault <vault>` shows which optional plugins are usable; each has a built-in fallback. See
+`references/OBSIDIAN_INTEGRATIONS.md` and `references/HTML_SESSION_PROTOCOL.md`.
+
 ## Live tutoring
 
 Open views update in place when the agent writes: no reload, drafts and scroll kept.

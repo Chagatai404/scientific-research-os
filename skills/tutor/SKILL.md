@@ -223,10 +223,16 @@ Setup:
    map, sources and lesson log as needed.
 
 **Installed Obsidian adapters are used, not just configured.** When the vault has Excalidraw, Bases or Breadcrumbs
-(detect from `.obsidian/community-plugins.json` and `core-plugins.json`), follow the visualization protocol's
+(read the "Obsidian adapters" section of the resume brief, or run `python scripts/obsidian_plugins.py report --vault <vault>`; it
+checks enabled state and version compatibility and never installs anything), follow the visualization protocol's
 "Using the vault's installed Obsidian adapters": schematics through `scripts/excalidraw_schematic.py`, dashboards as
 embedded Base views, an `up` link on every new session note, and the prerequisite trail named when a capability is
-taught. Quantitative visuals remain verified figures.
+taught. Quantitative visuals remain verified figures. To find an older explanation use
+`python scripts/vault_search.py search "<question>" --vault <vault>` (add `--omnisearch` if the researcher runs Omnisearch's
+local server); a hit is a lead, never evidence of understanding. For practice use `python scripts/plugin_exports.py cards
+<session.md> --vault <vault>` and leave scheduling to the plugin; the learning ledger and `retention.py` stay the only schedule.
+Plugin-derived relations (Smart Connections, Breadcrumbs' implied edges) are suggestions only: record them with
+`vault_search.py suggest` and never as prerequisites. Full contract: `references/OBSIDIAN_INTEGRATIONS.md`.
 
 Teaching visuals appear **inline in the session** beside the question or explanation they serve:
 in the HTML view declare the verified image as a session resource and place it with
