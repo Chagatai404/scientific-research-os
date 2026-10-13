@@ -175,7 +175,8 @@ class AdapterAbsence(unittest.TestCase):
         for script in (ROOT / 'scripts').glob('*.py'):
             text = script.read_text(encoding='utf-8')
             self.assertNotIn('obsidian-adapters', text, script.name)
-            self.assertNotRegex(text, r'(?i)import (graphify|excalidraw|breadcrumbs)', script.name)
+            # Word boundary: our own standard-library excalidraw_schematic.py is first-party, not the optional plugin/adapter.
+            self.assertNotRegex(text, r'(?i)import (graphify|excalidraw|breadcrumbs)\b', script.name)
         # The adapter folder is documentation and views only: nothing runnable.
         adapters = ROOT / 'extensions' / 'obsidian-adapters'
         self.assertFalse(list(adapters.rglob('*.py')))

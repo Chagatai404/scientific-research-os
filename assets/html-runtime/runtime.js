@@ -93,8 +93,9 @@
     const status = node('p'); status.className = 'ros-status'; status.setAttribute('role', 'status');
     status.textContent = host ? 'Answers save automatically.' : 'Standalone page: progress stays in this open page. Download it before closing.';
     const hasAttempt = id => localEvents.some(e => e.type === 'response' && e.question_id === id);
-    const emit = (type, question_id, response) => {
+    const emit = (type, question_id, response, origin) => {
       const event = {event_id: (root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : 'event-' + Date.now() + '-' + (++counter)), type, question_id: question_id || null, response, created_at: new Date().toISOString()};
+      if (origin) event.origin = origin;
       localEvents.push(event);
       if (host) { pending.set(event.event_id, event); root.parent.postMessage({channel: 'research-os', token: host.token, session_id: state.session_id, event}, '*'); status.textContent = 'Saving…'; }
       else status.textContent = 'Progress recorded in this page only. Download progress before closing.';
@@ -117,6 +118,8 @@
         const fresh = data.type === 'update' && typeof data.body === 'string' ? applyBody(data.body) : [];
         refreshAll();
         status.textContent = pending.size ? 'Saving…' : fresh.length ? 'Session updated.' : 'Progress saved.';
+      } else if (data.type === 'navigated' || data.type === 'navigation-error') {
+        noteResult(data);
       } else if (data.type === 'error') {
         for (const id of pending.keys()) failed.add(id);
         pending.clear(); refreshAll();
@@ -152,6 +155,86 @@
         if (entry === active) entry.link.setAttribute('aria-current', 'location');
         else entry.link.removeAttribute('aria-current');
       }
+      toc.active = active || null;
+      refreshNavExtras(); reportPosition();
+    }
+    // Where the learner is: the section in view, its place in the lesson and how much of it has been answered.
+    const sectionTitle = entry => entry.heading.textContent.trim();
+    function jumpTo(heading) {
+      for (let parent = heading.parentElement; parent && parent !== mount; parent = parent.parentElement) if (parent.tagName === 'DETAILS') parent.open = true;
+      if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+      heading.focus({preventScroll: true}); heading.scrollIntoView({block: 'start', behavior: 'auto'}); scheduleSection();
+    }
+    function currentOrigin() {
+      const entry = toc && toc.active;
+      return entry && entry.heading.id ? {section: entry.heading.id, title: sectionTitle(entry).slice(0, 200)} : undefined;
+    }
+    function locationText() {
+      if (!toc || !toc.active) return (state.title || 'This session') + ' — no sections yet.';
+      const index = toc.entries.indexOf(toc.active), level = Number(toc.active.link.closest('li').dataset.level) || 2;
+      const trail = [state.title || 'Session'];
+      let depth = level;
+      const ancestors = [];
+      for (let i = index - 1; i >= 0 && depth > 1; i--) {
+        const l = Number(toc.entries[i].link.closest('li').dataset.level) || 2;
+        if (l < depth) { ancestors.unshift(sectionTitle(toc.entries[i])); depth = l; }
+      }
+      trail.push(...ancestors, sectionTitle(toc.active));
+      const answered = [...questions.keys()].filter(hasAttempt).length;
+      return trail.join(' › ') + '. Section ' + (index + 1) + ' of ' + toc.entries.length + (questions.size ? '; ' + answered + ' of ' + questions.size + ' responses recorded.' : '.');
+    }
+    function updateSectionProgress() {
+      if (!toc) return;
+      const all = [...mount.querySelectorAll('[data-question-id]')];
+      toc.entries.forEach((entry, i) => {
+        const next = toc.entries[i + 1];
+        const inside = all.filter(q => (entry.heading.compareDocumentPosition(q) & 4) && (!next || (next.heading.compareDocumentPosition(q) & 2)));
+        let badge = entry.link.querySelector('.ros-section-progress');
+        if (!inside.length) { badge && badge.remove(); delete entry.link.dataset.progress; return; }
+        const done = inside.filter(q => hasAttempt(q.getAttribute('data-question-id'))).length;
+        if (!badge) { badge = node('span'); badge.className = 'ros-section-progress'; entry.link.append(badge); }
+        entry.link.dataset.progress = done === inside.length ? 'done' : done ? 'partial' : 'none';
+        badge.replaceChildren();
+        const visible = node('span', done + '/' + inside.length); visible.setAttribute('aria-hidden', 'true');
+        const spoken = node('span', done + ' of ' + inside.length + ' questions answered'); spoken.className = 'ros-sr-only';
+        badge.append(visible, spoken);
+      });
+    }
+    const KIND_LABEL = {prerequisite: 'Prerequisite', earlier: 'Earlier lesson', 'first-taught': 'First taught', related: 'Related', application: 'Research application', evidence: 'Evidence', paper: 'Paper'};
+    function renderRelated() {
+      if (!toc || !toc.related) return;
+      const items = (Array.isArray(state.navigation) ? state.navigation : []).filter(item => item && typeof item.target === 'string' && Rich && Rich.validNoteTarget(item.target));
+      toc.related.replaceChildren(); toc.related.hidden = !items.length;
+      if (!items.length) return;
+      const relatedTitle = node('p', 'Related lessons and notes'); relatedTitle.className = 'ros-nav-heading'; toc.related.append(relatedTitle);
+      const list = node('ul');
+      for (const item of items) {
+        const li = node('li'), kind = node('span', KIND_LABEL[item.kind] || 'Related'); kind.className = 'ros-nav-kind';
+        const link = node('a', String(item.label)); link.className = 'ros-note-link'; link.setAttribute('href', '#ros-note-link'); link.setAttribute('role', 'link');
+        link.setAttribute('data-ros-target', item.target); link.title = item.note ? String(item.note) : item.target;
+        li.append(kind, link); list.append(li);
+      }
+      toc.related.append(list);
+    }
+    function refreshNavExtras() {
+      if (!toc || !toc.extra) return;
+      const index = toc.active ? toc.entries.indexOf(toc.active) : -1;
+      toc.previous.disabled = index <= 0; toc.next.disabled = index < 0 || index >= toc.entries.length - 1;
+      toc.previous.setAttribute('aria-label', index > 0 ? 'Previous section: ' + sectionTitle(toc.entries[index - 1]) : 'Previous section');
+      toc.next.setAttribute('aria-label', index >= 0 && index < toc.entries.length - 1 ? 'Next section: ' + sectionTitle(toc.entries[index + 1]) : 'Next section');
+      if (!toc.where.hidden) toc.where.textContent = locationText();
+    }
+    // The host remembers the position so a rebuilt page (theme change, reload) returns the learner to where they were.
+    let lastReported = '', reportTimer = 0;
+    function reportPosition() {
+      if (!host || !toc || !toc.active || !toc.active.heading.id) return;
+      root.clearTimeout(reportTimer);
+      reportTimer = root.setTimeout(() => {
+        const entry = toc && toc.active; if (!entry || !entry.heading.id) return;
+        const offset = Math.round(-entry.heading.getBoundingClientRect().top);
+        const key = entry.heading.id + ':' + offset; if (key === lastReported) return; lastReported = key;
+        root.parent.postMessage({channel: 'research-os', token: host.token, session_id: state.session_id, type: 'position', section: entry.heading.id, offset}, '*');
+      }, 400);
     }
     let scheduled = false;
     function scheduleSection() {
@@ -169,6 +252,20 @@
       const entries = [...nav.querySelectorAll('a[href^="#"]')].map(link => ({link, heading:doc.getElementById(link.getAttribute('href').slice(1))})).filter(entry=>entry.heading);
       toc = {entries, disclosure, summary: disclosure?.querySelector('summary')};
       toc.summary?.addEventListener('click', event => { if (wide.matches) event.preventDefault(); });
+      if (disclosure && entries.length) {
+        // Orientation inside the navigation: previous/next, "Where am I?", and links to related lessons and notes.
+        const extra = node('div'); extra.className = 'ros-nav-extra';
+        const steps = node('div'); steps.className = 'ros-nav-steps';
+        const previous = button('← Prev', () => { const i = toc.active ? toc.entries.indexOf(toc.active) : 0; if (i > 0) jumpTo(toc.entries[i - 1].heading); });
+        const next = button('Next →', () => { const i = toc.active ? toc.entries.indexOf(toc.active) : -1; if (i < toc.entries.length - 1) jumpTo(toc.entries[i + 1].heading); });
+        const where = node('p'); where.className = 'ros-where'; where.id = 'ros-where'; where.hidden = true; where.setAttribute('role', 'status');
+        const ask = button('Where am I?', () => { where.hidden = !where.hidden; ask.setAttribute('aria-expanded', String(!where.hidden)); if (!where.hidden) where.textContent = locationText(); });
+        ask.setAttribute('aria-expanded', 'false'); ask.setAttribute('aria-controls', 'ros-where'); ask.className = 'ros-where-button';
+        const related = node('section'); related.className = 'ros-nav-related'; related.hidden = true; related.setAttribute('aria-label', 'Related lessons and notes');
+        steps.append(previous, next); extra.append(steps, ask, where, related); disclosure.append(extra);
+        Object.assign(toc, {extra, previous, next, where, related});
+        renderRelated(); updateSectionProgress();
+      }
       for (const {link, heading} of entries) link.addEventListener('click', event => {
         event.preventDefault();
         if (!wide.matches && disclosure) disclosure.open = false;
@@ -464,38 +561,143 @@
     label.htmlFor = question.id;
     const capture = node('button', 'Send'); capture.type = 'button'; capture.className = 'ros-question-send';
     composer.append(question, capture); questionForm.append(label, composer);
-    const questionStatus = node('p'); questionStatus.setAttribute('role', 'status'); questionForm.append(questionStatus); mount.append(questionForm);
-    const history = node('section'); history.className = 'ros-question-history'; history.setAttribute('aria-label', 'Questions and answers'); history.dataset.rosOwned = ''; mount.append(history);
+    const questionStatus = node('p'); questionStatus.setAttribute('role', 'status'); questionForm.append(questionStatus);
+    const history = node('section'); history.className = 'ros-question-history'; history.setAttribute('aria-label', 'Questions and answers'); history.dataset.rosOwned = '';
+    // Questions live in a side panel that stays reachable while the lesson scrolls: always visible on a wide window,
+    // an accessible drawer opened from a button on a narrow one.
+    // An answer that arrives while the panel is closed is signalled on its button until the panel has been opened.
+    const seenAnswers = new Set(); let answeredNow = new Set(), firstConversation = true, lastFresh = 0;
+    const sidePanel = node('aside'); sidePanel.className = 'ros-side-panel'; sidePanel.id = 'ros-side-panel'; sidePanel.hidden = true; sidePanel.tabIndex = -1;
+    sidePanel.setAttribute('aria-label', 'Questions and answers');
+    const panelHead = node('div'); panelHead.className = 'ros-side-panel-head';
+    const panelClose = button('Close', () => setPanel(false)); panelClose.className = 'ros-panel-close'; panelClose.setAttribute('aria-label', 'Close the questions panel');
+    const panelTitle = node('p', 'Questions'); panelTitle.className = 'ros-side-panel-title';
+    panelHead.append(panelTitle, panelClose);
+    const waiting = node('section'); waiting.className = 'ros-waiting'; waiting.setAttribute('aria-label', 'Responses waiting for the tutor'); waiting.setAttribute('aria-live', 'polite');
+    sidePanel.append(panelHead, waiting, questionForm, history);
+    const panelToggle = button('', () => setPanel(sidePanel.hidden)); panelToggle.className = 'ros-panel-toggle';
+    panelToggle.setAttribute('aria-controls', 'ros-side-panel'); panelToggle.setAttribute('aria-expanded', 'false');
+    doc.body.append(sidePanel, panelToggle);
+    const persistent = root.matchMedia('(min-width: 1600px)');
+    let panelOpen = false;
+    function setPanel(open, restoreFocus = true) {
+      panelOpen = open;
+      sidePanel.hidden = persistent.matches ? false : !open;
+      if (!sidePanel.hidden) { answeredNow.forEach(id => seenAnswers.add(id)); renderWaiting(); }
+      panelToggle.setAttribute('aria-expanded', String(persistent.matches || open));
+      if (persistent.matches) return;
+      if (open) sidePanel.focus({preventScroll: true}); else if (restoreFocus) panelToggle.focus({preventScroll: true});
+    }
+    persistent.addEventListener('change', () => setPanel(panelOpen, false));
+    sidePanel.addEventListener('keydown', event => { if (event.key === 'Escape' && !persistent.matches && !sidePanel.hidden) { event.preventDefault(); setPanel(false); } });
+    setPanel(false, false);
+    function goToSection(id) {
+      const heading = id && doc.getElementById(id);
+      if (!heading) return false;
+      if (!persistent.matches) setPanel(false, false);
+      jumpTo(heading); return true;
+    }
     function renderConversation() {
       const records = new Map((state.open_questions || []).map(q => [q.id, q]));
       for (const event of localEvents) if (event.type === 'open-question' && !records.has(event.event_id))
-        records.set(event.event_id, {id:event.event_id, prompt:event.response});
+        records.set(event.event_id, {id:event.event_id, prompt:event.response, origin:event.origin});
       history.replaceChildren();
+      answeredNow = new Set([...records.values()].filter(r => typeof r.answer === 'string' && r.answer.trim()).map(r => r.id));
+      if (firstConversation) { firstConversation = false; answeredNow.forEach(id => seenAnswers.add(id)); }
+      if (!sidePanel.hidden) answeredNow.forEach(id => seenAnswers.add(id));
       if (!records.size) return;
       history.append(node('h2', 'Questions and answers'));
       for (const record of records.values()) {
-        const entry = node('article'); entry.className = 'ros-question-entry'; entry.dataset.openQuestionId = record.id;
-        entry.append(node('h3', 'Question'), rich('p', record.prompt));
+        const answered = typeof record.answer === 'string' && record.answer.trim();
+        const entry = node('article'); entry.className = 'ros-question-entry'; entry.dataset.openQuestionId = record.id; entry.dataset.status = answered ? 'resolved' : 'open';
+        const chip = node('span', answered ? 'Answered' : 'Open'); chip.className = 'ros-question-state'; chip.dataset.state = answered ? 'matches' : 'pending';
+        entry.append(chip, node('h3', 'Question'), rich('p', record.prompt));
+        const origin = record.origin;
+        if (origin && typeof origin.section === 'string' && doc.getElementById(origin.section)) {
+          const back = button('Back to ' + String(origin.title || 'where you asked'), () => goToSection(origin.section)); back.className = 'ros-return';
+          entry.append(back);
+        }
         const answer = node('div'); answer.className = 'ros-question-answer';
-        answer.append(node('h3', 'Answer'), typeof record.answer === 'string' && record.answer.trim() ? rich('p', record.answer) : node('p', 'Awaiting an answer from the session agent.'));
+        answer.append(node('h3', 'Answer'), answered ? rich('p', record.answer) : node('p', 'Awaiting an answer from the session agent.'));
         entry.append(answer);
         if (pending.has(record.id)) entry.append(node('small', 'Saving question...'));
         history.append(entry);
       }
     }
+    // Responses the tutor has not checked yet, each with a way back to its question.
+    function renderWaiting() {
+      waiting.replaceChildren();
+      const items = [];
+      if (host) for (const panel of panels.values()) {
+        const {latest, verdict} = verdictFor(panel);
+        if (latest && !verdict && !failed.has(latest.event_id) && !pending.has(latest.event_id)) items.push(panel);
+      }
+      const open = [...(state.open_questions || [])].filter(q => !(typeof q.answer === 'string' && q.answer.trim())).length
+        + localEvents.filter(e => e.type === 'open-question' && pending.has(e.event_id)).length;
+      const count = items.length + open;
+      const fresh = [...answeredNow].filter(id => !seenAnswers.has(id)).length;
+      panelToggle.replaceChildren(node('span', fresh ? 'Questions — new answer' : 'Questions'));
+      if (count) { const badge = node('span', String(count)); badge.className = 'ros-count'; badge.setAttribute('aria-hidden', 'true'); panelToggle.append(badge); }
+      panelToggle.dataset.fresh = fresh ? 'true' : '';
+      panelToggle.setAttribute('aria-label', 'Questions panel' + (count ? ', ' + count + ' waiting' : '') + (fresh ? ', ' + fresh + ' new answer' + (fresh > 1 ? 's' : '') : ''));
+      if (fresh > lastFresh) status.textContent = 'Your question was answered. Open Questions to read the answer.';
+      lastFresh = fresh;
+      if (!items.length) return;
+      const waitingTitle = node('p', 'Waiting for the tutor'); waitingTitle.className = 'ros-waiting-title'; waiting.append(waitingTitle);
+      const list = node('ul');
+      for (const panel of items) {
+        const li = node('li'), go = button(panel.number.textContent || 'Question', () => { if (!persistent.matches) setPanel(false, false); panel.el.scrollIntoView({block: 'center'}); (panel.el.querySelector('textarea, input, button') || panel.el).focus({preventScroll: true}); });
+        go.className = 'ros-return'; li.append(go, node('span', ' — response recorded, not yet checked')); list.append(li);
+      }
+      waiting.append(list);
+    }
     function refreshAll() {
       for (const panel of panels.values()) refreshPanel(panel);
-      updateProgress(); renderConversation();
+      updateProgress(); renderConversation(); renderWaiting(); updateSectionProgress(); renderRelated();
     }
     questionForm.addEventListener('submit', event => event.preventDefault());
     capture.addEventListener('click', () => {
       const text = question.value.trim(); if (!text || !questionForm.reportValidity()) return;
-      emit('open-question', null, text);
+      emit('open-question', null, text, currentOrigin());
       questionStatus.textContent = host ? 'Question sent. You can send another.' : 'Question recorded in this page. Download progress to keep it.';
       question.value = ''; question.focus();
     });
+    // Links to other notes are requests to the host, which validates the target and opens it in a new tab so this lesson stays put.
+    let lastLink = null, hintTimer = 0;
+    function hint(link, text, problem) {
+      const old = doc.querySelector('.ros-note-hint'); if (old) old.remove();
+      const el = node('span', text); el.className = 'ros-note-hint'; el.setAttribute('role', 'status'); if (problem) el.dataset.state = 'problem';
+      link.after(el); root.clearTimeout(hintTimer); hintTimer = root.setTimeout(() => el.remove(), 9000);
+    }
+    function openNote(target, link) {
+      lastLink = link;
+      if (!host) {
+        link.setAttribute('data-ros-state', 'unavailable');
+        hint(link, 'This opens the note “' + target + '” in Obsidian. A standalone page cannot open notes.', true);
+        return;
+      }
+      link.setAttribute('aria-busy', 'true'); hint(link, 'Opening “' + target + '”…', false);
+      root.parent.postMessage({channel: 'research-os', token: host.token, session_id: state.session_id, type: 'navigate', target}, '*');
+    }
+    function noteResult(data) {
+      const text = data.type === 'navigated' ? 'Opened “' + String(data.title || data.target) + '” in a new tab. This lesson stays where you left it.'
+        : 'Could not open “' + String(data.target || '') + '”: ' + String(data.message || 'the host refused').slice(0, 200);
+      if (lastLink && lastLink.isConnected) { lastLink.removeAttribute('aria-busy'); hint(lastLink, text, data.type !== 'navigated'); }
+      status.textContent = text;
+    }
+    doc.addEventListener('click', event => {
+      const link = event.target && event.target.closest ? event.target.closest('a.ros-note-link[data-ros-target]') : null;
+      if (!link) return;
+      event.preventDefault();
+      const target = link.getAttribute('data-ros-target');
+      if (Rich && Rich.validNoteTarget(target)) openNote(target, link);
+    });
     for (const child of contentNodes) enhance(child);
     placeProgress(); renumber(); refreshAll();
+    if (host && host.position && typeof host.position.section === 'string') {
+      const target = doc.getElementById(host.position.section);
+      if (target) root.requestAnimationFrame(() => root.scrollTo(0, target.getBoundingClientRect().top + root.scrollY + (Number(host.position.offset) || 0)));
+    }
     api.register = function (name, factory) { if (!/^[a-z][a-z0-9-]{0,63}$/.test(name) || typeof factory !== 'function' || extensions.has(name)) throw new Error('Unique bounded extension name required'); extensions.set(name, factory); for (const el of mount.querySelectorAll('[data-extension]')) if (el.getAttribute('data-extension') === name) runExtension(el, factory); };
     // Tell the host this page can take live updates instead of being rebuilt.
     if (host) root.parent.postMessage({channel: 'research-os', token: host.token, session_id: state.session_id, type: 'ready'}, '*');

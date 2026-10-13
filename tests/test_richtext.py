@@ -208,9 +208,26 @@ class Robustness(unittest.TestCase):
         cases = ['*a ' * 4000, '*' * 5000, '_' * 5000, '[' * 3000, '[[' * 2000, '$' * 5000, '$a ' * 3000, B + '(' * 3000, '`' * 4000,
                  '<sub>' * 600, '*a [b ' * 1500, '**' + '*' * 3000 + 'x' + '*' * 3000, '~~a ' * 2000, 'a  ' + N + 'b' + N * 5]
         for text in cases:
-            started = time.monotonic()
+            # CPU time, not wall-clock: a slow or busy machine must not fail this, a quadratic blow-up still must.
+            started = time.process_time()
             rt.render_inline(text)
-            self.assertLess(time.monotonic() - started, 6.0, text[:30])
+            self.assertLess(time.process_time() - started, 6.0, text[:30])
+
+    def test_note_target_syntax_matches_the_shared_fixture(self):
+        fixture = json.loads((ROOT / 'tests/fixtures/note-targets.json').read_text(encoding='utf-8'))
+        for target in fixture['valid']:
+            self.assertTrue(rt.valid_note_target(target), repr(target))
+            self.assertIn('<a class="ros-note-link"', rt.render_inline('[[' + target + ']]'))
+        for target in fixture['invalid']:
+            self.assertFalse(rt.valid_note_target(target), repr(target))
+        self.assertFalse(rt.valid_note_target(None))
+        self.assertFalse(rt.valid_note_target(7))
+
+    def test_unnavigable_wikilinks_stay_visible_but_inert(self):
+        for text in ('[[https://example.org/x|site]]', '[[../secret]]', '[[.obsidian/app]]', '[[C:/x]]'):
+            out = rt.render_inline(text)
+            self.assertIn('ros-note-link-invalid', out, text)
+            self.assertNotIn('<a ', out, text)
 
     def test_recursion_is_bounded(self):
         rt.render_inline('<sub>' * 200 + 'x' + '</sub>' * 200)

@@ -9,7 +9,13 @@ const obsidian = {Plugin: Component, Component, FileView: Component, normalizePa
 const file = path.join(__dirname, '../extensions/obsidian-html/main.js');
 const mod = {exports: {}};
 vm.runInNewContext(fs.readFileSync(file, 'utf8'), {require: name => name === 'obsidian' ? obsidian : require(name), module: mod, console, Date, Object, Set, Array, JSON, Number, Promise, Buffer, process, setTimeout, clearTimeout});
-const {pageState, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, acquireLock, buildDocument, SessionHost, sibling} = mod.exports._test;
+const {pageState, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, resolveNote, acquireLock, buildDocument, SessionHost, sibling} = mod.exports._test;
+// The host decides note-reference syntax itself; it must agree with Python and the runtime on the shared fixture.
+const noteTargets = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/note-targets.json'), 'utf8'));
+for (const t of noteTargets.valid) assert(validNoteTarget(t), 'valid note target rejected by the host: ' + JSON.stringify(t));
+for (const t of noteTargets.invalid) assert(!validNoteTarget(t), 'invalid note target accepted by the host: ' + JSON.stringify(t));
+assert(!validNoteTarget(null) && !validNoteTarget(7) && !validNoteTarget(['a']));
+assert.deepEqual([...declaredTargets({navigation: [{target: 'A'}], source_markdown: 'x [[B|alias]] y [[C#h]] [[ D ]] [[https://e.org]]'})].sort(), ['A', 'B', 'C#h', 'D', 'https://e.org']);
 const base = {schema_version: 1, session_id: 'session-1', questions: [{id: 'q1'}], events: []};
 const state = () => parseState(JSON.stringify(base));
 const event = (event_id = 'event-1') => ({event_id, type: 'response', question_id: 'q1', response: 'answer'});
@@ -120,6 +126,60 @@ assert(!html.includes('title":"</script>'));
   assert.equal(reloads, 1);
   host.ready = false; files['session.state.json'] = JSON.stringify({...reviewed, title: 'changed'}); await host.refresh();
   assert.equal(reloads, 2);
+  // Navigation: the page asks, the host validates and opens in a new tab so the lesson stays where it is.
+  const opened = [];
+  const notes = {'Gamma distribution': {path: 'Notes/Gamma distribution.md', extension: 'md', basename: 'Gamma distribution'},
+    Secret: {path: '.obsidian/Secret.md', extension: 'md', basename: 'Secret'}, Image: {path: 'Img.png', extension: 'png', basename: 'Img'},
+    Folder: {path: 'F', children: []}, Session: {path: 'Sessions/old.html', extension: 'html', basename: 'old'}};
+  host.plugin.app.metadataCache = {getFirstLinkpathDest: (link, source) => { assert.equal(source, 'session.html'); return notes[link] || null; }};
+  host.plugin.app.workspace = {openLinkText: async (...args) => { opened.push(args); }};
+  host.state = {...host.state, navigation: [{kind: 'prerequisite', label: 'G', target: 'Gamma distribution'}],
+    source_markdown: 'See [[Gamma distribution#Definition|the law]], [[Secret]], [[Image]], [[Folder]], [[Missing note]] and [[Session]].'};
+  const go = async (target, extra = {}) => {
+    host.navigatedAt = 0; const before = replies.length;
+    host.receive({source: host.frame.contentWindow, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'navigate', target, ...extra}});
+    await new Promise(resolve => setTimeout(resolve, 15));
+    return replies.length > before ? replies.at(-1) : null;
+  };
+  let answer = await go('Gamma distribution#Definition');
+  assert.equal(answer.type, 'navigated'); assert.equal(answer.title, 'Gamma distribution');
+  assert.deepEqual(opened.at(-1), ['Notes/Gamma distribution.md#Definition', 'session.html', 'tab']);
+  assert.equal((await go('Gamma distribution')).type, 'navigated');
+  assert.equal((await go('Session')).type, 'navigated');
+  const opens = opened.length;
+  for (const [target, expected] of [['https://example.org/x', /not a note reference/], ['../secret', /not a note reference/], ['.obsidian/Secret', /not a note reference/],
+    ['C:/Windows/x', /not a note reference/], ['javascript:alert(1)', /not a note reference/], ['Undeclared note', /does not link/],
+    ['Secret', /cannot be opened/], ['Image', /cannot be opened/], ['Folder', /No note named/], ['Missing note', /No note named/],
+    [null, /not a note reference/], [{toString: () => 'Gamma distribution'}, /not a note reference/], [['Gamma distribution'], /not a note reference/]]) {
+    answer = await go(target);
+    assert.equal(answer.type, 'navigation-error', String(target)); assert.match(answer.message, expected, String(target));
+    assert.equal(opened.length, opens, 'nothing was opened for ' + String(target));
+  }
+  assert.equal(await go('Gamma distribution', {token: 'wrong'}), null);
+  assert.equal(await go('Gamma distribution', {session_id: 'other'}), null);
+  assert.equal(opened.length, opens);
+  // Requests are throttled, and a vault without the API says so instead of failing silently.
+  host.navigatedAt = Date.now();
+  host.receive({source: host.frame.contentWindow, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'navigate', target: 'Gamma distribution'}});
+  await new Promise(resolve => setTimeout(resolve, 15));
+  assert.match(replies.at(-1).message, /wait a moment/);
+  const workspace = host.plugin.app.workspace; host.plugin.app.workspace = {};
+  assert.match((await go('Gamma distribution')).message, /not available/); host.plugin.app.workspace = workspace;
+  // The position the learner reached is remembered (validated) and handed back to a rebuilt page.
+  host.receive({source: host.frame.contentWindow, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'position', section: 'section-0123456789ab', offset: 120}});
+  assert.equal(JSON.stringify(host.position), JSON.stringify({section: 'section-0123456789ab', offset: 120}));
+  for (const bad of [{section: 'has space', offset: 1}, {section: 'ok', offset: Infinity}, {section: 'ok', offset: 1e9}, {section: 7, offset: 1}]) {
+    host.receive({source: host.frame.contentWindow, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'position', ...bad}});
+    assert.equal(JSON.stringify(host.position), JSON.stringify({section: 'section-0123456789ab', offset: 120}));
+  }
+  assert(buildDocument('', base, 't', '', '', '', [], host.position).includes('"position":{"section":"section-0123456789ab","offset":120}'));
+  // Where an open question was asked travels with it into the saved record.
+  raw = JSON.stringify(base); host.state = state();
+  send({event_id: 'open-2', type: 'open-question', question_id: null, response: 'Why?', origin: {section: 'section-0123456789ab', title: 'Why scale matters'}}); await host.queue;
+  assert.deepEqual(JSON.parse(raw).open_questions[0].origin, {section: 'section-0123456789ab', title: 'Why scale matters'});
+  for (const origin of [{section: 'has space', title: 't'}, {section: 'ok'}, {section: 'ok', title: 't', extra: 1}, 'section-x', null, []])
+    assert.throws(() => validateEvent({event_id: 'o', type: 'open-question', question_id: null, response: 'Why?', origin}, state()), /origin/);
+  assert.throws(() => validateEvent({...event('o2'), origin: {section: 'ok', title: 't'}}, state()), /origin/);
   fs.rmdirSync(vaultRoot);
-  console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload.');
+  console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -223,6 +223,15 @@
 
   const ESC = {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;'};
   const esc = v => String(v).replace(/[&<>"']/g, ch => ESC[ch]);
+  // Syntax of a vault note reference; mirrors scripts/rich_text.py and the host's own check (tests/fixtures/note-targets.json).
+  function validNoteTarget(target) {
+    if (typeof target !== 'string' || target.length < 1 || target.length > 256 || /^\s|\s$/.test(target)) return false;
+    const hash = target.indexOf('#');
+    const path = hash < 0 ? target : target.slice(0, hash), sub = hash < 0 ? '' : target.slice(hash + 1);
+    if (!path || sub.length > 200 || /[\x00-\x1f\x7f-\x9f\ufeff\u2028\u2029\\:*?"<>|]/.test(path) || /[\x00-\x1f\x7f-\x9f\ufeff\u2028\u2029]/.test(sub)) return false;
+    if (path.startsWith('/') || path.endsWith('/')) return false;
+    return path.split('/').every(part => part !== '' && part !== '.' && part !== '..' && !part.startsWith('.'));
+  }
   const GROUPS = new Set(['em', 'strong', 'del', 'mark', 'sub', 'sup']);
 
   function toHTML(nodes, labels = {}) {
@@ -239,7 +248,11 @@
             : '<span class="ros-link">' + label + ' <span class="ros-link-target">(' + esc(node.href) + ')</span></span>';
           break;
         }
-        case 'wikilink': out += '<span class="ros-note-link" data-ros-target="' + esc(node.target) + '" title="' + esc(node.target) + '">' + toHTML(node.c, labels) + '</span>'; break;
+        case 'wikilink':
+          out += validNoteTarget(node.target)
+            ? '<a class="ros-note-link" href="#ros-note-link" role="link" data-ros-target="' + esc(node.target) + '" title="' + esc(node.target) + '">' + toHTML(node.c, labels) + '</a>'
+            : '<span class="ros-note-link ros-note-link-invalid" data-ros-target="' + esc(node.target) + '" title="' + esc(node.target) + ' (not a navigable note)">' + toHTML(node.c, labels) + '</span>';
+          break;
         case 'ref': {
           const number = labels[node.label];
           out += number === undefined
@@ -289,7 +302,12 @@
             el.appendChild(doc.createTextNode(' ')); el.appendChild(target);
           }
           break;
-        case 'wikilink': el = make('span', {class: 'ros-note-link', 'data-ros-target': node.target, title: node.target}); renderInto(el, node.c, doc, options); break;
+        case 'wikilink':
+          el = validNoteTarget(node.target)
+            ? make('a', {class: 'ros-note-link', href: '#ros-note-link', role: 'link', 'data-ros-target': node.target, title: node.target})
+            : make('span', {class: 'ros-note-link ros-note-link-invalid', 'data-ros-target': node.target, title: node.target + ' (not a navigable note)'});
+          renderInto(el, node.c, doc, options);
+          break;
         case 'ref': {
           const number = options.resolveReference ? options.resolveReference(node.label) : undefined;
           if (number === undefined || number === null) { el = make('span', {class: 'ros-diagnostic', 'data-ros': 'diagnostic', 'data-code': 'unresolved-reference', title: 'No equation has this label'}); el.textContent = node.src; }
@@ -305,5 +323,5 @@
     return parent;
   }
 
-  return {parseInline, toHTML, plainText, renderInto, esc};
+  return {parseInline, toHTML, plainText, renderInto, esc, validNoteTarget};
 });

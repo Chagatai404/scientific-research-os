@@ -38,7 +38,7 @@ Only list facts I already understand or have separately verified.
 
 ## Derivation
 
-### Step 1 — 
+### [Name what this step achieves]
 
 **Motivation:** Why would I try this step?
 
@@ -46,7 +46,7 @@ $$
 ...
 $$
 
-### Step 2 — 
+### [Name what this step achieves]
 
 **Motivation:**
 
@@ -54,7 +54,7 @@ $$
 ...
 $$
 
-### Step 3 — 
+### [Name what this step achieves]
 
 $$
 ...

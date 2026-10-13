@@ -101,6 +101,33 @@ declaration, and a visual placed twice are shown as visible diagnostics and repo
 appended to the end of the page. Sessions without the `placement` field keep their earlier behaviour. How figures are
 produced, labelled by evidence class and kept safe is in `references/VISUALIZATION_PROTOCOL.md`.
 
+## Titles, navigation and the questions panel
+
+**Titles say what is being studied.** Keep stable internal IDs in state; never put workflow positions or identifiers in
+a heading a learner reads ("Block 9 - Content 3", "Q3", "RQ-004", "Section 1"), and never leave a template slot such as
+`[Name the concept this part teaches]` unfilled. Write "Understanding multiscale dimensions".
+`html_sessions.py validate` reports both in sessions created by v0.9, and a session with no explicit title is named by
+its shallowest meaningful heading rather than its file name.
+
+**The page has three areas.** Navigation on the left (the section list with hierarchy, the current section, per-section
+progress, previous/next, "Where am I?", related lessons and notes), the lesson in the middle, and a questions panel on
+the right (ask a question, history with Open/Answered status, responses waiting for the tutor, and "Back to ..." which
+returns to the section a question was asked in). From 1600px wide all three are visible; on smaller windows the
+contents bar stays pinned and the questions panel is a drawer opened from a button (Escape closes it and returns
+focus). A question answered while the drawer is closed is signalled on its button.
+
+**Related lessons come from recorded context, never invention.** `html_sessions.py navigation <session> [--apply]`
+derives prerequisites, the first and recent earlier lessons on the concept, and research applications from the context
+kernel's receipt and stores them as `navigation` (validated note references, at most 64). A source that is missing
+contributes nothing.
+
+**Links to other notes are requests, not hrefs.** A `[[Note]]` in a lesson (or an entry in `navigation`) asks the host to
+open it. The host re-validates the reference itself (relative path, optional `#heading`/`#^block`; no scheme, drive,
+absolute path, traversal or hidden folder), refuses anything the session does not itself link to, resolves it the way
+Obsidian resolves a wikilink, and opens it in a **new tab** so the lesson stays exactly where the learner left it. A
+standalone page cannot open notes and says so next to the link. Malformed targets stay visible but are not links. The
+host also remembers the reading position in memory so a rebuilt page (theme change, reload) returns to it.
+
 ## Obsidian and fallback
 
 Install the companion plugin and shared runtime using the documented installer.

@@ -142,7 +142,8 @@ let content=real?fs.readFileSync(real,'utf8'):'<main class="ros-document" id="ro
         await free.getByRole('button',{name:'Submit response',exact:true}).click();
         await frame.locator('body').evaluate(()=>new Promise(r=>setTimeout(r,50)));
         assert.equal(await free.locator('.ros-submit').textContent(),'Checking…');
-        await frame.getByLabel('Ask an open question during this session:',{exact:true}).fill('What does independence mean?');
+if(!(await frame.locator('.ros-side-panel').isVisible()))await frame.locator('.ros-panel-toggle').click();
+            await frame.getByLabel('Ask an open question during this session:',{exact:true}).fill('What does independence mean?');
         await frame.getByRole('button',{name:'Send',exact:true}).click();
         await frame.locator('.ros-question-history').getByText('What does independence mean?',{exact:true}).waitFor();
         await progressSnapshot('open-question',frame.locator('.ros-open-question'));

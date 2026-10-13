@@ -64,13 +64,15 @@ function document(theme) {
     const matching=frame.locator('[data-question-id="matching"]');await matching.locator('select').nth(0).selectOption('x');await matching.locator('select').nth(1).selectOption('y');await matching.getByRole('button',{name:'Submit response'}).click();
     const ordering=frame.locator('[data-question-id="ordering"]');await ordering.locator('select').nth(0).selectOption('a');await ordering.locator('select').nth(1).selectOption('b');await ordering.getByRole('button',{name:'Submit response'}).click();
     const free=frame.locator('[data-question-id="free"]');await free.locator('textarea').fill('Independent reasoning');await free.getByRole('button',{name:'Submit response'}).click();assert.equal(await free.locator('[data-ros-feedback]').isVisible(),false);
-    await frame.locator('form[data-ros="open-question"] textarea').fill('Why is the variance finite?');await frame.getByRole('button',{name:'Send',exact:true}).click();
+if(!(await frame.locator('.ros-side-panel').isVisible()))await frame.locator('.ros-panel-toggle').click();
+        await frame.locator('form[data-ros="open-question"] textarea').fill('Why is the variance finite?');await frame.getByRole('button',{name:'Send',exact:true}).click();
     assert.equal(await frame.locator('.ros-question-composer button').innerText(),'Send');
     assert.equal(await frame.locator('#ros-open-question-input').inputValue(),'');
     await frame.locator('.ros-question-history').getByText('Why is the variance finite?',{exact:true}).waitFor();
     await frame.locator('#ros-open-question-input').fill('Can I ask another question?');
     await frame.getByRole('button',{name:'Send',exact:true}).click();
     assert.equal(await frame.locator('.ros-question-entry').count(),2);
+    await frame.locator('.ros-panel-close').click();await frame.locator('.ros-side-panel').waitFor({state:'hidden'});
     await frame.getByRole('button',{name:'Record checkpoint completed'}).click();
     await frame.locator('.ros-status').getByText('Progress saved.',{exact:false}).waitFor();
     assert.equal(events.filter(e=>e.type==='response').length,6);
@@ -93,10 +95,12 @@ function document(theme) {
     assert.equal(await frame.locator('body').evaluate(el=>getComputedStyle(el).backgroundColor),'rgb(19, 26, 23)');
     await page.setViewportSize({width:390,height:844});
     assert.equal(await frame.locator('body').evaluate(el=>el.scrollWidth<=el.clientWidth),true);
+    if(!(await frame.locator('.ros-side-panel').isVisible())){assert.match(await frame.locator('.ros-panel-toggle').getAttribute('aria-label'),/new answer/);await frame.locator('.ros-panel-toggle').click();}
     await frame.locator('.ros-question-answer').getByText('The model assumes finite variance.',{exact:true}).waitFor();
     assert.equal(await frame.locator('.ros-question-entry').count(),2);
     openQuestions=[record];
     await page.locator('#session').evaluate((frame,html)=>frame.srcdoc=html,document('dark'));
+    if(!(await frame.locator('.ros-side-panel').isVisible()))await frame.locator('.ros-panel-toggle').click();
     await frame.locator('.ros-question-answer').getByText('The model assumes finite variance.',{exact:true}).waitFor();
     assert.equal(await frame.locator('.ros-question-entry').count(),2);
     assert.equal(requests,0);

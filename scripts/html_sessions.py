@@ -123,8 +123,15 @@ def _approved_module(root, path, resource):
 
 
 def validate_interaction(event, question_ids):
-    if not isinstance(event, dict) or set(event) - {'event_id','type','question_id','response','created_at','status'}:
+    if not isinstance(event, dict) or set(event) - {'event_id','type','question_id','response','created_at','status','origin'}:
         raise ValueError('Unknown interaction event field')
+    if 'origin' in event:
+        # Where in the lesson an open question was asked, so the learner can return there; a section anchor and its title.
+        origin = event['origin']
+        if (event.get('type') != 'open-question' or not isinstance(origin, dict) or set(origin) - {'section', 'title'}
+                or not isinstance(origin.get('section'), str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', origin['section'])
+                or not isinstance(origin.get('title'), str) or len(origin['title']) > 200):
+            raise ValueError('Invalid question origin')
     if not isinstance(event.get('event_id'), str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', event['event_id']):
         raise ValueError('Invalid interaction event ID')
     if event.get('created_at') is not None:
@@ -199,6 +206,21 @@ def _validate_context(context):
         raise ValueError("Invalid session context binding")
 
 
+NAVIGATION_KINDS = ("prerequisite", "earlier", "first-taught", "related", "application", "evidence", "paper")
+
+
+def _validate_navigation(items):
+    """Where a learner can go from here. Targets are note references the host resolves and may refuse; never URLs."""
+    if not isinstance(items, list) or len(items) > 64:
+        raise ValueError("Invalid session navigation")
+    for item in items:
+        if (not isinstance(item, dict) or set(item) - {"kind", "label", "target", "note"} or item.get("kind") not in NAVIGATION_KINDS
+                or not isinstance(item.get("label"), str) or not 0 < len(item["label"].strip()) <= 200
+                or not rich_text.valid_note_target(item.get("target"))
+                or ("note" in item and not (isinstance(item["note"], str) and len(item["note"]) <= 300))):
+            raise ValueError("Invalid session navigation entry")
+
+
 def validate_state(state):
     if not isinstance(state, dict) or state.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("Unsupported HTML session schema")
@@ -219,6 +241,8 @@ def validate_state(state):
         _validate_context(state["context"])
     if state.get("placement") not in (None, "explicit"):
         raise ValueError("Unsupported placement mode")
+    if "navigation" in state:
+        _validate_navigation(state["navigation"])
     if not isinstance(state.get("resources", []), list):
         raise ValueError("Invalid session resources")
     for resource in state.get("resources", []):
@@ -263,6 +287,71 @@ def validate_state(state):
         if len(json.dumps(event, ensure_ascii=False)) > 20000:
             raise ValueError("Interaction event exceeds limit")
     return state
+
+
+_INTERNAL_TOKEN = r'(?:block|content|chunk|segment|item|unit|node|slice|stage|step|part|section|module|lesson|topic|question|q)'
+_INTERNAL_PAIR = re.compile(r'\b' + _INTERNAL_TOKEN + r'\s*[-_#:.]?\s*\d+\b', re.I)
+_ID_LIKE = re.compile(r'[A-Z]{1,6}-\d+(?:\.\d+)*|[0-9a-fA-F]{12,}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}')
+
+
+def prose_lines(lines):
+    """(index, is_heading, text) of lesson prose: not frontmatter and not inside a code fence."""
+    start = 0
+    if lines and lines[0].strip() == '---':
+        closing = next((n for n in range(1, len(lines)) if lines[n].strip() == '---'), None)
+        start = 0 if closing is None else closing + 1
+    fenced = False
+    for number in range(start, len(lines)):
+        line = lines[number]
+        if line.lstrip().startswith(('```', '~~~')):
+            fenced = not fenced
+            continue
+        if not fenced:
+            heading = re.match(r'#{1,6}\s+(.*?)\s*#*\s*$', line)
+            yield number, bool(heading), heading[1] if heading else line
+
+
+_PLACEHOLDER = re.compile(r'<[^<>]*>|\[[^\[\]]*\]|\{\{[^{}]*\}\}')
+
+
+def heading_is_placeholder(text):
+    """An unfilled template slot such as "[Name the concept this part teaches]"."""
+    return bool(_PLACEHOLDER.fullmatch(text.strip()))
+
+
+def heading_is_internal(text):
+    """A heading that names a workflow position or an identifier ("Block 9 - Content 3", "RQ-004", "Q3"), not what is studied."""
+    text = text.strip()
+    if _ID_LIKE.fullmatch(text) or text.lower() in {'untitled', 'tbd', 'todo'}:
+        return True
+    rest = _INTERNAL_PAIR.sub(' ', text)
+    return rest != text and not re.findall(r'[^\W\d_]{3,}', rest)
+
+
+def heading_issues(source):
+    """Section titles that expose internal naming. Stable internal IDs stay in state; learners read meaningful titles."""
+    lines = source.replace('\r\n', '\n').split('\n')
+    issues = []
+    for number, is_heading, text in prose_lines(lines):
+        if not is_heading:
+            continue
+        if heading_is_placeholder(text):
+            issues.append({'line': number + 1, 'heading': text, 'message': f"heading '{text}' is an unfilled template placeholder; "
+                                                                           "replace it with what the learner is about to understand"})
+        elif heading_is_internal(text):
+            issues.append({'line': number + 1, 'heading': text, 'message': f"heading '{text}' names a workflow position or identifier, not what is being studied; "
+                                                                           "retitle it to say what the learner is about to understand"})
+    return issues
+
+
+def derive_title(source, fallback):
+    """A session without an explicit title is named by its first heading, not by its file name."""
+    lines = parse_frontmatter(source.replace('\r\n', '\n'))[1].split('\n')
+    headings = [(len(re.match(r'#+', lines[n])[0]), text) for n, is_heading, text in prose_lines(lines)
+                if is_heading and text.strip() and not heading_is_internal(text) and not heading_is_placeholder(text)]
+    for _, text in sorted(headings, key=lambda h: h[0])[:1]:  # the shallowest heading, first in the document on ties
+        return rich_text.plain_text(rich_text.parse_inline(text)).strip()[:200] or fallback
+    return fallback
 
 
 def _inline(text, labels=None):
@@ -750,7 +839,7 @@ def _create_session(root, relative_md, text, session_type=None, title=None, meta
     front, _ = parse_frontmatter(text.replace("\r\n", "\n"))
     state = {"schema_version": 1, "session_id": uuid.uuid4().hex,
              "type": session_type or front.get("type", "research-session"),
-             "title": title or front.get("title", md.stem), "metadata": dict(metadata or front),
+             "title": title or front.get("title") or derive_title(text, md.stem), "metadata": dict(metadata or front),
              "source_markdown": text, "events": [], "questions": list(questions or []),
              "open_questions": [], "lifecycle": front.get("status", "active"), "created_at": _now(), "updated_at": _now()}
     state["widgets"] = list(widgets or [])
@@ -767,7 +856,7 @@ def update_session(root, relative_md, text=None, **changes):
     md, _, _ = paths(root, relative_md)
     with Lock(md.with_suffix(".session.lock")):
         state = load_session(root, relative_md)
-        allowed = {"title", "metadata", "questions", "open_questions", "lifecycle", "widgets", "resources"}
+        allowed = {"title", "metadata", "questions", "open_questions", "lifecycle", "widgets", "resources", "navigation"}
         if set(changes) - allowed:
             raise ValueError("Unsupported session update fields")
         source = state["source_markdown"] if text is None else text
@@ -871,7 +960,10 @@ def append_event(root, relative_md, event):
         event.setdefault("created_at", _now())
         state["events"].append(event)
         if event["type"] == "open-question":
-            state["open_questions"].append({"id": event["event_id"], "session_id": state["session_id"], "concept": state["metadata"].get("concept"), "prompt": event.get("response", ""), "status": "open", "created_at": event["created_at"], "explanation_refs": []})
+            record = {"id": event["event_id"], "session_id": state["session_id"], "concept": state["metadata"].get("concept"), "prompt": event.get("response", ""), "status": "open", "created_at": event["created_at"], "explanation_refs": []}
+            if "origin" in event:
+                record["origin"] = event["origin"]
+            state["open_questions"].append(record)
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
 
@@ -1059,6 +1151,43 @@ def session_context(root, relative_md, project_root=None, learning_root=None, as
     return brief
 
 
+def navigation_from_context(receipt, session=None, limit=40):
+    """Where a learner can go from this session: prerequisites, earlier lessons, the first lesson on the concept and its
+    research application. Derived only from recorded context; a source that is missing contributes nothing, nothing is invented.
+
+    Targets are note names (or vault paths for sessions), which Obsidian resolves the way it resolves a wikilink, so they work
+    wherever the learning and project roots sit relative to the vault.
+    """
+    retrieval = receipt.get("retrieval") or {}
+    items, seen = [], set()
+
+    def add(kind, label, target, note=None):
+        if not label or target in seen or not rich_text.valid_note_target(target):
+            return
+        seen.add(target)
+        entry = {"kind": kind, "label": str(label).strip()[:200], "target": target}
+        if note:
+            entry["note"] = note[:300]
+        items.append(entry)
+
+    stem = lambda path: re.sub(r"\.md\Z", "", str(path).replace("\\", "/").rsplit("/", 1)[-1]) if path else None
+    nodes = (retrieval.get("learner") or {}).get("nodes", [])
+    for node in sorted((n for n in nodes if not n.get("target") and n.get("distance")), key=lambda n: (n["distance"], n["id"])):
+        add("prerequisite", node.get("title") or node["id"], stem(node.get("path")), f"{node['distance']} step(s) before the target; state: {node.get('state')}")
+    current = str(session or "").replace("\\", "/")
+    earlier = sorted((s for s in retrieval.get("sessions") or [] if str(s.get("path", "")).replace("\\", "/") != current),
+                     key=lambda s: (s.get("updated_at") or "", s.get("path") or ""))
+    if earlier:
+        first = earlier[0]
+        add("first-taught", first.get("title") or stem(first["path"]), str(first["path"]).replace("\\", "/"), "earliest recorded session on this concept")
+        for s in reversed(earlier[1:][-5:]):
+            add("earlier", s.get("title") or stem(s["path"]), str(s["path"]).replace("\\", "/"), s.get("type"))
+    for record in (retrieval.get("research") or {}).get("relevant_records", []):
+        if any(str(why).startswith("links concept") for why in record.get("relevance", [])):
+            add("application", record.get("title") or record["id"], stem(record.get("path")), f"{record.get('type')} {record['id']}")
+    return items[:limit]
+
+
 def render_context(brief):
     """Compact Markdown for an agent resuming the session."""
     lines = [f"# Resume brief: {brief['title']}", "", f"Session `{brief['session']}` ({brief['type']}, {brief['lifecycle']}), updated {brief['updated_at']}." + ("" if brief.get("exists", True) else " Not created yet (bootstrap)."), ""]
@@ -1221,6 +1350,9 @@ def validate_sessions(root, exceptions=None):
                 problems = placement_issues(state)
                 if problems:
                     raise ValueError("visual placement: " + "; ".join(p["message"] for p in problems))
+                titles = heading_issues(state["source_markdown"])
+                if titles:
+                    raise ValueError("section titles: " + "; ".join(f"line {t['line']}: {t['message']}" for t in titles))
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             errors.append(f"{data.relative_to(root)}: {exc}")
     return errors
@@ -1432,6 +1564,9 @@ def main():
     review.add_argument("--transcript", type=Path, help="Markdown appended to the session transcript in the same save")
     wait = sub.add_parser("wait", help="Block until an explicit learner submission awaits the agent (bounded)")
     wait.add_argument("session"); wait.add_argument("--timeout", type=float, default=900.0)
+    navigate = sub.add_parser("navigation", help="Derive related-lesson links (prerequisites, earlier lessons, application) from recorded context; dry run unless --apply")
+    navigate.add_argument("session"); navigate.add_argument("--project-root", type=Path); navigate.add_argument("--learning-root", type=Path)
+    navigate.add_argument("--library-root", type=Path); navigate.add_argument("--as-of"); navigate.add_argument("--apply", action="store_true")
     attach = sub.add_parser("attach-visual", help="Declare a registered visual (VIS-...) as an image of this session; place it next")
     attach.add_argument("session"); attach.add_argument("visual_id"); attach.add_argument("--resource-id")
     place = sub.add_parser("place", help="Put a declared figure or widget at an exact position in the lesson")
@@ -1491,6 +1626,15 @@ def main():
                 raise SystemExit(2)
             context = bind_context(receipt)
         result = create_session(root, args.session, text, args.session_type, args.title, context=context)
+    elif args.command == "navigation":
+        brief = session_context(root, args.session, args.project_root, args.learning_root, args.as_of, args.library_root)
+        if not brief["exists"]:
+            raise SystemExit("The session does not exist yet; create it first")
+        links = navigation_from_context(brief["receipt"], args.session)
+        result = {"session": args.session, "applied": bool(args.apply), "navigation": links,
+                  "context_outcome": brief["receipt"]["outcome"]}
+        if args.apply:
+            update_session(root, args.session, navigation=links)
     elif args.command in ("attach-visual", "place"):
         import visual_assets
         try:

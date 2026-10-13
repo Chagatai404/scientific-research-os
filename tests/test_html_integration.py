@@ -41,6 +41,11 @@ class HTMLIntegrationTests(unittest.TestCase):
         self.assertEqual(before['session_id'], after['session_id'])
         self.assertTrue(after['source_markdown'].startswith(before['source_markdown']))
         self.assertIn('My reasoning', after['source_markdown'])
+        # A session straight from the template still has unfilled section titles; it is not valid until they say what is studied.
+        flagged = hs.validate_sessions(self.root)
+        self.assertTrue(any('unfilled template placeholder' in e for e in flagged), flagged)
+        filled = after['source_markdown'].replace('[Name the concept this part teaches]', 'Principal components')
+        hs.update_session(self.root, rel, text=filled)
         self.assertEqual(hs.validate_sessions(self.root), [])
         args.force = True
         with self.assertRaises(SystemExit):

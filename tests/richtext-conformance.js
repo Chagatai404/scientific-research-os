@@ -68,6 +68,13 @@ for (let i = 0; i < 3000; i++) {
   for (const m of out.matchAll(/<\/?([a-z0-9]+)/g)) assert(ALLOWED_TAGS.has(m[1]), 'tag ' + m[1] + ' from ' + JSON.stringify(text));
 }
 
+// A note link's syntax is decided identically in Python, the runtime and the host (the host also re-checks it before opening).
+const targets = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/note-targets.json'), 'utf8'));
+for (const t of targets.valid) assert(rich.validNoteTarget(t), 'valid note target rejected: ' + JSON.stringify(t));
+for (const t of targets.invalid) assert(!rich.validNoteTarget(t), 'invalid note target accepted: ' + JSON.stringify(t));
+assert(!rich.validNoteTarget(null) && !rich.validNoteTarget(7));
+assert(rich.toHTML(rich.parseInline('[[../secret]]'), {}).includes('ros-note-link-invalid'));
+
 // The shipped bundle contains exactly this module: a stale session.js fails here, not in a user's vault.
 const bundle = fs.readFileSync(path.join(__dirname, '../assets/html-runtime/session.js'), 'utf8').replace(/\r\n/g, '\n');
 assert(bundle.includes(fs.readFileSync(path.join(__dirname, '../assets/html-runtime/richtext.js'), 'utf8').replace(/\r\n/g, '\n')), 'session.js is stale: run python assets/html-runtime/build.py --refresh');

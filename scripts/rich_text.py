@@ -356,6 +356,27 @@ def parse_inline(text, depth=0):
 
 # --- rendering ------------------------------------------------------------------------------
 
+_NOTE_PATH_BAD = re.compile(r'[\x00-\x1f\x7f-\x9f\ufeff\u2028\u2029\\:*?"<>|]')
+_NOTE_SUB_BAD = re.compile(r'[\x00-\x1f\x7f-\x9f\ufeff\u2028\u2029]')
+
+
+def valid_note_target(target):
+    """Whether text is a plausible vault note reference: a relative path, optionally with a #heading or #^block.
+
+    Syntax only. Whether the note exists and may be opened is decided by the host at click time; this rule
+    is mirrored by assets/html-runtime/richtext.js and extensions/obsidian-html/main.js and held identical by
+    tests/fixtures/note-targets.json. No scheme, drive letter, absolute path, traversal or hidden folder passes.
+    """
+    if not isinstance(target, str) or not 0 < len(target) <= 256 or re.search(r'\A\s|\s\Z', target):
+        return False
+    path, _, sub = target.partition('#')
+    if not path or len(sub) > 200 or _NOTE_PATH_BAD.search(path) or _NOTE_SUB_BAD.search(sub):
+        return False
+    if path.startswith('/') or path.endswith('/'):
+        return False
+    return all(part not in ('', '.', '..') and not part.startswith('.') for part in path.split('/'))
+
+
 def _esc(value):
     return html.escape(value, quote=True)
 
@@ -384,8 +405,13 @@ def to_html(nodes, labels=None):
             else:
                 out.append('<span class="ros-link">' + label + ' <span class="ros-link-target">(' + _esc(node['href']) + ')</span></span>')
         elif kind == 'wikilink':
-            out.append('<span class="ros-note-link" data-ros-target="' + _esc(node['target']) + '" title="' + _esc(node['target']) + '">'
-                       + to_html(node['c'], labels) + '</span>')
+            # A syntactically valid target is a link the runtime asks the host to open; anything else stays visible but inert.
+            if valid_note_target(node['target']):
+                out.append('<a class="ros-note-link" href="#ros-note-link" role="link" data-ros-target="' + _esc(node['target']) + '" title="'
+                           + _esc(node['target']) + '">' + to_html(node['c'], labels) + '</a>')
+            else:
+                out.append('<span class="ros-note-link ros-note-link-invalid" data-ros-target="' + _esc(node['target']) + '" title="'
+                           + _esc(node['target']) + ' (not a navigable note)">' + to_html(node['c'], labels) + '</span>')
         elif kind == 'ref':
             number = labels.get(node['label'])
             if number is None:

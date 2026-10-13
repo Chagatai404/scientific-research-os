@@ -300,13 +300,43 @@
    "id": "wikilink",
    "input": "see [[Radiation length|the X0 note]] now",
    "labels": {},
-   "html": "see <span class=\"ros-note-link\" data-ros-target=\"Radiation length\" title=\"Radiation length\">the X0 note</span> now"
+   "html": "see <a class=\"ros-note-link\" href=\"#ros-note-link\" role=\"link\" data-ros-target=\"Radiation length\" title=\"Radiation length\">the X0 note</a> now"
   },
   {
    "id": "wikilink-heading",
    "input": "see [[Radiation length#Definition]]",
    "labels": {},
-   "html": "see <span class=\"ros-note-link\" data-ros-target=\"Radiation length#Definition\" title=\"Radiation length#Definition\">Radiation length</span>"
+   "html": "see <a class=\"ros-note-link\" href=\"#ros-note-link\" role=\"link\" data-ros-target=\"Radiation length#Definition\" title=\"Radiation length#Definition\">Radiation length</a>"
+  },
+  {
+   "id": "wikilink-path",
+   "input": "a [[Notes/Gamma distribution|the gamma law]] b",
+   "labels": {},
+   "html": "a <a class=\"ros-note-link\" href=\"#ros-note-link\" role=\"link\" data-ros-target=\"Notes/Gamma distribution\" title=\"Notes/Gamma distribution\">the gamma law</a> b"
+  },
+  {
+   "id": "wikilink-block",
+   "input": "[[Radiation length#^def-x0]]",
+   "labels": {},
+   "html": "<a class=\"ros-note-link\" href=\"#ros-note-link\" role=\"link\" data-ros-target=\"Radiation length#^def-x0\" title=\"Radiation length#^def-x0\">Radiation length</a>"
+  },
+  {
+   "id": "wikilink-url-is-inert",
+   "input": "[[https://example.org/x|site]]",
+   "labels": {},
+   "html": "<span class=\"ros-note-link ros-note-link-invalid\" data-ros-target=\"https://example.org/x\" title=\"https://example.org/x (not a navigable note)\">site</span>"
+  },
+  {
+   "id": "wikilink-traversal-is-inert",
+   "input": "[[../secret note]]",
+   "labels": {},
+   "html": "<span class=\"ros-note-link ros-note-link-invalid\" data-ros-target=\"../secret note\" title=\"../secret note (not a navigable note)\">../secret note</span>"
+  },
+  {
+   "id": "wikilink-hidden-folder-is-inert",
+   "input": "[[.obsidian/app]]",
+   "labels": {},
+   "html": "<span class=\"ros-note-link ros-note-link-invalid\" data-ros-target=\".obsidian/app\" title=\".obsidian/app (not a navigable note)\">.obsidian/app</span>"
   },
   {
    "id": "link-anchor",

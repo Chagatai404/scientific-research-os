@@ -23,7 +23,8 @@ CHROME_CANDIDATES = (
 )
 BROWSER_TESTS = ('html-runtime-browser.js', 'html-browser-e2e.cjs', 'html-components-browser.cjs',
                  'html-design-browser.cjs', 'html-gallery-browser.cjs', 'html-navigation-browser.cjs',
-                 'html-tutor-browser.cjs', 'html-richtext-browser.cjs', 'html-visuals-browser.cjs', 'html-visual-parity.cjs')
+                 'html-tutor-browser.cjs', 'html-richtext-browser.cjs', 'html-visuals-browser.cjs', 'html-workspace-browser.cjs',
+                 'html-visual-parity.cjs')
 NODE_TESTS = ('html-host.test.js', 'html-runtime-unit.js', 'richtext-conformance.js')
 SESSION_INPUT_TESTS = {'html-navigation-browser.cjs'}
 # Needs material the repository cannot supply; reported as SKIPPED, never as passed.
@@ -68,7 +69,8 @@ def fixture_session(vault):
     import html_sessions
     # Sections must be taller than the viewport so scrolling decides which one is current.
     body = '\n\n'.join(f'Paragraph {n} of the section, with $x_{n}^2$ and enough prose to occupy vertical space.' for n in range(1, 25))
-    source = '# Gate session\n\n' + '\n\n'.join(f'## Section {i}\n\n{body}' for i in range(1, 6)) + '\n'
+    names = ('Why the quantity matters', 'Building the model', 'Checking the units', 'Estimating the uncertainty', 'Applying it to data')
+    source = '# Gate session\n\n' + '\n\n'.join(f'## {name}\n\n{body}' for name in names) + '\n'
     html_sessions.create_session(vault, 'gate.md', source, title='Gate session')
     return vault / 'gate.html'
 

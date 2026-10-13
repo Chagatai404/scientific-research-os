@@ -13,6 +13,35 @@ const TAGS = new Set(('a abbr article aside b blockquote br button caption code 
 const ATTRS = new Set(('id class title alt role aria-label aria-labelledby aria-describedby aria-expanded aria-live aria-hidden tabindex type name value start min max step placeholder checked disabled selected for open rows cols scope colspan rowspan width height viewbox d x y x1 x2 y1 y2 cx cy r rx ry points fill stroke stroke-width transform xmlns').split(' '));
 
 function sibling(path) { return path.replace(/\.html$/i, '.state.json'); }
+// Navigation is a validated host operation: the page asks, the host decides. Same syntax rule as scripts/rich_text.py and
+// the runtime (tests/fixtures/note-targets.json); the host never trusts the page's judgement of it.
+const NOTE_PATH_BAD = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\ufeff\\u2028\\u2029\\\\\\\\:*?"<>|]');
+const NOTE_SUB_BAD = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\ufeff\\u2028\\u2029]');
+const OPENABLE_NOTES = new Set(['md', 'html']);
+function validNoteTarget(target) {
+  if (typeof target !== 'string' || target.length < 1 || target.length > 256 || /^\s|\s$/.test(target)) return false;
+  const hash = target.indexOf('#');
+  const path = hash < 0 ? target : target.slice(0, hash), sub = hash < 0 ? '' : target.slice(hash + 1);
+  if (!path || sub.length > 200 || NOTE_PATH_BAD.test(path) || NOTE_SUB_BAD.test(sub) || path.startsWith('/') || path.endsWith('/')) return false;
+  return path.split('/').every(part => part !== '' && part !== '.' && part !== '..' && !part.startsWith('.'));
+}
+// Only places the session itself names can be opened from it: wikilinks in its text and questions, and its navigation list.
+function declaredTargets(state) {
+  const found = new Set();
+  for (const item of Array.isArray(state && state.navigation) ? state.navigation : []) if (item && typeof item.target === 'string') found.add(item.target);
+  for (const match of JSON.stringify(state || {}).matchAll(/\[\[([^\[\]|\\]+?)(?:\|[^\[\]\\]*)?\]\]/g)) found.add(match[1].trim());
+  return found;
+}
+function resolveNote(app, target, sourcePath, state) {
+  if (!validNoteTarget(target)) throw new Error('That is not a note reference.');
+  if (!declaredTargets(state).has(target)) throw new Error('This session does not link to that note.');
+  const hash = target.indexOf('#');
+  const linkpath = hash < 0 ? target : target.slice(0, hash), subpath = hash < 0 ? '' : target.slice(hash);
+  const file = app.metadataCache && typeof app.metadataCache.getFirstLinkpathDest === 'function' ? app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath) : null;
+  if (!file || file.children) throw new Error('No note named "' + linkpath + '" exists in this vault.');
+  if (!OPENABLE_NOTES.has(String(file.extension || '').toLowerCase()) || String(file.path).split('/').some(part => part.startsWith('.'))) throw new Error('That file cannot be opened from a session.');
+  return {file, subpath};
+}
 function validateResources(resources, sessionPath) {
   if (resources === undefined) return [];
   if (!Array.isArray(resources) || resources.length > 32) throw new Error('At most 32 approved resources are allowed.');
@@ -113,8 +142,14 @@ function parseState(text) {
 }
 function validateEvent(event, state) {
   if (!event || typeof event !== 'object' || Array.isArray(event)) throw new Error('Invalid event.');
-  const allowed = new Set(['event_id', 'type', 'question_id', 'response', 'created_at']);
+  const allowed = new Set(['event_id', 'type', 'question_id', 'response', 'created_at', 'origin']);
   if (Object.keys(event).some(k => !allowed.has(k))) throw new Error('Unknown event field.');
+  if (event.origin !== undefined) {
+    // Where in the lesson an open question was asked, so the learner can return there.
+    const o = event.origin;
+    if (event.type !== 'open-question' || !o || typeof o !== 'object' || Array.isArray(o) || Object.keys(o).some(k => !['section', 'title'].includes(k))
+      || typeof o.section !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(o.section) || typeof o.title !== 'string' || o.title.length > 200) throw new Error('Invalid question origin.');
+  }
   if (typeof event.event_id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(event.event_id)) throw new Error('Invalid event ID.');
   if (!['response', 'hint', 'solution', 'confidence', 'checkpoint', 'reset', 'open-question'].includes(event.type)) throw new Error('Unsupported event type.');
     if (event.type !== 'open-question' && !(event.type === 'checkpoint' && event.question_id == null) && !state.questions.some(q => q.id === event.question_id)) throw new Error('Unknown question.');
@@ -187,9 +222,9 @@ function sanitizeHtml(html, doc, images = new Map(), descriptions = new Map(), a
 function pageState(state) {
   const visible = Object.assign({}, state); delete visible.context; return visible;
 }
-function buildDocument(body, state, token, runtime, css, theme, modules = []) {
+function buildDocument(body, state, token, runtime, css, theme, modules = [], position = null) {
   const nonce = crypto.randomBytes(24).toString('hex');
-  const safeJSON = JSON.stringify({token, session_id: state.session_id, state: pageState(state)}).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const safeJSON = JSON.stringify({token, session_id: state.session_id, state: pageState(state), position}).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const safeScript = runtime.replace(/<\/script/gi, '<\\/script');
   const safeCSS = css.replace(/<\/style/gi, '<\\/style');
   const moduleScripts = modules.map(code => '<script nonce="' + nonce + '">document.addEventListener("DOMContentLoaded",function(){"use strict";\n' + code.replace(/<\/script/gi, '<\\/script') + '\n},{once:true});</script>').join('');
@@ -297,7 +332,7 @@ class SessionHost extends Component {
       const body = sanitizeHtml(html, doc, images, new Map(resources.map(r => [r.id, r.alt])), state.placement !== 'explicit');
       if (this.frame) this.frame.remove();
       this.frame = doc.createElement('iframe'); this.frame.className = 'ros-html-frame'; this.frame.title = this.state.title || 'Research OS session'; this.frame.setAttribute('sandbox', 'allow-scripts'); this.frame.setAttribute('referrerpolicy', 'no-referrer');
-      this.frame.srcdoc = buildDocument(body, this.state, this.token, runtime, css, doc.body.classList.contains('theme-dark') ? 'dark' : 'light', modules);
+      this.frame.srcdoc = buildDocument(body, this.state, this.token, runtime, css, doc.body.classList.contains('theme-dark') ? 'dark' : 'light', modules, this.position || null);
       this.container.appendChild(this.frame); this.status.classList.remove('ros-error'); this.status.textContent = runtime ? '' : 'Interactive runtime is not installed; showing isolated session content.';
     } catch (error) { if (generation === this.generation) this.fail(error.message); }
   }
@@ -305,6 +340,12 @@ class SessionHost extends Component {
     const data = message.data;
     if (!this.frame || message.source !== this.frame.contentWindow || !data || data.channel !== 'research-os' || data.token !== this.token || data.session_id !== this.state.session_id) return;
     if (data.type === 'ready') { this.ready = true; return; }
+    if (data.type === 'position') {
+      // Remembered in memory only, so a reload (theme change, plugin refresh) returns the learner to where they were.
+      if (typeof data.section === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(data.section) && Number.isFinite(data.offset) && Math.abs(data.offset) < 1e6) this.position = {section: data.section, offset: data.offset};
+      return;
+    }
+    if (data.type === 'navigate') { this.navigate(data.target, this.token); return; }
     if (this.pending >= 32) { this.reply(this.token, {type: 'error', message: 'Too many pending events.'}); return; }
     this.pending++;
     const token = this.token; const generation = this.generation;
@@ -327,7 +368,9 @@ class SessionHost extends Component {
             state.events.push(event); state.updated_at = event.created_at;
             if (event.type === 'open-question') {
               if (!Array.isArray(state.open_questions)) state.open_questions = [];
-              state.open_questions.push({id: event.event_id, prompt: event.response, status: 'open', created_at: event.created_at, session_id: state.session_id, concept: state.metadata && state.metadata.concept || null, explanation_refs: []});
+              const record = {id: event.event_id, prompt: event.response, status: 'open', created_at: event.created_at, session_id: state.session_id, concept: state.metadata && state.metadata.concept || null, explanation_refs: []};
+              if (event.origin) record.origin = event.origin;
+              state.open_questions.push(record);
             }
           }
           const output = JSON.stringify(state, null, 2) + '\n'; if (output.length > MAX_STATE) throw new Error('Session state exceeds size limit.');
@@ -339,6 +382,19 @@ class SessionHost extends Component {
       } catch (error) { this.reply(token, {type: 'error', message: error.message}); }
       finally { this.writing = false; this.pending--; }
     });
+  }
+  // Open a note the session links to, in a new tab so the lesson stays exactly where the learner left it.
+  async navigate(target, token) {
+    const now = Date.now();
+    try {
+      if (this.navigatedAt && now - this.navigatedAt < 400) throw new Error('Please wait a moment before opening another note.');
+      this.navigatedAt = now;
+      const workspace = this.plugin.app.workspace;
+      if (!workspace || typeof workspace.openLinkText !== 'function') throw new Error('Opening notes is not available in this Obsidian.');
+      const {file, subpath} = resolveNote(this.plugin.app, target, this.path, this.state);
+      await workspace.openLinkText(file.path + subpath, this.path, 'tab');
+      this.reply(token, {type: 'navigated', target, title: file.basename || file.path});
+    } catch (error) { this.reply(token, {type: 'navigation-error', target: typeof target === 'string' ? target.slice(0, 256) : '', message: error.message}); }
   }
   reply(token, payload) { if (this.frame && token === this.token) this.frame.contentWindow.postMessage(Object.assign({channel: 'research-os', token, session_id: this.state.session_id}, payload), '*'); }
   onunload() { clearTimeout(this.refreshTimer); if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
@@ -399,4 +455,4 @@ class ResearchOSHTML extends Plugin {
   onunload() { this.app.workspace.detachLeavesOfType(VIEW); }
 }
 module.exports = ResearchOSHTML;
-module.exports._test = {pageState, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling};
+module.exports._test = {pageState, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, resolveNote, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling};

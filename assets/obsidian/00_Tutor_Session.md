@@ -149,7 +149,7 @@ graph TD
 
 ## 6. Lesson log
 
-### Node 1 — 
+### [Name the concept this part teaches]
 
 **Why we need it**
 
@@ -170,7 +170,7 @@ assumptions and limits when needed.
 - [ ] I can derive/reconstruct it.
 - [ ] I can use it in a new example.
 
-### Node 2 — 
+### [Name the concept this part teaches]
 
 ---
 

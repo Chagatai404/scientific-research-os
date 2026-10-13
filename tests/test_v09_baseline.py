@@ -36,8 +36,7 @@ class ScientificBaseline(unittest.TestCase):
         self.assertGreaterEqual(rendered.count('data-tex='), 3)
         self.assertIn('<strong>', rendered)
 
-    @unittest.expectedFailure
-    def test_valid_wikilink_is_navigable(self):  # complaint 6
+    def test_valid_wikilink_is_navigable(self):  # complaint 6 (repaired in Slice 5)
         rendered = hs.markdown_html('See [[Gamma distribution|the gamma law]].')
         self.assertIn('data-ros-target="Gamma distribution"', rendered)
         self.assertNotIn('<span class="ros-note-link"', rendered)

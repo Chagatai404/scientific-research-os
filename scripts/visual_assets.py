@@ -366,23 +366,6 @@ def attach_visual(root, session: str, visual_id: str, resource_id: str | None = 
 
 # ------------------------------------------------------------------- placement
 
-def _lines_outside_code(lines):
-    """(index, is_heading, text) for each line that is lesson prose: not frontmatter and not inside a code fence."""
-    start = 0
-    if lines and lines[0].strip() == '---':
-        closing = next((n for n in range(1, len(lines)) if lines[n].strip() == '---'), None)
-        start = 0 if closing is None else closing + 1
-    fenced = False
-    for number in range(start, len(lines)):
-        line = lines[number]
-        if line.lstrip().startswith(('```', '~~~')):
-            fenced = not fenced
-            continue
-        if not fenced:
-            heading = re.match(r'#{1,6}\s+(.*?)\s*#*\s*$', line)
-            yield number, bool(heading), heading[1] if heading else line
-
-
 def place_visual(root, session: str, *, figure: str | None = None, widget: str | None = None, after_heading: str | None = None,
                  after_text: str | None = None, at_end: bool = False, alt: str | None = None, caption: str | None = None) -> dict:
     """Put one declared figure or widget exactly where the lesson wants it, by editing the lesson's Markdown."""
@@ -409,7 +392,7 @@ def place_visual(root, session: str, *, figure: str | None = None, widget: str |
     source = state['source_markdown']
     newline = '\r\n' if '\r\n' in source else '\n'
     lines = source.replace('\r\n', '\n').split('\n')
-    prose = list(_lines_outside_code(lines))
+    prose = list(hs.prose_lines(lines))
     if at_end:
         at = len(lines)
         while at and not lines[at - 1].strip():
