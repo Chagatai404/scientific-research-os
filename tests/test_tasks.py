@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import tasks as t
 import context_kernel as ck
+import scout
 from literature_fixture import atom, reviewed
 
 NOW = '2026-10-08T10:00:00Z'
@@ -70,12 +71,22 @@ class TaskTests(unittest.TestCase):
             ck.save(ck.build(body), self.root / path)
         return t.bind(self.root, path, 'context-receipt')
 
-    def task(self, key='A', role='visualizer', stage=6, dependencies=None, context=True):
+    def inventory_ref(self, name='inventory.json'):
+        """Bind a real inventory receipt taken over the disposable library (one immutable receipt per name)."""
+        self.context_ref('literature')  # creates the vault, repo and library fixtures once
+        library = self.base / 'library'
+        if not (self.root / name).exists():
+            (self.root / name).write_text(json.dumps(scout.inventory_receipt(library)), encoding='utf-8')
+        return t.bind(self.root, name, 'library-inventory')
+
+    def task(self, key='A', role='visualizer', stage=6, dependencies=None, context=True, inventory=True):
         refs = [t.bind(self.root, 'question.txt', 'question')]
         if role == 'source-verifier':
             refs = [t.bind(self.root, 'source.txt', 'source'), t.bind(self.root, 'claim.txt', 'claim')]
         if context and stage in self.CONTEXT_WORKFLOW:
             refs.append(self.context_ref(self.CONTEXT_WORKFLOW[stage]))
+        if stage == 7 and inventory:
+            refs.append(self.inventory_ref())
         return dict(task_id=key, role=role, goal='Prepare a synthetic bounded result', stage=stage,
                     research_refs=[], input_refs=refs, dependencies=dependencies or [],
                     independence_group='verify' if role == 'source-verifier' else None,
@@ -556,6 +567,88 @@ class TaskTests(unittest.TestCase):
         self.assertEqual(t.gate(self.root, state['tasks']['H'], state['tasks'], self.providers), ('BLOCKED', 'CONTEXT_REQUIRED'))
         state['tasks']['H']['state'] = 'COMPLETE'
         self.assertNotEqual(t.gate(self.root, state['tasks']['H'], state['tasks'], self.providers)[1], 'CONTEXT_REQUIRED')
+
+    # -- the local library inventory rule (v0.9 Slice 8) -------------------------------------------------------------
+
+    def reconciliation(self, key='R', inventory=True, extra=()):
+        self.plan(self.task('scout', 'literature-scout', 3, context=False))
+        item = self.task(key, 'reconciliation', 7, dependencies=['scout'], inventory=inventory)
+        for ref in extra:
+            item['input_refs'].append(ref)
+            item['context_exposure']['input_paths'].append(ref['path'])
+        return item
+
+    def settle(self, key):
+        """Complete the discovery scout so the reconciliation task is judged on its own inputs."""
+        self.op('start', key)
+        self.op('collect', key, result=self.result(key))
+
+    def test_reconciliation_needs_exactly_one_inventory_receipt(self):
+        self.plan(self.reconciliation('R', inventory=False))
+        self.assertEqual(self.reason('scout'), None)
+        self.settle('scout')
+        self.assertEqual(self.rows()['R']['state'], 'BLOCKED')
+        self.assertEqual(self.reason('R'), 'INVENTORY_REQUIRED')
+
+    def test_a_current_inventory_receipt_satisfies_the_reconciliation_gate(self):
+        self.plan(self.task('scout', 'literature-scout', 3, context=False), self.task('R', 'reconciliation', 7, dependencies=['scout']))
+        self.settle('scout')
+        self.assertEqual(self.rows()['R']['state'], 'READY', self.reason('R'))
+
+    def test_two_inventory_receipts_are_not_accepted_for_one_reconciliation(self):
+        self.plan(self.task('scout', 'literature-scout', 3, context=False))
+        item = self.task('R', 'reconciliation', 7, dependencies=['scout'])
+        second = self.inventory_ref('inventory-again.json')
+        item['input_refs'].append(second)
+        item['context_exposure']['input_paths'].append(second['path'])
+        self.plan(item)
+        self.settle('scout')
+        self.assertEqual(self.reason('R'), 'INVENTORY_REQUIRED')
+
+    def test_an_inventory_made_stale_by_a_library_change_blocks_the_gate(self):
+        self.plan(self.task('scout', 'literature-scout', 3, context=False), self.task('R', 'reconciliation', 7, dependencies=['scout']))
+        self.settle('scout')
+        catalog = self.base / 'library' / '.catalog'
+        catalog.mkdir()
+        (catalog / 'x.paper.json').write_text('{}', encoding='utf-8')
+        self.assertEqual(self.reason('R'), 'INVENTORY_STALE')
+
+    def test_an_edited_or_unreadable_inventory_receipt_is_invalid(self):
+        for name, content in (('edited.json', None), ('junk.json', 'not json')):
+            with self.subTest(name=name):
+                ref = self.inventory_ref(name)
+                path = self.root / name
+                if content is None:
+                    data = json.loads(path.read_text(encoding='utf-8'))
+                    data['coverage'] = {'concept': {'covered': True}}
+                    content = json.dumps(data)
+                path.write_text(content, encoding='utf-8')
+                key = 'R-' + name.split('.')[0]
+                item = self.task(key, 'reconciliation', 7, inventory=False)
+                item['input_refs'].append(t.bind(self.root, name, 'library-inventory'))
+                item['context_exposure']['input_paths'].append(name)
+                self.plan(item)
+                self.assertEqual(self.reason(key), 'INVENTORY_INVALID')
+
+    def test_discovery_cannot_carry_the_inventory(self):
+        item = self.task('scout', 'literature-scout', 3, context=False)
+        ref = self.inventory_ref()
+        item['input_refs'].append(ref)
+        item['context_exposure']['input_paths'].append(ref['path'])
+        self.plan(item)
+        self.assertEqual(self.rows()['scout']['state'], 'BLOCKED')
+        self.assertEqual(self.reason('scout'), 'DISCOVERY_NOT_NEUTRAL')
+
+    def test_an_unconfigured_library_is_recorded_not_assumed(self):
+        (self.root / 'inventory-none.json').write_text(json.dumps(scout.inventory_receipt(None)), encoding='utf-8')
+        self.plan(self.task('scout', 'literature-scout', 3, context=False))
+        item = self.task('R', 'reconciliation', 7, dependencies=['scout'], inventory=False)
+        item['input_refs'].append(t.bind(self.root, 'inventory-none.json', 'library-inventory'))
+        item['context_exposure']['input_paths'].append('inventory-none.json')
+        self.plan(item)
+        self.settle('scout')
+        self.assertEqual(self.rows()['R']['state'], 'READY', self.reason('R'))
+        self.assertIn('library-inventory', t.KINDS)
 
     def test_cli_invalid_arguments_never_echo_private_values(self):
         command = [sys.executable, '-S', '-B', str(ROOT / 'scripts/tasks.py'), '--root', str(self.root)]

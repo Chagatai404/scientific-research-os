@@ -11,6 +11,7 @@ Read:
 - `references/SOURCE_POLICY.md`
 - `references/EVIDENCE_FORMAT.md` when handling consequential structured evidence
 - `references/PAPER_LIBRARY.md` when screening or saving selected papers
+- `references/LITERATURE_SCOUTING.md` for any literature search (inventory first, neutral discovery, then reconciliation)
 
 v0.8 contracts (literature/access/tasks/learning/ownership/defense helpers available):
 `references/LITERATURE_RELIABILITY_PROTOCOL.md`,
@@ -58,6 +59,14 @@ never facts. Invalid manifests export no facts or qualified support. Keep both
 access and conflict qualifications visible; task/read completion is not verification.
 The existing EvidenceAtom CLI remains unchanged for legacy boards without this
 opt-in manifest; do not bypass the literature gate for claims in a manifest.
+
+Literature search is a chain you cannot skip a link of. First take the local library inventory
+(`python scripts/scout.py plan --config <local-config> --question ... --facet ... --out <new-dir>`); give the discovery
+scout `brief.json` only, never the library or the project's preferred answer; check its report with `scout.py check`;
+then `scout.py reconcile` it against the library (a stale inventory is refused) and hand an independent verifier only
+`scout.py handoff` packets. Task planning enforces it: a stage-7 reconciliation task needs one current `library-inventory`
+input and a stage-3 discovery task may not carry one. Reconciliation proposes integration and writes nothing; a collected
+PDF is not a record of reading and a candidate is never verified by the scout.
 
 For selected papers, use the configured local paper-library helper after reviewed
 metadata and relevance screening. Plan first; apply within the user's authorized

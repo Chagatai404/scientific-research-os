@@ -39,7 +39,9 @@ GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
                  "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py",
                  "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py",
-                 "context_kernel.py", "scientific_verify.py", "rich_text.py", "visual_assets.py", "tutor_gate.py", "supervision.py")
+                 "context_kernel.py", "scientific_verify.py", "rich_text.py", "visual_assets.py", "tutor_gate.py", "supervision.py",
+                 # tasks.py gates reconciliation on the library inventory receipt that scout.py produces.
+                 "scout.py")
 
 
 # Every substantive workflow writes HTML sessions, and `html_sessions.py context` loads the

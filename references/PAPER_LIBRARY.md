@@ -15,6 +15,17 @@ A literature session is complete only after each selected useful paper reports
 pdf-saved, metadata-saved, already-in-library, pdf-unavailable with citation, or
 an explicit reviewed rejection. A dry-run plan is not an ingestion outcome.
 
+## Inventory before discovery
+
+The coordinator (never the discovery scout, which works from a neutral brief) takes a read-only inventory of what the
+library already holds before any external search (`python scripts/scout.py plan ...`, see
+[LITERATURE_SCOUTING.md](LITERATURE_SCOUTING.md)): papers by screening and
+ingestion state, whether each PDF is saved, changed, unavailable (with its reason) or absent, the recorded `read_depth`
+(`metadata`, `abstract` or `full-text`; an optional manifest field that deepens but never regresses), coverage of a concept
+or project, and any damage found (unreadable records, one identifier on two records), which is reported and never repaired.
+A saved PDF is not a record of reading. Discovery then runs from a neutral brief, and candidates are reconciled against the
+library afterwards, with an integration plan that only proposes.
+
 ## Configuration and invocation
 
 The v0.8 `LITERATURE_RELIABILITY_PROTOCOL.md` supplies a read-only manifest checker
@@ -70,7 +81,7 @@ Input is a JSON array, for example (synthetic metadata, not a real citation):
 ```
 
 Optional bibliographic fields: authors (list), doi, arxiv_id, other_id, year,
-evidence_role. Stable identifiers are preferred; without one, supplied title and
+evidence_role, read_depth (metadata, abstract or full-text: how much of the paper was actually read). Stable identifiers are preferred; without one, supplied title and
 year form a normalized fallback. DOI URL/case and arXiv versions normalize.
 Conflicting strong identifiers or ambiguous weak matches require review. Different
 known DOIs with the same title/year remain distinct. Repeated ingestion merges

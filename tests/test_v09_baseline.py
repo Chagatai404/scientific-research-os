@@ -87,8 +87,7 @@ class SessionPlacementAndContextBaseline(unittest.TestCase):
 
 
 class LibraryAndVerificationBaseline(unittest.TestCase):
-    @unittest.expectedFailure
-    def test_scout_can_reconcile_candidates_with_the_local_library(self):  # complaint 8
+    def test_scout_can_reconcile_candidates_with_the_local_library(self):  # complaint 8 (repaired in Slice 8)
         with tempfile.TemporaryDirectory() as library:
             pl.ingest(library, {'title': 'Synthetic gamma paper', 'source_url': 'https://example.org/p',
                                 'screening': 'found', 'doi': '10.1234/synthetic'}, apply=True)

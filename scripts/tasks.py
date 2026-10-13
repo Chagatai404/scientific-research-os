@@ -22,7 +22,7 @@ ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z')
 HASH = re.compile(r'[a-f0-9]{64}\Z')
 KINDS = {'question', 'source', 'claim', 'scope', 'criteria', 'data', 'code', 'plan',
          'verified-evidence', 'scout-rationale', 'coordinator-history', 'approval', 'result', 'artifact',
-         'context-receipt'}
+         'context-receipt', 'library-inventory'}
 # Stages whose work depends on the project's graphs; each needs one fresh, usable receipt of a matching workflow.
 # Stage 3 (independent discovery) is deliberately absent: scouts get neutral questions, not project preferences.
 CONTEXT_STAGES = {7: {'literature'}, 8: {'decision-synthesis', 'research-review'}, 14: {'research-implement'},
@@ -385,6 +385,30 @@ def context_gate(root, task):
     return None if receipt['workflow'] in allowed else 'CONTEXT_WORKFLOW_MISMATCH'
 
 
+def inventory_gate(root, task):
+    """Reason code for the local-library inventory rule; None when the task satisfies it.
+
+    Independent discovery (stage 3) must stay neutral, so it may not carry the inventory. Reconciliation (stage 7) must
+    have looked at what the library already holds: exactly one inventory receipt that is intact and still describes the
+    library as it is now.
+    """
+    refs = [i for i in task['input_refs'] if i['kind'] == 'library-inventory']
+    if task['stage'] == 3:
+        return 'DISCOVERY_NOT_NEUTRAL' if refs else None
+    if task['stage'] != 7:
+        return None
+    if len(refs) != 1:
+        return 'INVENTORY_REQUIRED'
+    import scout
+    try:
+        receipt = scout.load_receipt(relative(root, refs[0]['path']))
+        library = receipt['library']
+        reason = scout.staleness(receipt, library.get('root') if library.get('configured') else None)
+    except (scout.ScoutError, OSError, ValueError, TypeError):
+        return 'INVENTORY_INVALID'
+    return 'INVENTORY_STALE' if reason else None
+
+
 def gate(root, task, tasks, providers, active=None, checked=None):
     active = set() if active is None else active
     checked = {} if checked is None else checked
@@ -413,7 +437,7 @@ def gate(root, task, tasks, providers, active=None, checked=None):
         if state != 'READY':
             return 'BLOCKED', 'DEPENDENCY_INVALID'
     # Completed tasks keep their result without context; anything still to run needs it before approval is asked for.
-    reason = context_gate(root, task) if task['state'] != 'COMPLETE' else None
+    reason = (context_gate(root, task) or inventory_gate(root, task)) if task['state'] != 'COMPLETE' else None
     if reason:
         return 'BLOCKED', reason
     try:
