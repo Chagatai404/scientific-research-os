@@ -50,7 +50,9 @@ def run(name, command, env=None, cwd=ROOT, timeout=900):
         done = subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout,
                               encoding='utf-8', errors='replace')
         status = 'PASS' if done.returncode == 0 else 'FAIL'
-        tail = (done.stdout + done.stderr).strip().splitlines()[-6:]
+        # A failing gate keeps enough output to name every failure; a passing one only its summary.
+        lines = (done.stdout + done.stderr).strip().splitlines()
+        tail = lines[-60:] if status == 'FAIL' else lines[-6:]
     except subprocess.TimeoutExpired:
         status, tail = 'FAIL', [f'timed out after {timeout}s']
     return dict(gate=name, status=status, seconds=round(time.monotonic() - started, 1), tail=tail)
