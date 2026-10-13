@@ -574,7 +574,24 @@
     const panelTitle = node('p', 'Questions'); panelTitle.className = 'ros-side-panel-title';
     panelHead.append(panelTitle, panelClose);
     const waiting = node('section'); waiting.className = 'ros-waiting'; waiting.setAttribute('aria-label', 'Responses waiting for the tutor'); waiting.setAttribute('aria-live', 'polite');
-    sidePanel.append(panelHead, waiting, questionForm, history);
+    // Ask for the same idea another way. This is a request the tutor answers in the lesson; it is never a response to a question
+    // and never counts as understanding demonstrated.
+    const MODES = [['simpler', 'More simply'], ['more-rigorous', 'More rigorously'], ['derivation', 'Show the derivation'], ['visual', 'Visually'], ['analogy', 'An analogy'],
+      ['worked-example', 'A worked example'], ['physical-interpretation', 'Physical meaning'], ['implementation', 'How to implement it'], ['prerequisites', 'Review prerequisites']];
+    const explain = node('section'); explain.className = 'ros-explain'; explain.setAttribute('aria-label', 'Ask for a different explanation');
+    const explainTitle = node('p', 'Explain this differently'); explainTitle.className = 'ros-explain-title';
+    const explainModes = node('div'); explainModes.className = 'ros-explain-modes'; explainModes.setAttribute('role', 'group'); explainModes.setAttribute('aria-label', 'Explanation styles');
+    const explainNote = node('p'); explainNote.className = 'ros-explain-note'; explainNote.setAttribute('role', 'status');
+    for (const [mode, label] of MODES) {
+      const ask = button(label, () => {
+        const origin = currentOrigin();
+        emit('explanation-request', null, mode, origin);
+        explainNote.textContent = 'Requested: ' + label.toLowerCase() + (origin ? ' for “' + origin.title + '”' : '') + '. The tutor adds it to the lesson; asking does not count as understanding it.';
+      });
+      ask.className = 'ros-explain-mode'; explainModes.append(ask);
+    }
+    explain.append(explainTitle, explainModes, explainNote);
+    sidePanel.append(panelHead, waiting, explain, questionForm, history);
     const panelToggle = button('', () => setPanel(sidePanel.hidden)); panelToggle.className = 'ros-panel-toggle';
     panelToggle.setAttribute('aria-controls', 'ros-side-panel'); panelToggle.setAttribute('aria-expanded', 'false');
     doc.body.append(sidePanel, panelToggle);
@@ -597,30 +614,49 @@
       if (!persistent.matches) setPanel(false, false);
       jumpTo(heading); return true;
     }
+    const ADAPT_LABEL = Object.fromEntries(MODES);
+    const isAnswered = r => r.kind === 'explanation' ? r.status === 'answered' : typeof r.answer === 'string' && r.answer.trim() !== '';
+    // Questions and requests for another explanation, oldest first; saved records plus anything still on its way to the host.
+    function conversationRecords() {
+      const asked = new Map((state.open_questions || []).map(q => [q.id, Object.assign({kind: 'question'}, q)]));
+      for (const event of localEvents) if (event.type === 'open-question' && !asked.has(event.event_id))
+        asked.set(event.event_id, {kind: 'question', id: event.event_id, prompt: event.response, origin: event.origin, created_at: event.created_at});
+      const requested = new Map((state.explanation_requests || []).map(r => [r.id, Object.assign({kind: 'explanation'}, r)]));
+      for (const event of localEvents) if (event.type === 'explanation-request' && !requested.has(event.event_id))
+        requested.set(event.event_id, {kind: 'explanation', id: event.event_id, mode: event.response, status: 'open', origin: event.origin, created_at: event.created_at});
+      return [...asked.values(), ...requested.values()].sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+    }
     function renderConversation() {
-      const records = new Map((state.open_questions || []).map(q => [q.id, q]));
-      for (const event of localEvents) if (event.type === 'open-question' && !records.has(event.event_id))
-        records.set(event.event_id, {id:event.event_id, prompt:event.response, origin:event.origin});
+      const records = conversationRecords();
       history.replaceChildren();
-      answeredNow = new Set([...records.values()].filter(r => typeof r.answer === 'string' && r.answer.trim()).map(r => r.id));
+      answeredNow = new Set(records.filter(isAnswered).map(r => r.id));
       if (firstConversation) { firstConversation = false; answeredNow.forEach(id => seenAnswers.add(id)); }
       if (!sidePanel.hidden) answeredNow.forEach(id => seenAnswers.add(id));
-      if (!records.size) return;
+      if (!records.length) return;
       history.append(node('h2', 'Questions and answers'));
-      for (const record of records.values()) {
-        const answered = typeof record.answer === 'string' && record.answer.trim();
-        const entry = node('article'); entry.className = 'ros-question-entry'; entry.dataset.openQuestionId = record.id; entry.dataset.status = answered ? 'resolved' : 'open';
-        const chip = node('span', answered ? 'Answered' : 'Open'); chip.className = 'ros-question-state'; chip.dataset.state = answered ? 'matches' : 'pending';
-        entry.append(chip, node('h3', 'Question'), rich('p', record.prompt));
+      for (const record of records) {
+        const answered = isAnswered(record), explanation = record.kind === 'explanation';
+        const entry = node('article'); entry.className = explanation ? 'ros-question-entry ros-explanation-entry' : 'ros-question-entry'; entry.dataset.status = answered ? 'resolved' : 'open';
+        if (explanation) entry.dataset.explanationId = record.id; else entry.dataset.openQuestionId = record.id;
+        const chip = node('span', answered ? (explanation ? 'Explained' : 'Answered') : 'Open'); chip.className = 'ros-question-state'; chip.dataset.state = answered ? 'matches' : 'pending';
+        if (explanation) entry.append(chip, node('h3', 'Explanation requested'), node('p', ADAPT_LABEL[record.mode] || String(record.mode)));
+        else entry.append(chip, node('h3', 'Question'), rich('p', record.prompt));
         const origin = record.origin;
         if (origin && typeof origin.section === 'string' && doc.getElementById(origin.section)) {
           const back = button('Back to ' + String(origin.title || 'where you asked'), () => goToSection(origin.section)); back.className = 'ros-return';
           entry.append(back);
         }
         const answer = node('div'); answer.className = 'ros-question-answer';
-        answer.append(node('h3', 'Answer'), answered ? rich('p', record.answer) : node('p', 'Awaiting an answer from the session agent.'));
+        if (explanation) {
+          const where = record.answered_in;
+          answer.append(node('h3', 'Explained'));
+          if (answered && where && doc.getElementById(where.section)) {
+            const go = button('Go to “' + String(where.title || 'the explanation') + '”', () => goToSection(where.section)); go.className = 'ros-return';
+            answer.append(node('p', 'Added to the lesson.'), go);
+          } else answer.append(node('p', answered ? 'Added to the lesson.' : 'Waiting for the tutor to add this to the lesson.'));
+        } else answer.append(node('h3', 'Answer'), answered ? rich('p', record.answer) : node('p', 'Awaiting an answer from the session agent.'));
         entry.append(answer);
-        if (pending.has(record.id)) entry.append(node('small', 'Saving question...'));
+        if (pending.has(record.id)) entry.append(node('small', explanation ? 'Saving request...' : 'Saving question...'));
         history.append(entry);
       }
     }
@@ -632,8 +668,7 @@
         const {latest, verdict} = verdictFor(panel);
         if (latest && !verdict && !failed.has(latest.event_id) && !pending.has(latest.event_id)) items.push(panel);
       }
-      const open = [...(state.open_questions || [])].filter(q => !(typeof q.answer === 'string' && q.answer.trim())).length
-        + localEvents.filter(e => e.type === 'open-question' && pending.has(e.event_id)).length;
+      const open = conversationRecords().filter(r => !isAnswered(r)).length;
       const count = items.length + open;
       const fresh = [...answeredNow].filter(id => !seenAnswers.has(id)).length;
       panelToggle.replaceChildren(node('span', fresh ? 'Questions — new answer' : 'Questions'));

@@ -128,7 +128,7 @@ def validate_interaction(event, question_ids):
     if 'origin' in event:
         # Where in the lesson an open question was asked, so the learner can return there; a section anchor and its title.
         origin = event['origin']
-        if (event.get('type') != 'open-question' or not isinstance(origin, dict) or set(origin) - {'section', 'title'}
+        if (event.get('type') not in ('open-question', 'explanation-request') or not isinstance(origin, dict) or set(origin) - {'section', 'title'}
                 or not isinstance(origin.get('section'), str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', origin['section'])
                 or not isinstance(origin.get('title'), str) or len(origin['title']) > 200):
             raise ValueError('Invalid question origin')
@@ -139,7 +139,11 @@ def validate_interaction(event, question_ids):
             dt.datetime.fromisoformat(event['created_at'].replace('Z','+00:00'))
         except (ValueError, TypeError, AttributeError):
             raise ValueError('Invalid interaction timestamp') from None
-    if event.get('type') in {'open-question','checkpoint'}:
+    if event.get('type') == 'explanation-request':
+        # A request for another explanation: one of the known modes, tied to no question, and never evidence of anything.
+        if not (isinstance(event.get('response'), str) and event['response'] in ADAPT_MODES) or event.get('question_id') is not None:
+            raise ValueError('An explanation request names one known mode and no question')
+    elif event.get('type') in {'open-question','checkpoint'}:
         if not isinstance(event.get('response'), str) or not event['response'].strip():
             raise ValueError('Question/checkpoint requires bounded nonempty text')
     else:
@@ -167,6 +171,11 @@ def validate_interaction(event, question_ids):
 
 
 REVIEW_VERDICTS = ("correct", "partially-correct", "incorrect", "reviewed")
+# What a learner can ask for instead of moving on. A request is a request: it never counts as demonstrated understanding.
+ADAPT_MODES = {"simpler": "Explain more simply", "more-rigorous": "Explain more rigorously", "derivation": "Show the derivation",
+               "visual": "Explain visually", "analogy": "Give an intuitive analogy", "worked-example": "Show a worked example",
+               "physical-interpretation": "Explain the physical interpretation", "implementation": "Explain how to implement it",
+               "prerequisites": "Review the prerequisites"}
 QUESTION_KINDS = {"mcq", "multi", "numeric", "matching", "ordering", "free-response"}
 
 
@@ -175,8 +184,17 @@ def _validate_reviews(reviews):
     if not isinstance(reviews, list) or len(reviews) > 200:
         raise ValueError("Invalid question reviews")
     for review in reviews:
-        if not isinstance(review, dict) or set(review) - {"response_event_id", "verdict", "feedback", "reviewed_at"}:
+        if not isinstance(review, dict) or set(review) - {"response_event_id", "verdict", "feedback", "reviewed_at", "criteria_met", "reviewed_by", "rationale"}:
             raise ValueError("Invalid question review")
+        # Optional structured review: which declared criteria the answer met, and who judged it.
+        if "criteria_met" in review and not (isinstance(review["criteria_met"], list) and 0 < len(review["criteria_met"]) <= 20
+                                             and all(type(x) is bool for x in review["criteria_met"])):
+            raise ValueError("criteria_met is a list of true/false, one per declared criterion")
+        if "criteria_met" in review and review.get("verdict") == "correct" and not all(review["criteria_met"]):
+            raise ValueError("A correct verdict requires every declared criterion to be met")
+        for key, limit in (("reviewed_by", 200), ("rationale", 2000)):
+            if key in review and not (isinstance(review[key], str) and 0 < len(review[key].strip()) <= limit):
+                raise ValueError(f"Review {key} must be bounded text")
         if review.get("verdict") not in REVIEW_VERDICTS:
             raise ValueError("Unsupported review verdict")
         if not isinstance(review.get("feedback", ""), str) or len(review.get("feedback", "")) > 32000:
@@ -243,6 +261,17 @@ def validate_state(state):
         raise ValueError("Unsupported placement mode")
     if "navigation" in state:
         _validate_navigation(state["navigation"])
+    # Tutoring declarations are checked in depth by tutor_gate (validate / check); here only their shape and size are bounded.
+    if "teaching" in state and not (isinstance(state["teaching"], list) and len(state["teaching"]) <= 64 and all(isinstance(b, dict) for b in state["teaching"])):
+        raise ValueError("Invalid teaching declarations")
+    if "tutoring" in state and not isinstance(state["tutoring"], dict):
+        raise ValueError("Invalid tutoring declaration")
+    if "explanation_requests" in state:
+        requests = state["explanation_requests"]
+        if (not isinstance(requests, list) or len(requests) > 200 or any(
+                not isinstance(r, dict) or not (isinstance(r.get("mode"), str) and r["mode"] in ADAPT_MODES) or r.get("status") not in ("open", "answered")
+                or not isinstance(r.get("id"), str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", r["id"]) for r in requests)):
+            raise ValueError("Invalid explanation requests")
     if not isinstance(state.get("resources", []), list):
         raise ValueError("Invalid session resources")
     for resource in state.get("resources", []):
@@ -273,12 +302,12 @@ def validate_state(state):
     event_ids = set()
     for event in state["events"]:
         validate_interaction(event, ids)
-        if not isinstance(event, dict) or event.get("type") not in {"response", "hint", "solution", "confidence", "checkpoint", "reset", "open-question"}:
+        if not isinstance(event, dict) or event.get("type") not in {"response", "hint", "solution", "confidence", "checkpoint", "reset", "open-question", "explanation-request"}:
             raise ValueError("Unsupported interaction event")
         if not isinstance(event.get("event_id"), str) or event["event_id"] in event_ids:
             raise ValueError("Invalid or duplicate event identity")
         event_ids.add(event["event_id"])
-        if event.get("type") not in {"open-question", "checkpoint"} and event.get("question_id") not in ids:
+        if event.get("type") not in {"open-question", "checkpoint", "explanation-request"} and event.get("question_id") not in ids:
             raise ValueError("Unknown interaction question")
         if event.get("status") not in (None, "pending-review"):
             raise ValueError("Browser evidence must remain pending review")
@@ -683,10 +712,19 @@ def _placement_notice(issues):
                    + html.escape(i['message']) + '</aside>' for i in issues)
 
 
+def _teaching_source(state):
+    """The lesson source as shown: implementation blocks carry their declared literacy items under their heading."""
+    blocks = [b for b in state.get("teaching", []) if isinstance(b, dict) and b.get("kind") == "implementation" and isinstance(b.get("literacy"), dict)]
+    if not blocks:
+        return state["source_markdown"]
+    import tutor_gate  # imports this module, so it is loaded on demand
+    return tutor_gate.expand_literacy(state["source_markdown"], blocks)
+
+
 def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, resource_markup="", resource_scripts="", resource_images=None):
     validate_state(state)
     placed, seen = set(), {}
-    content = markdown_html(state["source_markdown"], page_title=state["title"], questions={q["id"]: q for q in state["questions"]}, placed=placed,
+    content = markdown_html(_teaching_source(state), page_title=state["title"], questions={q["id"]: q for q in state["questions"]}, placed=placed,
                             widgets={w["id"]: w for w in state.get("widgets", [])},
                             figures={r["id"]: r for r in state.get("resources", []) if r.get("kind") == "image"}, placement=seen)
     # New sessions never append a visual silently: a visual with no place becomes a visible diagnostic. Historical
@@ -856,7 +894,7 @@ def update_session(root, relative_md, text=None, **changes):
     md, _, _ = paths(root, relative_md)
     with Lock(md.with_suffix(".session.lock")):
         state = load_session(root, relative_md)
-        allowed = {"title", "metadata", "questions", "open_questions", "lifecycle", "widgets", "resources", "navigation"}
+        allowed = {"title", "metadata", "questions", "open_questions", "lifecycle", "widgets", "resources", "navigation", "teaching", "tutoring"}
         if set(changes) - allowed:
             raise ValueError("Unsupported session update fields")
         source = state["source_markdown"] if text is None else text
@@ -938,6 +976,57 @@ def answer_open_question(root, relative_md, question_id, answer):
         return _save(root, relative_md, state)
 
 
+def section_anchors(state):
+    """Heading text -> anchor id, exactly as the page assigns them (a text that appears twice maps to its first anchor)."""
+    content = markdown_html(state["source_markdown"], page_title=state["title"], questions={q["id"]: q for q in state["questions"]})
+    anchors = {}
+    for ident, label in re.findall(r'<h[1-6]\b[^>]*\bid="([^"]+)"[^>]*>(.*?)</h[1-6]>', content, re.S):
+        anchors.setdefault(html.unescape(re.sub(r"<[^>]+>", "", label)).strip(), ident)
+    return anchors
+
+
+def answer_explanation_request(root, relative_md, request_id, heading):
+    """Record that a requested explanation now exists under a heading of the lesson, so the learner can go there and come back.
+
+    The explanation itself is ordinary lesson text added with append_session; this only links the request to it. A request
+    is never learning evidence, and answering it changes nothing in the learner's record.
+    """
+    md, _, _ = paths(root, relative_md)
+    with Lock(md.with_suffix(".session.lock")):
+        state = load_session(root, relative_md)
+        record = next((r for r in state.get("explanation_requests", []) if r.get("id") == request_id), None)
+        if record is None:
+            raise ValueError("Unknown explanation request")
+        anchor = section_anchors(state).get(str(heading).strip())
+        if anchor is None:
+            raise ValueError("No heading reads exactly " + repr(heading) + "; add the explanation to the lesson under that heading first")
+        if record.get("answered_in") and record["answered_in"].get("section") == anchor:
+            return state
+        record.update(status="answered", answered_in={"section": anchor, "title": str(heading).strip()[:200]}, answered_at=_now())
+        state["updated_at"] = _now()
+        return _save(root, relative_md, state)
+
+
+def declare_block(root, relative_md, block):
+    """Declare what a section teaches, introduces and assumes (and, for implementation, its literacy items).
+
+    The declaration must match a real heading of the lesson; tutor_gate.py check then holds the order of the lesson to
+    the learner's recorded knowledge. Redeclaring an id replaces it.
+    """
+    import tutor_gate
+    md, _, _ = paths(root, relative_md)
+    with Lock(md.with_suffix(".session.lock")):
+        state = load_session(root, relative_md)
+        others = [b for b in state.get("teaching", []) if not (isinstance(b, dict) and isinstance(block, dict) and b.get("id") == block.get("id"))]
+        prospective = dict(state, teaching=others + [block])
+        problems = [i for i in tutor_gate.block_issues(prospective)[0] if i["severity"] == "error"]
+        if problems:
+            raise ValueError("Teaching block: " + "; ".join(i["message"] for i in problems))
+        state["teaching"] = prospective["teaching"]
+        state["updated_at"] = _now()
+        return _save(root, relative_md, state)
+
+
 def append_session(root, relative_md, block):
     md, _, _ = paths(root, relative_md)
     with Lock(md.with_suffix(".session.lock")):
@@ -964,6 +1053,11 @@ def append_event(root, relative_md, event):
             if "origin" in event:
                 record["origin"] = event["origin"]
             state["open_questions"].append(record)
+        if event["type"] == "explanation-request":
+            asked = {"id": event["event_id"], "mode": event["response"], "status": "open", "created_at": event["created_at"]}
+            if "origin" in event:
+                asked["origin"] = event["origin"]
+            state.setdefault("explanation_requests", []).append(asked)
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
 
@@ -979,6 +1073,14 @@ def _append_question(state, question):
         raise ValueError("A question needs a prompt")
     if "reviews" in question:
         raise ValueError("Reviews are recorded with review_response, not authored")
+    if "contract" in question:
+        # A probe is tied to one capability before it is posted: TESTS/ASSUMES/INTRODUCES, scope, dimension, method, units, criteria.
+        import tutor_gate
+        contract = question["contract"]
+        assumed = set(contract.get("ASSUMES") or []) if isinstance(contract, dict) and isinstance(contract.get("ASSUMES"), list) else set()
+        problems = [i["message"] for i in tutor_gate.question_issues(question, assumed) if i["severity"] == "error"]
+        if problems:
+            raise ValueError("Question contract: " + "; ".join(problems))
     if not QUESTION_MARKER.match("<!-- ros-question: " + question["id"] + " -->"):
         raise ValueError("Question ids use letters, digits, dot, underscore, colon or hyphen")
     state["questions"].append(dict(question))
@@ -1000,13 +1102,17 @@ def add_question(root, relative_md, question):
         return _save(root, relative_md, state)
 
 
-def review_response(root, relative_md, question_id, verdict, feedback="", next_question=None, transcript=None):
+def review_response(root, relative_md, question_id, verdict, feedback="", next_question=None, transcript=None,
+                    criteria_met=None, reviewed_by=None, rationale=None):
     """Record the tutor's verdict on the learner's latest actual response.
 
     The verdict and the question's prepared explanation appear in place of the
     learner's "Checking..." state. It is pending tutor feedback, not ledger
     evidence: canonical attempts still follow the learning protocol. One save can
     also post the next question and a transcript entry so the page updates once.
+
+    A question that declares ``criteria`` is reviewed against every one of them (``criteria_met``, one true/false each):
+    a reviewer cannot pass an answer without saying which criteria it met.
     """
     if verdict not in REVIEW_VERDICTS:
         raise ValueError("Verdict must be one of: " + ", ".join(REVIEW_VERDICTS))
@@ -1024,6 +1130,16 @@ def review_response(root, relative_md, question_id, verdict, feedback="", next_q
         if response is None:
             raise ValueError("No learner response to review; never invent an answer")
         review = {"response_event_id": response["event_id"], "verdict": verdict, "feedback": feedback.strip(), "reviewed_at": _now()}
+        declared = question.get("criteria") or []
+        if declared and verdict != "reviewed" and (not isinstance(criteria_met, list) or len(criteria_met) != len(declared)):
+            raise ValueError("This question declares %d criteria; state for each whether it was met (criteria_met)" % len(declared))
+        if criteria_met is not None:
+            review["criteria_met"] = criteria_met
+        if reviewed_by:
+            review["reviewed_by"] = reviewed_by
+        if rationale:
+            review["rationale"] = rationale
+        _validate_reviews([review])
         reviews = question.setdefault("reviews", [])
         if not reviews or {k: v for k, v in reviews[-1].items() if k != "reviewed_at"} != {k: v for k, v in review.items() if k != "reviewed_at"}:
             reviews.append(review)
@@ -1057,6 +1173,10 @@ def pending_activity(state):
     for record in state.get("open_questions", []):
         if not (isinstance(record.get("answer"), str) and record["answer"].strip()):
             items.append({"kind": "open-question", "id": record.get("id"), "prompt": record.get("prompt"), "created_at": record.get("created_at")})
+    for record in state.get("explanation_requests", []):
+        if record.get("status") == "open":
+            items.append({"kind": "explanation-request", "id": record.get("id"), "mode": record.get("mode"), "wants": ADAPT_MODES.get(record.get("mode")),
+                          "origin": record.get("origin"), "created_at": record.get("created_at")})
     return items
 
 
@@ -1353,6 +1473,10 @@ def validate_sessions(root, exceptions=None):
                 titles = heading_issues(state["source_markdown"])
                 if titles:
                     raise ValueError("section titles: " + "; ".join(f"line {t['line']}: {t['message']}" for t in titles))
+                import tutor_gate
+                tutoring = [i for i in tutor_gate.structural_issues(state) if i["severity"] == "error"]
+                if tutoring:
+                    raise ValueError("tutoring: " + "; ".join(i["where"] + ": " + i["message"] for i in tutoring))
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             errors.append(f"{data.relative_to(root)}: {exc}")
     return errors
@@ -1562,6 +1686,12 @@ def main():
     review.add_argument("--feedback", type=Path, help="UTF-8 text file with the feedback shown beside the question")
     review.add_argument("--next-question", type=Path, help="JSON question posted in the same save")
     review.add_argument("--transcript", type=Path, help="Markdown appended to the session transcript in the same save")
+    review.add_argument("--criteria-met", help="comma-separated true/false, one per criterion the question declares")
+    review.add_argument("--reviewed-by", help="who judged the answer"); review.add_argument("--rationale", type=Path)
+    declare = sub.add_parser("declare-block", help="Declare what a section teaches, introduces and assumes (JSON); must match a heading")
+    declare.add_argument("session"); declare.add_argument("--source", required=True, type=Path)
+    explained = sub.add_parser("answer-explanation", help="Link a learner's explanation request to the heading where it is now explained")
+    explained.add_argument("session"); explained.add_argument("request_id"); explained.add_argument("--heading", required=True)
     wait = sub.add_parser("wait", help="Block until an explicit learner submission awaits the agent (bounded)")
     wait.add_argument("session"); wait.add_argument("--timeout", type=float, default=900.0)
     navigate = sub.add_parser("navigation", help="Derive related-lesson links (prerequisites, earlier lessons, application) from recorded context; dry run unless --apply")
@@ -1660,7 +1790,13 @@ def main():
         result = review_response(root, args.session, args.question_id, args.verdict,
                                  args.feedback.read_text(encoding="utf-8") if args.feedback else "",
                                  json.loads(args.next_question.read_text(encoding="utf-8")) if args.next_question else None,
-                                 args.transcript.read_text(encoding="utf-8") if args.transcript else None)
+                                 args.transcript.read_text(encoding="utf-8") if args.transcript else None,
+                                 criteria_met=[x.strip().lower() == "true" for x in args.criteria_met.split(",")] if args.criteria_met else None,
+                                 reviewed_by=args.reviewed_by, rationale=args.rationale.read_text(encoding="utf-8") if args.rationale else None)
+    elif args.command == "declare-block":
+        result = declare_block(root, args.session, json.loads(args.source.read_text(encoding="utf-8")))
+    elif args.command == "answer-explanation":
+        result = answer_explanation_request(root, args.session, args.request_id, args.heading)
     elif args.command == "wait":
         result = wait_for_activity(root, args.session, args.timeout)
     elif args.command == "context":

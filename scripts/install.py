@@ -39,7 +39,7 @@ GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
                  "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py",
                  "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py",
-                 "context_kernel.py", "scientific_verify.py", "rich_text.py", "visual_assets.py")
+                 "context_kernel.py", "scientific_verify.py", "rich_text.py", "visual_assets.py", "tutor_gate.py")
 
 
 # Every substantive workflow writes HTML sessions, and `html_sessions.py context` loads the
@@ -53,7 +53,9 @@ SESSION_HELPERS = ("html_sessions.py", "common.py", "research.py", "knowledge.py
                    # The shared scientific inline grammar html_sessions renders with.
                    "rich_text.py",
                    # `html_sessions.py place` / `attach-visual` put registered figures into a lesson.
-                   "visual_assets.py", "excalidraw_schematic.py")
+                   "visual_assets.py", "excalidraw_schematic.py",
+                   # Concept-first gates for tutoring sessions (prerequisites, probe contracts, evidence proposals).
+                   "tutor_gate.py", "tutor_contract.py")
 
 
 def copy_dir(src: Path, dst: Path, dry: bool) -> None:

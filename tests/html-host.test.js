@@ -180,6 +180,17 @@ assert(!html.includes('title":"</script>'));
   for (const origin of [{section: 'has space', title: 't'}, {section: 'ok'}, {section: 'ok', title: 't', extra: 1}, 'section-x', null, []])
     assert.throws(() => validateEvent({event_id: 'o', type: 'open-question', question_id: null, response: 'Why?', origin}, state()), /origin/);
   assert.throws(() => validateEvent({...event('o2'), origin: {section: 'ok', title: 't'}}, state()), /origin/);
+  // A request for another explanation names one known mode and no question, keeps where it was asked, and carries no credit.
+  raw = JSON.stringify(base); host.state = state();
+  send({event_id: 'ask-1', type: 'explanation-request', question_id: null, response: 'worked-example', origin: {section: 'section-0123456789ab', title: 'Why scale matters'}}); await host.queue;
+  const requested = JSON.parse(raw).explanation_requests;
+  assert.equal(requested.length, 1);
+  assert.equal(JSON.stringify([requested[0].id, requested[0].mode, requested[0].status, requested[0].origin.title]), JSON.stringify(['ask-1', 'worked-example', 'open', 'Why scale matters']));
+  send({event_id: 'ask-1', type: 'explanation-request', question_id: null, response: 'worked-example'}); await host.queue;
+  assert.equal(JSON.parse(raw).explanation_requests.length, 1, 'a replayed request is recorded once');
+  for (const bad of [{response: 'make it easy'}, {response: 'simpler', question_id: 'q1'}, {response: {mode: 'simpler'}}, {response: 'simpler', mastery: 1}, {response: 'simpler', origin: {section: 'has space', title: 't'}}])
+    assert.throws(() => validateEvent({event_id: 'x', type: 'explanation-request', question_id: null, ...bad}, state()), /explanation mode|Unknown event field|origin/, JSON.stringify(bad));
+  assert.equal(validateEvent({event_id: 'ok', type: 'explanation-request', question_id: null, response: 'prerequisites'}, state()).status, 'pending-review');
   fs.rmdirSync(vaultRoot);
   console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -18,6 +18,7 @@ function sibling(path) { return path.replace(/\.html$/i, '.state.json'); }
 const NOTE_PATH_BAD = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\ufeff\\u2028\\u2029\\\\\\\\:*?"<>|]');
 const NOTE_SUB_BAD = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\ufeff\\u2028\\u2029]');
 const OPENABLE_NOTES = new Set(['md', 'html']);
+const ADAPT_MODES = ['simpler', 'more-rigorous', 'derivation', 'visual', 'analogy', 'worked-example', 'physical-interpretation', 'implementation', 'prerequisites'];
 function validNoteTarget(target) {
   if (typeof target !== 'string' || target.length < 1 || target.length > 256 || /^\s|\s$/.test(target)) return false;
   const hash = target.indexOf('#');
@@ -147,15 +148,17 @@ function validateEvent(event, state) {
   if (event.origin !== undefined) {
     // Where in the lesson an open question was asked, so the learner can return there.
     const o = event.origin;
-    if (event.type !== 'open-question' || !o || typeof o !== 'object' || Array.isArray(o) || Object.keys(o).some(k => !['section', 'title'].includes(k))
+    if (!['open-question', 'explanation-request'].includes(event.type) || !o || typeof o !== 'object' || Array.isArray(o) || Object.keys(o).some(k => !['section', 'title'].includes(k))
       || typeof o.section !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(o.section) || typeof o.title !== 'string' || o.title.length > 200) throw new Error('Invalid question origin.');
   }
   if (typeof event.event_id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(event.event_id)) throw new Error('Invalid event ID.');
-  if (!['response', 'hint', 'solution', 'confidence', 'checkpoint', 'reset', 'open-question'].includes(event.type)) throw new Error('Unsupported event type.');
-    if (event.type !== 'open-question' && !(event.type === 'checkpoint' && event.question_id == null) && !state.questions.some(q => q.id === event.question_id)) throw new Error('Unknown question.');
+  if (!['response', 'hint', 'solution', 'confidence', 'checkpoint', 'reset', 'open-question', 'explanation-request'].includes(event.type)) throw new Error('Unsupported event type.');
+    // A request for another explanation names one known mode and no question; it is never evidence of anything.
+    if (event.type === 'explanation-request' && (!ADAPT_MODES.includes(event.response) || (event.question_id !== undefined && event.question_id !== null))) throw new Error('Unknown explanation mode.');
+    if (event.type !== 'open-question' && event.type !== 'explanation-request' && !(event.type === 'checkpoint' && event.question_id == null) && !state.questions.some(q => q.id === event.question_id)) throw new Error('Unknown question.');
     if (event.type === 'open-question' && (typeof event.response !== 'string' || !event.response.trim())) throw new Error('Open question must have a prompt.');
     if (event.type === 'checkpoint' && (typeof event.response !== 'string' || !event.response.trim())) throw new Error('Checkpoint must include a raw explanation.');
-  if (event.question_id !== undefined && !(['checkpoint', 'open-question'].includes(event.type) && event.question_id === null) && (typeof event.question_id !== 'string' || event.question_id.length > 128)) throw new Error('Invalid question ID.');
+  if (event.question_id !== undefined && !(['checkpoint', 'open-question', 'explanation-request'].includes(event.type) && event.question_id === null) && (typeof event.question_id !== 'string' || event.question_id.length > 128)) throw new Error('Invalid question ID.');
   function checkValue(value, depth = 0) {
     if (depth > 4) throw new Error('Response nesting limit exceeded.');
     if (value === null || ['string', 'boolean'].includes(typeof value)) return;
@@ -366,6 +369,13 @@ class SessionHost extends Component {
           if (!state.events.some(e => e.event_id === event.event_id)) {
             if (state.events.length >= MAX_EVENTS) throw new Error('Session event limit reached.');
             state.events.push(event); state.updated_at = event.created_at;
+            if (event.type === 'explanation-request') {
+              if (!Array.isArray(state.explanation_requests)) state.explanation_requests = [];
+              if (state.explanation_requests.length >= 200) throw new Error('Too many explanation requests.');
+              const asked = {id: event.event_id, mode: event.response, status: 'open', created_at: event.created_at};
+              if (event.origin) asked.origin = event.origin;
+              state.explanation_requests.push(asked);
+            }
             if (event.type === 'open-question') {
               if (!Array.isArray(state.open_questions)) state.open_questions = [];
               const record = {id: event.event_id, prompt: event.response, status: 'open', created_at: event.created_at, session_id: state.session_id, concept: state.metadata && state.metadata.concept || null, explanation_refs: []};

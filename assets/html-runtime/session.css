@@ -395,6 +395,12 @@ a.ros-note-link:hover { text-decoration-style: solid; }
 .ros-side-panel .ros-question-history > h2 { font-size: 16px; margin-top: 0; }
 .ros-question-entry { padding: var(--ros-space-3) 0; border-top: 1px solid var(--ros-border); }
 .ros-question-entry .ros-question-state { float: right; font: 600 13px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); }
+.ros-explain { margin: var(--ros-space-4) 0; }
+.ros-explain-title { margin: 0 0 var(--ros-space-2); font: 700 14px/1.4 var(--ros-font-ui); }
+.ros-explain-modes { display: flex; flex-wrap: wrap; gap: var(--ros-space-2); }
+.ros-explain-mode { min-height: 36px; padding: 0 var(--ros-space-3); border-radius: 999px; font-size: 13px; }
+.ros-explain-note { margin: var(--ros-space-2) 0 0; font: 13px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); }
+.ros-explain-note:empty { display: none; }
 .ros-waiting-title { margin: var(--ros-space-4) 0 var(--ros-space-1); font: 700 14px/1.4 var(--ros-font-ui); }
 .ros-waiting ul { list-style: none; margin: 0; padding: 0; font: 14px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); }
 .ros-waiting li { padding: var(--ros-space-1) 0; }

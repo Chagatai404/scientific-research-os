@@ -52,6 +52,14 @@ unknown, never demonstrated. Dependent actions check the receipt themselves (`ht
 `tasks.py` stages 7/8/14/15), so skipping this step fails rather than passes silently.
 See `references/CONTEXT_PROTOCOL.md`.
 
+## Concept-first gates
+
+Course sessions follow the same executable gates as tutoring (`references/TUTORING_GATES.md`): declare what each section
+teaches with `html_sessions.py declare-block`, run `python scripts/tutor_gate.py --root <vault> check <session> --receipt <receipt>`
+before posting, give every probe a contract within the diagnostic budget, answer a learner's request for another
+explanation in the lesson (it is never evidence), and review answers against every criterion. A prerequisite the learner
+record does not establish is taught, probed or branched to first, never assumed.
+
 ## Mandatory session artifacts
 
 When this workflow creates or continues a substantive session, follow

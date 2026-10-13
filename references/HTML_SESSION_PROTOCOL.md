@@ -116,6 +116,12 @@ returns to the section a question was asked in). From 1600px wide all three are 
 contents bar stays pinned and the questions panel is a drawer opened from a button (Escape closes it and returns
 focus). A question answered while the drawer is closed is signalled on its button.
 
+**The learner can ask for the same idea another way.** The panel offers nine styles (more simply, more rigorously, show the
+derivation, visually, an analogy, a worked example, physical meaning, how to implement it, review prerequisites). A request
+is recorded with the section it came from and listed in pending activity; the agent adds the explanation to the lesson under
+a new heading and links it with `html_sessions.py answer-explanation`. A request is never a response and never evidence. Concept-first gates,
+probe contracts, evidence proposals and implementation literacy are in `references/TUTORING_GATES.md`.
+
 **Related lessons come from recorded context, never invention.** `html_sessions.py navigation <session> [--apply]`
 derives prerequisites, the first and recent earlier lessons on the concept, and research applications from the context
 kernel's receipt and stores them as `navigation` (validated note references, at most 64). A source that is missing

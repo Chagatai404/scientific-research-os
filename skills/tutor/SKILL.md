@@ -23,6 +23,24 @@ unknown, never demonstrated. Dependent actions check the receipt themselves (`ht
 `tasks.py` stages 7/8/14/15), so skipping this step fails rather than passes silently.
 See `references/CONTEXT_PROTOCOL.md`.
 
+## Concept-first gates (required before teaching or probing)
+
+Concept first, project second, and checked rather than advised (`references/TUTORING_GATES.md`):
+
+1. Declare what each section teaches with `html_sessions.py declare-block` (kind, target concept, what it assumes and
+   introduces); the heading must match the lesson.
+2. Before posting a block or question, run `python scripts/tutor_gate.py --root <vault> check <session> --receipt <receipt>`.
+   Blocked means a prerequisite is unestablished (unknown mastery is unknown, never assumed): teach it first, probe it, or
+   branch to a prerequisite lesson. A concept explained earlier is *explained*, not *demonstrated*.
+3. Give every probe a contract (TESTS/ASSUMES/INTRODUCES, scope, dimension, method, units, probe, criteria), one
+   capability each, within the diagnostic budget that only the learner can extend. Choices are recognition only.
+4. A learner's request for another explanation (simpler, rigorous, derivation, visual, analogy, worked example, physical
+   meaning, implementation, prerequisites) is answered in the lesson with `answer-explanation`; it is never evidence.
+5. Review free responses against every criterion (`review --criteria-met ... --reviewed-by ...`); `tutor_gate.py evidence`
+   prints what could be proposed to the human for the ledger and writes nothing.
+6. Teach research code and methods as `implementation` blocks with all eight literacy items (why chosen, assumptions, how it
+   works, how to run, how to verify, where to change it, how it fails, alternatives).
+
 ## Workflow
 
 For v0.8 method/tool learning and interruptible branches, consult

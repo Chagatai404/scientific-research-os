@@ -219,6 +219,31 @@ async function checkWorkspace(frame, label, {host}) {
     assert.equal(saved.prompt, 'Does this still hold for large shape?');
     assert.equal(saved.origin.section, built.anchors['Applying it to showers']);
     assert.equal(saved.origin.title, 'Applying it to showers');
+    // Asking for the same idea another way: a recorded request (with the place it was asked), never a response and never evidence.
+    await iframe.getByRole('button', {name: 'A worked example', exact: true}).click();
+    await iframe.locator('.ros-explain-note', {hasText: 'Requested: a worked example'}).waitFor();
+    await hostPage.waitForTimeout(300);
+    const asked = JSON.parse(await hostPage.evaluate(() => window.rosFiles['lesson.state.json']));
+    const request = asked.explanation_requests.at(-1);
+    assert.deepEqual([request.mode, request.status, request.origin.section], ['worked-example', 'open', built.anchors['Applying it to showers']]);
+    assert.equal(asked.events.at(-1).type, 'explanation-request');
+    assert.deepEqual(Object.keys(asked.events.at(-1)).filter(k => /mastery|credit|retained|reviewed_by/.test(k)), [], 'a request carries no credit');
+    const entry = iframe.locator('.ros-explanation-entry').last();
+    assert.match(await entry.innerText(), /Explanation requested[\s\S]*A worked example[\s\S]*Waiting for the tutor to add this to the lesson/);
+    assert.equal(await entry.locator('.ros-question-state').innerText(), 'Open');
+    // The tutor adds the explanation to the lesson and links it; the open page updates live and offers the way there.
+    await hostPage.evaluate(anchor => {
+      const live = JSON.parse(window.rosFiles['lesson.state.json']);
+      Object.assign(live.explanation_requests.at(-1), {status: 'answered', answered_in: {section: anchor, title: 'Deriving the density'}});
+      window.rosFiles['lesson.state.json'] = JSON.stringify(live);
+      return window.rosHost.refresh();
+    }, built.anchors['Deriving the density']);
+    await iframe.locator('.ros-explanation-entry .ros-return', {hasText: 'Go to “Deriving the density”'}).waitFor();
+    assert.equal(await entry.locator('.ros-question-state').innerText(), 'Explained');
+    await entry.locator('.ros-return', {hasText: 'Go to “Deriving the density”'}).click();
+    await hostPage.waitForTimeout(250);
+    // the frame was rebuilt by the reload above, so look it up again
+    assert.equal(await hostPage.frames().find(f => f.parentFrame()).evaluate(() => document.activeElement.textContent.trim()), 'Deriving the density', 'the learner lands on the explanation');
     await hostPage.screenshot({path: path.join(dir, 'host-workspace.png')});
     await hostPage.close();
     assert.deepEqual(errors, [], 'page errors: ' + errors.join('; '));
