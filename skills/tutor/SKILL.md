@@ -241,10 +241,13 @@ artifact instead. A visual being shown is never retrieval evidence; still ask th
 predict or explain.
 
 Answer submission is an explicit **Submit** or **Send**, never an idle timer. Listen with
-`html_sessions.py wait <session>` (bounded; run it in the background where the host allows) or
-let the learner say "submitted" in chat. React only to what it returns: the learner's latest
-submitted response for a question, or an unanswered open question. The learner sees
-"Checking…" until your `review` lands, so check promptly and do not leave a response unreviewed.
+`html_sessions.py wait <session> --holder <name>` (bounded; run it in the background where the host allows) or
+let the learner say "submitted" in chat. React only to what it returns: every unreviewed submission, unanswered open
+question or explanation request. A timeout is not the end of the lesson: the page shows *disconnected* once your lease
+expires and keeps what the learner submits, so listen again, or hand over with
+`python scripts/supervision.py --root <vault> resume <session>`. The learner sees "Checking…" only while your lease is
+live, so check promptly and never leave a submission unreviewed or mark a session completed with work pending
+(`references/HTML_SESSION_PROTOCOL.md`, "Durable supervision").
 
 Do **not** infer "finished" from file modification time going quiet. Composing an answer involves
 pauses for thought that are indistinguishable from completion, so no debounce threshold separates

@@ -56,6 +56,34 @@
     }
   }
   const VERDICTS = {correct: ['Correct', 'matches'], 'partially-correct': ['Partly correct', 'partial'], incorrect: ['Not quite', 'retry'], reviewed: ['Reviewed', 'pending']};
+  // Everything below mirrors scripts/supervision.py and scripts/html_sessions.py pending_activity; tests/fixtures/supervision-cases.json pins both.
+  // Work waiting for the tutor: every unreviewed submission (an earlier attempt counts until a review covers it), unanswered question and open explanation request.
+  function pendingOf(state, events) {
+    let count = 0;
+    for (const q of state.questions || []) {
+      const handled = new Set();
+      for (const review of q.reviews || []) { handled.add(review.response_event_id); for (const id of review.covers || []) handled.add(id); }
+      for (const event of events || state.events || []) if (event.type === 'response' && event.question_id === q.id && !handled.has(event.event_id)) count++;
+    }
+    for (const record of state.open_questions || []) if (!(typeof record.answer === 'string' && record.answer.trim())) count++;
+    for (const record of state.explanation_requests || []) if (record.status === 'open') count++;
+    return count;
+  }
+  // The honest status. Explicit decisions come from the saved session, liveness only from a lease that has not expired.
+  function supervisionOf(state, lease, now, events) {
+    const stored = (state.supervision && state.supervision.status) || 'active';
+    const decided = ['paused', 'completed', 'failed-recoverable'].includes(stored);
+    const alive = Boolean(lease) && Date.parse(lease.expires_at) > now;
+    const pending = pendingOf(state, events);
+    let status;
+    if (decided) status = stored;
+    else if (!alive) status = 'disconnected';
+    else if (lease.mode === 'reviewing' && (pending || (lease.reviewing || []).length)) status = 'agent-reviewing';
+    else if (pending) status = 'response-awaiting-review';
+    else if (lease.mode === 'working') status = 'active';
+    else status = 'waiting-for-learner';
+    return {status, alive, pending, reason: decided ? (state.supervision.reason || null) : null};
+  }
   function start() {
     const doc = root.document;
     const mount = doc.getElementById('ros-session');
@@ -66,6 +94,10 @@
     const host = root.ROS_HOST;
     let questions = new Map((state.questions || []).map(q => [q.id, q]));
     let localEvents = [...(state.events || [])];
+    // The tutor's lease and the host's clock arrive with the state; the page never trusts its own idea of whether anyone is listening.
+    let liveLease = state.supervision_live || null, clockOffset = typeof state.host_now === 'number' ? state.host_now - Date.now() : 0;
+    const nowMs = () => Date.now() + clockOffset;
+    const currentSupervision = () => supervisionOf(state, liveLease, nowMs(), localEvents);
     const pending = new Map();
     const failed = new Set();
     const panels = new Map();
@@ -91,6 +123,8 @@
     function button(text, callback) { const b = node('button', text); b.type = 'button'; b.addEventListener('click', callback); return b; }
     function within(scope, selector) { return [...(scope.matches && scope.matches(selector) ? [scope] : []), ...scope.querySelectorAll(selector)]; }
     const status = node('p'); status.className = 'ros-status'; status.setAttribute('role', 'status');
+    // Whether anyone is listening, said plainly (hidden on a standalone page, which has no tutor to be connected).
+    const supervisionLine = node('p'); supervisionLine.className = 'ros-supervision'; supervisionLine.setAttribute('role', 'status'); supervisionLine.hidden = true;
     status.textContent = host ? 'Answers save automatically.' : 'Standalone page: progress stays in this open page. Download it before closing.';
     const hasAttempt = id => localEvents.some(e => e.type === 'response' && e.question_id === id);
     const emit = (type, question_id, response, origin) => {
@@ -103,6 +137,7 @@
       return event;
     };
     function mergeState(next) {
+      if (Object.prototype.hasOwnProperty.call(next, 'supervision_live')) { liveLease = next.supervision_live || null; if (typeof next.host_now === 'number') clockOffset = next.host_now - Date.now(); }
       state = Object.assign({}, state, next);
       questions = new Map((state.questions || []).map(q => [q.id, q]));
       const saved = new Set(next.events.map(e => e.event_id));
@@ -118,6 +153,9 @@
         const fresh = data.type === 'update' && typeof data.body === 'string' ? applyBody(data.body) : [];
         refreshAll();
         status.textContent = pending.size ? 'Saving…' : fresh.length ? 'Session updated.' : 'Progress saved.';
+      } else if (data.type === 'supervision') {
+        liveLease = data.live || null; if (typeof data.host_now === 'number') clockOffset = data.host_now - Date.now();
+        refreshAll();
       } else if (data.type === 'navigated' || data.type === 'navigation-error') {
         noteResult(data);
       } else if (data.type === 'error') {
@@ -136,6 +174,7 @@
       const header = mount.querySelector(':scope > .ros-session-header');
       if (questions.size) { if (header) header.after(progress); else mount.prepend(progress); if (status.parentElement !== progress) progress.append(status); }
       else if (header) header.append(status); else mount.prepend(status);
+      if (supervisionLine.previousElementSibling !== status) status.after(supervisionLine);
     }
     function updateProgress() {
       const recorded = [...questions.keys()].filter(hasAttempt).length;
@@ -324,13 +363,16 @@
       const {latest, verdict, feedback} = verdictFor(panel);
       const saving = Boolean(latest && pending.has(latest.event_id));
       const lost = Boolean(latest && failed.has(latest.event_id));
-      // With a host, an unchecked response waits for the tutor; a standalone page has no one to wait for.
-      const checking = Boolean(latest && !lost && (saving || (!verdict && host)));
+      // With a host, an unchecked response waits for the tutor. "Checking" is claimed only while a tutor's lease is live;
+      // otherwise the response is saved and says so. A standalone page has no one to wait for.
+      const listening = Boolean(host && currentSupervision().alive);
+      const checking = Boolean(latest && !lost && (saving || (!verdict && host && listening)));
+      const savedForTutor = Boolean(latest && !lost && !saving && !verdict && host && !listening);
       const checked = Boolean(latest && !lost && !saving && (verdict || !host));
       panel.submit.disabled = Boolean(latest && !panel.dirty && !lost);
       panel.submit.textContent = !latest || panel.dirty ? 'Submit response' : lost ? 'Submit again' : checking ? 'Checking…' : 'Submitted';
       panel.submit.setAttribute('aria-busy', String(checking && !panel.dirty));
-      panel.chip.textContent = !latest ? 'Awaiting response' : lost ? 'Not saved' : checking ? 'Checking…' : verdict ? VERDICTS[verdict][0] : 'Saved in this page';
+      panel.chip.textContent = !latest ? 'Awaiting response' : lost ? 'Not saved' : checking ? 'Checking…' : verdict ? VERDICTS[verdict][0] : savedForTutor ? 'Saved, waiting for the tutor' : 'Saved in this page';
       panel.chip.dataset.state = !latest ? 'empty' : lost ? 'retry' : checking ? 'checking' : verdict ? VERDICTS[verdict][1] : 'pending';
       const showVerdict = Boolean(checked && verdict);
       panel.feedback.hidden = !showVerdict;
@@ -688,8 +730,34 @@
     }
     function refreshAll() {
       for (const panel of panels.values()) refreshPanel(panel);
-      updateProgress(); renderConversation(); renderWaiting(); updateSectionProgress(); renderRelated();
+      updateProgress(); renderConversation(); renderWaiting(); updateSectionProgress(); renderRelated(); renderSupervision();
     }
+    function renderSupervision() {
+      const view = host ? currentSupervision() : null;
+      lastSupervision = view ? view.status + '|' + view.pending + '|' + view.alive : '';
+      supervisionLine.hidden = !view;
+      if (!view) return;
+      const n = view.pending, who = n === 1 ? 'submission is' : n + ' submissions are';
+      const text = {
+        'active': 'The tutor is working on the lesson.',
+        'waiting-for-learner': 'The tutor is connected and waiting for your response.',
+        'response-awaiting-review': 'Your ' + who + ' saved. The tutor will review ' + (n === 1 ? 'it' : 'them') + '.',
+        'agent-reviewing': 'The tutor is reviewing your ' + (n === 1 ? 'submission' : 'submissions') + '.',
+        'paused': 'This session is paused' + (view.reason ? ': ' + view.reason : '.'),
+        'disconnected': n ? 'The tutor is not connected. Your ' + who + ' saved and will be reviewed when the tutor reconnects.' : 'The tutor is not connected. Anything you submit is saved and waits for the tutor.',
+        'completed': 'This session is completed.',
+        'failed-recoverable': 'The tutor stopped unexpectedly' + (view.reason ? ' (' + view.reason + ')' : '') + '. Your work is saved and the session can be resumed.',
+      }[view.status];
+      supervisionLine.dataset.status = view.status;
+      if (supervisionLine.textContent !== text) supervisionLine.textContent = text;  // unchanged text is not announced again
+    }
+    // A lease expires without anyone telling the page: look again, and redraw only when the answer changed.
+    let lastSupervision = '';
+    function tickSupervision() {
+      const view = currentSupervision();
+      if (host && view.status + '|' + view.pending + '|' + view.alive !== lastSupervision) refreshAll();
+    }
+    if (host) root.setInterval(tickSupervision, 3000);
     questionForm.addEventListener('submit', event => event.preventDefault());
     capture.addEventListener('click', () => {
       const text = question.value.trim(); if (!text || !questionForm.reportValidity()) return;
@@ -737,7 +805,7 @@
     // Tell the host this page can take live updates instead of being rebuilt.
     if (host) root.parent.postMessage({channel: 'research-os', token: host.token, session_id: state.session_id, type: 'ready'}, '*');
   }
-  const api = {VOCABULARY, assess, samplingSE, vector, renderMath, start};
+  const api = {VOCABULARY, assess, samplingSE, vector, renderMath, pendingOf, supervisionOf, start};
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.ResearchOS = api;
   if (root.document) { if (root.document.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', start, {once: true}); else start(); }

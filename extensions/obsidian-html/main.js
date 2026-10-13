@@ -222,12 +222,30 @@ function sanitizeHtml(html, doc, images = new Map(), descriptions = new Map(), a
   const wrapper = doc.createElement('div'); wrapper.appendChild(root); return wrapper.innerHTML;
 }
 // The context binding is for agents (it holds local paths); the sandboxed page never needs it.
-function pageState(state) {
-  const visible = Object.assign({}, state); delete visible.context; return visible;
+// The agent's liveness lease (scripts/supervision.py): same shape and bounds as the writer. Anything else reads as "no live agent".
+function parseLease(text) {
+  if (typeof text !== 'string' || text.length > 8192) return null;
+  let lease; try { lease = JSON.parse(text); } catch (_) { return null; }
+  const keys = ['supervision_schema', 'holder', 'provider', 'mode', 'reviewing', 'started_at', 'last_seen_at', 'expires_at', 'ttl'];
+  if (!lease || typeof lease !== 'object' || Array.isArray(lease) || Object.keys(lease).length !== keys.length || keys.some(k => !(k in lease)) || lease.supervision_schema !== 1) return null;
+  if (typeof lease.holder !== 'string' || !/^[A-Za-z0-9_.:@-]{1,64}$/.test(lease.holder) || typeof lease.provider !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,31}$/.test(lease.provider)) return null;
+  if (!['waiting', 'reviewing', 'working'].includes(lease.mode) || !Number.isInteger(lease.ttl) || lease.ttl < 15 || lease.ttl > 3600) return null;
+  if (!Array.isArray(lease.reviewing) || lease.reviewing.length > 50 || lease.reviewing.some(x => typeof x !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(x))) return null;
+  const [started, seen, expires] = ['started_at', 'last_seen_at', 'expires_at'].map(k => Date.parse(lease[k]));
+  if (![started, seen, expires].every(Number.isFinite) || !(started <= seen && seen <= expires) || expires - seen > 3600000) return null;
+  return lease;
 }
-function buildDocument(body, state, token, runtime, css, theme, modules = [], position = null) {
+// What the page is shown. The lease and the host's clock ride along so the page can tell "waiting" from "disconnected" without trusting its own.
+function pageState(state, live = null) {
+  const visible = Object.assign({}, state); delete visible.context;
+  visible.supervision_live = live; visible.host_now = Date.now();
+  // Always present, so a decision that was withdrawn clears on the page instead of lingering through a merge.
+  if (!('supervision' in visible)) visible.supervision = null;
+  return visible;
+}
+function buildDocument(body, state, token, runtime, css, theme, modules = [], position = null, live = null) {
   const nonce = crypto.randomBytes(24).toString('hex');
-  const safeJSON = JSON.stringify({token, session_id: state.session_id, state: pageState(state), position}).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const safeJSON = JSON.stringify({token, session_id: state.session_id, state: pageState(state, live), position}).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const safeScript = runtime.replace(/<\/script/gi, '<\\/script');
   const safeCSS = css.replace(/<\/style/gi, '<\\/style');
   const moduleScripts = modules.map(code => '<script nonce="' + nonce + '">document.addEventListener("DOMContentLoaded",function(){"use strict";\n' + code.replace(/<\/script/gi, '<\\/script') + '\n},{once:true});</script>').join('');
@@ -259,6 +277,23 @@ class SessionHost extends Component {
     this.registerEvent(this.plugin.app.vault.on('delete', file => { if ([this.path, sibling(this.path), ...(this.resources || []).map(r => r.path)].includes(file.path)) { this.invalidated = true; this.fail('Session/resource artifact deleted. Reopen after repair.'); } }));
     this.registerEvent(this.plugin.app.workspace.on('css-change', () => { const theme = this.container.ownerDocument.body.classList.contains('theme-dark') ? 'dark' : 'light'; if (!this.loaded || theme !== this.loaded.theme) this.reload(); }));
     this.reload();
+    // The lease is a plain file the agent renews; Obsidian does not announce changes to it, so look at it now and then.
+    this.leaseTimer = setInterval(() => this.pollLease(), 5000);
+  }
+  leasePath() { return this.path.replace(/\.html$/i, '.supervision.json'); }
+  async readLease() {
+    try {
+      const adapter = this.plugin.app.vault.adapter;
+      if (typeof adapter.exists === 'function' && !(await adapter.exists(this.leasePath()))) return null;
+      return parseLease(await adapter.read(this.leasePath()));
+    } catch (_) { return null; }
+  }
+  async pollLease() {
+    if (this.invalidated || !this.token) return;
+    const lease = await this.readLease();
+    if (JSON.stringify(lease) === JSON.stringify(this.lease || null)) return;
+    this.lease = lease;
+    this.reply(this.token, {type: 'supervision', live: lease, host_now: Date.now()});
   }
   fail(message) { this.generation++; this.token = null; if (this.frame) { this.frame.remove(); this.frame = null; } this.status.textContent = message; this.status.classList.add('ros-error'); }
   async read(path, required = true) {
@@ -292,7 +327,7 @@ class SessionHost extends Component {
       const state = parseState(raw);
       // New resources need fresh approval and inlining; only content/state changes are patched live.
       if (JSON.stringify(state.resources || []) !== JSON.stringify(this.state.resources || []) || state.session_id !== this.state.session_id) { this.reload(); return; }
-      const message = {type: 'update', state: pageState(state)};
+      const message = {type: 'update', state: pageState(state, this.lease || null)};
       if (html !== this.loaded.html) message.body = sanitizeHtml(html, this.container.ownerDocument, this.images || new Map(), new Map((this.resources || []).map(r => [r.id, r.alt])));
       this.loaded.html = html; this.loaded.raw = raw; this.state = state;
       this.reply(token, message);
@@ -306,6 +341,7 @@ class SessionHost extends Component {
       const [html, raw, runtime, css] = await Promise.all([this.read(this.path), this.read(sibling(this.path)), this.read(RUNTIME + 'session.js', false), this.read(RUNTIME + 'session.css', false)]);
       if (generation !== this.generation) return;
       const state = parseState(raw);
+      this.lease = await this.readLease();
       const resources = validateResources(state.resources, this.path); const images = new Map(); const modules = []; let total = 0;
       for (const resource of resources) {
         const adapter = this.plugin.app.vault.adapter;
@@ -335,7 +371,7 @@ class SessionHost extends Component {
       const body = sanitizeHtml(html, doc, images, new Map(resources.map(r => [r.id, r.alt])), state.placement !== 'explicit');
       if (this.frame) this.frame.remove();
       this.frame = doc.createElement('iframe'); this.frame.className = 'ros-html-frame'; this.frame.title = this.state.title || 'Research OS session'; this.frame.setAttribute('sandbox', 'allow-scripts'); this.frame.setAttribute('referrerpolicy', 'no-referrer');
-      this.frame.srcdoc = buildDocument(body, this.state, this.token, runtime, css, doc.body.classList.contains('theme-dark') ? 'dark' : 'light', modules, this.position || null);
+      this.frame.srcdoc = buildDocument(body, this.state, this.token, runtime, css, doc.body.classList.contains('theme-dark') ? 'dark' : 'light', modules, this.position || null, this.lease || null);
       this.container.appendChild(this.frame); this.status.classList.remove('ros-error'); this.status.textContent = runtime ? '' : 'Interactive runtime is not installed; showing isolated session content.';
     } catch (error) { if (generation === this.generation) this.fail(error.message); }
   }
@@ -388,7 +424,7 @@ class SessionHost extends Component {
           this.state = state; return output;
         });
         } finally { releaseLock(); }
-        this.reply(token, {type: 'state', state: pageState(this.state)});
+        this.reply(token, {type: 'state', state: pageState(this.state, this.lease || null)});
       } catch (error) { this.reply(token, {type: 'error', message: error.message}); }
       finally { this.writing = false; this.pending--; }
     });
@@ -407,7 +443,7 @@ class SessionHost extends Component {
     } catch (error) { this.reply(token, {type: 'navigation-error', target: typeof target === 'string' ? target.slice(0, 256) : '', message: error.message}); }
   }
   reply(token, payload) { if (this.frame && token === this.token) this.frame.contentWindow.postMessage(Object.assign({channel: 'research-os', token, session_id: this.state.session_id}, payload), '*'); }
-  onunload() { clearTimeout(this.refreshTimer); if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
+  onunload() { clearTimeout(this.refreshTimer); clearInterval(this.leaseTimer); if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
 }
 class SessionView extends FileView {
   constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }
@@ -465,4 +501,4 @@ class ResearchOSHTML extends Plugin {
   onunload() { this.app.workspace.detachLeavesOfType(VIEW); }
 }
 module.exports = ResearchOSHTML;
-module.exports._test = {pageState, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, resolveNote, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling};
+module.exports._test = {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, resolveNote, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling};

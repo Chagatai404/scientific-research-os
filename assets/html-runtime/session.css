@@ -395,6 +395,13 @@ a.ros-note-link:hover { text-decoration-style: solid; }
 .ros-side-panel .ros-question-history > h2 { font-size: 16px; margin-top: 0; }
 .ros-question-entry { padding: var(--ros-space-3) 0; border-top: 1px solid var(--ros-border); }
 .ros-question-entry .ros-question-state { float: right; font: 600 13px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); }
+/* Whether anyone is listening, said plainly: text carries the meaning, the edge colour only echoes it. */
+.ros-supervision { grid-column: 1 / -1; margin: var(--ros-space-2) 0 0; padding: var(--ros-space-2) var(--ros-space-3); border-left: 4px solid var(--ros-border-strong); border-radius: var(--ros-radius-sm); background: var(--ros-surface-subtle); color: var(--ros-text); font: 14px/1.5 var(--ros-font-ui); }
+.ros-supervision[hidden] { display: none; }
+.ros-supervision:is([data-status="waiting-for-learner"], [data-status="active"]) { border-left-color: var(--ros-success); }
+.ros-supervision:is([data-status="response-awaiting-review"], [data-status="agent-reviewing"]) { border-left-color: var(--ros-accent); }
+.ros-supervision:is([data-status="disconnected"], [data-status="paused"]) { border-left-color: var(--ros-warning); background: var(--ros-warning-bg); }
+.ros-supervision[data-status="failed-recoverable"] { border-left-color: var(--ros-danger); background: var(--ros-danger-bg); }
 .ros-explain { margin: var(--ros-space-4) 0; }
 .ros-explain-title { margin: 0 0 var(--ros-space-2); font: 700 14px/1.4 var(--ros-font-ui); }
 .ros-explain-modes { display: flex; flex-wrap: wrap; gap: var(--ros-space-2); }

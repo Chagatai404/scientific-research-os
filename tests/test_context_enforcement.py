@@ -101,7 +101,8 @@ class SessionEnforcementTests(KernelCase):
         self.assertEqual(before, [f.read_bytes() for f in files])
         # The learner's own submissions are never lost because the agent's context is broken.
         hs.append_event(self.vault, 'S/t.md', {'event_id': 'r2', 'type': 'response', 'question_id': 'q1', 'response': 'again'})
-        self.assertEqual([p['event_id'] for p in hs.pending_activity(self.state())], ['r2'])
+        # ...and neither is the earlier one: r1 was never reviewed (every review was refused), so it is still waiting beside r2.
+        self.assertEqual([p['event_id'] for p in hs.pending_activity(self.state())], ['r1', 'r2'])
 
     def test_a_verdict_alone_is_not_gated_but_still_never_awards_credit(self):
         self.create()

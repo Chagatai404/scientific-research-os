@@ -9,7 +9,7 @@ const obsidian = {Plugin: Component, Component, FileView: Component, normalizePa
 const file = path.join(__dirname, '../extensions/obsidian-html/main.js');
 const mod = {exports: {}};
 vm.runInNewContext(fs.readFileSync(file, 'utf8'), {require: name => name === 'obsidian' ? obsidian : require(name), module: mod, console, Date, Object, Set, Array, JSON, Number, Promise, Buffer, process, setTimeout, clearTimeout});
-const {pageState, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, resolveNote, acquireLock, buildDocument, SessionHost, sibling} = mod.exports._test;
+const {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, resolveNote, acquireLock, buildDocument, SessionHost, sibling} = mod.exports._test;
 // The host decides note-reference syntax itself; it must agree with Python and the runtime on the shared fixture.
 const noteTargets = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/note-targets.json'), 'utf8'));
 for (const t of noteTargets.valid) assert(validNoteTarget(t), 'valid note target rejected by the host: ' + JSON.stringify(t));
@@ -191,6 +191,40 @@ assert(!html.includes('title":"</script>'));
   for (const bad of [{response: 'make it easy'}, {response: 'simpler', question_id: 'q1'}, {response: {mode: 'simpler'}}, {response: 'simpler', mastery: 1}, {response: 'simpler', origin: {section: 'has space', title: 't'}}])
     assert.throws(() => validateEvent({event_id: 'x', type: 'explanation-request', question_id: null, ...bad}, state()), /explanation mode|Unknown event field|origin/, JSON.stringify(bad));
   assert.equal(validateEvent({event_id: 'ok', type: 'explanation-request', question_id: null, response: 'prerequisites'}, state()).status, 'pending-review');
+  // The agent's lease: read with the writer's own shape and bounds, forwarded only when it changes, and never trusted when malformed.
+  const lease = {supervision_schema: 1, holder: 'tutor-a', provider: 'generic', mode: 'waiting', reviewing: [], started_at: '2026-10-13T11:59:00+00:00',
+    last_seen_at: '2026-10-13T12:00:00+00:00', expires_at: '2026-10-13T12:01:30+00:00', ttl: 90};
+  assert.equal(JSON.stringify(parseLease(JSON.stringify(lease))), JSON.stringify(lease));
+  for (const broken of [{...lease, extra: 1}, {...lease, mode: 'x'}, {...lease, ttl: 5}, {...lease, holder: 'a b'}, {...lease, reviewing: ['a b']}, {...lease, supervision_schema: 2},
+    {...lease, expires_at: '2099-01-01T00:00:00+00:00'}, {...lease, last_seen_at: '2026-10-13T12:05:00+00:00'}, {...lease, started_at: 'not a time'}, [], null, 'text'])
+    assert.equal(parseLease(JSON.stringify(broken)), null, JSON.stringify(broken));
+  assert.equal(parseLease('{not json'), null);
+  assert.equal(parseLease('x'.repeat(9000)), null);
+  const live = pageState({...base, context: {binding: {}}}, lease);
+  assert.equal(live.supervision_live.holder, 'tutor-a');
+  assert.equal(typeof live.host_now, 'number');
+  assert.equal(pageState(base).supervision_live, null);
+  assert(!('context' in live));
+  assert(buildDocument('', base, 't', '', '', '', [], null, lease).includes('"supervision_live":{"supervision_schema":1,"holder":"tutor-a"'));
+  let leaseText;
+  vault.adapter.read = async p => { assert.equal(p, 'session.supervision.json'); if (leaseText === undefined) throw new Error('missing'); return leaseText; };
+  assert.equal(host.leasePath(), 'session.supervision.json');
+  leaseText = JSON.stringify(lease);
+  assert.equal(JSON.stringify(await host.readLease()), JSON.stringify(lease));
+  leaseText = JSON.stringify({...lease, mode: 'x'}); assert.equal(await host.readLease(), null);
+  leaseText = undefined; assert.equal(await host.readLease(), null);
+  host.lease = null; leaseText = JSON.stringify(lease);
+  const before = replies.length;
+  await host.pollLease();
+  assert.equal(replies.length, before + 1);
+  assert.equal(replies.at(-1).type, 'supervision');
+  assert.equal(replies.at(-1).live.holder, 'tutor-a');
+  assert.equal(typeof replies.at(-1).host_now, 'number');
+  await host.pollLease();
+  assert.equal(replies.length, before + 1, 'an unchanged lease is not re-sent');
+  leaseText = undefined; await host.pollLease();
+  assert.equal(replies.length, before + 2);
+  assert.equal(replies.at(-1).live, null, 'a vanished lease is reported, not remembered');
   fs.rmdirSync(vaultRoot);
   console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

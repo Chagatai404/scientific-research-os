@@ -41,15 +41,13 @@ class ScientificBaseline(unittest.TestCase):
         self.assertIn('data-ros-target="Gamma distribution"', rendered)
         self.assertNotIn('<span class="ros-note-link"', rendered)
 
-    @unittest.expectedFailure
-    def test_each_unreviewed_submission_remains_pending(self):  # complaint 9
+    def test_each_unreviewed_submission_remains_pending(self):  # complaint 9 (repaired in Slice 7)
         state = {'questions': [{'id': 'q', 'kind': 'free-response'}],
                  'events': [{'type': 'response', 'question_id': 'q', 'event_id': key,
                              'response': key} for key in ('first', 'second')]}
         self.assertEqual(len(hs.pending_activity(state)), 2)
 
-    @unittest.expectedFailure
-    def test_unreadable_wait_is_not_reported_as_idle(self):  # complaint 9
+    def test_unreadable_wait_is_not_reported_as_idle(self):  # complaint 9 (repaired in Slice 7)
         with patch.object(Path, 'read_text', side_effect=PermissionError('unavailable')):
             result = hs.wait_for_activity(ROOT, 'missing.md', timeout=0)
         self.assertIn('error', result)

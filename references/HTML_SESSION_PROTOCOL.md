@@ -58,14 +58,34 @@ develop instead of waiting for a whole block.
    happened: probe questions, then the teaching block, then the next questions.
    Append a teaching block with `append` before posting the question that follows it.
    Give every question a `solution` that explains the reasoning, not only the key.
-2. Listen with `wait <session> --timeout 900` (run it in the background where the
-   host supports it). It returns only on an explicit Submit or Send.
+2. Listen with `wait <session> --holder <name> --timeout 900` (run it in the background where the
+   host supports it). It returns on an explicit Submit or Send, or on a timeout, which is **not** the end of the
+   lesson. `--holder` renews a liveness lease so the page can say a tutor is connected (see below).
 3. Read the actual response, confidence, hints and attempts it reports, then record
    your check: `review <session> <question-id> --verdict correct|partially-correct|incorrect|reviewed
-   --feedback f.txt [--transcript t.md] [--next-question q.json]`. The learner sees
-   "Checking…" until then; your verdict, feedback and the prepared explanation then
-   appear under their answer, followed by the transcript entry and next question.
+   --feedback f.txt [--transcript t.md] [--next-question q.json]`. While your lease is live the learner sees
+   "Checking…"; otherwise "Saved, waiting for the tutor". Your verdict, feedback and the prepared explanation then
+   appear under their answer, followed by the transcript entry and next question. Every unreviewed submission is its
+   own pending item; a review of a later answer records which earlier attempts it supersedes (`covers`).
 4. Answer open questions with `answer`; they appear in place the same way.
+
+### Durable supervision
+
+A bounded `wait` is not supervision, and a timeout never means the lesson is over. The page shows one of eight states, from
+the saved session and an expiring lease, never from hope: *active*, *waiting for learner* (a tutor is connected and idle),
+*response awaiting review*, *agent reviewing*, *paused*, *disconnected* (no live tutor: what the learner submits is saved
+and waits), *completed* and *failed (recoverable)*.
+
+- Liveness is a lease file beside the session (`<session>.supervision.json`) that an agent renews while it listens or
+  reviews (`wait --holder`, or `python scripts/supervision.py --root <vault> heartbeat <session> --holder <name> --mode reviewing`)
+  and that expires on its own. Two live agents never share a session (`--takeover` is a deliberate act). Nothing claims an
+  agent is still there after its lease ran out, and no provider is claimed to keep running once its process ends.
+- Pending work lives in the saved session, so it survives a timeout, a crash and a restart. A new agent starts with
+  `python scripts/supervision.py --root <vault> resume <session> [--apply]` (it also completes an interrupted write, never
+  overwriting later edits), then `wait --holder`.
+- Decisions are recorded with a reason: `pause`, `fail` (needs a reason, recoverable), `complete` (refused while any
+  submission still awaits review) and `reopen` (a completed session needs a reason). Free responses are never graded
+  without a review.
 
 An `answer` key gives MCQ/numeric questions an immediate local check; omit it when
 the reasoning must be reviewed. Verdicts are pending tutor feedback, never ledger

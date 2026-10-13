@@ -1,0 +1,592 @@
+{
+ "note": "Python (scripts/supervision.py view) and the runtime (supervisionOf) must agree on every case.",
+ "now": "2026-10-13T12:00:00+00:00",
+ "cases": [
+  {
+   "id": "no-lease-nothing-pending",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p"
+     }
+    ],
+    "events": [],
+    "open_questions": [],
+    "explanation_requests": []
+   },
+   "lease": null,
+   "expect": {
+    "status": "disconnected",
+    "pending": 0,
+    "alive": false
+   }
+  },
+  {
+   "id": "live-waiting-nothing-pending",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p"
+     }
+    ],
+    "events": [],
+    "open_questions": [],
+    "explanation_requests": []
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "waiting",
+    "reviewing": [],
+    "started_at": "2026-10-13T11:59:00+00:00",
+    "last_seen_at": "2026-10-13T12:00:00+00:00",
+    "expires_at": "2026-10-13T12:01:30+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "waiting-for-learner",
+    "pending": 0,
+    "alive": true
+   }
+  },
+  {
+   "id": "live-waiting-one-submission",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p"
+     }
+    ],
+    "events": [
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r1",
+      "response": "r1",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     }
+    ],
+    "open_questions": [],
+    "explanation_requests": []
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "waiting",
+    "reviewing": [],
+    "started_at": "2026-10-13T11:59:00+00:00",
+    "last_seen_at": "2026-10-13T12:00:00+00:00",
+    "expires_at": "2026-10-13T12:01:30+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "response-awaiting-review",
+    "pending": 1,
+    "alive": true
+   }
+  },
+  {
+   "id": "live-reviewing-claims-the-submission",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p"
+     }
+    ],
+    "events": [
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r1",
+      "response": "r1",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     }
+    ],
+    "open_questions": [],
+    "explanation_requests": []
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "reviewing",
+    "reviewing": [
+     "r1"
+    ],
+    "started_at": "2026-10-13T11:59:00+00:00",
+    "last_seen_at": "2026-10-13T12:00:00+00:00",
+    "expires_at": "2026-10-13T12:01:30+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "agent-reviewing",
+    "pending": 1,
+    "alive": true
+   }
+  },
+  {
+   "id": "reviewing-lease-with-nothing-left-is-waiting",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p"
+     }
+    ],
+    "events": [],
+    "open_questions": [],
+    "explanation_requests": []
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "reviewing",
+    "reviewing": [],
+    "started_at": "2026-10-13T11:59:00+00:00",
+    "last_seen_at": "2026-10-13T12:00:00+00:00",
+    "expires_at": "2026-10-13T12:01:30+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "waiting-for-learner",
+    "pending": 0,
+    "alive": true
+   }
+  },
+  {
+   "id": "expired-lease-keeps-the-pending-work",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p"
+     }
+    ],
+    "events": [
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r1",
+      "response": "r1",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     }
+    ],
+    "open_questions": [],
+    "explanation_requests": []
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "waiting",
+    "reviewing": [],
+    "started_at": "2026-10-13T11:57:00+00:00",
+    "last_seen_at": "2026-10-13T11:58:30+00:00",
+    "expires_at": "2026-10-13T11:59:59+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "disconnected",
+    "pending": 1,
+    "alive": false
+   }
+  },
+  {
+   "id": "lease-expiring-exactly-now-is-expired",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p"
+     }
+    ],
+    "events": [],
+    "open_questions": [],
+    "explanation_requests": []
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "waiting",
+    "reviewing": [],
+    "started_at": "2026-10-13T11:57:00+00:00",
+    "last_seen_at": "2026-10-13T11:58:30+00:00",
+    "expires_at": "2026-10-13T12:00:00+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "disconnected",
+    "pending": 0,
+    "alive": false
+   }
+  },
+  {
+   "id": "paused-wins-over-a-live-lease",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p"
+     }
+    ],
+    "events": [],
+    "open_questions": [],
+    "explanation_requests": [],
+    "supervision": {
+     "status": "paused",
+     "reason": "learner stepped away"
+    }
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "waiting",
+    "reviewing": [],
+    "started_at": "2026-10-13T11:59:00+00:00",
+    "last_seen_at": "2026-10-13T12:00:00+00:00",
+    "expires_at": "2026-10-13T12:01:30+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "paused",
+    "pending": 0,
+    "alive": true
+   }
+  },
+  {
+   "id": "completed-without-a-lease",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p"
+     }
+    ],
+    "events": [],
+    "open_questions": [],
+    "explanation_requests": [],
+    "supervision": {
+     "status": "completed"
+    }
+   },
+   "lease": null,
+   "expect": {
+    "status": "completed",
+    "pending": 0,
+    "alive": false
+   }
+  },
+  {
+   "id": "failed-recoverable-keeps-its-reason",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p"
+     }
+    ],
+    "events": [
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r1",
+      "response": "r1",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     }
+    ],
+    "open_questions": [],
+    "explanation_requests": [],
+    "supervision": {
+     "status": "failed-recoverable",
+     "reason": "provider crashed"
+    }
+   },
+   "lease": null,
+   "expect": {
+    "status": "failed-recoverable",
+    "pending": 1,
+    "alive": false
+   }
+  },
+  {
+   "id": "working-lease-is-active",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p"
+     }
+    ],
+    "events": [],
+    "open_questions": [],
+    "explanation_requests": []
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "working",
+    "reviewing": [],
+    "started_at": "2026-10-13T11:59:00+00:00",
+    "last_seen_at": "2026-10-13T12:00:00+00:00",
+    "expires_at": "2026-10-13T12:01:30+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "active",
+    "pending": 0,
+    "alive": true
+   }
+  },
+  {
+   "id": "two-unreviewed-submissions-are-two-items",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p"
+     }
+    ],
+    "events": [
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r1",
+      "response": "r1",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     },
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r2",
+      "response": "r2",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     }
+    ],
+    "open_questions": [],
+    "explanation_requests": []
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "waiting",
+    "reviewing": [],
+    "started_at": "2026-10-13T11:59:00+00:00",
+    "last_seen_at": "2026-10-13T12:00:00+00:00",
+    "expires_at": "2026-10-13T12:01:30+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "response-awaiting-review",
+    "pending": 2,
+    "alive": true
+   }
+  },
+  {
+   "id": "a-review-names-its-response",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p",
+      "reviews": [
+       {
+        "response_event_id": "r2",
+        "verdict": "correct"
+       }
+      ]
+     }
+    ],
+    "events": [
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r1",
+      "response": "r1",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     },
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r2",
+      "response": "r2",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     }
+    ],
+    "open_questions": [],
+    "explanation_requests": []
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "waiting",
+    "reviewing": [],
+    "started_at": "2026-10-13T11:59:00+00:00",
+    "last_seen_at": "2026-10-13T12:00:00+00:00",
+    "expires_at": "2026-10-13T12:01:30+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "response-awaiting-review",
+    "pending": 1,
+    "alive": true
+   }
+  },
+  {
+   "id": "a-review-that-covers-the-earlier-attempt-settles-both",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p",
+      "reviews": [
+       {
+        "response_event_id": "r2",
+        "verdict": "correct",
+        "covers": [
+         "r1"
+        ]
+       }
+      ]
+     }
+    ],
+    "events": [
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r1",
+      "response": "r1",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     },
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r2",
+      "response": "r2",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     }
+    ],
+    "open_questions": [],
+    "explanation_requests": []
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "waiting",
+    "reviewing": [],
+    "started_at": "2026-10-13T11:59:00+00:00",
+    "last_seen_at": "2026-10-13T12:00:00+00:00",
+    "expires_at": "2026-10-13T12:01:30+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "waiting-for-learner",
+    "pending": 0,
+    "alive": true
+   }
+  },
+  {
+   "id": "open-question-and-explanation-request-count",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p"
+     }
+    ],
+    "events": [],
+    "open_questions": [
+     {
+      "id": "o1",
+      "prompt": "why",
+      "status": "open"
+     },
+     {
+      "id": "o2",
+      "prompt": "x",
+      "answer": "done"
+     }
+    ],
+    "explanation_requests": [
+     {
+      "id": "e1",
+      "mode": "simpler",
+      "status": "open"
+     },
+     {
+      "id": "e2",
+      "mode": "visual",
+      "status": "answered"
+     }
+    ]
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "waiting",
+    "reviewing": [],
+    "started_at": "2026-10-13T11:59:00+00:00",
+    "last_seen_at": "2026-10-13T12:00:00+00:00",
+    "expires_at": "2026-10-13T12:01:30+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "response-awaiting-review",
+    "pending": 2,
+    "alive": true
+   }
+  },
+  {
+   "id": "a-stored-active-record-changes-nothing",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p"
+     }
+    ],
+    "events": [],
+    "open_questions": [],
+    "explanation_requests": [],
+    "supervision": {
+     "status": "active"
+    }
+   },
+   "lease": null,
+   "expect": {
+    "status": "disconnected",
+    "pending": 0,
+    "alive": false
+   }
+  }
+ ]
+}

@@ -184,7 +184,7 @@ def _validate_reviews(reviews):
     if not isinstance(reviews, list) or len(reviews) > 200:
         raise ValueError("Invalid question reviews")
     for review in reviews:
-        if not isinstance(review, dict) or set(review) - {"response_event_id", "verdict", "feedback", "reviewed_at", "criteria_met", "reviewed_by", "rationale"}:
+        if not isinstance(review, dict) or set(review) - {"response_event_id", "verdict", "feedback", "reviewed_at", "criteria_met", "reviewed_by", "rationale", "covers"}:
             raise ValueError("Invalid question review")
         # Optional structured review: which declared criteria the answer met, and who judged it.
         if "criteria_met" in review and not (isinstance(review["criteria_met"], list) and 0 < len(review["criteria_met"]) <= 20
@@ -192,6 +192,9 @@ def _validate_reviews(reviews):
             raise ValueError("criteria_met is a list of true/false, one per declared criterion")
         if "criteria_met" in review and review.get("verdict") == "correct" and not all(review["criteria_met"]):
             raise ValueError("A correct verdict requires every declared criterion to be met")
+        if "covers" in review and not (isinstance(review["covers"], list) and len(review["covers"]) <= 200 and all(
+                isinstance(x, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", x) for x in review["covers"])):
+            raise ValueError("covers lists the earlier submissions this review supersedes")
         for key, limit in (("reviewed_by", 200), ("rationale", 2000)):
             if key in review and not (isinstance(review[key], str) and 0 < len(review[key].strip()) <= limit):
                 raise ValueError(f"Review {key} must be bounded text")
@@ -266,6 +269,9 @@ def validate_state(state):
         raise ValueError("Invalid teaching declarations")
     if "tutoring" in state and not isinstance(state["tutoring"], dict):
         raise ValueError("Invalid tutoring declaration")
+    if "supervision" in state:
+        import supervision  # imports this module, so it is loaded on demand
+        supervision.validate_record(state["supervision"])
     if "explanation_requests" in state:
         requests = state["explanation_requests"]
         if (not isinstance(requests, list) or len(requests) > 200 or any(
@@ -1103,7 +1109,7 @@ def add_question(root, relative_md, question):
 
 
 def review_response(root, relative_md, question_id, verdict, feedback="", next_question=None, transcript=None,
-                    criteria_met=None, reviewed_by=None, rationale=None):
+                    criteria_met=None, reviewed_by=None, rationale=None, response_event_id=None):
     """Record the tutor's verdict on the learner's latest actual response.
 
     The verdict and the question's prepared explanation appear in place of the
@@ -1126,9 +1132,10 @@ def review_response(root, relative_md, question_id, verdict, feedback="", next_q
             raise ValueError("Unknown question")
         if transcript or next_question is not None:
             _ensure_context(state)  # a verdict alone teaches nothing new; new teaching or probes need current context
-        response = next((e for e in reversed(state["events"]) if e["type"] == "response" and e.get("question_id") == question_id), None)
+        answered = [e for e in state["events"] if e["type"] == "response" and e.get("question_id") == question_id]
+        response = next((e for e in reversed(answered) if response_event_id in (None, e["event_id"])), None)
         if response is None:
-            raise ValueError("No learner response to review; never invent an answer")
+            raise ValueError("No learner response to review; never invent an answer" if response_event_id is None else "Unknown response to review")
         review = {"response_event_id": response["event_id"], "verdict": verdict, "feedback": feedback.strip(), "reviewed_at": _now()}
         declared = question.get("criteria") or []
         if declared and verdict != "reviewed" and (not isinstance(criteria_met, list) or len(criteria_met) != len(declared)):
@@ -1141,7 +1148,13 @@ def review_response(root, relative_md, question_id, verdict, feedback="", next_q
             review["rationale"] = rationale
         _validate_reviews([review])
         reviews = question.setdefault("reviews", [])
-        if not reviews or {k: v for k, v in reviews[-1].items() if k != "reviewed_at"} != {k: v for k, v in review.items() if k != "reviewed_at"}:
+        # Reviewing a response also records, explicitly, which earlier unreviewed attempts it supersedes; none is dropped silently.
+        settled = {r.get("response_event_id") for r in reviews} | {c for r in reviews for c in r.get("covers", [])}
+        earlier = [e["event_id"] for e in answered[:answered.index(response)] if e["event_id"] not in settled]
+        if earlier:
+            review["covers"] = earlier
+        same = lambda r: {k: v for k, v in r.items() if k not in ("reviewed_at", "covers")}
+        if not reviews or same(reviews[-1]) != same(review):
             reviews.append(review)
         # Transcript first, then the next question, so the page reads in the order things happened.
         if transcript:
@@ -1159,17 +1172,24 @@ def pending_activity(state):
     for q in state["questions"]:
         events = [e for e in state["events"] if e.get("question_id") == q["id"]]
         responses = [e for e in events if e["type"] == "response"]
-        if not responses:
-            continue
-        latest = responses[-1]
-        if latest["event_id"] in {r.get("response_event_id") for r in q.get("reviews", [])}:
-            continue
-        confidence = next((e["response"] for e in reversed(events) if e["type"] == "confidence"), None)
-        items.append({"kind": "response", "question_id": q["id"], "question_kind": q.get("kind", "free-response"),
-                      "prompt": q.get("prompt", ""), "event_id": latest["event_id"], "response": latest.get("response"),
-                      "created_at": latest.get("created_at"), "attempts": len(responses), "confidence": confidence,
-                      "hints_revealed": max([int(e["response"]) for e in events if e["type"] == "hint" and isinstance(e.get("response"), int)] or [0]),
-                      "solution_seen_before_response": any(e["type"] == "solution" and e.get("created_at", "") < latest.get("created_at", "") for e in events)})
+        # A submission is handled when a review names it, or a review explicitly records covering it (an earlier attempt that a
+        # later reviewed answer superseded). Nothing is dropped silently: an unreviewed submission stays pending.
+        handled = set()
+        for review in q.get("reviews", []):
+            handled.add(review.get("response_event_id"))
+            handled.update(review.get("covers", []))
+        for number, response in enumerate(responses, 1):
+            if response["event_id"] in handled:
+                continue
+            when = response.get("created_at", "")
+            confidence = next((e["response"] for e in reversed(events) if e["type"] == "confidence" and e.get("created_at", "") <= when),
+                              next((e["response"] for e in reversed(events) if e["type"] == "confidence"), None))
+            items.append({"kind": "response", "question_id": q["id"], "question_kind": q.get("kind", "free-response"),
+                          "prompt": q.get("prompt", ""), "event_id": response["event_id"], "response": response.get("response"),
+                          "created_at": response.get("created_at"), "attempt": number, "attempts": len(responses), "confidence": confidence,
+                          "hints_revealed": max([int(e["response"]) for e in events if e["type"] == "hint" and isinstance(e.get("response"), int)
+                                                 and e.get("created_at", "") <= when] or [0]),
+                          "solution_seen_before_response": any(e["type"] == "solution" and e.get("created_at", "") < when for e in events)})
     for record in state.get("open_questions", []):
         if not (isinstance(record.get("answer"), str) and record["answer"].strip()):
             items.append({"kind": "open-question", "id": record.get("id"), "prompt": record.get("prompt"), "created_at": record.get("created_at")})
@@ -1180,20 +1200,41 @@ def pending_activity(state):
     return items
 
 
-def wait_for_activity(root, relative_md, timeout=900.0, interval=1.0):
+def wait_for_activity(root, relative_md, timeout=900.0, interval=1.0, holder=None, provider="generic", ttl=None):
     """Bounded poll for an explicit learner submission; returns immediately if work is pending.
 
-    Only explicit submissions count (Submit/Send), never idle timers or typing.
+    Only explicit submissions count (Submit/Send), never idle timers or typing. A timeout is not the end of the lesson and
+    not a claim that nobody is waiting: with ``holder`` this renews a supervision lease while listening (so the page can
+    say the tutor is connected) and leaves it to expire afterwards (so the page says disconnected once nobody is).
     """
     _, _, data = paths(root, relative_md)
     deadline = time.monotonic() + max(0.0, float(timeout))
+    supervise, last_beat = None, None
+    if holder:
+        import supervision
+        supervise, ttl = supervision, ttl or supervision.DEFAULT_TTL
     while True:
+        if supervise and (last_beat is None or time.monotonic() - last_beat >= ttl / 3):
+            try:
+                supervise.heartbeat(root, relative_md, holder=holder, provider=provider, mode="waiting", ttl=ttl)
+            except supervise.SupervisionError as exc:
+                return {"session": str(relative_md), "pending": [], "timed_out": False, "error": str(exc)}
+            last_beat = time.monotonic()
+        failure = None
         try:
             items = pending_activity(validate_state(json.loads(data.read_text(encoding="utf-8"))))
-        except (OSError, ValueError, json.JSONDecodeError):
-            items = []  # A writer may be mid-replace; the next poll rereads.
-        if items or time.monotonic() >= deadline:
-            return {"session": str(relative_md), "pending": items, "timed_out": not items}
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            items, failure = [], exc  # A writer may be mid-replace: reread until the deadline before calling it a failure.
+        if items:
+            if supervise:  # the agent now holds these: the page shows that it is reviewing them
+                supervise.heartbeat(root, relative_md, holder=holder, provider=provider, mode="reviewing", ttl=ttl,
+                                    reviewing=[i["event_id"] for i in items if i["kind"] == "response"])
+            return {"session": str(relative_md), "pending": items, "timed_out": False}
+        if time.monotonic() >= deadline:
+            if failure is not None:
+                # Unreadable is not idle: reporting "nothing pending" would let an agent stop listening to a session it cannot read.
+                return {"session": str(relative_md), "pending": [], "timed_out": False, "error": "session state unreadable: " + type(failure).__name__ + ": " + str(failure)}
+            return {"session": str(relative_md), "pending": [], "timed_out": True}
         time.sleep(interval)
 
 
@@ -1321,9 +1362,11 @@ def render_context(brief):
     lines += ["## Awaiting you", ""]
     for item in brief["pending"]:
         if item["kind"] == "response":
-            lines.append(f"- Review `{item['question_id']}` ({item['question_kind']}, attempt {item['attempts']}, confidence {item['confidence']}, hints {item['hints_revealed']}): {json.dumps(item['response'], ensure_ascii=False)[:400]}")
+            lines.append(f"- Review `{item['question_id']}` ({item['question_kind']}, submission {item['attempt']} of {item['attempts']}, confidence {item['confidence']}, hints {item['hints_revealed']}): {json.dumps(item['response'], ensure_ascii=False)[:400]}")
+        elif item["kind"] == "explanation-request":
+            lines.append(f"- Explain differently (`{item['id']}`): {item.get('wants') or item.get('mode')}" + (f", asked in \"{item['origin']['title']}\"" if item.get("origin") else "") + "; answer in the lesson, then answer-explanation")
         else:
-            lines.append(f"- Answer open question `{item['id']}`: {str(item['prompt'])[:400]}")
+            lines.append(f"- Answer open question `{item['id']}`: {str(item.get('prompt'))[:400]}")
     if not brief["pending"]:
         lines.append("- Nothing pending. Run `wait` to listen for the next submission.")
     lines += ["", "## Questions", ""] + [f"- `{q['id']}` {q['kind']}: {q['attempts']} attempt(s), verdict {q['verdict'] or '-'}" for q in brief["questions"]]
@@ -1694,6 +1737,8 @@ def main():
     explained.add_argument("session"); explained.add_argument("request_id"); explained.add_argument("--heading", required=True)
     wait = sub.add_parser("wait", help="Block until an explicit learner submission awaits the agent (bounded)")
     wait.add_argument("session"); wait.add_argument("--timeout", type=float, default=900.0)
+    wait.add_argument("--holder", help="a name for this agent: renews a supervision lease so the page can show a tutor is connected")
+    wait.add_argument("--provider", default="generic"); wait.add_argument("--ttl", type=int, help="lease seconds (15..3600, default 90)")
     navigate = sub.add_parser("navigation", help="Derive related-lesson links (prerequisites, earlier lessons, application) from recorded context; dry run unless --apply")
     navigate.add_argument("session"); navigate.add_argument("--project-root", type=Path); navigate.add_argument("--learning-root", type=Path)
     navigate.add_argument("--library-root", type=Path); navigate.add_argument("--as-of"); navigate.add_argument("--apply", action="store_true")
@@ -1798,7 +1843,7 @@ def main():
     elif args.command == "answer-explanation":
         result = answer_explanation_request(root, args.session, args.request_id, args.heading)
     elif args.command == "wait":
-        result = wait_for_activity(root, args.session, args.timeout)
+        result = wait_for_activity(root, args.session, args.timeout, holder=args.holder, provider=args.provider, ttl=args.ttl)
     elif args.command == "context":
         brief = session_context(root, args.session, args.project_root, args.learning_root, args.as_of, args.library_root)
         if args.bind:
