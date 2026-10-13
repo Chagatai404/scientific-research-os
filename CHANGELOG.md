@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased - v0.9.0 candidate (Scientific Integrity & Knowledge Navigation)
+## 0.9.0 - 2026-10-13 - Scientific Integrity & Knowledge Navigation
 
+Prepared locally on the `v0.9-scientific-integrity` branch; not merged, pushed or tagged. The Obsidian companion is 0.2.0.
 Upgrade notes: [docs/MIGRATION_v0.9.md](docs/MIGRATION_v0.9.md). Problems: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 - **Context before work.** A context kernel retrieves the learning graph, research graph, project, code graph, paper library, visuals and
@@ -28,6 +29,8 @@ Upgrade notes: [docs/MIGRATION_v0.9.md](docs/MIGRATION_v0.9.md). Problems: [docs
   suggestions; a Listen control using the browser's own speech synthesis. See references/OBSIDIAN_INTEGRATIONS.md.
 - **Compatibility found and fixed during release testing.** Image resources declared by path alone (accepted since v0.8) broke rendering;
   the rollout tool refused a v0.8.7 installation; the first supervision rule would have resurrected old retries as pending work.
+- **Gates.** Python (944 tests), Node, and the real-Chromium suites passed in isolated worktrees at every slice; the pre-release run on
+  the last content commit was PASS=19, FAIL=0, SKIPPED=1 (the visual-parity page test, which needs one specific historical session).
 - **Verification record.** Release scenarios A-J (`tests/test_release_scenarios.py`, `tests/html-scenarios-browser.cjs`), legacy
   fixtures written by the real v0.8.7 code (`tests/fixtures/legacy-v0.8.7`), release gates in isolated worktrees. Not exercised: real
   Obsidian with real plugins, real speech on a device, a live Codex or Claude process, mobile.

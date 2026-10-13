@@ -42,6 +42,9 @@ dependency bindings and isolated writer reservations before execution. Keep usef
 unrelated learning/preparation moving while tasks run. Stale time/cancel request
 does not prove stopping; preserve reservations until reconciliation. COMPLETE
 records collected artifacts, never independent source support or research acceptance.
+Before any build or experiment (stages 14 and 15) read "Assumptions at risk" in the resume brief: a contradicted, unsupported or
+unresolved assumption blocks the task (`ASSUMPTION_AT_RISK`) until the researcher's approval names it in `acknowledged_risks`. Tell the
+researcher what the risk is; never acknowledge one on their behalf.
 
 For authenticated scholarly access, use the bundled `scripts/paper_access.py`
 with a user-selected library/inbox and one sanitized request. It plans by default;

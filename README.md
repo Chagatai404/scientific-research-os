@@ -491,7 +491,7 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
-**v0.9.0 — Scientific Integrity & Knowledge Navigation (release candidate; `VERSION` stays at the last released version until every gate passes).**
+**v0.9.0 — Scientific Integrity & Knowledge Navigation** (prepared locally on the `v0.9-scientific-integrity` branch; not merged, pushed or tagged).
 Agents consult the project's graphs before they work and cannot build on an assumption the records contradict; scientific claims are
 verified by executed checks; mathematics, figures, widgets and questions render where the lesson puts them; sessions have real
 navigation, a questions panel, concept-first tutoring gates, durable supervision and an optional Listen control; literature scouting
@@ -512,7 +512,7 @@ schema-3 tutoring, selective ownership and separate scientific/human defense axe
 The [release exercise](examples/release/README.md) and
 [implementation record](references/V0.8_IMPLEMENTATION.md) document integration,
 provider parity, compatibility gates and remaining live-environment validation.
-VERSION is 0.8.7, merged to main and pushed; no release tag has been created.
+That release was merged to main and pushed without a tag; the current version is recorded in `VERSION`.
 
 **v0.7.0 — Concept-first learning and connected research** adds the opt-in
 [knowledge model](references/KNOWLEDGE_MODEL.md), [concept-first tutor](references/TUTOR_PLANNING.md),

@@ -28,7 +28,8 @@ BROWSER_TESTS = ('html-runtime-browser.js', 'html-browser-e2e.cjs', 'html-compon
 NODE_TESTS = ('html-host.test.js', 'html-runtime-unit.js', 'richtext-conformance.js', 'narration-unit.js')
 SESSION_INPUT_TESTS = {'html-navigation-browser.cjs'}
 # Needs material the repository cannot supply; reported as SKIPPED, never as passed.
-EXTERNAL_INPUT_TESTS = {'html-visual-parity.cjs': 'requires the externally supplied recitation reference page and a real session (see docs/v0.8.5-html-visual-parity.md)'}
+EXTERNAL_INPUT_TESTS = {'html-visual-parity.cjs': 'requires the externally supplied recitation reference page and the one historical session whose structure its assertions describe '
+                                                   '(see docs/v0.8.5-html-visual-parity.md); the reference page exists locally but no current session satisfies them'}
 
 
 def find_playwright():
