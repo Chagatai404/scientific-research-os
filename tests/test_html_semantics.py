@@ -134,7 +134,8 @@ class EducationalComponents(unittest.TestCase):
         markup = hs.markdown_html('[**Section**](#section-1) and [Source](https://example.org/paper) with [[Concept|label]].')
         self.assertIn('<a href="#section-1"><strong>Section</strong></a>',markup)
         self.assertIn('Source <span class="ros-link-target">(https://example.org/paper)</span>',markup)
-        self.assertIn('title="Concept">label</span>',markup)
+        # A well-formed note reference is a link the host is asked to open (v0.9), still without any outside href.
+        self.assertIn('<a class="ros-note-link" href="#ros-note-link" role="link" data-ros-target="Concept" title="Concept">label</a>',markup)
         self.assertNotIn('href="https:',markup)
         self.assertNotIn('href="javascript:',hs.markdown_html('[label](javascript:unsafe)'))
 
