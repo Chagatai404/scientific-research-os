@@ -368,6 +368,11 @@ any local customizations before installing.
 
 The installed definitions are the same scientific roles expressed through provider-specific adapter formats. Installing them does **not** assign Claude or Codex permanent responsibilities.
 
+**Upgrading from v0.8?** Installing replaces the helpers and keeps a backup of any file whose content differs; it does not change your
+sessions or records. The session runtime and existing pages are rolled forward separately, with a dry run and backups: follow
+[the upgrade guide](docs/MIGRATION_v0.9.md). If something looks wrong afterwards, [troubleshooting](docs/TROUBLESHOOTING.md) lists each
+message, its cause and the fix.
+
 ### 4. Install Obsidian templates
 
 ```bash
@@ -486,6 +491,15 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
+**v0.9.0 — Scientific Integrity & Knowledge Navigation (release candidate; `VERSION` stays at the last released version until every gate passes).**
+Agents consult the project's graphs before they work and cannot build on an assumption the records contradict; scientific claims are
+verified by executed checks; mathematics, figures, widgets and questions render where the lesson puts them; sessions have real
+navigation, a questions panel, concept-first tutoring gates, durable supervision and an optional Listen control; literature scouting
+starts from the paper library and keeps discovery neutral; optional Obsidian plugins are detected and degrade gracefully. Read
+[the upgrade guide](docs/MIGRATION_v0.9.md), [troubleshooting](docs/TROUBLESHOOTING.md),
+[Obsidian integrations](references/OBSIDIAN_INTEGRATIONS.md) and [literature scouting](references/LITERATURE_SCOUTING.md); the
+[implementation record](docs/plans/v0.9-implementation-plan.md) states what was verified and what was not.
+
 **v0.8.7 - Live, Linear HTML Sessions** makes open sessions update in place without reloading, shows "Checking…" until each answer is checked with the verdict and explanation appearing under it, places questions in session order between teaching blocks, and requires a resume brief that loads the research and knowledge graphs before any session continues; see [HTML sessions](docs/HTML_SESSIONS.md) and the [session protocol](references/HTML_SESSION_PROTOCOL.md).
 
 **v0.8.6 - HTML Session Design v2** replaces the session look with Whiteboard/Chalkboard boards, bundled accessible fonts, a consistent button system and fewer clicks in tutor questions. It was rolled out to the configured vault's 13 existing sessions with backups; see the [design system](docs/HTML_DESIGN_SYSTEM.md).
@@ -532,7 +546,8 @@ and provider-symmetric deployment. See the
 [implementation decision and slice record](references/V0.5_IMPLEMENTATION.md).
 The v0.4.5 learning architecture and existing evidence/approval semantics remain
 unchanged. HPC/cloud/QPU automation, experiment tracking services, automatic
-dependency installation, Obsidian plugins and synchronization remain out of scope.
+dependency installation, Obsidian plugin installation and synchronization remain out of scope (v0.9 adds optional, detected Obsidian
+integrations that never install anything; see [Obsidian integrations](references/OBSIDIAN_INTEGRATIONS.md)).
 
 **v0.4.5 — Learning Architecture & Academic Workflow** adds selective retention,
 goal maps, dedicated university-course study, and faithful handwritten-note LaTeX

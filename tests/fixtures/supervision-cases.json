@@ -405,7 +405,7 @@
    }
   },
   {
-   "id": "a-review-names-its-response",
+   "id": "a-review-of-the-latest-also-settles-the-attempts-before-it",
    "state": {
     "questions": [
      {
@@ -451,8 +451,8 @@
     "ttl": 90
    },
    "expect": {
-    "status": "response-awaiting-review",
-    "pending": 1,
+    "status": "waiting-for-learner",
+    "pending": 0,
     "alive": true
    }
   },
@@ -586,6 +586,183 @@
     "status": "disconnected",
     "pending": 0,
     "alive": false
+   }
+  },
+  {
+   "id": "a-v0.8-review-of-the-latest-settles-the-earlier-retries",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p",
+      "reviews": [
+       {
+        "response_event_id": "r3",
+        "verdict": "correct"
+       }
+      ]
+     }
+    ],
+    "events": [
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r1",
+      "response": "r1",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     },
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r2",
+      "response": "r2",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     },
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r3",
+      "response": "r3",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     }
+    ],
+    "open_questions": [],
+    "explanation_requests": []
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "waiting",
+    "reviewing": [],
+    "started_at": "2026-10-13T11:59:00+00:00",
+    "last_seen_at": "2026-10-13T12:00:00+00:00",
+    "expires_at": "2026-10-13T12:01:30+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "waiting-for-learner",
+    "pending": 0,
+    "alive": true
+   }
+  },
+  {
+   "id": "a-review-of-an-earlier-attempt-leaves-the-later-ones-pending",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p",
+      "reviews": [
+       {
+        "response_event_id": "r1",
+        "verdict": "incorrect"
+       }
+      ]
+     }
+    ],
+    "events": [
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r1",
+      "response": "r1",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     },
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r2",
+      "response": "r2",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     },
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r3",
+      "response": "r3",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     }
+    ],
+    "open_questions": [],
+    "explanation_requests": []
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "waiting",
+    "reviewing": [],
+    "started_at": "2026-10-13T11:59:00+00:00",
+    "last_seen_at": "2026-10-13T12:00:00+00:00",
+    "expires_at": "2026-10-13T12:01:30+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "response-awaiting-review",
+    "pending": 2,
+    "alive": true
+   }
+  },
+  {
+   "id": "a-retry-after-the-review-is-pending-again",
+   "state": {
+    "questions": [
+     {
+      "id": "q",
+      "kind": "free-response",
+      "prompt": "p",
+      "reviews": [
+       {
+        "response_event_id": "r2",
+        "verdict": "correct"
+       }
+      ]
+     }
+    ],
+    "events": [
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r1",
+      "response": "r1",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     },
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r2",
+      "response": "r2",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     },
+     {
+      "type": "response",
+      "question_id": "q",
+      "event_id": "r3",
+      "response": "r3",
+      "created_at": "2026-10-13T11:59:30+00:00"
+     }
+    ],
+    "open_questions": [],
+    "explanation_requests": []
+   },
+   "lease": {
+    "supervision_schema": 1,
+    "holder": "tutor-a",
+    "provider": "generic",
+    "mode": "waiting",
+    "reviewing": [],
+    "started_at": "2026-10-13T11:59:00+00:00",
+    "last_seen_at": "2026-10-13T12:00:00+00:00",
+    "expires_at": "2026-10-13T12:01:30+00:00",
+    "ttl": 90
+   },
+   "expect": {
+    "status": "response-awaiting-review",
+    "pending": 1,
+    "alive": true
    }
   }
  ]

@@ -66,7 +66,9 @@ develop instead of waiting for a whole block.
    --feedback f.txt [--transcript t.md] [--next-question q.json]`. While your lease is live the learner sees
    "Checking…"; otherwise "Saved, waiting for the tutor". Your verdict, feedback and the prepared explanation then
    appear under their answer, followed by the transcript entry and next question. Every unreviewed submission is its
-   own pending item; a review of a later answer records which earlier attempts it supersedes (`covers`).
+   own pending item. A review stands for the attempt it names and every attempt before it (it also lists them in `covers`); v0.8
+   reviews recorded neither, and are read the same way, so a finished historical lesson does not come back as pending work. A
+   review of an earlier attempt never settles a later one, and a retry after a review waits for the tutor again.
 4. Answer open questions with `answer`; they appear in place the same way.
 
 ### Durable supervision

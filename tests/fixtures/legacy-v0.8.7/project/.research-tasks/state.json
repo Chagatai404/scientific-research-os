@@ -1,0 +1,47 @@
+{
+  "task_schema": 1,
+  "tasks": {
+    "scout": {
+      "actual_context_exposure": null,
+      "artifact_refs": [],
+      "attempt": 0,
+      "cancel_requested": false,
+      "completed_at": null,
+      "context_exposure": {
+        "input_paths": [
+          "question.txt"
+        ],
+        "mode": "bounded",
+        "notes": "Only declared fixture inputs."
+      },
+      "created_at": "2026-10-08T10:00:00Z",
+      "dependencies": [],
+      "failure": null,
+      "goal": "Prepare a synthetic bounded result",
+      "handle": null,
+      "history": [],
+      "independence_group": null,
+      "input_refs": [
+        {
+          "kind": "question",
+          "path": "question.txt",
+          "sha256": "ace7a746ef36ceb3456254b3773ea41533d2e3b897438c725246180d7bd7739c"
+        }
+      ],
+      "permissions": {
+        "approval_ref": null,
+        "run": false,
+        "write_paths": []
+      },
+      "provider": "manual",
+      "research_refs": [],
+      "result_ref": null,
+      "role": "literature-scout",
+      "stage": 3,
+      "started_at": null,
+      "state": "READY",
+      "task_id": "scout",
+      "writer_workspace": null
+    }
+  }
+}

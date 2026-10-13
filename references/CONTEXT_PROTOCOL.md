@@ -94,6 +94,8 @@ cheap to call again after the learner answers or a record changes.
 | `html_sessions.py create` | Runs the preflight itself; refuses (exit 2) and creates nothing if blocked; stores a binding in `state.json`. `--waive-context REASON` records an explicit waiver. |
 | `add_question`, `append_session`, `review_response` with new teaching or a next question | Requires the bound context to be current. A stale binding is rebuilt from its stored request; a blocked rebuild raises `CONTEXT_BLOCKED` and writes nothing. |
 | `tasks.py` stages 7, 8, 14, 15 | Needs exactly one input of kind `context-receipt` of an allowed workflow. Reasons: `CONTEXT_REQUIRED`, `CONTEXT_BLOCKED`, `CONTEXT_STALE`, `CONTEXT_INVALID`, `CONTEXT_WORKFLOW_MISMATCH`. Completed tasks are never re-blocked. |
+| `tasks.py` stages 14, 15 | Also blocks (`ASSUMPTION_AT_RISK`) when the receipt shows a contradicted, unsupported, unresolved or unreadable assumption (`context_kernel.at_risk`: evidence `CONTRADICTED / OVERSTATED / NOT_FOUND / MISSING / INVALID`, verification `invalidated / unresolved / missing / invalid`) unless the researcher's recorded approval lists its `RISK-` id in `acknowledged_risks`. A risk's id changes with its state; `tasks.py status` and the resume brief ("Assumptions at risk") show them. |
+| `tasks.py` stage 7 | Also needs exactly one current `library-inventory` input (see `LITERATURE_SCOUTING.md`); stage 3 may not carry one. |
 
 A verdict alone (`review_response` with no new teaching) is not gated, and a learner's own
 submissions are never lost because the agent's context is broken. Historical sessions without

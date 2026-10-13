@@ -1,0 +1,12 @@
+{
+  "visual_schema": 1,
+  "visual_id": "VIS-old",
+  "title": "Old schematic",
+  "kind": "conceptual-schematic",
+  "concepts": [
+    "box-counting"
+  ],
+  "source_type": "schematic",
+  "verification_status": "inspected",
+  "artifact": "Visuals/old.svg"
+}

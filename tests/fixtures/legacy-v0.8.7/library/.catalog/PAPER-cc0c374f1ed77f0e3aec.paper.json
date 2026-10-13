@@ -1,0 +1,27 @@
+{
+  "added_on": "2026-09-30",
+  "aliases": [
+    "doi:10.1234/example",
+    "title:2026:scale geometry"
+  ],
+  "authors": [
+    "Fixture Author"
+  ],
+  "concepts": [
+    "box-counting"
+  ],
+  "doi": "10.1234/example",
+  "domains": [],
+  "ingestion_status": "metadata-saved",
+  "paper_id": "PAPER-cc0c374f1ed77f0e3aec",
+  "paper_schema": 1,
+  "projects": [
+    "ecal"
+  ],
+  "relevance_notes": "Synthetic fixture relevant to counting.",
+  "screening": "useful",
+  "source_url": "https://example.org/source",
+  "subjects": [],
+  "title": "Scale geometry",
+  "year": 2026
+}

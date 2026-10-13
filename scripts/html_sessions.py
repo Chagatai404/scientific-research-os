@@ -92,6 +92,11 @@ def _path(root, relative):
     return path
 
 
+def resource_id(resource):
+    """A resource's identity. v0.8 sessions may omit `id` on an image; the Obsidian host has always used the path then, so every reader here does too."""
+    return resource.get("id") or resource["path"]
+
+
 def paths(root, relative_md):
     md = _path(root, relative_md)
     if md.suffix.lower() != ".md":
@@ -677,7 +682,7 @@ def placements(state):
     seen = {}
     markdown_html(state['source_markdown'], page_title=state['title'], questions={q['id']: q for q in state['questions']}, placed=set(),
                   widgets={w['id']: w for w in state.get('widgets', [])},
-                  figures={r['id']: r for r in state.get('resources', []) if r.get('kind') == 'image'}, placement=seen)
+                  figures={resource_id(r): r for r in state.get('resources', []) if r.get('kind') == 'image'}, placement=seen)
     return seen
 
 
@@ -689,7 +694,7 @@ def placement_issues(state, seen=None):
     """
     if seen is None:
         seen = placements(state)
-    declared_figures = {r['id'] for r in state.get('resources', []) if r.get('kind') == 'image'}
+    declared_figures = {resource_id(r) for r in state.get('resources', []) if r.get('kind') == 'image'}
     declared_widgets = {w['id'] for w in state.get('widgets', [])}
     issues = []
     for identifier in sorted(declared_figures - set(seen['figures'])):
@@ -732,7 +737,7 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
     placed, seen = set(), {}
     content = markdown_html(_teaching_source(state), page_title=state["title"], questions={q["id"]: q for q in state["questions"]}, placed=placed,
                             widgets={w["id"]: w for w in state.get("widgets", [])},
-                            figures={r["id"]: r for r in state.get("resources", []) if r.get("kind") == "image"}, placement=seen)
+                            figures={resource_id(r): r for r in state.get("resources", []) if r.get("kind") == "image"}, placement=seen)
     # New sessions never append a visual silently: a visual with no place becomes a visible diagnostic. Historical
     # sessions (no placement mode) keep their old behaviour so their pages do not change under their authors.
     tail = _placement_notice(placement_issues(state, seen)) if state.get("placement") == "explicit" else _widgets_html(state, set(seen["widgets"]))
@@ -1175,9 +1180,16 @@ def pending_activity(state):
         # A submission is handled when a review names it, or a review explicitly records covering it (an earlier attempt that a
         # later reviewed answer superseded). Nothing is dropped silently: an unreviewed submission stays pending.
         handled = set()
+        order = [r["event_id"] for r in responses]
         for review in q.get("reviews", []):
-            handled.add(review.get("response_event_id"))
+            named = review.get("response_event_id")
+            handled.add(named)
             handled.update(review.get("covers", []))
+            # A review stands for the attempt it names and every attempt before it. v0.8 reviewed only the latest response and recorded no
+            # `covers`, so without this rule each retry in an already-finished lesson would come back as pending work; v0.9 also lists the
+            # earlier attempts it supersedes in `covers`, which agrees. A review of an earlier attempt never settles a later one.
+            if named in order:
+                handled.update(order[:order.index(named) + 1])
         for number, response in enumerate(responses, 1):
             if response["event_id"] in handled:
                 continue
@@ -1295,7 +1307,7 @@ def session_context(root, relative_md, project_root=None, learning_root=None, as
              "pending": pending_activity(state) if state else [], "questions": [], "project": retrieval["project"],
              "research": None, "knowledge": None, "notes": [], "receipt": receipt,
              "receipt_file": str(receipt_file) if receipt_file else None, "blocked": receipt["outcome"] == "blocked",
-             "adapters": _adapter_lines(root, project_root)}
+             "adapters": _adapter_lines(root, project_root), "at_risk": ck.at_risk(receipt)}
     for q in (state["questions"] if state else []):
         responses = [e for e in state["events"] if e["type"] == "response" and e.get("question_id") == q["id"]]
         review = (q.get("reviews") or [None])[-1]
@@ -1392,6 +1404,11 @@ def render_context(brief):
                   for d in research.get("accepted_decisions", [])]
         for record in research["session_records"]:
             lines.append(f"- Session refers to {record['id']} ({record['type']}, {record['status']}): {record['title']}; load it with `research.py context --root \"{research['root']}\" --{ {'research-question': 'question', 'research-decision': 'decision'}.get(record['type'], record['type'])} {record['id']}`")
+    if brief.get("at_risk"):
+        lines += ["", "## Assumptions at risk", "",
+                  "These are contradicted, unsupported, unresolved or unreadable in the records. Do not build on them without telling the researcher; "
+                  "a build or experiment task is blocked until the researcher's approval names each one (`acknowledged_risks`)."]
+        lines += [f"- {r['message']} (`{r['id']}`)" for r in brief["at_risk"]]
     knowledge = brief["knowledge"]
     if knowledge:
         lines += ["", "## Knowledge graph", "", f"- {knowledge['capabilities']} capabilities for `{knowledge['project']}` under `{knowledge['root']}`: " + ", ".join(f"{k} {v}" for k, v in sorted(knowledge["states"].items()))]
@@ -1424,9 +1441,9 @@ def export_session(root, relative_md, destination):
             _check_image(path, raw)
             mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml"}[path.suffix.lower()]
             data_url = 'data:' + mime + ';base64,' + base64.b64encode(raw).decode()
-            images[resource['id']] = data_url
+            images[resource_id(resource)] = data_url
             # Only a historical session appends an unplaced figure; a new one reports it instead (see placement_issues).
-            if resource['id'] not in used_images and state.get('placement') != 'explicit':
+            if resource_id(resource) not in used_images and state.get('placement') != 'explicit':
                 markup += '<figure class="ros-figure"><img src="' + data_url + '" alt="' + html.escape(str(resource.get("alt", "Session illustration")), quote=True) + '"></figure>'
         else:
             _approved_module(root, path, resource)
@@ -1511,6 +1528,8 @@ def validate_sessions(root, exceptions=None):
             errors.append(f"{candidate['path']}: {candidate['status']} session missing HTML/state sidecars")
     for data in Path(root).rglob("*.state.json"):
         md = data.with_name(data.name[:-11] + ".md")
+        if md.relative_to(root).as_posix() in excluded:
+            continue  # a declared archive or fixture is reported by its owner, not validated as a live session
         try:
             state = load_session(root, md.relative_to(Path(root)))
             view = md.with_suffix(".html")

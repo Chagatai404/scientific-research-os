@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased - v0.9.0 candidate (Scientific Integrity & Knowledge Navigation)
+
+Upgrade notes: [docs/MIGRATION_v0.9.md](docs/MIGRATION_v0.9.md). Problems: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
+- **Context before work.** A context kernel retrieves the learning graph, research graph, project, code graph, paper library, visuals and
+  earlier sessions into a tamper-evident receipt. Session creation, new teaching and task stages 7, 8, 14 and 15 refuse to proceed
+  without a fresh, usable receipt; a contradicted, unsupported or unresolved assumption stops build and experiment tasks until the
+  researcher's approval names it (`ASSUMPTION_AT_RISK`, `acknowledged_risks`).
+- **Executed verification.** `scientific_verify.py` runs the checks a claim depends on (evaluation, equivalence, integrals,
+  derivatives, limits, dimensions, propagation, data leakage, resampling units, regime coverage) by independent methods and records a
+  scoped outcome and what was not verified. Records link into the research graph.
+- **Scientific rendering.** One inline grammar (Python, runtime and host held identical by a shared corpus): all LaTeX delimiters, nested
+  emphasis, code, links, wikilinks, in lessons, prompts, options, hints, solutions and feedback.
+- **Visuals where the lesson put them.** Figures and widgets are placed explicitly; an unplaced one is a visible diagnostic, never an
+  appendix. Evidence class labels (schematic, analytic, empirical, source); Excalidraw source and generated SVG export.
+- **Navigation.** A three-area workspace: section navigation with progress and "Where am I?", the lesson, and a questions panel with
+  history and "Back to ...". Links to other notes are requests the host validates and opens in a new tab.
+- **Concept-first tutoring.** Sections declare what they teach and assume; advanced material waits for its foundations; probes carry
+  contracts and a diagnostic budget; answers become proposals for the ledger; the learner can ask for the same idea another way.
+- **Durable supervision.** Pending work is per submission and derived from saved state; liveness is an expiring lease; eight honest page
+  states; completion is refused while an answer awaits review. A v0.8 review of the latest answer settles the retries before it.
+- **Library-aware scouting.** Inventory first, a neutral brief for discovery, reconciliation against the library, a stripped verifier
+  handoff; `tasks.py` enforces the order (`INVENTORY_*`, `DISCOVERY_NOT_NEUTRAL`). The paper catalog gains an optional `read_depth`.
+- **Optional Obsidian integrations that degrade.** One detector for community and core plugins with version compatibility; lexical
+  search and an opt-in Omnisearch bridge; practice cards without scheduling data; a prerequisite Canvas; plugin-derived relations kept as
+  suggestions; a Listen control using the browser's own speech synthesis. See references/OBSIDIAN_INTEGRATIONS.md.
+- **Compatibility found and fixed during release testing.** Image resources declared by path alone (accepted since v0.8) broke rendering;
+  the rollout tool refused a v0.8.7 installation; the first supervision rule would have resurrected old retries as pending work.
+- **Verification record.** Release scenarios A-J (`tests/test_release_scenarios.py`, `tests/html-scenarios-browser.cjs`), legacy
+  fixtures written by the real v0.8.7 code (`tests/fixtures/legacy-v0.8.7`), release gates in isolated worktrees. Not exercised: real
+  Obsidian with real plugins, real speech on a device, a live Codex or Claude process, mobile.
+
 ## 0.8.7 - 2026-10-11
 
 - Memory before the page: `html_sessions.py context` prints a resume brief (unchecked answers, open questions, project note, research graph and knowledge graph state). Every skill and the session protocol require it before creating or resuming; the helpers it needs ship with every installed skill.

@@ -699,9 +699,14 @@
   function pendingOf(state, events) {
     let count = 0;
     for (const q of state.questions || []) {
-      const handled = new Set();
-      for (const review of q.reviews || []) { handled.add(review.response_event_id); for (const id of review.covers || []) handled.add(id); }
-      for (const event of events || state.events || []) if (event.type === 'response' && event.question_id === q.id && !handled.has(event.event_id)) count++;
+      const handled = new Set(), responses = (events || state.events || []).filter(event => event.type === 'response' && event.question_id === q.id);
+      const order = responses.map(event => event.event_id);
+      // A review stands for the attempt it names and every attempt before it (v0.8 reviewed only the latest and recorded no `covers`).
+      for (const review of q.reviews || []) {
+        handled.add(review.response_event_id); for (const id of review.covers || []) handled.add(id);
+        const at = order.indexOf(review.response_event_id); if (at >= 0) for (const id of order.slice(0, at + 1)) handled.add(id);
+      }
+      for (const event of responses) if (!handled.has(event.event_id)) count++;
     }
     for (const record of state.open_questions || []) if (!(typeof record.answer === 'string' && record.answer.trim())) count++;
     for (const record of state.explanation_requests || []) if (record.status === 'open') count++;

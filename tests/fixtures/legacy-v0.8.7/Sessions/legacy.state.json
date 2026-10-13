@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "session_id": "bdb5b8084e7c4e638ca43859f27dcab3",
+  "type": "tutor-session",
+  "title": "Box counting, first pass",
+  "metadata": {
+    "type": "tutor-session",
+    "concept": "box-counting"
+  },
+  "source_markdown": "---\ntype: tutor-session\nconcept: box-counting\n---\n# Box counting, first pass\n\n## Why count boxes\n\nCover the set with boxes of side eps and count N(eps). See [[Idea note]] and $N(\\epsilon)\\propto\\epsilon^{-D}$.\n\n<!-- ros-question: shape -->\n\n## The slope\n\nThe slope of log N against log 1/eps estimates the dimension.\n\n<!-- ros-question: scale -->\n",
+  "events": [
+    {
+      "event_id": "r1",
+      "type": "response",
+      "question_id": "shape",
+      "response": "It estimates the dimension, I think.",
+      "status": "pending-review",
+      "created_at": "2026-10-13T13:07:28.315971+00:00"
+    },
+    {
+      "event_id": "r2",
+      "type": "response",
+      "question_id": "shape",
+      "response": "The slope is the box-counting dimension.",
+      "status": "pending-review",
+      "created_at": "2026-10-13T13:07:28.389025+00:00"
+    },
+    {
+      "event_id": "h1",
+      "type": "hint",
+      "question_id": "shape",
+      "response": 1,
+      "status": "pending-review",
+      "created_at": "2026-10-13T13:07:28.462798+00:00"
+    },
+    {
+      "event_id": "r3",
+      "type": "response",
+      "question_id": "scale",
+      "response": "Because the limit needs small boxes.",
+      "status": "pending-review",
+      "created_at": "2026-10-13T13:07:28.534436+00:00"
+    },
+    {
+      "event_id": "oq1",
+      "type": "open-question",
+      "question_id": null,
+      "response": "Does the slope depend on the range of eps?",
+      "status": "pending-review",
+      "created_at": "2026-10-13T13:07:28.679612+00:00"
+    },
+    {
+      "event_id": "oq2",
+      "type": "open-question",
+      "question_id": null,
+      "response": "What about noisy data?",
+      "status": "pending-review",
+      "created_at": "2026-10-13T13:07:28.817391+00:00"
+    }
+  ],
+  "questions": [
+    {
+      "id": "shape",
+      "kind": "free-response",
+      "prompt": "What does the slope estimate?",
+      "solution": "The box-counting dimension.",
+      "hints": [
+        "Think about scaling."
+      ],
+      "reviews": [
+        {
+          "response_event_id": "r2",
+          "verdict": "correct",
+          "feedback": "Yes: the slope is the dimension.",
+          "reviewed_at": "2026-10-13T13:07:28.610200+00:00"
+        }
+      ]
+    },
+    {
+      "id": "scale",
+      "kind": "free-response",
+      "prompt": "Why does the box size need to shrink?"
+    }
+  ],
+  "open_questions": [
+    {
+      "id": "oq1",
+      "session_id": "bdb5b8084e7c4e638ca43859f27dcab3",
+      "concept": "box-counting",
+      "prompt": "Does the slope depend on the range of eps?",
+      "status": "answered",
+      "created_at": "2026-10-13T13:07:28.679612+00:00",
+      "explanation_refs": [],
+      "answer": "Yes, fit only where the log-log plot is straight.",
+      "answered_at": "2026-10-13T13:07:28.751813+00:00"
+    },
+    {
+      "id": "oq2",
+      "session_id": "bdb5b8084e7c4e638ca43859f27dcab3",
+      "concept": "box-counting",
+      "prompt": "What about noisy data?",
+      "status": "open",
+      "created_at": "2026-10-13T13:07:28.817391+00:00",
+      "explanation_refs": []
+    }
+  ],
+  "lifecycle": "active",
+  "created_at": "2026-10-13T13:07:28.264797+00:00",
+  "updated_at": "2026-10-13T13:07:28.817412+00:00",
+  "widgets": [
+    {
+      "id": "sample",
+      "kind": "sampling"
+    }
+  ],
+  "resources": [
+    {
+      "id": "tent",
+      "kind": "image",
+      "path": "legacy.assets/tent.png",
+      "alt": "A tent-shaped curve"
+    }
+  ]
+}

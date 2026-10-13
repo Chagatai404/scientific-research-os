@@ -282,7 +282,9 @@ for claim_id, atom in board.items():
 
 # HTML-native sessions: known historical fixture is an explicitly reported archive.
 import html_sessions
-html_archives = {"examples/connected-research/tutor-sessions/2026-09-25 gamma shape.md"}
+html_archives = {"examples/connected-research/tutor-sessions/2026-09-25 gamma shape.md",
+                 # Bytes written by v0.8.7, kept for the compatibility tests; their projection is deliberately the old one.
+                 "tests/fixtures/legacy-v0.8.7/Sessions/legacy.md"}
 errors.extend(html_sessions.validate_sessions(ROOT, exceptions=html_archives))
 for archive in sorted(html_archives):
     print(f"INFO HTML archival exception: {archive} (historical compatibility fixture)")

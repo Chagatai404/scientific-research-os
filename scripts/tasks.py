@@ -333,7 +333,11 @@ def approval(root, task):
         raise ValueError('human approval required')
     binding(root, ref, verify=True)
     record = read_json(relative(root, ref['path']))
-    shape(record, {'approval_schema', 'status', 'approved_by', 'approved_at', 'task_id', 'stage', 'plan_ref', 'write_paths', 'run', 'writer_workspace'})
+    base = {'approval_schema', 'status', 'approved_by', 'approved_at', 'task_id', 'stage', 'plan_ref', 'write_paths', 'run', 'writer_workspace'}
+    access.shape(record, base | {'acknowledged_risks'}, base)  # the risks the human saw and accepted building on (see risk_gate)
+    if 'acknowledged_risks' in record and (not isinstance(record['acknowledged_risks'], list) or len(record['acknowledged_risks']) > 200
+                                           or any(not isinstance(item, str) or not re.fullmatch(r'RISK-[a-f0-9]{10}', item) for item in record['acknowledged_risks'])):
+        raise ValueError('acknowledged risks are a list of RISK ids')
     if type(record['approval_schema']) is not int or record['approval_schema'] != 1 or record['status'] != 'approved':
         raise ValueError('recorded human approval required')
     access.safe_text(record['approved_by'])
@@ -383,6 +387,37 @@ def context_gate(root, task):
     except (OSError, ValueError, TypeError):
         return 'CONTEXT_INVALID'
     return None if receipt['workflow'] in allowed else 'CONTEXT_WORKFLOW_MISMATCH'
+
+
+def task_risks(root, task):
+    """Contradicted, unsupported or unresolved assumptions in the task's context receipt (stages 14 and 15); empty when none or unreadable."""
+    if task['stage'] not in {14, 15}:
+        return []
+    refs = [i for i in task['input_refs'] if i['kind'] == 'context-receipt']
+    if len(refs) != 1:
+        return []
+    import context_kernel as kernel
+    try:
+        return kernel.at_risk(kernel.load(relative(root, refs[0]['path'])))
+    except (kernel.ContextError, OSError, ValueError, TypeError):
+        return []
+
+
+def risk_gate(root, task):
+    """'ASSUMPTION_AT_RISK' when building or experimenting on assumptions the records contradict, unless the human's approval names them.
+
+    The approval record may carry ``acknowledged_risks``: the RISK ids the researcher was shown and chose to build on. A risk's id
+    changes with its state, so acknowledging one state is not acknowledging another.
+    """
+    risks = task_risks(root, task)
+    if not risks:
+        return None
+    try:
+        record = read_json(relative(root, task['permissions']['approval_ref']['path']))
+        acknowledged = set(record.get('acknowledged_risks') or [])
+    except (OSError, ValueError, TypeError, KeyError):
+        acknowledged = set()
+    return None if {r['id'] for r in risks} <= acknowledged else 'ASSUMPTION_AT_RISK'
 
 
 def inventory_gate(root, task):
@@ -444,6 +479,9 @@ def gate(root, task, tasks, providers, active=None, checked=None):
         approval(root, task)
     except (OSError, ValueError, TypeError):
         return 'BLOCKED', 'APPROVAL_REQUIRED'
+    reason = risk_gate(root, task) if task['state'] != 'COMPLETE' else None
+    if reason:
+        return 'BLOCKED', reason
     if task['stage'] == 7 and not any(tasks[k]['stage'] == 3 for k in task['dependencies']):
         return 'BLOCKED', 'DISCOVERY_REQUIRED'
     if task['stage'] == 8:
@@ -506,6 +544,9 @@ def view(root, data, providers, now):
                    role=task['role'], stage=task['stage'], provider=task['provider'],
                    actual_context_exposure=task['actual_context_exposure'],
                    cancel_requested=task['cancel_requested'])
+        risks = task_risks(root, task) if task['state'] != 'COMPLETE' else []
+        if risks:
+            row['at_risk'] = risks  # shown so the researcher can approve knowing them; see risk_gate
         if task['state'] == 'RUNNING':
             row['provider_state'] = provider_status(providers.get(task['provider']), task['handle'])
             row['stale'] = (timestamp(now) - timestamp(task['started_at'])).total_seconds() >= 3600

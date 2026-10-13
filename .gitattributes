@@ -1,0 +1,2 @@
+# Fixtures written by earlier releases are byte-exact: converting line endings would change what is being tested.
+tests/fixtures/legacy-v0.8.7/** -text

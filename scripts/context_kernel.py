@@ -645,6 +645,34 @@ def require(receipt, workflow=None, *, allow_degraded=True, summary_only=False):
     return report
 
 
+# Evidence and verification states that mean a recorded assumption cannot simply be built on.
+RISKY_EVIDENCE = {'CONTRADICTED', 'OVERSTATED', 'NOT_FOUND', 'MISSING', 'INVALID'}
+RISKY_VERIFICATION = {'invalidated', 'unresolved', 'missing', 'invalid'}
+
+
+def at_risk(receipt):
+    """Scientific assumptions the retrieved records show to be contradicted, unsupported, unresolved or unreadable.
+
+    Each has a stable id that changes when its state changes, so an acknowledgement of one state is not an acknowledgement of
+    another. Work that builds on these must say so to the researcher; nothing here decides what to do about them.
+    """
+    research = ((receipt or {}).get('retrieval') or {}).get('research') or {}
+    found = []
+
+    def add(kind, ref, state, message):
+        digest = hashlib.sha256(f'{kind}|{ref}|{state}'.encode('utf-8')).hexdigest()[:10]
+        found.append({'id': 'RISK-' + digest, 'kind': kind, 'ref': ref, 'state': state, 'message': message})
+    for ref, entry in sorted((research.get('evidence') or {}).items()):
+        state = entry.get('state') if isinstance(entry, dict) else entry
+        if state in RISKY_EVIDENCE:
+            claim = entry.get('claim_text') if isinstance(entry, dict) else None
+            add('evidence', ref, state, f"evidence {ref} is {state}" + (f": {str(claim)[:160]}" if claim else ''))
+    for ref, state in sorted((research.get('verifications') or {}).items()):
+        if state in RISKY_VERIFICATION:
+            add('verification', ref, state, f'verification {ref} is {state}')
+    return found
+
+
 def receipt_directory(vault):
     return Path(vault) / '.research-os' / 'context'
 

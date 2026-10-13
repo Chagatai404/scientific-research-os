@@ -54,6 +54,15 @@ invalidate readiness and downstream reuse. Parent restart reconstructs manifests
 and adapter status; a stale RUNNING timestamp is a diagnostic, not proof of failure
 or permission to start a duplicate writer. Reconcile actual execution before retry.
 
+## Gates added in v0.9
+
+- `ASSUMPTION_AT_RISK` (stages 14 and 15): the context receipt shows an assumption the records contradict or cannot support. The
+  task view lists it (`at_risk`); the approval record may carry `acknowledged_risks`, the `RISK-` ids the researcher was shown and
+  chose to build on. A malformed list invalidates the approval.
+- `INVENTORY_REQUIRED`, `INVENTORY_INVALID`, `INVENTORY_STALE` (stage 7) and `DISCOVERY_NOT_NEUTRAL` (stage 3): library-aware
+  scouting, see `LITERATURE_SCOUTING.md`. Input kind: `library-inventory`.
+- Completed tasks keep their result and are never re-blocked by any of these.
+
 ## Safe concurrency and independence
 
 Parallelize only tasks whose required inputs already exist. Separate discovery
