@@ -500,7 +500,7 @@ starts from the paper library and keeps discovery neutral; optional Obsidian plu
 [Obsidian integrations](references/OBSIDIAN_INTEGRATIONS.md) and [literature scouting](references/LITERATURE_SCOUTING.md); the
 [implementation record](docs/plans/v0.9-implementation-plan.md) states what was verified and what was not.
 
-**v0.8.7 - Live, Linear HTML Sessions** makes open sessions update in place without reloading, shows "Checking…" until each answer is checked with the verdict and explanation appearing under it, places questions in session order between teaching blocks, and requires a resume brief that loads the research and knowledge graphs before any session continues; see [HTML sessions](docs/HTML_SESSIONS.md) and the [session protocol](references/HTML_SESSION_PROTOCOL.md).
+**v0.8.7 - Live, Linear HTML Sessions** makes open sessions update in place without reloading, shows "Checking…" until each answer is checked with the verdict and explanation appearing under it, places questions in session order between teaching blocks, and requires a resume brief that loads the research and knowledge graphs before any session continues; see [HTML sessions](docs/HTML_SESSIONS.md) and the [session protocol](references/HTML_SESSION_PROTOCOL.md). It was merged to main and pushed without a release tag.
 
 **v0.8.6 - HTML Session Design v2** replaces the session look with Whiteboard/Chalkboard boards, bundled accessible fonts, a consistent button system and fewer clicks in tutor questions. It was rolled out to the configured vault's 13 existing sessions with backups; see the [design system](docs/HTML_DESIGN_SYSTEM.md).
 
@@ -512,7 +512,7 @@ schema-3 tutoring, selective ownership and separate scientific/human defense axe
 The [release exercise](examples/release/README.md) and
 [implementation record](references/V0.8_IMPLEMENTATION.md) document integration,
 provider parity, compatibility gates and remaining live-environment validation.
-That release was merged to main and pushed without a tag; the current version is recorded in `VERSION`.
+The current version is recorded in `VERSION`.
 
 **v0.7.0 — Concept-first learning and connected research** adds the opt-in
 [knowledge model](references/KNOWLEDGE_MODEL.md), [concept-first tutor](references/TUTOR_PLANNING.md),

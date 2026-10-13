@@ -86,6 +86,8 @@ const layout = () => [...document.querySelector('main#ros-session').children].ma
     const order = await frame().evaluate(layout);
     assert.deepEqual(order, ['H:Why the shape matters', 'p', 'equation', 'p', 'H:Building the model', 'figure', 'p', 'Q:mcq',
       'H:Fitting', 'p', 'widget', 'p', 'Q:numeric', 'Q:free', 'H:Checking the result', 'p'], 'lesson order: ' + JSON.stringify(order));
+    assert.equal(await iframe.locator('h1').count(), 1, 'the page has exactly one title heading');
+    assert.equal(await iframe.locator('h1').innerText(), 'Fitting the gamma profile');
     assert.equal(await iframe.locator('.ros-diagnostic').count(), 0, 'no visual or widget is reported as unplaced');
     const figure = iframe.locator('main#ros-session figure');
     assert.equal(await figure.locator('img').getAttribute('alt'), 'Three boxes: model the counts, fit, check');

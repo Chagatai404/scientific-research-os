@@ -29,8 +29,10 @@ Upgrade notes: [docs/MIGRATION_v0.9.md](docs/MIGRATION_v0.9.md). Problems: [docs
   suggestions; a Listen control using the browser's own speech synthesis. See references/OBSIDIAN_INTEGRATIONS.md.
 - **Compatibility found and fixed during release testing.** Image resources declared by path alone (accepted since v0.8) broke rendering;
   the rollout tool refused a v0.8.7 installation; the first supervision rule would have resurrected old retries as pending work.
-- **Gates.** Python (944 tests), Node, and the real-Chromium suites passed in isolated worktrees at every slice; the pre-release run on
-  the last content commit was PASS=19, FAIL=0, SKIPPED=1 (the visual-parity page test, which needs one specific historical session).
+- **Gates.** Every slice was gated in an isolated worktree (Python, Node and real-Chromium suites). The Slice 4 and 5 runs each reported
+  failures that were fixed and re-run clean. The run on the last content commit: 944 Python tests ran, 941 passed and 3 skipped (the
+  live-environment checks), plus Node and browser suites, PASS=19, FAIL=0, SKIPPED=1 (the visual-parity page test: its generic checks
+  pass on every current session, but its later assertions describe the content of one specific historical session).
 - **Verification record.** Release scenarios A-J (`tests/test_release_scenarios.py`, `tests/html-scenarios-browser.cjs`), legacy
   fixtures written by the real v0.8.7 code (`tests/fixtures/legacy-v0.8.7`), release gates in isolated worktrees. Not exercised: real
   Obsidian with real plugins, real speech on a device, a live Codex or Claude process, mobile.

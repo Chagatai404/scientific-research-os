@@ -98,8 +98,10 @@ below are for you to run when you choose to.
 ## What was checked, and what was not
 
 Checked: the 13 real session files from the configured vault, copied to a temporary folder, all load under v0.9; 13 of 13 report only the
-stale projection above; a read-only pass leaves the copy byte-identical. This found and fixed two real problems before release: an image
-resource declared by path alone (accepted since v0.8) broke rendering, and the rollout tool refused a v0.8.7 installation.
+stale projection above; a read-only pass leaves the copy byte-identical. That copy exposed an image resource declared by path alone
+(accepted since v0.8), which broke rendering and is fixed. Two more problems were found by other checks before release and are fixed too:
+the rollout tool refused a v0.8.7 installation (found by installing a vault with the real v0.8.7 code and rolling it out), and the first
+supervision rule would have shown an old retry as pending forever (measured on one of the real sessions: 1 item, now 0).
 
 Not checked: the real vault was not migrated; no provider folder was written; nothing was run inside Obsidian beyond the earlier,
 separate desktop verifications of v0.8.x; mobile remains untested.
