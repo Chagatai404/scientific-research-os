@@ -34,8 +34,11 @@ Upgrade notes: [docs/MIGRATION_v0.9.md](docs/MIGRATION_v0.9.md). Problems: [docs
   live-environment checks), plus Node and browser suites, PASS=19, FAIL=0, SKIPPED=1 (the visual-parity page test: its generic checks
   pass on every current session, but its later assertions describe the content of one specific historical session).
 - **Verification record.** Release scenarios A-J (`tests/test_release_scenarios.py`, `tests/html-scenarios-browser.cjs`), legacy
-  fixtures written by the real v0.8.7 code (`tests/fixtures/legacy-v0.8.7`), release gates in isolated worktrees. Not exercised: real
-  Obsidian with real plugins, real speech on a device, a live Codex or Claude process, mobile.
+  fixtures written by the real v0.8.7 code (`tests/fixtures/legacy-v0.8.7`), release gates in isolated worktrees. After release
+  (2026-10-15) the build was deployed to the maintainer's vault and provider folders, and `tests/obsidian-html-smoke.cjs` passed in a real
+  Obsidian 1.14.4 with companion 0.2.0, including a full restart; a migrated real session opened there with its files unchanged on disk.
+  Not exercised: Excalidraw drawing rendering and the Omnisearch, Spaced Repetition and Canvas outputs in the app, real speech on a
+  device, a live Codex or Claude process, mobile.
 
 ## 0.8.7 - 2026-10-11
 

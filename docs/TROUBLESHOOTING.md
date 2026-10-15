@@ -93,6 +93,8 @@ their imports; `tests/test_context_protocol.py` checks the closure for both prov
 
 ## Environment-specific checks that were not run
 
-Real Obsidian, real plugins (Excalidraw rendering, Omnisearch, Spaced Repetition, Canvas), real speech on a device, a live Codex or Claude
-process and mobile were not exercised by the automated tests. The release record (`docs/plans/v0.9-implementation-plan.md`) says which
-checks ran with fixtures or fakes and which did not run at all.
+The automated tests use fixtures and fakes. After release the companion was also exercised in a real Obsidian 1.14.4 (with the
+installed Excalidraw and Breadcrumbs plugins loaded) by `tests/obsidian-html-smoke.cjs`, including a full application restart. Still not
+exercised: Excalidraw drawing rendering, the Omnisearch, Spaced Repetition and Canvas outputs inside the app, real speech on a device,
+a live Codex or Claude process and mobile. The release record (`docs/plans/v0.9-implementation-plan.md`) says which checks ran with
+fixtures or fakes, which ran in the real app and which did not run at all.

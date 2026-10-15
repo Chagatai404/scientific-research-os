@@ -4,9 +4,9 @@ v0.9 changes nothing in your vault by itself. Installing it replaces the helper 
 companion (the installer keeps a backup of anything it overwrites). Your notes, sessions, answers, learning history, research records,
 paper catalog, visuals and accepted evidence stay exactly as they are. This page says what to do, what you will see, and how to undo it.
 
-The upgrade has been rehearsed on fixtures written by the real v0.8.7 code and on a **copy** of the 13 real sessions in the configured
-vault. It has not been applied to the real vault, and nothing was installed into your provider folders by the development work. The steps
-below are for you to run when you choose to.
+The upgrade was rehearsed on fixtures written by the real v0.8.7 code and on a **copy** of the 13 real sessions in the configured
+vault, and was then applied to the maintainer's own vault and provider folders on 2026-10-15 (see "What was checked, and what was not").
+The steps below are what to run on any installation.
 
 ## Before you start
 
@@ -19,11 +19,13 @@ below are for you to run when you choose to.
 
    ```bash
    python scripts/install.py --target all --dry-run
-   python scripts/install.py --target all --html-companion
+   python scripts/install.py --target all
    ```
 
-   The installer overlays the known files, keeps extra files of yours, and backs up any file whose content differs.
-   Enable or reload the companion plugin in Obsidian yourself; nothing here switches a plugin on.
+   The installer overlays the known files, keeps extra files of yours, and backs up any file whose content differs (in a
+   `.research-os-install-backups` folder beside it). It never touches the vault's notes or templates, and running it again after an
+   interruption is safe. Do not add `--html-companion` on an existing installation: that option is for a first install and refuses to
+   overwrite a companion that differs, so step 2 upgrades the companion instead. Nothing here switches a plugin on.
 
 2. **Roll the session runtime and pages forward** (this is the only step that touches sessions):
 
@@ -34,7 +36,8 @@ below are for you to run when you choose to.
 
    It replaces the runtime and the companion (refusing if you have edited them locally) and regenerates each session's **HTML
    projection** only. It then checks that every session's Markdown, its JSON state and your templates are byte-identical to before. v0.8.5,
-   v0.8.6 and v0.8.7 installations are recognised. For one session at a time:
+   v0.8.6 and v0.8.7 installations are recognised. It replaces the companion's `main.js` only, so afterwards copy
+   `extensions/obsidian-html/manifest.json` over the vault's copy to bring the plugin's version label to 0.2.0. For one session at a time:
 
    ```bash
    python scripts/html_sessions.py --root <vault> refresh-projection "<session>.md" --backup-directory <new-empty-folder> [--apply]
@@ -103,5 +106,11 @@ stale projection above; a read-only pass leaves the copy byte-identical. That co
 the rollout tool refused a v0.8.7 installation (found by installing a vault with the real v0.8.7 code and rolling it out), and the first
 supervision rule would have shown an old retry as pending forever (measured on one of the real sessions: 1 item, now 0).
 
-Not checked: the real vault was not migrated; no provider folder was written; nothing was run inside Obsidian beyond the earlier,
-separate desktop verifications of v0.8.x; mobile remains untested.
+After release, on 2026-10-15, the same steps were run on the maintainer's machine. The provider install left all 800 installed helper
+scripts identical to the repository. The rollout changed four runtime files, the companion and 13 session pages; the tool and a separate
+modification-time check agree that no Markdown or JSON state file changed, and `validate` reports no problems for all 13 sessions. In a
+real Obsidian 1.14.4 with the new companion, `tests/obsidian-html-smoke.cjs` passed, including a full application restart, and a
+migrated real session opened there with 40 files in the two session folders byte-identical before and after.
+
+Not checked: Excalidraw drawing rendering and the Omnisearch, Spaced Repetition and Canvas outputs inside the app, real speech on a
+device, a live Codex or Claude process, and mobile.

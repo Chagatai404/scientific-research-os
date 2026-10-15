@@ -28,7 +28,14 @@ async function main() {
   assert(await iframe.locator('[data-math-status="rendered"]').count()>0);
   await iframe.locator('svg').first().waitFor();
   await iframe.locator('canvas').first().waitFor();
-  if (process.argv.includes('--expect-restored')) await iframe.getByText('Previous response restored.',{exact:false}).waitFor();
+  // v0.9: a saved answer is shown in its own box with an honest waiting state; there is no separate "restored" banner.
+  const SAVED='Synthetic renderer smoke response; not learner evidence.';
+  const expectRestored=async()=>{
+    const saved=iframe.locator('[data-question-id="verification-q"]');
+    await saved.getByText('Saved, waiting for the tutor',{exact:false}).waitFor();
+    assert.equal(await saved.locator('textarea').first().inputValue(),SAVED);
+  };
+  if (process.argv.includes('--expect-restored')) await expectRestored();
   const embeddedFrame = await (await view.locator('iframe').elementHandle()).contentFrame();
   assert.equal(await embeddedFrame.evaluate(()=>typeof require),'undefined');
   assert.equal(await embeddedFrame.evaluate(()=>typeof process),'undefined');
@@ -49,7 +56,7 @@ if(!(await iframe.locator('.ros-side-panel').isVisible()))await iframe.locator('
     await active.detach();
     await window.app.workspace.getLeaf('tab').openFile(window.app.vault.getAbstractFileByPath(path));
   },fixture);
-  await iframe.getByText('Previous response restored.',{exact:false}).waitFor();
+  await expectRestored();
   const bridge=fixture.replace(/\.html$/,'.md');
   await page.evaluate(async path=>{
     const leaf=window.app.workspace.getLeaf('tab');
