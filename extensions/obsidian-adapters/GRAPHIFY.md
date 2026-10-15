@@ -43,3 +43,7 @@ and `label`. For each explicit `code_refs` path, the matching file's node labels
 are listed alongside it. Nothing else is read from the graph, no relation is
 created, and a missing or unreadable file is simply ignored. Research OS never
 runs Graphify, and installation and validation never invoke it.
+
+## Detection and fallback
+
+Whether this adapter is installed, enabled and compatible with the running Obsidian is read from the vault's files by `python scripts/obsidian_plugins.py report --vault <vault>`; every resume brief lists it. When it is absent or incompatible the built-in route is used and nothing breaks. See `references/OBSIDIAN_INTEGRATIONS.md`.

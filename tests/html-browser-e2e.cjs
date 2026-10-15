@@ -65,7 +65,8 @@ async function main() {
     await numeric.getByLabel('Units:',{exact:true}).fill('m/s');
     await numeric.getByRole('button',{name:'Submit response'}).click();
     await numeric.locator('.ros-feedback[data-state=matches]').waitFor();
-    await iframe.getByLabel('Ask an open question during this session:',{exact:true}).fill('Why is the variance finite?');
+if(!(await iframe.locator('.ros-side-panel').isVisible()))await iframe.locator('.ros-panel-toggle').click();
+        await iframe.getByLabel('Ask an open question during this session:',{exact:true}).fill('Why is the variance finite?');
     await iframe.getByRole('button',{name:'Send',exact:true}).click();
     await iframe.getByText('Progress saved.',{exact:false}).waitFor();
     // Recreate the view from persisted vault JSON: browser page memory is discarded.

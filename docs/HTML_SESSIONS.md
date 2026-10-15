@@ -61,6 +61,9 @@ from html_sessions import create_session, install_runtime, update_session
 
 root = Path("C:/path/to/vault")
 install_runtime(root)
+# prepared_markdown places the widget where it is explained: a line `<!-- ros-widget: vector-demo -->`
+# (figures use `![alt](resource:ID "caption")`). A new session never appends a declared visual silently;
+# an unplaced one is shown as a diagnostic and reported by `validate`.
 create_session(root, "Sessions/Velocity.md", prepared_markdown,
     questions=[{
         "id": "velocity-1", "kind": "numeric", "prompt": "Compute velocity",
@@ -206,6 +209,13 @@ are explicit. Keep unsaved progress open and use **Show progress JSON to copy** 
 Required verification: Python tests, host Node tests, real Chromium runtime/host
 tests, actual-vault source/hash checks and the explicit desktop operational smoke
 test. Responsive browser checks do not establish actual mobile support.
+
+## Listening and other Obsidian integrations
+
+The navigation has a **Listen** control that reads the section in view with the browser's speech synthesis (on-device voices first;
+online voices only when chosen and labelled; question prompts, hints and solutions are never read). `python scripts/obsidian_plugins.py
+report --vault <vault>` shows which optional plugins are usable; each has a built-in fallback. See
+`references/OBSIDIAN_INTEGRATIONS.md` and `references/HTML_SESSION_PROTOCOL.md`.
 
 ## Live tutoring
 

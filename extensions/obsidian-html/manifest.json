@@ -1,7 +1,7 @@
 {
   "id": "research-os-html",
   "name": "Research OS HTML Sessions",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minAppVersion": "1.5.0",
   "description": "Isolated HTML session views and Markdown embeds with local state persistence.",
   "author": "Research OS",

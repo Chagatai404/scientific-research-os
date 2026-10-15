@@ -1,4 +1,4 @@
-"""Backed-up v0.8.5 visual rollout. Dry run by default; never install templates.
+"""Backed-up HTML runtime rollout (v0.8.5 to v0.9: runtime, host and session projections). Dry run by default; never install templates.
 
 Installed code must match a known upstream baseline or the requested repository
 version. Unexpected local edits stop preflight before any installation changes.
@@ -39,7 +39,8 @@ def rollout(vault, providers, backup, apply=False):
         after = (ROOT / source).read_bytes()
         if source not in known:
             known[source] = {normalized(after)}
-            for ref in ('e50692b', '188ce3d', 'b473868', 'f961adc'):
+            # Released installations this tool upgrades from: v0.8.5, v0.8.6 and (a058df2) v0.8.7.
+            for ref in ('e50692b', '188ce3d', 'b473868', 'f961adc', 'a058df2'):
                 known[source].add(normalized(subprocess.check_output(['git', 'show', f'{ref}:{source}'], cwd=ROOT)))
         before = target.read_bytes()
         if normalized(before) not in known[source]:

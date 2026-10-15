@@ -1,6 +1,7 @@
 """Rollout preflight must refuse drift before touching installed code or content."""
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -44,6 +45,32 @@ class RolloutTests(unittest.TestCase):
             self.assertEqual((root / 'backup/sessions/01 Projects/Test/session.html').read_bytes(), b'Old HTML')
             self.assertTrue(all(p.read_bytes() == original for p, original in protected.items()))
             self.assertEqual(json.loads((root / 'backup/manifest.json').read_text())['status'], 'complete')
+
+
+def git_has(ref):
+    try:
+        subprocess.run(['git', 'cat-file', '-e', ref + '^{commit}'], cwd=rollout.ROOT, check=True, capture_output=True)
+        return True
+    except (OSError, subprocess.CalledProcessError):
+        return False
+
+
+class UpgradeFromV087(unittest.TestCase):
+    @unittest.skipUnless(git_has('a058df2'), 'the v0.8.7 release commit is not in this clone')
+    def test_a_vault_installed_at_the_v087_release_is_an_accepted_baseline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            vault = Path(directory) / 'vault'
+            for relative, source in [('.research-os/runtime/' + n, 'assets/html-runtime/' + n) for n in ('theme.css', 'session.css', 'runtime.js', 'session.js')] + [
+                    ('.obsidian/plugins/research-os-html/main.js', 'extensions/obsidian-html/main.js')]:
+                target = vault / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(subprocess.check_output(['git', 'show', 'a058df2:' + source], cwd=rollout.ROOT))
+            preview = rollout.rollout(vault, [], Path(directory) / 'backup')
+            self.assertTrue(preview['dry_run'])
+            self.assertEqual(len(preview['changes']), 5, 'every v0.8.7 file would be replaced, none refused')
+            (vault / '.research-os/runtime/theme.css').write_bytes(b'locally edited')
+            with self.assertRaisesRegex(ValueError, 'Locally modified'):
+                rollout.rollout(vault, [], Path(directory) / 'backup2')
 
 
 if __name__ == '__main__':

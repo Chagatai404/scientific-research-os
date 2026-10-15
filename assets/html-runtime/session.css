@@ -124,6 +124,14 @@ a { color: var(--ros-accent); text-underline-offset: .2em; }
 a:hover { color: var(--ros-accent-hover); }
 .ros-link-target { color: var(--ros-text-muted); font-size: .85em; overflow-wrap: anywhere; }
 .ros-note-link { color: var(--ros-accent); }
+/* Unsupported or unterminated syntax stays visible exactly as authored, marked rather than hidden or silently repaired. */
+.ros-diagnostic, .ros-math[data-math-status="unsupported"] { background: var(--ros-warning-bg); color: var(--ros-warning); border-bottom: 1px dotted currentColor; border-radius: 3px; padding: 0 .2em; font-family: var(--ros-font-mono); font-size: .92em; }
+.ros-math[data-math-status="unsupported"] small { font-family: var(--ros-font-ui); }
+.ros-eqref { color: var(--ros-accent); text-decoration: none; }
+.ros-eqref:hover, .ros-eqref:focus-visible { text-decoration: underline; }
+.ros-formula[data-eq-label]:target { outline: 2px solid var(--ros-focus); outline-offset: 4px; }
+del { text-decoration-thickness: .08em; color: var(--ros-text-muted); }
+mark { background: var(--ros-warning-bg); color: inherit; padding: 0 .15em; border-radius: 3px; }
 ul, ol { padding-left: 1.5em; margin: var(--ros-space-4) 0; }
 li { margin: .5em 0; padding-left: .2em; }
 li::marker { color: var(--ros-text-muted); font-variant-numeric: tabular-nums; }
@@ -352,6 +360,83 @@ figure img { display: block; margin: auto; border-radius: var(--ros-radius-sm); 
 .ros-formula { border-block: 1px solid var(--ros-border); margin: var(--ros-space-5) 0; }
 .ros-callout-formula .ros-formula { border: 0; margin: var(--ros-space-3) 0; }
 figcaption, caption { font: 14px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); text-align: left; padding-top: var(--ros-space-3); }
+/* Navigation and workspace: where am I, where can I go, and a questions panel that stays reachable. */
+@media (max-width: 1439px) {
+  /* Without a side rail the contents bar stays reachable while reading, so "where am I" never costs the learner their place. */
+  .ros-toc { position: sticky; top: 0; z-index: 20; }
+  .ros-toc > details[open] { max-height: min(70vh, 560px); overflow-y: auto; box-shadow: var(--ros-shadow-sm); }
+  .ros-document :is(h1, h2, h3, h4, h5, h6) { scroll-margin-top: 64px; }
+}
+.ros-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.ros-section-progress { margin-inline-start: auto; padding-inline-start: var(--ros-space-2); font-size: 12px; font-weight: 400; color: var(--ros-text-muted); white-space: nowrap; }
+.ros-toc a[data-progress="done"] .ros-section-progress { color: var(--ros-success); font-weight: 700; }
+.ros-toc a[data-progress="partial"] .ros-section-progress { color: var(--ros-warning); }
+.ros-nav-extra { display: grid; gap: var(--ros-space-2); margin: 0; padding: var(--ros-space-3) var(--ros-space-2) var(--ros-space-2); border-top: 1px solid var(--ros-border); font: 14px/1.4 var(--ros-font-ui); }
+.ros-nav-steps { display: grid; grid-template-columns: 1fr 1fr; gap: var(--ros-space-2); }
+.ros-nav-extra button { min-height: 44px; padding: 0 var(--ros-space-2); font-size: 14px; white-space: nowrap; }
+.ros-listen { display: grid; gap: var(--ros-space-2); }
+.ros-listen-row { display: grid; grid-template-columns: 1fr auto; gap: var(--ros-space-2); }
+.ros-listen-note { margin: 0; font-size: 13px; color: var(--ros-text-muted); overflow-wrap: anywhere; }
+.ros-listen-note:empty { display: none; }
+.ros-listen-options[hidden] { display: none; }
+.ros-listen-options label { display: grid; gap: 2px; margin-top: var(--ros-space-2); font-size: 13px; }
+.ros-listen-options select { min-height: 40px; max-width: 100%; }
+.ros-speaking { background: var(--ros-accent-bg); box-shadow: -4px 0 0 var(--ros-accent); border-radius: var(--ros-radius-sm); }
+@media (forced-colors: active) { .ros-speaking { outline: 2px solid Highlight; } }
+.ros-where { margin: 0; padding: var(--ros-space-3); background: var(--ros-surface-strong); border-radius: var(--ros-radius-sm); overflow-wrap: anywhere; color: var(--ros-text); }
+.ros-where[hidden], .ros-nav-related[hidden] { display: none; }
+.ros-nav-heading { margin: var(--ros-space-3) 0 var(--ros-space-1); font: 700 12px/1.4 var(--ros-font-ui); text-transform: uppercase; letter-spacing: .09em; color: var(--ros-text-muted); }
+.ros-nav-related ul { list-style: none; margin: 0; padding: 0; }
+.ros-nav-related li { display: grid; gap: 2px; padding: var(--ros-space-2) var(--ros-space-1); }
+.ros-nav-kind { font-size: 12px; color: var(--ros-text-muted); }
+a.ros-note-link { color: var(--ros-accent); text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+a.ros-note-link:hover { text-decoration-style: solid; }
+.ros-note-link-invalid { color: var(--ros-text-muted); border-bottom: 1px dotted currentColor; }
+.ros-note-hint { display: inline-block; margin-inline-start: .5em; padding: 0 .6em; font: 13px/1.6 var(--ros-font-ui); color: var(--ros-text); border: 1px solid var(--ros-border-strong); border-radius: 999px; background: var(--ros-surface-subtle); }
+.ros-note-hint[data-state="problem"] { color: var(--ros-warning); background: var(--ros-warning-bg); border-color: currentColor; }
+.ros-side-panel { position: fixed; z-index: 40; top: 0; right: 0; bottom: 0; width: min(92vw, 400px); overflow-y: auto; padding: var(--ros-space-5); background: var(--ros-surface); border-left: 1px solid var(--ros-border); box-shadow: var(--ros-shadow-sm); overflow-wrap: anywhere; }
+.ros-side-panel[hidden] { display: none; }
+.ros-side-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ros-space-3); }
+.ros-side-panel-title { margin: 0; font: 700 18px/1.3 var(--ros-font-ui); }
+.ros-side-panel .ros-open-question { margin: var(--ros-space-4) 0; padding: var(--ros-space-4); }
+.ros-side-panel .ros-question-composer textarea { min-height: 6rem; }
+.ros-side-panel .ros-question-history { margin: var(--ros-space-4) 0 0; }
+.ros-side-panel .ros-question-history > h2 { font-size: 16px; margin-top: 0; }
+.ros-question-entry { padding: var(--ros-space-3) 0; border-top: 1px solid var(--ros-border); }
+.ros-question-entry .ros-question-state { float: right; font: 600 13px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); }
+/* Whether anyone is listening, said plainly: text carries the meaning, the edge colour only echoes it. */
+.ros-supervision { grid-column: 1 / -1; margin: var(--ros-space-2) 0 0; padding: var(--ros-space-2) var(--ros-space-3); border-left: 4px solid var(--ros-border-strong); border-radius: var(--ros-radius-sm); background: var(--ros-surface-subtle); color: var(--ros-text); font: 14px/1.5 var(--ros-font-ui); }
+.ros-supervision[hidden] { display: none; }
+.ros-supervision:is([data-status="waiting-for-learner"], [data-status="active"]) { border-left-color: var(--ros-success); }
+.ros-supervision:is([data-status="response-awaiting-review"], [data-status="agent-reviewing"]) { border-left-color: var(--ros-accent); }
+.ros-supervision:is([data-status="disconnected"], [data-status="paused"]) { border-left-color: var(--ros-warning); background: var(--ros-warning-bg); }
+.ros-supervision[data-status="failed-recoverable"] { border-left-color: var(--ros-danger); background: var(--ros-danger-bg); }
+.ros-explain { margin: var(--ros-space-4) 0; }
+.ros-explain-title { margin: 0 0 var(--ros-space-2); font: 700 14px/1.4 var(--ros-font-ui); }
+.ros-explain-modes { display: flex; flex-wrap: wrap; gap: var(--ros-space-2); }
+.ros-explain-mode { min-height: 36px; padding: 0 var(--ros-space-3); border-radius: 999px; font-size: 13px; }
+.ros-explain-note { margin: var(--ros-space-2) 0 0; font: 13px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); }
+.ros-explain-note:empty { display: none; }
+.ros-waiting-title { margin: var(--ros-space-4) 0 var(--ros-space-1); font: 700 14px/1.4 var(--ros-font-ui); }
+.ros-waiting ul { list-style: none; margin: 0; padding: 0; font: 14px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); }
+.ros-waiting li { padding: var(--ros-space-1) 0; }
+button.ros-return { min-height: 32px; padding: 0 var(--ros-space-2); border-color: transparent; background: transparent; color: var(--ros-accent); font-size: 14px; text-align: left; }
+.ros-panel-toggle { position: fixed; z-index: 39; right: 16px; bottom: 16px; display: inline-flex; align-items: center; gap: var(--ros-space-2); min-height: 44px; padding: 0 var(--ros-space-4); border-radius: 999px; box-shadow: var(--ros-shadow-sm); }
+.ros-side-panel:not([hidden]) ~ .ros-panel-toggle { display: none; }
+.ros-panel-toggle[data-fresh="true"] { background: var(--ros-accent); color: var(--ros-on-accent); border-color: var(--ros-accent); }
+.ros-panel-toggle[data-fresh="true"] .ros-count { background: var(--ros-on-accent); color: var(--ros-accent); }
+.ros-count { min-width: 1.6em; padding: 0 .4em; border-radius: 999px; background: var(--ros-accent); color: var(--ros-on-accent); font-size: 12px; font-weight: 700; text-align: center; }
+@media (min-width: 1600px) {
+  /* Three areas: navigation left, the lesson in the middle, questions right. */
+  .ros-side-panel { top: 24px; right: 24px; bottom: 24px; width: 320px; border: 1px solid var(--ros-border); border-radius: var(--ros-radius-lg); }
+  .ros-panel-toggle, .ros-panel-close { display: none; }
+  .ros-document { margin-inline: auto 368px; }
+  .ros-document:has(.ros-toc) { margin-left: calc((100vw - 1036px) / 2); margin-right: auto; }
+  .ros-toc { margin: 0 72px 0 -292px; } /* the rail sits 24px outside the lesson's padded box; net zero effect on text flow */
+}
+/* A figure says what kind of evidence it is; a placement problem is shown in the lesson, never hidden. */
+.ros-visual-class { display: inline-block; margin-inline-start: var(--ros-space-2); padding: 0 .55em; border: 1px solid var(--ros-border); border-radius: 999px; font-size: 12px; white-space: normal; }
+aside.ros-diagnostic { display: block; margin: var(--ros-space-4) 0; padding: var(--ros-space-3) var(--ros-space-4); border: 1px dashed currentColor; border-radius: var(--ros-radius-sm); overflow-wrap: anywhere; }
 div[data-ros=equation], .katex-display { overflow-x: auto; overflow-y: hidden; padding: var(--ros-space-3) 0; }
 span[data-ros=equation] { padding: 0; }
 [data-math-status=unsupported] { white-space: pre-wrap; border: 1px solid var(--ros-warning); border-radius: var(--ros-radius-sm); padding: var(--ros-space-3); }
@@ -388,8 +473,8 @@ form[data-ros=open-question]:not(.ros-open-question) { border-top: 1px solid var
     --ros-practice-bg: white; --ros-warning-bg: white; --ros-accent-bg: white; --ros-success-bg: white; --ros-accent: #1f5f8b;
   }
   button, form, .ros-status, .ros-progress { display: none; }
-  .ros-toc { display: none; }
-  .ros-document:has(.ros-toc) { margin-left: 0; }
+  .ros-toc, .ros-side-panel, .ros-panel-toggle, .ros-note-hint { display: none; }
+  .ros-document, .ros-document:has(.ros-toc) { margin-left: 0; margin-right: 0; }
   main { max-width: none; padding: 0; margin: 0; box-shadow: none; }
   h1, h2, h3 { break-after: avoid; }
   figure { break-inside: avoid; }

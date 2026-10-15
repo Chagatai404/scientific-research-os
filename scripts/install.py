@@ -26,6 +26,10 @@ V08_AGENT_REFERENCES = {
     "source-verifier": ("LITERATURE_RELIABILITY_PROTOCOL.md", "AUTHENTICATED_ACCESS_PROTOCOL.md"),
     "adversarial-reviewer": ("LITERATURE_RELIABILITY_PROTOCOL.md",),
 }
+# v0.9: the verification protocol travels with every role that audits a quantitative claim.
+V09_AGENT_REFERENCES = {role: ("VERIFICATION_PROTOCOL.md",) for role in (
+    "mathematics-reviewer", "statistics-reviewer", "physics-reviewer", "adversarial-reviewer",
+    "ml-reviewer", "simulation-reviewer", "qml-reviewer")}
 
 
 # Standard-library helpers the graph-first workflows call from an installed skill
@@ -34,13 +38,32 @@ GRAPH_SKILLS = {"tutor", "course-study", "visualize", "research-session", "resea
 GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py", "migrate_learning.py", "research.py", "visuals.py", "tutor_contract.py", "tutor_plan.py", "bootstrap.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
                  "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py",
-                 "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py")
+                 "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py",
+                 "context_kernel.py", "scientific_verify.py", "rich_text.py", "visual_assets.py", "tutor_gate.py", "supervision.py",
+                 # tasks.py gates reconciliation on the library inventory receipt that scout.py produces.
+                 "scout.py",
+                 # Optional Obsidian adapters: detection, vault search, and generated cards/canvas (all degrade to built-in routes).
+                 "obsidian_plugins.py", "vault_search.py", "plugin_exports.py")
 
 
 # Every substantive workflow writes HTML sessions, and `html_sessions.py context` loads the
 # research and knowledge graphs in-process, so each skill carries these helpers.
 SESSION_HELPERS = ("html_sessions.py", "common.py", "research.py", "knowledge.py", "ontology.py",
-                   "validate_evidence.py", "computational_manifest.py")
+                   "validate_evidence.py", "computational_manifest.py",
+                   # The context kernel gates every session; this is its complete import closure.
+                   "context_kernel.py", "migrate_learning.py", "paper_library.py", "visuals.py",
+                   # Stdlib-only verification engine: every review workflow can execute its checks.
+                   "scientific_verify.py",
+                   # The shared scientific inline grammar html_sessions renders with.
+                   "rich_text.py",
+                   # `html_sessions.py place` / `attach-visual` put registered figures into a lesson.
+                   "visual_assets.py", "excalidraw_schematic.py",
+                   # Concept-first gates for tutoring sessions (prerequisites, probe contracts, evidence proposals).
+                   "tutor_gate.py", "tutor_contract.py",
+                   # html_sessions validates a session's supervision record and renews its lease while waiting.
+                   "supervision.py",
+                   # The resume brief names which optional Obsidian adapters the vault has; visual_assets shares the detection.
+                   "obsidian_plugins.py")
 
 
 def copy_dir(src: Path, dst: Path, dry: bool) -> None:
@@ -142,7 +165,7 @@ def agent_policy(role: str) -> str:
     evidence_policy = ""
     compute_policy = ""
     v08_policy = ""
-    for name in ("ORCHESTRATION_PROTOCOL.md", *V08_AGENT_REFERENCES.get(role, ())):
+    for name in ("ORCHESTRATION_PROTOCOL.md", *V08_AGENT_REFERENCES.get(role, ()), *V09_AGENT_REFERENCES.get(role, ())):
         v08_policy += "\n" + (ROOT / "references" / name).read_text(encoding="utf-8")
     if role in COMPUTE_AGENTS:
         for name in ("COMPUTATIONAL_PROTOCOL.md", "SOURCE_POLICY.md", *COMPUTE_AGENTS[role]):

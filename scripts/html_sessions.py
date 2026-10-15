@@ -22,6 +22,7 @@ import time
 import uuid
 
 from common import load_config, parse_frontmatter
+import rich_text
 
 SCHEMA_VERSION = 1
 MAX_STATE_BYTES = 8 * 1024 * 1024
@@ -91,6 +92,11 @@ def _path(root, relative):
     return path
 
 
+def resource_id(resource):
+    """A resource's identity. v0.8 sessions may omit `id` on an image; the Obsidian host has always used the path then, so every reader here does too."""
+    return resource.get("id") or resource["path"]
+
+
 def paths(root, relative_md):
     md = _path(root, relative_md)
     if md.suffix.lower() != ".md":
@@ -122,8 +128,15 @@ def _approved_module(root, path, resource):
 
 
 def validate_interaction(event, question_ids):
-    if not isinstance(event, dict) or set(event) - {'event_id','type','question_id','response','created_at','status'}:
+    if not isinstance(event, dict) or set(event) - {'event_id','type','question_id','response','created_at','status','origin'}:
         raise ValueError('Unknown interaction event field')
+    if 'origin' in event:
+        # Where in the lesson an open question was asked, so the learner can return there; a section anchor and its title.
+        origin = event['origin']
+        if (event.get('type') not in ('open-question', 'explanation-request') or not isinstance(origin, dict) or set(origin) - {'section', 'title'}
+                or not isinstance(origin.get('section'), str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', origin['section'])
+                or not isinstance(origin.get('title'), str) or len(origin['title']) > 200):
+            raise ValueError('Invalid question origin')
     if not isinstance(event.get('event_id'), str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', event['event_id']):
         raise ValueError('Invalid interaction event ID')
     if event.get('created_at') is not None:
@@ -131,7 +144,11 @@ def validate_interaction(event, question_ids):
             dt.datetime.fromisoformat(event['created_at'].replace('Z','+00:00'))
         except (ValueError, TypeError, AttributeError):
             raise ValueError('Invalid interaction timestamp') from None
-    if event.get('type') in {'open-question','checkpoint'}:
+    if event.get('type') == 'explanation-request':
+        # A request for another explanation: one of the known modes, tied to no question, and never evidence of anything.
+        if not (isinstance(event.get('response'), str) and event['response'] in ADAPT_MODES) or event.get('question_id') is not None:
+            raise ValueError('An explanation request names one known mode and no question')
+    elif event.get('type') in {'open-question','checkpoint'}:
         if not isinstance(event.get('response'), str) or not event['response'].strip():
             raise ValueError('Question/checkpoint requires bounded nonempty text')
     else:
@@ -159,6 +176,11 @@ def validate_interaction(event, question_ids):
 
 
 REVIEW_VERDICTS = ("correct", "partially-correct", "incorrect", "reviewed")
+# What a learner can ask for instead of moving on. A request is a request: it never counts as demonstrated understanding.
+ADAPT_MODES = {"simpler": "Explain more simply", "more-rigorous": "Explain more rigorously", "derivation": "Show the derivation",
+               "visual": "Explain visually", "analogy": "Give an intuitive analogy", "worked-example": "Show a worked example",
+               "physical-interpretation": "Explain the physical interpretation", "implementation": "Explain how to implement it",
+               "prerequisites": "Review the prerequisites"}
 QUESTION_KINDS = {"mcq", "multi", "numeric", "matching", "ordering", "free-response"}
 
 
@@ -167,8 +189,20 @@ def _validate_reviews(reviews):
     if not isinstance(reviews, list) or len(reviews) > 200:
         raise ValueError("Invalid question reviews")
     for review in reviews:
-        if not isinstance(review, dict) or set(review) - {"response_event_id", "verdict", "feedback", "reviewed_at"}:
+        if not isinstance(review, dict) or set(review) - {"response_event_id", "verdict", "feedback", "reviewed_at", "criteria_met", "reviewed_by", "rationale", "covers"}:
             raise ValueError("Invalid question review")
+        # Optional structured review: which declared criteria the answer met, and who judged it.
+        if "criteria_met" in review and not (isinstance(review["criteria_met"], list) and 0 < len(review["criteria_met"]) <= 20
+                                             and all(type(x) is bool for x in review["criteria_met"])):
+            raise ValueError("criteria_met is a list of true/false, one per declared criterion")
+        if "criteria_met" in review and review.get("verdict") == "correct" and not all(review["criteria_met"]):
+            raise ValueError("A correct verdict requires every declared criterion to be met")
+        if "covers" in review and not (isinstance(review["covers"], list) and len(review["covers"]) <= 200 and all(
+                isinstance(x, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", x) for x in review["covers"])):
+            raise ValueError("covers lists the earlier submissions this review supersedes")
+        for key, limit in (("reviewed_by", 200), ("rationale", 2000)):
+            if key in review and not (isinstance(review[key], str) and 0 < len(review[key].strip()) <= limit):
+                raise ValueError(f"Review {key} must be bounded text")
         if review.get("verdict") not in REVIEW_VERDICTS:
             raise ValueError("Unsupported review verdict")
         if not isinstance(review.get("feedback", ""), str) or len(review.get("feedback", "")) > 32000:
@@ -179,6 +213,38 @@ def _validate_reviews(reviews):
             dt.datetime.fromisoformat(str(review.get("reviewed_at")).replace("Z", "+00:00"))
         except ValueError:
             raise ValueError("Invalid review timestamp") from None
+
+
+def _validate_context(context):
+    """Optional binding to a context receipt; absent in historical sessions, never required to read one."""
+    if not isinstance(context, dict):
+        raise ValueError("Invalid session context")
+    if context.get("waived") is True:
+        if set(context) - {"waived", "reason", "bound_at"} or not isinstance(context.get("reason"), str) or not context["reason"].strip():
+            raise ValueError("A context waiver needs a reason")
+        return
+    if set(context) - {"binding", "request", "bound_at", "refreshed_at"} or not isinstance(context.get("binding"), dict) \
+            or not isinstance(context.get("request"), dict):
+        raise ValueError("Invalid session context binding")
+    binding = context["binding"]
+    if not isinstance(binding.get("receipt_id"), str) or binding.get("outcome") not in {"ready", "degraded"} \
+            or not isinstance(binding.get("sources"), list) or not isinstance(binding.get("workflow"), str):
+        raise ValueError("Invalid session context binding")
+
+
+NAVIGATION_KINDS = ("prerequisite", "earlier", "first-taught", "related", "application", "evidence", "paper")
+
+
+def _validate_navigation(items):
+    """Where a learner can go from here. Targets are note references the host resolves and may refuse; never URLs."""
+    if not isinstance(items, list) or len(items) > 64:
+        raise ValueError("Invalid session navigation")
+    for item in items:
+        if (not isinstance(item, dict) or set(item) - {"kind", "label", "target", "note"} or item.get("kind") not in NAVIGATION_KINDS
+                or not isinstance(item.get("label"), str) or not 0 < len(item["label"].strip()) <= 200
+                or not rich_text.valid_note_target(item.get("target"))
+                or ("note" in item and not (isinstance(item["note"], str) and len(item["note"]) <= 300))):
+            raise ValueError("Invalid session navigation entry")
 
 
 def validate_state(state):
@@ -197,6 +263,26 @@ def validate_state(state):
     for widget in state.get("widgets", []):
         if not isinstance(widget, dict) or widget.get("kind") not in {"sampling", "vector"} or not isinstance(widget.get("id"), str):
             raise ValueError("Unsupported session widget")
+    if "context" in state:
+        _validate_context(state["context"])
+    if state.get("placement") not in (None, "explicit"):
+        raise ValueError("Unsupported placement mode")
+    if "navigation" in state:
+        _validate_navigation(state["navigation"])
+    # Tutoring declarations are checked in depth by tutor_gate (validate / check); here only their shape and size are bounded.
+    if "teaching" in state and not (isinstance(state["teaching"], list) and len(state["teaching"]) <= 64 and all(isinstance(b, dict) for b in state["teaching"])):
+        raise ValueError("Invalid teaching declarations")
+    if "tutoring" in state and not isinstance(state["tutoring"], dict):
+        raise ValueError("Invalid tutoring declaration")
+    if "supervision" in state:
+        import supervision  # imports this module, so it is loaded on demand
+        supervision.validate_record(state["supervision"])
+    if "explanation_requests" in state:
+        requests = state["explanation_requests"]
+        if (not isinstance(requests, list) or len(requests) > 200 or any(
+                not isinstance(r, dict) or not (isinstance(r.get("mode"), str) and r["mode"] in ADAPT_MODES) or r.get("status") not in ("open", "answered")
+                or not isinstance(r.get("id"), str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", r["id"]) for r in requests)):
+            raise ValueError("Invalid explanation requests")
     if not isinstance(state.get("resources", []), list):
         raise ValueError("Invalid session resources")
     for resource in state.get("resources", []):
@@ -206,8 +292,14 @@ def validate_state(state):
         if re.search(r"[:\\\\%?#]", value) or value.startswith("/") or any(part in {"", ".", ".."} for part in value.split("/")):
             raise ValueError("Unsafe local session resource path")
         suffix = Path(value).suffix.lower()
-        if resource["kind"] == "image" and suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+        if resource["kind"] == "image" and suffix not in {".png", ".jpg", ".jpeg", ".webp", ".svg"}:
             raise ValueError("Unsupported session image")
+        if resource.get("visual_id") is not None and not (isinstance(resource["visual_id"], str) and re.fullmatch(r"VIS-[A-Za-z0-9][A-Za-z0-9._-]*", resource["visual_id"])):
+            raise ValueError("Invalid visual identity")
+        if resource.get("visual_class") is not None and resource["visual_class"] not in VISUAL_CLASSES:
+            raise ValueError("Unsupported visual class")
+        if resource.get("verification_outcome") is not None and not (isinstance(resource["verification_outcome"], str) and re.fullmatch(r"[a-z-]{1,40}", resource["verification_outcome"])):
+            raise ValueError("Invalid verification outcome")
         if resource["kind"] == "module" and suffix != ".js":
             raise ValueError("Unsupported session module")
     if len(state["events"]) > MAX_EVENTS or len(_json(state)) > MAX_STATE_BYTES:
@@ -221,12 +313,12 @@ def validate_state(state):
     event_ids = set()
     for event in state["events"]:
         validate_interaction(event, ids)
-        if not isinstance(event, dict) or event.get("type") not in {"response", "hint", "solution", "confidence", "checkpoint", "reset", "open-question"}:
+        if not isinstance(event, dict) or event.get("type") not in {"response", "hint", "solution", "confidence", "checkpoint", "reset", "open-question", "explanation-request"}:
             raise ValueError("Unsupported interaction event")
         if not isinstance(event.get("event_id"), str) or event["event_id"] in event_ids:
             raise ValueError("Invalid or duplicate event identity")
         event_ids.add(event["event_id"])
-        if event.get("type") not in {"open-question", "checkpoint"} and event.get("question_id") not in ids:
+        if event.get("type") not in {"open-question", "checkpoint", "explanation-request"} and event.get("question_id") not in ids:
             raise ValueError("Unknown interaction question")
         if event.get("status") not in (None, "pending-review"):
             raise ValueError("Browser evidence must remain pending review")
@@ -237,34 +329,74 @@ def validate_state(state):
     return state
 
 
-def _inline(text):
-    """Render supported inline syntax without interpreting markup inside TeX/code."""
-    pattern = re.compile(r'\$[^$\n]+\$|`[^`\n]+`|\[\[[^\]\n]+\]\]|\[[^\]\n]+\]\([^()\s]+(?:\s+"[^"\n]*")?\)|\*\*.+?\*\*|__.+?__|(?<!\w)\*[^*\n]+\*(?!\w)|(?<!\w)_[^_\n]+_(?!\w)')
-    result, position = [], 0
-    for match in pattern.finditer(text):
-        result.append(html.escape(text[position:match.start()]))
-        token = match.group()
-        if token.startswith('$'):
-            result.append('<span data-ros="equation" data-tex="' + html.escape(token[1:-1], quote=True) + '" class="ros-math">' + html.escape(token) + '</span>')
-        elif token.startswith('`'):
-            result.append('<code>' + html.escape(token[1:-1]) + '</code>')
-        elif token.startswith('[['):
-            parts = token[2:-2].split('|', 1)
-            result.append('<span class="ros-note-link" title="' + html.escape(parts[0], quote=True) + '">' + _inline(parts[-1]) + '</span>')
-        elif token.startswith('['):
-            link = re.fullmatch(r'\[([^\]]+)\]\(([^\s]+)(?:\s+"([^"]*)")?\)', token)
-            label, target = _inline(link[1]), link[2]
-            if re.fullmatch(r'#[A-Za-z0-9_-]+', target):
-                result.append('<a href="' + target + '">' + label + '</a>')
-            else:
-                result.append('<span class="ros-link">' + label + ' <span class="ros-link-target">(' + html.escape(target) + ')</span></span>')
-        elif token.startswith(('**', '__')):
-            result.append('<strong>' + _inline(token[2:-2]) + '</strong>')
-        else:
-            result.append('<em>' + _inline(token[1:-1]) + '</em>')
-        position = match.end()
-    result.append(html.escape(text[position:]))
-    return ''.join(result)
+_INTERNAL_TOKEN = r'(?:block|content|chunk|segment|item|unit|node|slice|stage|step|part|section|module|lesson|topic|question|q)'
+_INTERNAL_PAIR = re.compile(r'\b' + _INTERNAL_TOKEN + r'\s*[-_#:.]?\s*\d+\b', re.I)
+_ID_LIKE = re.compile(r'[A-Z]{1,6}-\d+(?:\.\d+)*|[0-9a-fA-F]{12,}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}')
+
+
+def prose_lines(lines):
+    """(index, is_heading, text) of lesson prose: not frontmatter and not inside a code fence."""
+    start = 0
+    if lines and lines[0].strip() == '---':
+        closing = next((n for n in range(1, len(lines)) if lines[n].strip() == '---'), None)
+        start = 0 if closing is None else closing + 1
+    fenced = False
+    for number in range(start, len(lines)):
+        line = lines[number]
+        if line.lstrip().startswith(('```', '~~~')):
+            fenced = not fenced
+            continue
+        if not fenced:
+            heading = re.match(r'#{1,6}\s+(.*?)\s*#*\s*$', line)
+            yield number, bool(heading), heading[1] if heading else line
+
+
+_PLACEHOLDER = re.compile(r'<[^<>]*>|\[[^\[\]]*\]|\{\{[^{}]*\}\}')
+
+
+def heading_is_placeholder(text):
+    """An unfilled template slot such as "[Name the concept this part teaches]"."""
+    return bool(_PLACEHOLDER.fullmatch(text.strip()))
+
+
+def heading_is_internal(text):
+    """A heading that names a workflow position or an identifier ("Block 9 - Content 3", "RQ-004", "Q3"), not what is studied."""
+    text = text.strip()
+    if _ID_LIKE.fullmatch(text) or text.lower() in {'untitled', 'tbd', 'todo'}:
+        return True
+    rest = _INTERNAL_PAIR.sub(' ', text)
+    return rest != text and not re.findall(r'[^\W\d_]{3,}', rest)
+
+
+def heading_issues(source):
+    """Section titles that expose internal naming. Stable internal IDs stay in state; learners read meaningful titles."""
+    lines = source.replace('\r\n', '\n').split('\n')
+    issues = []
+    for number, is_heading, text in prose_lines(lines):
+        if not is_heading:
+            continue
+        if heading_is_placeholder(text):
+            issues.append({'line': number + 1, 'heading': text, 'message': f"heading '{text}' is an unfilled template placeholder; "
+                                                                           "replace it with what the learner is about to understand"})
+        elif heading_is_internal(text):
+            issues.append({'line': number + 1, 'heading': text, 'message': f"heading '{text}' names a workflow position or identifier, not what is being studied; "
+                                                                           "retitle it to say what the learner is about to understand"})
+    return issues
+
+
+def derive_title(source, fallback):
+    """A session without an explicit title is named by its first heading, not by its file name."""
+    lines = parse_frontmatter(source.replace('\r\n', '\n'))[1].split('\n')
+    headings = [(len(re.match(r'#+', lines[n])[0]), text) for n, is_heading, text in prose_lines(lines)
+                if is_heading and text.strip() and not heading_is_internal(text) and not heading_is_placeholder(text)]
+    for _, text in sorted(headings, key=lambda h: h[0])[:1]:  # the shallowest heading, first in the document on ties
+        return rich_text.plain_text(rich_text.parse_inline(text)).strip()[:200] or fallback
+    return fallback
+
+
+def _inline(text, labels=None):
+    """Inline rendering is the shared scientific grammar in rich_text.py (mirrored by the runtime's richtext.js)."""
+    return rich_text.render_inline(text, labels)
 
 
 _LIST_MARKER = re.compile(r'^( *)([-+*]|\d+[.)])\s+(.+)$')
@@ -273,6 +405,10 @@ _CALLOUT = re.compile(r'^\[!([a-zA-Z][\w-]*)\]([+-]?)\s*(.*)$')
 # A question sits where its marker is, so probes and teaching read in the order they happened.
 QUESTION_MARKER = re.compile(r'^<!--\s*ros-question:\s*([A-Za-z0-9_.:-]{1,128})\s*-->\s*$')
 _IMAGE = re.compile(r'^!\[([^\]]*)\]\(resource:([a-zA-Z0-9_-]+)(?:\s+"([^"]*)")?\)\s*$')
+# A widget sits where its marker is, exactly like a question: the explanation it belongs to, not the end of the page.
+WIDGET_MARKER = re.compile(r'^<!--\s*ros-widget:\s*([A-Za-z0-9_.:-]{1,128})\s*-->\s*$')
+VISUAL_CLASSES = {'schematic': 'Schematic, not to scale', 'analytic': 'Model-driven: computed from stated equations',
+                  'empirical': 'Data-derived', 'source': 'Figure from a cited source'}
 
 
 def _table_cells(line):
@@ -286,6 +422,10 @@ def _table_cells(line):
         char = line[i]
         if char == '\\' and i + 1 < len(line) and line[i + 1] == '|':
             cell.append('|'); i += 2; continue
+        if char == '$' and not code and i + 1 < len(line) and not line[i + 1].isspace():
+            end = rich_text.closing_dollar(line, i + 1)  # |x| inside $...$ is mathematics, not a column break
+            if end != -1:
+                cell.append(line[i:end + 1]); i = end + 1; continue
         if char == '`': code = not code
         if char == '|' and not code:
             cells.append(''.join(cell).strip()); cell = []
@@ -294,15 +434,31 @@ def _table_cells(line):
     return cells + [''.join(cell).strip()]
 
 
-def markdown_html(source, page_title=None, questions=None, placed=None):
+def markdown_html(source, page_title=None, questions=None, placed=None, widgets=None, figures=None, placement=None):
     """Component-oriented structural conversion; never infer assessments or answers.
 
-    Authored source is unchanged. The renderer supports lists, quotations, callouts,
-    fences, headings, emphasis and literal math; raw executable HTML is escaped.
+    ``widgets`` / ``figures`` map declared IDs to their declarations so markers resolve in place;
+    ``placement`` (a dict) collects which markers were seen, for diagnostics.
+
+    Authored source is unchanged. Inline text follows the shared scientific grammar (rich_text.py):
+    nested emphasis, TeX in four delimiter styles, labelled and numbered equations with references,
+    sub/superscripts. Raw executable HTML is escaped. Two passes: the first discovers labelled
+    equations in document order so a reference may precede the equation it cites.
     """
+    found = []
+    _markdown_html(source, page_title, questions, set(), {}, found, widgets, figures, None)
+    labels = {name: number for number, name in enumerate(found, 1)}
+    return _markdown_html(source, page_title, questions, placed, labels, None, widgets, figures, placement)
+
+
+def _markdown_html(source, page_title, questions, placed, labels, found, widgets=None, figures=None, placement=None):
     _, body = parse_frontmatter(source.replace('\r\n', '\n'))
+    if placement is not None:
+        placement.setdefault('figures', []), placement.setdefault('widgets', []), placement.setdefault('questions', [])
     used_anchors = {}
     source_h1_seen = False
+    emitted, widgets_seen = set(), set()
+    inline = lambda text: _inline(text, labels)
 
     def anchor_for(title):
         base = 'section-' + _hash(title.encode())[:12]
@@ -316,7 +472,8 @@ def markdown_html(source, page_title=None, questions=None, placed=None):
         out, i = [], 0
         def block_start(line):
             return (not line.strip() or _HEADING.match(line) or _LIST_MARKER.match(line) or QUESTION_MARKER.match(line.strip())
-                    or line.startswith('>') or re.match(r'^\s*(?:```|~~~|\$\$)', line)
+                    or WIDGET_MARKER.match(line.strip())
+                    or line.startswith('>') or re.match(r'^\s*(?:```|~~~)', line) or rich_text.starts_display_math(line)
                     or re.fullmatch(r'\s*(?:---+|\*\*\*+|___+)\s*', line))
         while i < len(lines):
             line = lines[i]
@@ -325,26 +482,36 @@ def markdown_html(source, page_title=None, questions=None, placed=None):
                 continue
             marker = QUESTION_MARKER.match(line.strip())
             if marker:
+                if placement is not None: placement['questions'].append(marker[1])
                 question = (questions or {}).get(marker[1])
                 if question is not None and (placed is None or marker[1] not in placed):
                     out.append(_question_html(question))
                     if placed is not None: placed.add(marker[1])
                 i += 1; continue
+            widget_marker = WIDGET_MARKER.match(line.strip())
+            if widget_marker:
+                if placement is not None: placement['widgets'].append(widget_marker[1])
+                widget = (widgets or {}).get(widget_marker[1])
+                if widget is not None and widget_marker[1] not in widgets_seen:
+                    widgets_seen.add(widget_marker[1])
+                    out.append(_widget_html(widget))
+                i += 1; continue
             image = _IMAGE.fullmatch(line.strip())
             if image:
-                out.append('<figure class="ros-figure" data-ros="figure"><img data-resource-id="' + html.escape(image[2], quote=True) + '" alt="' + html.escape(image[1], quote=True) + '">' + ('<figcaption>' + _inline(image[3]) + '</figcaption>' if image[3] else '') + '</figure>')
+                if placement is not None: placement['figures'].append(image[2])
+                out.append(_figure_html(image, (figures or {}).get(image[2]), inline))
                 i += 1; continue
             if i + 1 < len(lines) and '|' in line:
                 headings, rules = _table_cells(line), _table_cells(lines[i + 1])
                 if len(headings) == len(rules) and all(re.fullmatch(r':?-{3,}:?', r) for r in rules):
                     classes = ['ros-align-center' if r.startswith(':') and r.endswith(':') else 'ros-numeric' if r.endswith(':') else 'ros-align-left' for r in rules]
                     table = '<div class="ros-table-wrap" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr>'
-                    table += ''.join('<th scope="col" class="' + c + '">' + _inline(h) + '</th>' for h, c in zip(headings, classes)) + '</tr></thead><tbody>'
+                    table += ''.join('<th scope="col" class="' + c + '">' + inline(h) + '</th>' for h, c in zip(headings, classes)) + '</tr></thead><tbody>'
                     i += 2
                     while i < len(lines) and '|' in lines[i] and lines[i].strip():
                         cells = _table_cells(lines[i])
                         if len(cells) != len(headings): break
-                        table += '<tr>' + ''.join('<td class="' + c + '">' + _inline(v) + '</td>' for v, c in zip(cells, classes)) + '</tr>'
+                        table += '<tr>' + ''.join('<td class="' + c + '">' + inline(v) + '</td>' for v, c in zip(cells, classes)) + '</tr>'
                         i += 1
                     out.append(table + '</tbody></table></div>'); continue
             fence = re.match(r'^\s*(`{3,}|~{3,})([^\s`]*)\s*$', line)
@@ -358,18 +525,18 @@ def markdown_html(source, page_title=None, questions=None, placed=None):
                 attr = ' data-language="' + language + '"' if language else ''
                 out.append('<pre class="ros-code" data-ros="' + ('code' if closed else 'legacy') + '"' + attr + '><code>' + html.escape('\n'.join(code)) + '</code></pre>')
                 continue
-            if line.strip().startswith('$$'):
-                equation, i = [line.strip()], i + 1
-                if len(equation[0]) <= 4 or not equation[0].endswith('$$'):
-                    while i < len(lines):
-                        equation.append(lines[i]); i += 1
-                        if equation[-1].strip().endswith('$$'): break
-                text = '\n'.join(equation)
-                if len(text) > 4 and text.endswith('$$'):
-                    out.append('<div class="ros-formula ros-math" data-ros="equation" data-display="true" data-tex="' + html.escape(text[2:-2].strip(), quote=True) + '">' + html.escape(text) + '</div>')
-                else:
-                    out.append('<pre data-ros="legacy">' + html.escape(text) + '</pre>')
-                continue
+            if rich_text.starts_display_math(line):
+                block = rich_text.read_display_math(lines, i)
+                if block:
+                    label = block['label'] if block['label'] and block['label'] not in emitted else None
+                    if label:
+                        emitted.add(label)
+                        if found is not None:
+                            found.append(label)
+                    out.append(rich_text.display_math_html(dict(block, label=label), labels.get(label)))
+                    i = block['next']
+                    continue
+                # Not a well-formed display block (for example "$$ x $$ and more"): read it as an ordinary paragraph.
             heading = _HEADING.match(line)
             if heading:
                 level, title = len(heading[1]), heading[2]
@@ -386,7 +553,7 @@ def markdown_html(source, page_title=None, questions=None, placed=None):
                     if page_title is not None or prior_h1: level = 2
                 kind = {'concept':'concept','definition':'definition','derivation':'derivation','intuition':'intuition','evidence':'evidence','decision':'decision','research decision':'decision','questions':'question','questions asked':'question','open questions':'question','code':'code','reflection':'reflection','checkpoint':'checkpoint'}.get(title.lower().rstrip(':'))
                 attr = ' data-ros="' + kind + '"' if kind else ''
-                out.append(f'<h{level} class="ros-section-heading" id="{anchor}"{attr}>' + _inline(title) + f'</h{level}>')
+                out.append(f'<h{level} class="ros-section-heading" id="{anchor}"{attr}>' + inline(title) + f'</h{level}>')
                 i += 1
                 continue
             if line.startswith('>'):
@@ -400,7 +567,7 @@ def markdown_html(source, page_title=None, questions=None, placed=None):
                     component = 'details' if fold else 'aside'
                     label = 'summary' if fold else 'div'
                     opened = ' open' if fold == '+' else ''
-                    out.append('<' + component + ' class="ros-callout ros-callout-' + kind + '" data-ros="' + kind + '"' + opened + '><' + label + ' class="ros-callout-header">' + _inline(title) + '</' + label + '><div class="ros-callout-body">' + render(quoted[1:], depth + 1) + '</div></' + component + '>')
+                    out.append('<' + component + ' class="ros-callout ros-callout-' + kind + '" data-ros="' + kind + '"' + opened + '><' + label + ' class="ros-callout-header">' + inline(title) + '</' + label + '><div class="ros-callout-body">' + render(quoted[1:], depth + 1) + '</div></' + component + '>')
                 else:
                     out.append('<blockquote class="ros-quotation">' + render(quoted, depth + 1) + '</blockquote>')
                 continue
@@ -448,12 +615,8 @@ def markdown_html(source, page_title=None, questions=None, placed=None):
                     cells, rules = _table_cells(lines[i]), _table_cells(lines[i + 1])
                     if len(cells) == len(rules) and all(re.fullmatch(r':?-{3,}:?', r) for r in rules): break
                 paragraph.append(lines[i]); i += 1
-            fragments = []
-            for j, text in enumerate(paragraph):
-                hard_break = text.endswith('  ') or text.endswith('\\')
-                fragments.append(_inline(text[:-1].rstrip() if text.endswith('\\') else text.rstrip()))
-                if j < len(paragraph) - 1: fragments.append('<br>' if hard_break else ' ')
-            out.append('<p>' + ''.join(fragments) + '</p>')
+            # One parse for the whole paragraph, so emphasis, links and math can span soft line breaks.
+            out.append('<p>' + inline('\n'.join(paragraph).rstrip()) + '</p>')
         return '\n'.join(out)
 
     return render(body.splitlines())
@@ -464,19 +627,19 @@ def _question_html(q):
     kind = q.get("kind", "free-response")
     if kind not in QUESTION_KINDS:
         kind = "free-response"
-    content = '<section data-ros="' + kind + '" data-question-id="' + html.escape(q["id"], quote=True) + '"><h3>' + html.escape(str(q.get("prompt", ""))) + '</h3><form>'
+    content = '<section data-ros="' + kind + '" data-question-id="' + html.escape(q["id"], quote=True) + '"><h3>' + _inline(str(q.get("prompt", ""))) + '</h3><form>'
     if kind in {"mcq", "multi"}:
         for i, option in enumerate(q.get("options", [])):
             value = option.get("value", str(i)) if isinstance(option, dict) else str(i)
             label = option.get("label", "") if isinstance(option, dict) else str(option)
-            content += '<label><input name="answer" type="' + ("radio" if kind == "mcq" else "checkbox") + '" value="' + html.escape(str(value), quote=True) + '">' + html.escape(str(label)) + '</label>'
+            content += '<label><input name="answer" type="' + ("radio" if kind == "mcq" else "checkbox") + '" value="' + html.escape(str(value), quote=True) + '">' + _inline(str(label)) + '</label>'
     else:
         content += '<textarea name="answer" aria-label="Your response"></textarea>'
     content += '<button type="submit">Save response</button><button type="button" data-ros-action="reset">Reset</button><output data-ros-feedback></output></form>'
     for hint in q.get("hints", []):
-        content += '<details data-ros="hint"><summary>Hint</summary>' + html.escape(str(hint)) + '</details>'
+        content += '<details data-ros="hint"><summary>Hint</summary>' + _inline(str(hint)) + '</details>'
     if "solution" in q:
-        content += '<details data-ros="solution"><summary>Solution</summary>' + html.escape(str(q["solution"])) + '</details>'
+        content += '<details data-ros="solution"><summary>Solution</summary>' + _inline(str(q["solution"])) + '</details>'
     return content + '</section>'
 
 
@@ -485,14 +648,99 @@ def _questions_html(state, placed=()):
     return "\n".join(_question_html(q) for q in state["questions"] if q["id"] not in placed)
 
 
-def _widgets_html(state):
-    return "".join('<section data-ros="widget" data-widget="' + html.escape(w["kind"], quote=True) + '" id="' + html.escape(w["id"], quote=True) + '"><h3>' + html.escape(w.get("title", w["kind"].title() + " demonstration")) + '</h3></section>' for w in state.get("widgets", []))
+def _widget_html(w):
+    return '<section data-ros="widget" data-widget="' + html.escape(w["kind"], quote=True) + '" id="' + html.escape(w["id"], quote=True) + '"><h3>' + html.escape(w.get("title", w["kind"].title() + " demonstration")) + '</h3></section>'
+
+
+def _widgets_html(state, placed=()):
+    """Legacy sessions only: widgets with no marker follow the content, as they always did."""
+    return "".join(_widget_html(w) for w in state.get("widgets", []) if w["id"] not in placed)
+
+
+def _figure_html(image, declared, inline):
+    """A figure in place. A declared visual states what kind of evidence it is, so a schematic cannot pass for data."""
+    attributes, label = '', ''
+    if declared:
+        if declared.get('visual_id'):
+            attributes += ' data-visual-id="' + html.escape(declared['visual_id'], quote=True) + '"'
+        if declared.get('visual_class') in VISUAL_CLASSES:
+            attributes += ' data-visual-class="' + declared['visual_class'] + '"'
+            text = VISUAL_CLASSES[declared['visual_class']]
+            if declared['visual_class'] in ('analytic', 'empirical'):
+                # A computed figure says whether its computation was independently checked; silence would imply it was.
+                outcome = declared.get('verification_outcome')
+                text += ' (verification: ' + outcome.replace('-', ' ') + ')' if outcome else ' (not independently verified)'
+            label = '<span class="ros-visual-class" data-ros="visual-class">' + html.escape(text) + '</span>'
+    caption = inline(image[3]) if image[3] else ''
+    figcaption = '<figcaption>' + caption + (' ' if caption and label else '') + label + '</figcaption>' if caption or label else ''
+    return ('<figure class="ros-figure" data-ros="figure"' + attributes + '><img data-resource-id="' + html.escape(image[2], quote=True)
+            + '" alt="' + html.escape(image[1], quote=True) + '">' + figcaption + '</figure>')
+
+
+def placements(state):
+    """The figures, widgets and questions the lesson's Markdown actually places, in document order."""
+    seen = {}
+    markdown_html(state['source_markdown'], page_title=state['title'], questions={q['id']: q for q in state['questions']}, placed=set(),
+                  widgets={w['id']: w for w in state.get('widgets', [])},
+                  figures={resource_id(r): r for r in state.get('resources', []) if r.get('kind') == 'image'}, placement=seen)
+    return seen
+
+
+def placement_issues(state, seen=None):
+    """Where each declared visual is (or is not) placed in the lesson. Pure and deterministic.
+
+    Returns dicts with ``code``, ``id`` and an actionable ``message``. A session with ``placement: explicit``
+    never has a visual appended silently; these are what it shows and what ``validate`` reports instead.
+    """
+    if seen is None:
+        seen = placements(state)
+    declared_figures = {resource_id(r) for r in state.get('resources', []) if r.get('kind') == 'image'}
+    declared_widgets = {w['id'] for w in state.get('widgets', [])}
+    issues = []
+    for identifier in sorted(declared_figures - set(seen['figures'])):
+        issues.append({'code': 'unplaced-figure', 'id': identifier,
+                       'message': f"figure '{identifier}' is declared but has no placeholder in the lesson; add ![description](resource:{identifier} \"caption\") "
+                                  f"where it belongs (html_sessions.py place --figure {identifier} --after-heading ...)"})
+    for identifier in sorted(declared_widgets - set(seen['widgets'])):
+        issues.append({'code': 'unplaced-widget', 'id': identifier,
+                       'message': f"widget '{identifier}' is declared but has no marker in the lesson; add <!-- ros-widget: {identifier} --> "
+                                  f"where it belongs (html_sessions.py place --widget {identifier} --after-heading ...)"})
+    for identifier in sorted(set(seen['figures']) - declared_figures):
+        issues.append({'code': 'undeclared-figure', 'id': identifier,
+                       'message': f"the lesson places figure '{identifier}' but no image resource with that id is declared"})
+    for identifier in sorted(set(seen['widgets']) - declared_widgets):
+        issues.append({'code': 'undeclared-widget', 'id': identifier,
+                       'message': f"the lesson places widget '{identifier}' but no widget with that id is declared"})
+    for kind in ('figures', 'widgets'):
+        for identifier in sorted({i for i in seen[kind] if seen[kind].count(i) > 1}):
+            issues.append({'code': 'duplicate-placement', 'id': identifier, 'message': f"{kind[:-1]} '{identifier}' is placed more than once"})
+    return issues
+
+
+def _placement_notice(issues):
+    """The visible, never-silent form of a placement problem."""
+    return ''.join('<aside class="ros-diagnostic" data-ros="diagnostic" data-code="' + html.escape(i['code'], quote=True) + '" role="note">'
+                   + html.escape(i['message']) + '</aside>' for i in issues)
+
+
+def _teaching_source(state):
+    """The lesson source as shown: implementation blocks carry their declared literacy items under their heading."""
+    blocks = [b for b in state.get("teaching", []) if isinstance(b, dict) and b.get("kind") == "implementation" and isinstance(b.get("literacy"), dict)]
+    if not blocks:
+        return state["source_markdown"]
+    import tutor_gate  # imports this module, so it is loaded on demand
+    return tutor_gate.expand_literacy(state["source_markdown"], blocks)
 
 
 def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, resource_markup="", resource_scripts="", resource_images=None):
     validate_state(state)
-    placed = set()
-    content = markdown_html(state["source_markdown"], page_title=state["title"], questions={q["id"]: q for q in state["questions"]}, placed=placed)
+    placed, seen = set(), {}
+    content = markdown_html(_teaching_source(state), page_title=state["title"], questions={q["id"]: q for q in state["questions"]}, placed=placed,
+                            widgets={w["id"]: w for w in state.get("widgets", [])},
+                            figures={resource_id(r): r for r in state.get("resources", []) if r.get("kind") == "image"}, placement=seen)
+    # New sessions never append a visual silently: a visual with no place becomes a visible diagnostic. Historical
+    # sessions (no placement mode) keep their old behaviour so their pages do not change under their authors.
+    tail = _placement_notice(placement_issues(state, seen)) if state.get("placement") == "explicit" else _widgets_html(state, set(seen["widgets"]))
     if resource_images:
         def embed_image(match):
             image = match.group()
@@ -508,7 +756,8 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
     subtitle = state.get('metadata', {}).get('subtitle')
     subtitle_markup = ('<p class="ros-session-context">' + html.escape(subtitle) + '</p>') if isinstance(subtitle, str) and subtitle.strip() else ''
     header = '<header class="ros-session-header"><h1>' + html.escape(state['title']) + '</h1>' + subtitle_markup + '</header>'
-    data = json.dumps(state, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
+    # The context binding holds local paths and is for agents, not the page or a shared export.
+    data = json.dumps({k: v for k, v in state.items() if k != "context"}, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
     if standalone:
         css = (RUNTIME / "session.css").read_text(encoding="utf-8")
         js = (RUNTIME / "session.js").read_text(encoding="utf-8")
@@ -522,7 +771,7 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
             + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; font-src data:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'">'
             + '<title>' + html.escape(state["title"]) + '</title>' + resources + '</head><body><main class="ros-document" id="ros-session">'
             + header
-            + navigation + content + _questions_html(state, placed) + _widgets_html(state) + resource_markup
+            + navigation + content + _questions_html(state, placed) + tail + resource_markup
             + '<details data-ros="legacy"><summary>Exact original Markdown</summary><pre>' + html.escape(state["source_markdown"]) + '</pre></details>'
             + '</main><script type="application/json" id="ros-session-data">' + data + '</script>' + script + resource_scripts + '</body></html>\n')
 
@@ -579,6 +828,15 @@ def load_session(root, relative_md, check_bridge=True):
     return state
 
 
+def _check_image(path, raw):
+    """An SVG is drawing, never a carrier for script or outside references; it is checked whenever it is read for display."""
+    if path.suffix.lower() == ".svg":
+        import visual_assets  # imports this module, so it is loaded on demand
+        problems = visual_assets.svg_problems(raw.decode("utf-8", errors="replace"))
+        if problems:
+            raise ValueError("Unsafe SVG resource " + path.name + ": " + "; ".join(problems))
+
+
 def _save(root, relative_md, state):
     md, view, data = paths(root, relative_md)
     validate_state(state)
@@ -592,8 +850,10 @@ def _save(root, relative_md, state):
             raise ValueError("Local session resource missing or exceeds limit")
         if resource["kind"] == "module":
             _approved_module(root, resource_path, resource)
+        else:
+            _check_image(resource_path, resource_path.read_bytes())
     prefix = os.path.relpath(Path(root).resolve() / ".research-os/runtime", view.parent).replace(os.sep, "/")
-    outputs = {data: _json(state), view: render_html(state, prefix).encode("utf-8"),
+    outputs ={data: _json(state), view: render_html(state, prefix).encode("utf-8"),
                md: render_bridge(state, view.relative_to(Path(root).resolve()).as_posix()).encode("utf-8")}
     journal = _transaction_path(root, relative_md)
     if journal.exists():
@@ -612,14 +872,14 @@ def _save(root, relative_md, state):
     return state
 
 
-def create_session(root, relative_md, text, session_type=None, title=None, metadata=None, questions=None, widgets=None, resources=None):
+def create_session(root, relative_md, text, session_type=None, title=None, metadata=None, questions=None, widgets=None, resources=None, context=None):
     md, _, _ = paths(root, relative_md)
     md.parent.mkdir(parents=True, exist_ok=True)
     with Lock(md.with_suffix('.session.lock')):
-        return _create_session(root, relative_md, text, session_type, title, metadata, questions, widgets, resources)
+        return _create_session(root, relative_md, text, session_type, title, metadata, questions, widgets, resources, context)
 
 
-def _create_session(root, relative_md, text, session_type=None, title=None, metadata=None, questions=None, widgets=None, resources=None):
+def _create_session(root, relative_md, text, session_type=None, title=None, metadata=None, questions=None, widgets=None, resources=None, context=None):
     md, view, data = paths(root, relative_md)
     if data.exists() or view.exists():
         raise ValueError(f"Session already exists: {relative_md}")
@@ -628,11 +888,14 @@ def _create_session(root, relative_md, text, session_type=None, title=None, meta
     front, _ = parse_frontmatter(text.replace("\r\n", "\n"))
     state = {"schema_version": 1, "session_id": uuid.uuid4().hex,
              "type": session_type or front.get("type", "research-session"),
-             "title": title or front.get("title", md.stem), "metadata": dict(metadata or front),
+             "title": title or front.get("title") or derive_title(text, md.stem), "metadata": dict(metadata or front),
              "source_markdown": text, "events": [], "questions": list(questions or []),
              "open_questions": [], "lifecycle": front.get("status", "active"), "created_at": _now(), "updated_at": _now()}
     state["widgets"] = list(widgets or [])
     state["resources"] = list(resources or [])
+    state["placement"] = "explicit"  # visuals sit where the lesson puts them; nothing is appended silently
+    if context is not None:
+        state["context"] = context
     if front.get("session_id"):
         state["session_id"] = front["session_id"]
     return _save(root, relative_md, state)
@@ -642,7 +905,7 @@ def update_session(root, relative_md, text=None, **changes):
     md, _, _ = paths(root, relative_md)
     with Lock(md.with_suffix(".session.lock")):
         state = load_session(root, relative_md)
-        allowed = {"title", "metadata", "questions", "open_questions", "lifecycle", "widgets", "resources"}
+        allowed = {"title", "metadata", "questions", "open_questions", "lifecycle", "widgets", "resources", "navigation", "teaching", "tutoring"}
         if set(changes) - allowed:
             raise ValueError("Unsupported session update fields")
         source = state["source_markdown"] if text is None else text
@@ -659,6 +922,51 @@ def update_session(root, relative_md, text=None, **changes):
         state['lifecycle'] = front.get('status', state['lifecycle'])
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
+
+
+def bind_context(receipt, request=None):
+    """The durable form of a context receipt stored in a session (a binding, not the receipt)."""
+    import context_kernel as ck
+    return {"binding": ck.summary(receipt), "request": request or receipt["request"], "bound_at": _now(), "refreshed_at": None}
+
+
+def waive_context(reason):
+    """An explicit, recorded decision to work without graph context (never a default)."""
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("A context waiver needs a reason")
+    return {"waived": True, "reason": reason.strip(), "bound_at": _now()}
+
+
+def bind_session_context(root, relative_md, receipt):
+    """Adopt a context binding for an existing (e.g. historical) session; refuses a blocked receipt."""
+    import context_kernel as ck
+    ck.require(receipt)
+    md, _, _ = paths(root, relative_md)
+    with Lock(md.with_suffix(".session.lock")):
+        state = load_session(root, relative_md)
+        state["context"] = bind_context(receipt)
+        state["updated_at"] = _now()
+        return _save(root, relative_md, state)
+
+
+def _ensure_context(state):
+    """Precondition for tutoring actions: the bound context must still describe the canonical records.
+
+    Sessions created without a binding (historical ones) are unaffected. A stale binding is rebuilt from
+    its stored request; if the rebuilt context is blocked, the action is refused and nothing is written.
+    """
+    bound = state.get("context")
+    if bound is None or bound.get("waived"):
+        return
+    import context_kernel as ck
+    try:
+        ck.require(bound["binding"], summary_only=True)
+    except ck.ContextError as exc:
+        if exc.code != "CONTEXT_STALE":
+            raise
+        receipt = ck.build(bound["request"])
+        ck.require(receipt)
+        state["context"] = dict(bound, binding=ck.summary(receipt), refreshed_at=_now())
 
 
 def answer_open_question(root, relative_md, question_id, answer):
@@ -679,10 +987,62 @@ def answer_open_question(root, relative_md, question_id, answer):
         return _save(root, relative_md, state)
 
 
+def section_anchors(state):
+    """Heading text -> anchor id, exactly as the page assigns them (a text that appears twice maps to its first anchor)."""
+    content = markdown_html(state["source_markdown"], page_title=state["title"], questions={q["id"]: q for q in state["questions"]})
+    anchors = {}
+    for ident, label in re.findall(r'<h[1-6]\b[^>]*\bid="([^"]+)"[^>]*>(.*?)</h[1-6]>', content, re.S):
+        anchors.setdefault(html.unescape(re.sub(r"<[^>]+>", "", label)).strip(), ident)
+    return anchors
+
+
+def answer_explanation_request(root, relative_md, request_id, heading):
+    """Record that a requested explanation now exists under a heading of the lesson, so the learner can go there and come back.
+
+    The explanation itself is ordinary lesson text added with append_session; this only links the request to it. A request
+    is never learning evidence, and answering it changes nothing in the learner's record.
+    """
+    md, _, _ = paths(root, relative_md)
+    with Lock(md.with_suffix(".session.lock")):
+        state = load_session(root, relative_md)
+        record = next((r for r in state.get("explanation_requests", []) if r.get("id") == request_id), None)
+        if record is None:
+            raise ValueError("Unknown explanation request")
+        anchor = section_anchors(state).get(str(heading).strip())
+        if anchor is None:
+            raise ValueError("No heading reads exactly " + repr(heading) + "; add the explanation to the lesson under that heading first")
+        if record.get("answered_in") and record["answered_in"].get("section") == anchor:
+            return state
+        record.update(status="answered", answered_in={"section": anchor, "title": str(heading).strip()[:200]}, answered_at=_now())
+        state["updated_at"] = _now()
+        return _save(root, relative_md, state)
+
+
+def declare_block(root, relative_md, block):
+    """Declare what a section teaches, introduces and assumes (and, for implementation, its literacy items).
+
+    The declaration must match a real heading of the lesson; tutor_gate.py check then holds the order of the lesson to
+    the learner's recorded knowledge. Redeclaring an id replaces it.
+    """
+    import tutor_gate
+    md, _, _ = paths(root, relative_md)
+    with Lock(md.with_suffix(".session.lock")):
+        state = load_session(root, relative_md)
+        others = [b for b in state.get("teaching", []) if not (isinstance(b, dict) and isinstance(block, dict) and b.get("id") == block.get("id"))]
+        prospective = dict(state, teaching=others + [block])
+        problems = [i for i in tutor_gate.block_issues(prospective)[0] if i["severity"] == "error"]
+        if problems:
+            raise ValueError("Teaching block: " + "; ".join(i["message"] for i in problems))
+        state["teaching"] = prospective["teaching"]
+        state["updated_at"] = _now()
+        return _save(root, relative_md, state)
+
+
 def append_session(root, relative_md, block):
     md, _, _ = paths(root, relative_md)
     with Lock(md.with_suffix(".session.lock")):
         state = load_session(root, relative_md)
+        _ensure_context(state)
         state["source_markdown"] += block
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
@@ -700,7 +1060,15 @@ def append_event(root, relative_md, event):
         event.setdefault("created_at", _now())
         state["events"].append(event)
         if event["type"] == "open-question":
-            state["open_questions"].append({"id": event["event_id"], "session_id": state["session_id"], "concept": state["metadata"].get("concept"), "prompt": event.get("response", ""), "status": "open", "created_at": event["created_at"], "explanation_refs": []})
+            record = {"id": event["event_id"], "session_id": state["session_id"], "concept": state["metadata"].get("concept"), "prompt": event.get("response", ""), "status": "open", "created_at": event["created_at"], "explanation_refs": []}
+            if "origin" in event:
+                record["origin"] = event["origin"]
+            state["open_questions"].append(record)
+        if event["type"] == "explanation-request":
+            asked = {"id": event["event_id"], "mode": event["response"], "status": "open", "created_at": event["created_at"]}
+            if "origin" in event:
+                asked["origin"] = event["origin"]
+            state.setdefault("explanation_requests", []).append(asked)
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
 
@@ -716,6 +1084,14 @@ def _append_question(state, question):
         raise ValueError("A question needs a prompt")
     if "reviews" in question:
         raise ValueError("Reviews are recorded with review_response, not authored")
+    if "contract" in question:
+        # A probe is tied to one capability before it is posted: TESTS/ASSUMES/INTRODUCES, scope, dimension, method, units, criteria.
+        import tutor_gate
+        contract = question["contract"]
+        assumed = set(contract.get("ASSUMES") or []) if isinstance(contract, dict) and isinstance(contract.get("ASSUMES"), list) else set()
+        problems = [i["message"] for i in tutor_gate.question_issues(question, assumed) if i["severity"] == "error"]
+        if problems:
+            raise ValueError("Question contract: " + "; ".join(problems))
     if not QUESTION_MARKER.match("<!-- ros-question: " + question["id"] + " -->"):
         raise ValueError("Question ids use letters, digits, dot, underscore, colon or hyphen")
     state["questions"].append(dict(question))
@@ -731,18 +1107,23 @@ def add_question(root, relative_md, question):
     md, _, _ = paths(root, relative_md)
     with Lock(md.with_suffix(".session.lock")):
         state = load_session(root, relative_md)
+        _ensure_context(state)
         _append_question(state, question)
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
 
 
-def review_response(root, relative_md, question_id, verdict, feedback="", next_question=None, transcript=None):
+def review_response(root, relative_md, question_id, verdict, feedback="", next_question=None, transcript=None,
+                    criteria_met=None, reviewed_by=None, rationale=None, response_event_id=None):
     """Record the tutor's verdict on the learner's latest actual response.
 
     The verdict and the question's prepared explanation appear in place of the
     learner's "Checking..." state. It is pending tutor feedback, not ledger
     evidence: canonical attempts still follow the learning protocol. One save can
     also post the next question and a transcript entry so the page updates once.
+
+    A question that declares ``criteria`` is reviewed against every one of them (``criteria_met``, one true/false each):
+    a reviewer cannot pass an answer without saying which criteria it met.
     """
     if verdict not in REVIEW_VERDICTS:
         raise ValueError("Verdict must be one of: " + ", ".join(REVIEW_VERDICTS))
@@ -754,12 +1135,31 @@ def review_response(root, relative_md, question_id, verdict, feedback="", next_q
         question = next((q for q in state["questions"] if q["id"] == question_id), None)
         if question is None:
             raise ValueError("Unknown question")
-        response = next((e for e in reversed(state["events"]) if e["type"] == "response" and e.get("question_id") == question_id), None)
+        if transcript or next_question is not None:
+            _ensure_context(state)  # a verdict alone teaches nothing new; new teaching or probes need current context
+        answered = [e for e in state["events"] if e["type"] == "response" and e.get("question_id") == question_id]
+        response = next((e for e in reversed(answered) if response_event_id in (None, e["event_id"])), None)
         if response is None:
-            raise ValueError("No learner response to review; never invent an answer")
+            raise ValueError("No learner response to review; never invent an answer" if response_event_id is None else "Unknown response to review")
         review = {"response_event_id": response["event_id"], "verdict": verdict, "feedback": feedback.strip(), "reviewed_at": _now()}
+        declared = question.get("criteria") or []
+        if declared and verdict != "reviewed" and (not isinstance(criteria_met, list) or len(criteria_met) != len(declared)):
+            raise ValueError("This question declares %d criteria; state for each whether it was met (criteria_met)" % len(declared))
+        if criteria_met is not None:
+            review["criteria_met"] = criteria_met
+        if reviewed_by:
+            review["reviewed_by"] = reviewed_by
+        if rationale:
+            review["rationale"] = rationale
+        _validate_reviews([review])
         reviews = question.setdefault("reviews", [])
-        if not reviews or {k: v for k, v in reviews[-1].items() if k != "reviewed_at"} != {k: v for k, v in review.items() if k != "reviewed_at"}:
+        # Reviewing a response also records, explicitly, which earlier unreviewed attempts it supersedes; none is dropped silently.
+        settled = {r.get("response_event_id") for r in reviews} | {c for r in reviews for c in r.get("covers", [])}
+        earlier = [e["event_id"] for e in answered[:answered.index(response)] if e["event_id"] not in settled]
+        if earlier:
+            review["covers"] = earlier
+        same = lambda r: {k: v for k, v in r.items() if k not in ("reviewed_at", "covers")}
+        if not reviews or same(reviews[-1]) != same(review):
             reviews.append(review)
         # Transcript first, then the next question, so the page reads in the order things happened.
         if transcript:
@@ -777,139 +1177,218 @@ def pending_activity(state):
     for q in state["questions"]:
         events = [e for e in state["events"] if e.get("question_id") == q["id"]]
         responses = [e for e in events if e["type"] == "response"]
-        if not responses:
-            continue
-        latest = responses[-1]
-        if latest["event_id"] in {r.get("response_event_id") for r in q.get("reviews", [])}:
-            continue
-        confidence = next((e["response"] for e in reversed(events) if e["type"] == "confidence"), None)
-        items.append({"kind": "response", "question_id": q["id"], "question_kind": q.get("kind", "free-response"),
-                      "prompt": q.get("prompt", ""), "event_id": latest["event_id"], "response": latest.get("response"),
-                      "created_at": latest.get("created_at"), "attempts": len(responses), "confidence": confidence,
-                      "hints_revealed": max([int(e["response"]) for e in events if e["type"] == "hint" and isinstance(e.get("response"), int)] or [0]),
-                      "solution_seen_before_response": any(e["type"] == "solution" and e.get("created_at", "") < latest.get("created_at", "") for e in events)})
+        # A submission is handled when a review names it, or a review explicitly records covering it (an earlier attempt that a
+        # later reviewed answer superseded). Nothing is dropped silently: an unreviewed submission stays pending.
+        handled = set()
+        order = [r["event_id"] for r in responses]
+        for review in q.get("reviews", []):
+            named = review.get("response_event_id")
+            handled.add(named)
+            handled.update(review.get("covers", []))
+            # A review stands for the attempt it names and every attempt before it. v0.8 reviewed only the latest response and recorded no
+            # `covers`, so without this rule each retry in an already-finished lesson would come back as pending work; v0.9 also lists the
+            # earlier attempts it supersedes in `covers`, which agrees. A review of an earlier attempt never settles a later one.
+            if named in order:
+                handled.update(order[:order.index(named) + 1])
+        for number, response in enumerate(responses, 1):
+            if response["event_id"] in handled:
+                continue
+            when = response.get("created_at", "")
+            confidence = next((e["response"] for e in reversed(events) if e["type"] == "confidence" and e.get("created_at", "") <= when),
+                              next((e["response"] for e in reversed(events) if e["type"] == "confidence"), None))
+            items.append({"kind": "response", "question_id": q["id"], "question_kind": q.get("kind", "free-response"),
+                          "prompt": q.get("prompt", ""), "event_id": response["event_id"], "response": response.get("response"),
+                          "created_at": response.get("created_at"), "attempt": number, "attempts": len(responses), "confidence": confidence,
+                          "hints_revealed": max([int(e["response"]) for e in events if e["type"] == "hint" and isinstance(e.get("response"), int)
+                                                 and e.get("created_at", "") <= when] or [0]),
+                          "solution_seen_before_response": any(e["type"] == "solution" and e.get("created_at", "") < when for e in events)})
     for record in state.get("open_questions", []):
         if not (isinstance(record.get("answer"), str) and record["answer"].strip()):
             items.append({"kind": "open-question", "id": record.get("id"), "prompt": record.get("prompt"), "created_at": record.get("created_at")})
+    for record in state.get("explanation_requests", []):
+        if record.get("status") == "open":
+            items.append({"kind": "explanation-request", "id": record.get("id"), "mode": record.get("mode"), "wants": ADAPT_MODES.get(record.get("mode")),
+                          "origin": record.get("origin"), "created_at": record.get("created_at")})
     return items
 
 
-def wait_for_activity(root, relative_md, timeout=900.0, interval=1.0):
+def wait_for_activity(root, relative_md, timeout=900.0, interval=1.0, holder=None, provider="generic", ttl=None):
     """Bounded poll for an explicit learner submission; returns immediately if work is pending.
 
-    Only explicit submissions count (Submit/Send), never idle timers or typing.
+    Only explicit submissions count (Submit/Send), never idle timers or typing. A timeout is not the end of the lesson and
+    not a claim that nobody is waiting: with ``holder`` this renews a supervision lease while listening (so the page can
+    say the tutor is connected) and leaves it to expire afterwards (so the page says disconnected once nobody is).
     """
     _, _, data = paths(root, relative_md)
     deadline = time.monotonic() + max(0.0, float(timeout))
+    supervise, last_beat = None, None
+    if holder:
+        import supervision
+        supervise, ttl = supervision, ttl or supervision.DEFAULT_TTL
     while True:
+        if supervise and (last_beat is None or time.monotonic() - last_beat >= ttl / 3):
+            try:
+                supervise.heartbeat(root, relative_md, holder=holder, provider=provider, mode="waiting", ttl=ttl)
+            except supervise.SupervisionError as exc:
+                return {"session": str(relative_md), "pending": [], "timed_out": False, "error": str(exc)}
+            last_beat = time.monotonic()
+        failure = None
         try:
             items = pending_activity(validate_state(json.loads(data.read_text(encoding="utf-8"))))
-        except (OSError, ValueError, json.JSONDecodeError):
-            items = []  # A writer may be mid-replace; the next poll rereads.
-        if items or time.monotonic() >= deadline:
-            return {"session": str(relative_md), "pending": items, "timed_out": not items}
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            items, failure = [], exc  # A writer may be mid-replace: reread until the deadline before calling it a failure.
+        if items:
+            if supervise:  # the agent now holds these: the page shows that it is reviewing them
+                supervise.heartbeat(root, relative_md, holder=holder, provider=provider, mode="reviewing", ttl=ttl,
+                                    reviewing=[i["event_id"] for i in items if i["kind"] == "response"])
+            return {"session": str(relative_md), "pending": items, "timed_out": False}
+        if time.monotonic() >= deadline:
+            if failure is not None:
+                # Unreadable is not idle: reporting "nothing pending" would let an agent stop listening to a session it cannot read.
+                return {"session": str(relative_md), "pending": [], "timed_out": False, "error": "session state unreadable: " + type(failure).__name__ + ": " + str(failure)}
+            return {"session": str(relative_md), "pending": [], "timed_out": True}
         time.sleep(interval)
 
 
-def _wikilink_target(value):
-    if isinstance(value, list):
-        value = next((v for v in value if isinstance(v, str) and "[[" in v), value[0] if value else None)
-    if not isinstance(value, str):
-        return None
-    match = re.search(r"\[\[([^\]|#]+)", value)
-    return (match[1] if match else value).strip() or None
+SESSION_WORKFLOWS = {"tutor-session": "tutor", "course-session": "course-study", "research-session": "research-plan"}
 
 
-def _project_note(root, metadata):
-    name = _wikilink_target(metadata.get("project")) or _wikilink_target(metadata.get("up"))
-    if not name:
-        return None
-    root = Path(root).resolve()
-    for candidate in (root / "01 Projects" / name / (name + ".md"), root / "01 Projects" / (name + ".md")):
-        if candidate.is_file():
-            return candidate
-    for directory, folders, files in os.walk(root):
-        folders[:] = [f for f in folders if not f.startswith(".")]
-        if name + ".md" in files:
-            return Path(directory) / (name + ".md")
-    return None
+def context_request(root, metadata, session_type=None, session=None, **overrides):
+    """Kernel request for a session: its project and concept come from its own frontmatter."""
+    import context_kernel as ck
+    request = {"workflow": SESSION_WORKFLOWS.get(session_type, "tutor"), "vault": str(Path(root).resolve())}
+    project = ck.wikilink_target(metadata.get("project")) or ck.wikilink_target(metadata.get("up"))
+    if project:
+        request["project"] = project
+    concept = ck.wikilink_target(metadata.get("concept"))
+    if concept and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", concept):
+        request["target"] = {"kind": "concept", "id": concept}
+    if session:
+        request["session"] = session
+    request.update({k: v for k, v in overrides.items() if v is not None})
+    return request
 
 
-def session_context(root, relative_md, project_root=None, learning_root=None, as_of=None):
-    """Resume brief: session state plus the project memory held in the research and knowledge graphs.
+def _adapter_lines(root, project_root=None):
+    """Which optional Obsidian adapters the vault has, from its files alone. Detection never blocks or changes a session."""
+    try:
+        import obsidian_plugins
+        return obsidian_plugins.render(obsidian_plugins.summary(root, project_root=project_root))
+    except Exception as exc:  # an optional convenience must not be able to break resuming
+        return ["Adapter detection was unavailable (" + type(exc).__name__ + "); use the built-in routes."]
 
-    The HTML page is a view, not memory. Read-only: nothing here grades, accepts or writes.
+
+def session_context(root, relative_md, project_root=None, learning_root=None, as_of=None, library_root=None):
+    """Resume brief built on the context kernel; also works before the session exists (bootstrap).
+
+    The HTML page is a view, not memory. Nothing here grades, accepts or edits a session; the only
+    write is the kernel's receipt cache under the vault's .research-os/context.
     """
+    import context_kernel as ck
     root = Path(root).resolve()
-    state = load_session(root, relative_md)
-    brief = {"session": str(relative_md), "title": state["title"], "type": state["type"], "lifecycle": state.get("lifecycle"),
-             "updated_at": state.get("updated_at"), "pending": pending_activity(state), "questions": [], "project": None,
-             "research": None, "knowledge": None, "notes": []}
-    for q in state["questions"]:
+    md, _, data = paths(root, relative_md)
+    state = load_session(root, relative_md) if data.exists() else None
+    if state is not None:
+        metadata, session_type, source = state["metadata"], state["type"], state["source_markdown"]
+    else:
+        metadata, source = parse_frontmatter(md.read_text(encoding="utf-8").replace("\r\n", "\n")) if md.exists() else ({}, "")
+        session_type = metadata.get("type")
+    mentioned = sorted(set(re.findall(r"\b(?:RQ|H|EXP|DEC)-\d{3,}\b", source)))
+    request = context_request(root, metadata, session_type, str(relative_md), project_root=project_root,
+                              learning_root=learning_root, library_root=library_root, as_of=as_of, records=mentioned or None)
+    receipt, receipt_file, _ = ck.preflight(request)
+    retrieval = receipt["retrieval"]
+    learner, research = retrieval["learner"], retrieval["research"]
+    sources = {s["name"]: s for s in receipt["sources"]}
+    brief = {"session": str(relative_md), "exists": state is not None,
+             "title": state["title"] if state else metadata.get("title", md.stem),
+             "type": session_type, "lifecycle": state.get("lifecycle") if state else None,
+             "updated_at": state.get("updated_at") if state else None,
+             "pending": pending_activity(state) if state else [], "questions": [], "project": retrieval["project"],
+             "research": None, "knowledge": None, "notes": [], "receipt": receipt,
+             "receipt_file": str(receipt_file) if receipt_file else None, "blocked": receipt["outcome"] == "blocked",
+             "adapters": _adapter_lines(root, project_root), "at_risk": ck.at_risk(receipt)}
+    for q in (state["questions"] if state else []):
         responses = [e for e in state["events"] if e["type"] == "response" and e.get("question_id") == q["id"]]
         review = (q.get("reviews") or [None])[-1]
         brief["questions"].append({"id": q["id"], "kind": q.get("kind", "free-response"), "attempts": len(responses),
                                    "latest_response": responses[-1].get("response") if responses else None,
                                    "verdict": review["verdict"] if review and responses and review.get("response_event_id") == responses[-1]["event_id"] else None})
-    note = _project_note(root, state["metadata"])
-    front = parse_frontmatter(note.read_text(encoding="utf-8"))[0] if note else {}
-    if note:
-        project_id = front.get("project_id") or front.get("id") or re.sub(r"[^a-z0-9]+", "-", note.stem.lower()).strip("-")
-        brief["project"] = {"note": note.relative_to(root).as_posix(), "id": project_id, "path": front.get("path")}
-    elif state["metadata"].get("project"):
-        brief["notes"].append("Project link does not resolve to a vault note; locate the project note before teaching.")
-    project_root = Path(project_root) if project_root else Path(front["path"]) if front.get("path") else None
-    if learning_root is None:
-        learning_root = root / "02 Knowledge" if (root / "02 Knowledge").is_dir() else root
-    learning_root = Path(learning_root)
-    today = dt.date.fromisoformat(as_of) if as_of else dt.date.today()
-    mentioned = sorted(set(re.findall(r"\b(?:RQ|H|EXP|DEC)-\d{3,}\b", state["source_markdown"])))
-    try:
-        import research
-        if project_root is None or not project_root.is_dir():
-            brief["notes"].append("No project root resolved; pass --project-root to load the research graph.")
-        else:
-            registry = research.enrich(research.validate(project_root), project_root, None, learning_root, today, None)
-            if registry.records:
-                summary = research.status(registry, None)
-                brief["research"] = {"root": str(project_root), "records": len(registry.records),
-                    "errors": sum(d["severity"] == "ERROR" for d in summary["diagnostics"]),
-                    "active_questions": summary.get("active_questions", []), "active_hypotheses": summary.get("active_hypotheses", []),
-                    "frontier": research.frontier(registry),
-                    "pending_validation": summary.get("pending_validation", []), "pending_human_decisions": summary.get("pending_human_decisions", []),
-                    "session_records": [{"id": k, "type": registry.records[k].type, "status": registry.records[k].meta["status"], "title": registry.records[k].title}
-                                        for k in mentioned if k in registry.records]}
-            else:
-                brief["notes"].append(f"No schema-1 research records under {project_root}.")
-    except ImportError:
-        brief["notes"].append("research.py is not bundled here; run the research-session skill's research.py context.")
-    try:
-        import knowledge
-        project_id = brief["project"]["id"] if brief["project"] else None
-        if learning_root.is_dir() and project_id:
-            result = knowledge.query(knowledge.discover(learning_root.resolve(), today), "project", project_id, True)
-            nodes = result.get("nodes", [])
-            counts = {}
-            for node in nodes:
-                counts[node["state"]] = counts.get(node["state"], 0) + 1
-            pick = lambda test: [{"id": n["id"], "title": n["title"], "state": n["state"], "freshness": n["freshness"]} for n in nodes if test(n)][:15]
-            brief["knowledge"] = {"root": str(learning_root), "project": project_id, "capabilities": len(nodes), "states": counts,
-                                  "frontier": pick(lambda n: n.get("frontier")), "stale_or_due": pick(lambda n: n.get("freshness") in {"due", "overdue"} or n.get("state") in {"stale", "fragile"}),
-                                  "diagnostics": result.get("diagnostics", [])[:10]}
-    except ImportError:
-        brief["notes"].append("knowledge.py is not bundled here; run the tutor skill's knowledge.py query.")
+    if research:
+        brief["research"] = {"root": sources["research"]["path"], "records": research["records_total"],
+                             "errors": sources["research"]["counts"].get("errors", 0),
+                             "active_questions": research["active_questions"], "active_hypotheses": research["active_hypotheses"],
+                             "frontier": research["frontier"], "pending_validation": research["pending_validation"],
+                             "pending_human_decisions": research["pending_human_decisions"],
+                             "accepted_decisions": research["accepted_decisions"],
+                             "session_records": [{"id": r["id"], "type": r["type"], "status": r["status"], "title": r["title"]}
+                                                 for r in research["relevant_records"] if "requested" in r["relevance"]]}
+    if learner:
+        pick = lambda test: [{"id": n["id"], "title": n["title"], "state": n["state"], "freshness": n["freshness"]}
+                             for n in learner["nodes"] if test(n)][:15]
+        brief["knowledge"] = {"root": sources["learning"]["path"], "project": receipt["request"].get("project_id"),
+                              "capabilities": learner["capabilities_total"], "states": learner["states"],
+                              "frontier": pick(lambda n: n["frontier"]),
+                              "stale_or_due": pick(lambda n: n["freshness"] in {"due", "overdue"} or n["state"] in {"stale", "fragile"}),
+                              "diagnostics": learner["diagnostics"][:10]}
     return brief
+
+
+def navigation_from_context(receipt, session=None, limit=40):
+    """Where a learner can go from this session: prerequisites, earlier lessons, the first lesson on the concept and its
+    research application. Derived only from recorded context; a source that is missing contributes nothing, nothing is invented.
+
+    Targets are note names (or vault paths for sessions), which Obsidian resolves the way it resolves a wikilink, so they work
+    wherever the learning and project roots sit relative to the vault.
+    """
+    retrieval = receipt.get("retrieval") or {}
+    items, seen = [], set()
+
+    def add(kind, label, target, note=None):
+        if not label or target in seen or not rich_text.valid_note_target(target):
+            return
+        seen.add(target)
+        entry = {"kind": kind, "label": str(label).strip()[:200], "target": target}
+        if note:
+            entry["note"] = note[:300]
+        items.append(entry)
+
+    stem = lambda path: re.sub(r"\.md\Z", "", str(path).replace("\\", "/").rsplit("/", 1)[-1]) if path else None
+    nodes = (retrieval.get("learner") or {}).get("nodes", [])
+    for node in sorted((n for n in nodes if not n.get("target") and n.get("distance")), key=lambda n: (n["distance"], n["id"])):
+        add("prerequisite", node.get("title") or node["id"], stem(node.get("path")), f"{node['distance']} step(s) before the target; state: {node.get('state')}")
+    current = str(session or "").replace("\\", "/")
+    earlier = sorted((s for s in retrieval.get("sessions") or [] if str(s.get("path", "")).replace("\\", "/") != current),
+                     key=lambda s: (s.get("updated_at") or "", s.get("path") or ""))
+    if earlier:
+        first = earlier[0]
+        add("first-taught", first.get("title") or stem(first["path"]), str(first["path"]).replace("\\", "/"), "earliest recorded session on this concept")
+        for s in reversed(earlier[1:][-5:]):
+            add("earlier", s.get("title") or stem(s["path"]), str(s["path"]).replace("\\", "/"), s.get("type"))
+    for record in (retrieval.get("research") or {}).get("relevant_records", []):
+        if any(str(why).startswith("links concept") for why in record.get("relevance", [])):
+            add("application", record.get("title") or record["id"], stem(record.get("path")), f"{record.get('type')} {record['id']}")
+    return items[:limit]
 
 
 def render_context(brief):
     """Compact Markdown for an agent resuming the session."""
-    lines = [f"# Resume brief: {brief['title']}", "", f"Session `{brief['session']}` ({brief['type']}, {brief['lifecycle']}), updated {brief['updated_at']}.", ""]
+    lines = [f"# Resume brief: {brief['title']}", "", f"Session `{brief['session']}` ({brief['type']}, {brief['lifecycle']}), updated {brief['updated_at']}." + ("" if brief.get("exists", True) else " Not created yet (bootstrap)."), ""]
+    receipt = brief.get("receipt")
+    if receipt:
+        lines += [f"## Context: {receipt['outcome'].upper()}", "",
+                  f"- Receipt `{receipt['receipt_id']}` ({receipt['workflow']}, {receipt['mode']})" + (f", file `{brief['receipt_file']}`" if brief.get("receipt_file") else "")]
+        if receipt["outcome"] == "blocked":
+            lines.append("- BLOCKED: essential context is unavailable (" + ", ".join(receipt["blocking"]) + "). Do not teach, post questions or edit this session until it is repaired.")
+        lines += [f"- Limitation: {x}" for x in receipt["limitations"]] + [""]
     lines += ["## Awaiting you", ""]
     for item in brief["pending"]:
         if item["kind"] == "response":
-            lines.append(f"- Review `{item['question_id']}` ({item['question_kind']}, attempt {item['attempts']}, confidence {item['confidence']}, hints {item['hints_revealed']}): {json.dumps(item['response'], ensure_ascii=False)[:400]}")
+            lines.append(f"- Review `{item['question_id']}` ({item['question_kind']}, submission {item['attempt']} of {item['attempts']}, confidence {item['confidence']}, hints {item['hints_revealed']}): {json.dumps(item['response'], ensure_ascii=False)[:400]}")
+        elif item["kind"] == "explanation-request":
+            lines.append(f"- Explain differently (`{item['id']}`): {item.get('wants') or item.get('mode')}" + (f", asked in \"{item['origin']['title']}\"" if item.get("origin") else "") + "; answer in the lesson, then answer-explanation")
         else:
-            lines.append(f"- Answer open question `{item['id']}`: {str(item['prompt'])[:400]}")
+            lines.append(f"- Answer open question `{item['id']}`: {str(item.get('prompt'))[:400]}")
     if not brief["pending"]:
         lines.append("- Nothing pending. Run `wait` to listen for the next submission.")
     lines += ["", "## Questions", ""] + [f"- `{q['id']}` {q['kind']}: {q['attempts']} attempt(s), verdict {q['verdict'] or '-'}" for q in brief["questions"]]
@@ -921,14 +1400,24 @@ def render_context(brief):
                   "- Active questions: " + (", ".join(research["active_questions"]) or "none"), "- Active hypotheses: " + (", ".join(research["active_hypotheses"]) or "none"),
                   "- Frontier (unranked): " + (", ".join(f"{f['id']} {f['transition']}" for f in research["frontier"]) or "none"),
                   "- Awaiting human decision: " + (", ".join(research["pending_human_decisions"]) or "none") + "; awaiting result validation: " + (", ".join(research["pending_validation"]) or "none")]
+        lines += [f"- Accepted decision {d['id']}: {d['title']}" + (f" ({'; '.join(d['relevance'])})" if d["relevance"] else "")
+                  for d in research.get("accepted_decisions", [])]
         for record in research["session_records"]:
             lines.append(f"- Session refers to {record['id']} ({record['type']}, {record['status']}): {record['title']}; load it with `research.py context --root \"{research['root']}\" --{ {'research-question': 'question', 'research-decision': 'decision'}.get(record['type'], record['type'])} {record['id']}`")
+    if brief.get("at_risk"):
+        lines += ["", "## Assumptions at risk", "",
+                  "These are contradicted, unsupported, unresolved or unreadable in the records. Do not build on them without telling the researcher; "
+                  "a build or experiment task is blocked until the researcher's approval names each one (`acknowledged_risks`)."]
+        lines += [f"- {r['message']} (`{r['id']}`)" for r in brief["at_risk"]]
     knowledge = brief["knowledge"]
     if knowledge:
         lines += ["", "## Knowledge graph", "", f"- {knowledge['capabilities']} capabilities for `{knowledge['project']}` under `{knowledge['root']}`: " + ", ".join(f"{k} {v}" for k, v in sorted(knowledge["states"].items()))]
         lines += [f"- Frontier: {n['title']} ({n['id']}, {n['state']})" for n in knowledge["frontier"]]
         lines += [f"- Stale, fragile or due: {n['title']} ({n['id']}, {n['state']}, {n['freshness']})" for n in knowledge["stale_or_due"]]
     lines += [f"- Note: {n}" for n in brief["notes"]]
+    if brief.get("adapters"):
+        lines += ["", "## Obsidian adapters", ""] + [x if x.startswith("-") else "- " + x for x in brief["adapters"]]
+        lines.append("- Use what is listed; otherwise use the built-in route. Plugin output is a presentation or a suggestion and never changes canonical state. Details: `python scripts/obsidian_plugins.py report --vault <vault>`.")
     return "\n".join(lines) + "\n"
 
 
@@ -949,10 +1438,12 @@ def export_session(root, relative_md, destination):
         if len(raw) > 1024 * 1024:
             raise ValueError("Export resource exceeds limit")
         if resource["kind"] == "image":
-            mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}[path.suffix.lower()]
+            _check_image(path, raw)
+            mime = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml"}[path.suffix.lower()]
             data_url = 'data:' + mime + ';base64,' + base64.b64encode(raw).decode()
-            images[resource['id']] = data_url
-            if resource['id'] not in used_images:
+            images[resource_id(resource)] = data_url
+            # Only a historical session appends an unplaced figure; a new one reports it instead (see placement_issues).
+            if resource_id(resource) not in used_images and state.get('placement') != 'explicit':
                 markup += '<figure class="ros-figure"><img src="' + data_url + '" alt="' + html.escape(str(resource.get("alt", "Session illustration")), quote=True) + '"></figure>'
         else:
             _approved_module(root, path, resource)
@@ -1037,6 +1528,8 @@ def validate_sessions(root, exceptions=None):
             errors.append(f"{candidate['path']}: {candidate['status']} session missing HTML/state sidecars")
     for data in Path(root).rglob("*.state.json"):
         md = data.with_name(data.name[:-11] + ".md")
+        if md.relative_to(root).as_posix() in excluded:
+            continue  # a declared archive or fixture is reported by its owner, not validated as a live session
         try:
             state = load_session(root, md.relative_to(Path(root)))
             view = md.with_suffix(".html")
@@ -1047,6 +1540,18 @@ def validate_sessions(root, exceptions=None):
                 return re.sub(r'(<script type="application/json" id="ros-session-data">).*?(</script>)', r'\1\2', value, flags=re.S)
             if without_bootstrap(view.read_bytes().decode("utf-8")) != without_bootstrap(render_html(state, prefix)):
                 raise ValueError("HTML projection differs from structured state")
+            # Only sessions created with explicit placement are held to it; older sessions keep their appended visuals.
+            if state.get("placement") == "explicit":
+                problems = placement_issues(state)
+                if problems:
+                    raise ValueError("visual placement: " + "; ".join(p["message"] for p in problems))
+                titles = heading_issues(state["source_markdown"])
+                if titles:
+                    raise ValueError("section titles: " + "; ".join(f"line {t['line']}: {t['message']}" for t in titles))
+                import tutor_gate
+                tutoring = [i for i in tutor_gate.structural_issues(state) if i["severity"] == "error"]
+                if tutoring:
+                    raise ValueError("tutoring: " + "; ".join(i["where"] + ": " + i["message"] for i in tutoring))
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             errors.append(f"{data.relative_to(root)}: {exc}")
     return errors
@@ -1237,7 +1742,13 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("inventory")
     sub.add_parser("validate")
-    create = sub.add_parser("create"); create.add_argument("session"); create.add_argument("--source", required=True, type=Path); create.add_argument("--type", dest="session_type"); create.add_argument("--title")
+    create = sub.add_parser("create", help="Create a session after a context preflight; refused when essential context is blocked")
+    create.add_argument("session"); create.add_argument("--source", required=True, type=Path); create.add_argument("--type", dest="session_type"); create.add_argument("--title")
+    create.add_argument("--workflow", help="context workflow (default follows the session type)")
+    create.add_argument("--project"); create.add_argument("--target", help="concept:ID, capability:ID or record:ID")
+    create.add_argument("--project-root", type=Path); create.add_argument("--learning-root", type=Path); create.add_argument("--library-root", type=Path)
+    create.add_argument("--expect-empty", action="store_true", help="a new learner or project: empty graphs are expected")
+    create.add_argument("--waive-context", metavar="REASON", help="record an explicit decision to work without graph context")
     update = sub.add_parser("update"); update.add_argument("session"); update.add_argument("--source", required=True, type=Path)
     append = sub.add_parser("append"); append.add_argument("session"); append.add_argument("--source", required=True, type=Path)
     event = sub.add_parser("event"); event.add_argument("session"); event.add_argument("--source", required=True, type=Path)
@@ -1250,11 +1761,36 @@ def main():
     review.add_argument("--feedback", type=Path, help="UTF-8 text file with the feedback shown beside the question")
     review.add_argument("--next-question", type=Path, help="JSON question posted in the same save")
     review.add_argument("--transcript", type=Path, help="Markdown appended to the session transcript in the same save")
+    review.add_argument("--criteria-met", help="comma-separated true/false, one per criterion the question declares")
+    review.add_argument("--reviewed-by", help="who judged the answer"); review.add_argument("--rationale", type=Path)
+    declare = sub.add_parser("declare-block", help="Declare what a section teaches, introduces and assumes (JSON); must match a heading")
+    declare.add_argument("session"); declare.add_argument("--source", required=True, type=Path)
+    explained = sub.add_parser("answer-explanation", help="Link a learner's explanation request to the heading where it is now explained")
+    explained.add_argument("session"); explained.add_argument("request_id"); explained.add_argument("--heading", required=True)
     wait = sub.add_parser("wait", help="Block until an explicit learner submission awaits the agent (bounded)")
     wait.add_argument("session"); wait.add_argument("--timeout", type=float, default=900.0)
+    wait.add_argument("--holder", help="a name for this agent: renews a supervision lease so the page can show a tutor is connected")
+    wait.add_argument("--provider", default="generic"); wait.add_argument("--ttl", type=int, help="lease seconds (15..3600, default 90)")
+    navigate = sub.add_parser("navigation", help="Derive related-lesson links (prerequisites, earlier lessons, application) from recorded context; dry run unless --apply")
+    navigate.add_argument("session"); navigate.add_argument("--project-root", type=Path); navigate.add_argument("--learning-root", type=Path)
+    navigate.add_argument("--library-root", type=Path); navigate.add_argument("--as-of"); navigate.add_argument("--apply", action="store_true")
+    attach = sub.add_parser("attach-visual", help="Declare a registered visual (VIS-...) as an image of this session; place it next")
+    attach.add_argument("session"); attach.add_argument("visual_id"); attach.add_argument("--resource-id")
+    place = sub.add_parser("place", help="Put a declared figure or widget at an exact position in the lesson")
+    place.add_argument("session")
+    target = place.add_mutually_exclusive_group(required=True)
+    target.add_argument("--figure", metavar="RESOURCE_ID"); target.add_argument("--widget", metavar="WIDGET_ID")
+    position = place.add_mutually_exclusive_group(required=True)
+    position.add_argument("--after-heading", metavar="TEXT", help="directly after the heading that reads exactly this")
+    position.add_argument("--after-text", metavar="PHRASE", help="after the paragraph containing this (unique) phrase")
+    position.add_argument("--at-end", action="store_true")
+    place.add_argument("--alt", help="required for a figure: what a reader who cannot see it needs to know")
+    place.add_argument("--caption")
     resume = sub.add_parser("context", help="Resume brief: pending learner activity plus research and knowledge graph state")
     resume.add_argument("session"); resume.add_argument("--project-root", type=Path); resume.add_argument("--learning-root", type=Path)
+    resume.add_argument("--library-root", type=Path)
     resume.add_argument("--as-of"); resume.add_argument("--json", action="store_true")
+    resume.add_argument("--bind", action="store_true", help="store this context as the session's binding (adopts a historical session)")
     recovery = sub.add_parser("recover"); recovery.add_argument("session"); recovery.add_argument("--apply", action="store_true")
     bridge = sub.add_parser("import"); bridge.add_argument("session"); bridge.add_argument("--apply", action="store_true")
     export = sub.add_parser("export"); export.add_argument("session"); export.add_argument("destination", type=Path)
@@ -1277,7 +1813,46 @@ def main():
         result = refresh_projection(root, args.session, args.backup_directory, args.apply)
     elif args.command == "create":
         install_runtime(root)
-        result = create_session(root, args.session, args.source.read_bytes().decode("utf-8"), args.session_type, args.title)
+        text = args.source.read_bytes().decode("utf-8")
+        if args.waive_context:
+            context = waive_context(args.waive_context)
+        else:
+            import context_kernel as ck
+            front = parse_frontmatter(text.replace("\r\n", "\n"))[0]
+            request = context_request(root, front, args.session_type or front.get("type"), args.session, workflow=args.workflow,
+                                      project=args.project, target=ck.parse_target(args.target), project_root=args.project_root,
+                                      learning_root=args.learning_root, library_root=args.library_root,
+                                      expect_empty=True if args.expect_empty else None)
+            receipt, receipt_file, _ = ck.preflight(request)
+            if receipt["outcome"] == "blocked":
+                if hasattr(sys.stdout, "reconfigure"):
+                    sys.stdout.reconfigure(encoding="utf-8")
+                print(json.dumps({"created": False, "reason": "essential context is unavailable", "blocking": receipt["blocking"],
+                                  "limitations": receipt["limitations"], "receipt_file": str(receipt_file) if receipt_file else None},
+                                 ensure_ascii=False, indent=2))
+                raise SystemExit(2)
+            context = bind_context(receipt)
+        result = create_session(root, args.session, text, args.session_type, args.title, context=context)
+    elif args.command == "navigation":
+        brief = session_context(root, args.session, args.project_root, args.learning_root, args.as_of, args.library_root)
+        if not brief["exists"]:
+            raise SystemExit("The session does not exist yet; create it first")
+        links = navigation_from_context(brief["receipt"], args.session)
+        result = {"session": args.session, "applied": bool(args.apply), "navigation": links,
+                  "context_outcome": brief["receipt"]["outcome"]}
+        if args.apply:
+            update_session(root, args.session, navigation=links)
+    elif args.command in ("attach-visual", "place"):
+        import visual_assets
+        try:
+            if args.command == "attach-visual":
+                result = visual_assets.attach_visual(root, args.session, args.visual_id, args.resource_id)
+            else:
+                result = visual_assets.place_visual(root, args.session, figure=args.figure, widget=args.widget, after_heading=args.after_heading,
+                                                    after_text=args.after_text, at_end=args.at_end, alt=args.alt, caption=args.caption)
+        except visual_assets.VisualError as exc:
+            print(json.dumps({"error": str(exc)}, ensure_ascii=False))
+            raise SystemExit(2)
     elif args.command == "update":
         result = update_session(root, args.session, args.source.read_bytes().decode("utf-8"))
     elif args.command == "append":
@@ -1292,17 +1867,28 @@ def main():
         result = review_response(root, args.session, args.question_id, args.verdict,
                                  args.feedback.read_text(encoding="utf-8") if args.feedback else "",
                                  json.loads(args.next_question.read_text(encoding="utf-8")) if args.next_question else None,
-                                 args.transcript.read_text(encoding="utf-8") if args.transcript else None)
+                                 args.transcript.read_text(encoding="utf-8") if args.transcript else None,
+                                 criteria_met=[x.strip().lower() == "true" for x in args.criteria_met.split(",")] if args.criteria_met else None,
+                                 reviewed_by=args.reviewed_by, rationale=args.rationale.read_text(encoding="utf-8") if args.rationale else None)
+    elif args.command == "declare-block":
+        result = declare_block(root, args.session, json.loads(args.source.read_text(encoding="utf-8")))
+    elif args.command == "answer-explanation":
+        result = answer_explanation_request(root, args.session, args.request_id, args.heading)
     elif args.command == "wait":
-        result = wait_for_activity(root, args.session, args.timeout)
+        result = wait_for_activity(root, args.session, args.timeout, holder=args.holder, provider=args.provider, ttl=args.ttl)
     elif args.command == "context":
-        brief = session_context(root, args.session, args.project_root, args.learning_root, args.as_of)
+        brief = session_context(root, args.session, args.project_root, args.learning_root, args.as_of, args.library_root)
+        if args.bind:
+            if brief["blocked"] or not brief["exists"]:
+                raise SystemExit("Cannot bind: " + ("essential context is blocked" if brief["blocked"] else "the session does not exist yet"))
+            bind_session_context(root, args.session, brief["receipt"])
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
         if not args.json:
-            if hasattr(sys.stdout, "reconfigure"):
-                sys.stdout.reconfigure(encoding="utf-8")
             sys.stdout.write(render_context(brief))
-            return
-        result = brief
+        else:
+            print(json.dumps(brief, ensure_ascii=False, indent=2))
+        raise SystemExit(2 if brief["blocked"] else 0)
     elif args.command == "recover":
         result = recover_session(root, args.session, args.apply)
     elif args.command == "import":

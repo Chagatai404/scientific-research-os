@@ -18,7 +18,9 @@ from migrate_learning import confined
 SCREENING = {'found', 'screened', 'useful', 'rejected'}
 FIELDS = {'title', 'authors', 'year', 'doi', 'arxiv_id', 'other_id', 'source_url',
           'concepts', 'subjects', 'domains', 'projects', 'relevance_notes', 'evidence_role',
-          'screening', 'rejection_reason', 'pdf'}
+          'screening', 'rejection_reason', 'pdf', 'read_depth'}
+# How much of a paper has actually been read: a record of reading, never a claim that its content was verified.
+READ_DEPTHS = ('metadata', 'abstract', 'full-text')
 AGENT = 'ResearchOS/0.7'
 
 
@@ -57,6 +59,8 @@ def metadata(item, knowledge_root=None):
     https_url(data['source_url'])
     if data['screening'] not in SCREENING:
         raise ValueError('invalid screening stage')
+    if 'read_depth' in data and data['read_depth'] not in READ_DEPTHS:
+        raise ValueError('read_depth must be one of: ' + ', '.join(READ_DEPTHS))
     for field in ('doi', 'arxiv_id', 'other_id', 'relevance_notes', 'evidence_role', 'rejection_reason'):
         if field in data and (not isinstance(data[field], str) or not data[field].strip()):
             raise ValueError(field + ' must be a nonempty string')
@@ -169,32 +173,41 @@ def download_pdf(pdf, max_bytes):
     return payload, final
 
 
+def _record(path):
+    """One canonical record, validated; ValueError says what is wrong with it."""
+    if path.is_symlink():
+        raise ValueError('catalog symlinks are unsupported')
+    try:
+        item = json.loads(path.read_text(encoding='utf-8'))
+    except json.JSONDecodeError as exc:
+        raise ValueError('record is not valid JSON: ' + str(exc)) from None
+    if (not isinstance(item, dict) or item.get('paper_schema') != 1
+            or not isinstance(item.get('paper_id'), str) or path.name != item['paper_id'] + '.paper.json'):
+        raise ValueError('invalid canonical paper record')
+    if not re.fullmatch(r'PAPER-[a-f0-9]{20}', item['paper_id']):
+        raise ValueError('invalid paper ID')
+    if not isinstance(item.get('aliases'), list) or not item['aliases'] or any(not isinstance(a, str) for a in item['aliases']):
+        raise ValueError('invalid paper aliases')
+    clean = metadata({key: value for key, value in item.items() if key in FIELDS and key != 'pdf'})
+    if not set(aliases(clean)) <= set(item['aliases']):
+        raise ValueError('canonical identifiers are absent from aliases')
+    if not isinstance(item.get('added_on'), str):
+        raise ValueError('canonical added_on must be a date string')
+    k.iso_date(item['added_on'])
+    if item.get('ingestion_status') not in {'metadata-saved', 'pdf-saved', 'pdf-unavailable', 'rejected'}:
+        raise ValueError('invalid canonical ingestion status')
+    if item['ingestion_status'] == 'pdf-saved' and not item.get('local_pdf'):
+        raise ValueError('saved PDF requires a local path')
+    return item
+
+
 def catalog(root):
     result, seen = {}, {}
     directory = confined(root, '.catalog')
     if not directory.exists():
         return result
     for path in sorted(directory.glob('*.paper.json')):
-        if path.is_symlink():
-            raise ValueError('catalog symlinks are unsupported')
-        item = json.loads(path.read_text(encoding='utf-8'))
-        if (not isinstance(item, dict) or item.get('paper_schema') != 1
-                or not isinstance(item.get('paper_id'), str) or path.name != item['paper_id'] + '.paper.json'):
-            raise ValueError('invalid canonical paper record')
-        if not re.fullmatch(r'PAPER-[a-f0-9]{20}', item['paper_id']):
-            raise ValueError('invalid paper ID')
-        if not isinstance(item.get('aliases'), list) or not item['aliases'] or any(not isinstance(a, str) for a in item['aliases']):
-            raise ValueError('invalid paper aliases')
-        clean = metadata({key: value for key, value in item.items() if key in FIELDS and key != 'pdf'})
-        if not set(aliases(clean)) <= set(item['aliases']):
-            raise ValueError('canonical identifiers are absent from aliases')
-        if not isinstance(item.get('added_on'), str):
-            raise ValueError('canonical added_on must be a date string')
-        k.iso_date(item['added_on'])
-        if item.get('ingestion_status') not in {'metadata-saved', 'pdf-saved', 'pdf-unavailable', 'rejected'}:
-            raise ValueError('invalid canonical ingestion status')
-        if item['ingestion_status'] == 'pdf-saved' and not item.get('local_pdf'):
-            raise ValueError('saved PDF requires a local path')
+        item = _record(path)
         for alias in item['aliases']:
             if alias in seen and not alias.startswith('title:'):
                 raise ValueError('duplicate canonical paper alias; review before ingestion')
@@ -276,6 +289,9 @@ def ingest(root, item, *, apply=False, download=False, source_root=None, knowled
             elif key == 'screening':
                 rank = {'found': 0, 'screened': 1, 'useful': 2, 'rejected': 3}
                 paper[key] = value if value in {'useful', 'rejected'} or rank[value] >= rank.get(paper.get(key), -1) else paper[key]
+            elif key == 'read_depth':  # reading can deepen, never silently regress
+                current = paper.get(key)
+                paper[key] = value if current is None or READ_DEPTHS.index(value) >= READ_DEPTHS.index(current) else current
             elif not paper.get(key):
                 paper[key] = value
         paper.setdefault('paper_id', 'PAPER-' + hashlib.sha256(keys[0].encode()).hexdigest()[:20])
@@ -344,6 +360,147 @@ def ingest(root, item, *, apply=False, download=False, source_root=None, knowled
         if descriptor is not None:
             os.close(descriptor)
             lock.unlink()
+
+
+# ------------------------------------------------------------------ read-only inventory for literature scouting
+
+def scan(root):
+    """Every canonical record that can be read, and every problem found, without raising.
+
+    An inventory reports a damaged library; it does not fail on it. Duplicate strong identities (the same DOI, arXiv ID or
+    other ID on two records) are reported, never silently resolved.
+    """
+    records, problems = {}, []
+    directory = Path(root) / '.catalog'
+    if not directory.is_dir():
+        return records, problems
+    owners = {}
+    for path in sorted(directory.glob('*.paper.json')):
+        try:
+            item = _record(path)
+        except (ValueError, OSError, KeyError, TypeError) as exc:
+            problems.append({'code': 'unreadable-record', 'file': path.name, 'detail': str(exc)})
+            continue
+        records[item['paper_id']] = item
+        for alias in item['aliases']:
+            if not alias.startswith('title:'):
+                owners.setdefault(alias, []).append(item['paper_id'])
+    for alias, ids in sorted(owners.items()):
+        if len(set(ids)) > 1:
+            problems.append({'code': 'duplicate-identity', 'identifier': alias, 'papers': sorted(set(ids)),
+                             'detail': 'one identifier on several records; review and merge by hand'})
+    return records, problems
+
+
+def fingerprint(root):
+    """A digest of the catalog's content, so a receipt can say the library has not changed since it was taken."""
+    digest = hashlib.sha256()
+    directory = Path(root) / '.catalog'
+    if directory.is_dir():
+        for path in sorted(directory.glob('*.paper.json')):
+            digest.update(path.name.encode() + b'\x00' + hashlib.sha256(path.read_bytes()).digest())
+    return digest.hexdigest()
+
+
+def pdf_state(root, record):
+    """saved / missing-or-changed / unavailable (with the recorded reason) / none: what can actually be opened."""
+    if record.get('local_pdf'):
+        try:
+            path = confined(root, record['local_pdf'])
+            if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == record.get('pdf_sha256'):
+                return {'state': 'saved', 'path': record['local_pdf']}
+        except (ValueError, OSError):
+            pass
+        return {'state': 'missing-or-changed', 'path': record['local_pdf']}
+    if record.get('ingestion_status') == 'pdf-unavailable':
+        return {'state': 'unavailable', 'reason': record.get('pdf_reason', 'not recorded')}
+    return {'state': 'none'}
+
+
+def _held(root, record):
+    pdf = pdf_state(root, record)
+    return {'paper_id': record['paper_id'], 'title': record['title'], 'year': record.get('year'), 'screening': record['screening'],
+            'ingestion_status': record['ingestion_status'], 'pdf': pdf, 'read_depth': record.get('read_depth', 'not-recorded'),
+            'concepts': record.get('concepts', []), 'projects': record.get('projects', []),
+            **({'rejection_reason': record['rejection_reason']} if record.get('rejection_reason') else {}),
+            **({'relevance_notes': record['relevance_notes']} if record.get('relevance_notes') else {})}
+
+
+def identity(candidate):
+    """The identifying fields of an incoming candidate and the aliases they give it, without the screening a record needs."""
+    if not isinstance(candidate, dict):
+        raise ValueError('a candidate is an object')
+    data = {key: candidate[key] for key in ('title', 'year', 'doi', 'arxiv_id', 'other_id') if candidate.get(key) not in (None, '')}
+    if 'doi' in data:
+        data['doi'] = normalize_doi(data['doi'])
+    if 'arxiv_id' in data:
+        data['arxiv_id'] = normalize_arxiv(data['arxiv_id'])
+    if 'year' in data and (type(data['year']) is not int or not 1000 <= data['year'] <= 9999):
+        raise ValueError('year must be a supplied four-digit integer')
+    if 'title' not in data:
+        raise ValueError('a candidate needs a title')
+    return data, aliases(data)
+
+
+def inventory(root, candidates=(), *, concept=None, project=None):
+    """Read-only: what the local library holds, how well it is covered and read, where it is unsound, and how each incoming
+    candidate relates to it. Never writes, never downloads. Bibliographic presence is not verified scientific support.
+
+    A candidate is one of: already-collected, previously-rejected, newly-discovered, duplicate-in-batch (a repeat of an
+    earlier candidate in this list), ambiguous-identity or conflicting-identifiers (a person must review), unidentifiable
+    (no stable identifier or title with year) or not-checked (no library is configured: nothing is claimed new).
+    """
+    if root is None:
+        return {'library': {'configured': False}, 'coverage': {}, 'candidates': [
+            {'index': i, 'title': c.get('title') if isinstance(c, dict) else None, 'status': 'not-checked',
+             'detail': 'no paper library is configured, so nothing can be called new or collected'} for i, c in enumerate(candidates)]}
+    root = Path(root).expanduser().resolve()
+    exists = root.is_dir()
+    records, problems = scan(root) if exists else ({}, [])
+    held = {key: _held(root, record) for key, record in records.items()}
+
+    def count(field, values):
+        return {v: sum(1 for h in held.values() if (h[field]['state'] if isinstance(h[field], dict) else h[field]) == v) for v in values}
+    summary = {'configured': True, 'root': str(root), 'exists': exists, 'fingerprint': fingerprint(root) if exists else None, 'papers': len(records),
+               'screening': count('screening', sorted(SCREENING)),
+               'ingestion': count('ingestion_status', ['metadata-saved', 'pdf-saved', 'pdf-unavailable', 'rejected']),
+               'pdf': count('pdf', ['saved', 'missing-or-changed', 'unavailable', 'none']),
+               'read_depth': count('read_depth', list(READ_DEPTHS) + ['not-recorded']), 'problems': problems}
+    coverage = {}
+    for name, value in (('concept', concept), ('project', project)):
+        if value:
+            tagged = [h for h in held.values() if value in h['concepts' if name == 'concept' else 'projects'] and h['screening'] != 'rejected']
+            coverage[name] = {'id': value, 'covered': bool(tagged), 'papers': sorted(tagged, key=lambda h: h['paper_id'])}
+    results, batch = [], {}
+    for index, candidate in enumerate(candidates):
+        entry = {'index': index, 'title': candidate.get('title') if isinstance(candidate, dict) else None}
+        try:
+            data, keys = identity(candidate)
+        except (ValueError, TypeError) as exc:
+            results.append(dict(entry, status='unidentifiable', detail=str(exc)))
+            continue
+        strong = [a for a in keys if not a.startswith('title:')] or keys
+        earlier = next((batch[a] for a in strong if a in batch), None)
+        for alias in keys:
+            batch.setdefault(alias, index)
+        if earlier is not None:
+            results.append(dict(entry, status='duplicate-in-batch', duplicate_of=earlier, aliases=keys))
+            continue
+        try:
+            found = match(records, data)
+        except ValueError as exc:
+            results.append(dict(entry, status='conflicting-identifiers' if 'conflicting' in str(exc) else 'ambiguous-identity', detail=str(exc), aliases=keys))
+            continue
+        if found is None:
+            results.append(dict(entry, status='newly-discovered', aliases=keys, needs_reading=True))
+            continue
+        record = held[found['paper_id']]
+        reading = record['pdf']['state'] != 'saved' or record['read_depth'] != 'full-text'
+        results.append(dict(entry, status='previously-rejected' if found['screening'] == 'rejected' else 'already-collected',
+                            aliases=keys, collected=record, needs_reading=reading and found['screening'] != 'rejected',
+                            full_text_unavailable=record['pdf']['state'] in ('unavailable', 'missing-or-changed', 'none')))
+    return {'library': summary, 'coverage': coverage, 'candidates': results,
+            'note': 'Bibliographic presence is not verified scientific support, and a collected PDF is not evidence that it was read.'}
 
 
 def main(argv=None):

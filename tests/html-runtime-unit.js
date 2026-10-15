@@ -41,4 +41,14 @@ for (const expression of expressions) {
 assert.throws(() => context.katex.renderToString('\\nonexistentcommand{x}', {throwOnError:true}));
 assert.doesNotMatch(context.katex.renderToString('\\href{javascript:alert(1)}{click}', {trust:false}), /href="javascript:/);
 assert.equal(context.ResearchOS.assess({kind:'mcq',answer:1},1).correct,true);
+// Who is listening: the page and scripts/supervision.py must agree on every shared case, in the source and in the shipped bundle.
+const supervision = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/supervision-cases.json'), 'utf8'));
+for (const api of [runtime, context.ResearchOS]) {
+  assert.equal(typeof api.supervisionOf, 'function');
+  for (const c of supervision.cases) {
+    const got = api.supervisionOf(c.state, c.lease, Date.parse(supervision.now));
+    assert.deepEqual({status: got.status, pending: got.pending, alive: got.alive}, c.expect, c.id);
+  }
+}
+assert.equal(runtime.supervisionOf({questions: [], events: [], supervision: {status: 'paused', reason: 'break'}}, null, 0).reason, 'break');
 console.log('HTML runtime unit and bundled KaTeX checks passed');

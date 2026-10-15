@@ -118,7 +118,7 @@ for p in required:
         errors.append(f"Missing required file: {p}")
 
 # Check installer-owned source references without writing outputs or executing probes.
-from install import COMPUTE_AGENTS, COMPUTE_SKILLS, GRAPH_HELPERS, V08_REFERENCES, V08_AGENT_REFERENCES
+from install import COMPUTE_AGENTS, COMPUTE_SKILLS, GRAPH_HELPERS, V08_REFERENCES, V08_AGENT_REFERENCES, V09_AGENT_REFERENCES
 for name in V08_REFERENCES:
     if not (ROOT / 'references' / name).is_file():
         errors.append(f'Missing v0.8 design reference: {name}')
@@ -128,6 +128,12 @@ for role, names in V08_AGENT_REFERENCES.items():
     for name in names:
         if name not in V08_REFERENCES:
             errors.append(f'Unknown v0.8 agent reference: {name}')
+for role, names in V09_AGENT_REFERENCES.items():
+    if not (ROOT / 'agents' / f'{role}.md').is_file():
+        errors.append(f'Missing v0.9 verification role: {role}')
+    for name in names:
+        if not (ROOT / 'references' / name).is_file():
+            errors.append(f'Missing v0.9 agent reference: {name}')
 for helper in GRAPH_HELPERS:
     if not (ROOT / 'scripts' / helper).is_file():
         errors.append(f'Installer references missing graph helper: {helper}')
@@ -276,7 +282,9 @@ for claim_id, atom in board.items():
 
 # HTML-native sessions: known historical fixture is an explicitly reported archive.
 import html_sessions
-html_archives = {"examples/connected-research/tutor-sessions/2026-09-25 gamma shape.md"}
+html_archives = {"examples/connected-research/tutor-sessions/2026-09-25 gamma shape.md",
+                 # Bytes written by v0.8.7, kept for the compatibility tests; their projection is deliberately the old one.
+                 "tests/fixtures/legacy-v0.8.7/Sessions/legacy.md"}
 errors.extend(html_sessions.validate_sessions(ROOT, exceptions=html_archives))
 for archive in sorted(html_archives):
     print(f"INFO HTML archival exception: {archive} (historical compatibility fixture)")

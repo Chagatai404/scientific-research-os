@@ -32,7 +32,10 @@ let content=real?fs.readFileSync(real,'utf8'):'<main class="ros-document" id="ro
         window.currentState=structuredClone(state); window.events=[];
         window.content=content;window.hold=false;window.queue=[];window.ready=0;
         const post=payload=>document.querySelector('iframe').contentWindow.postMessage(Object.assign({channel:'research-os',token:'tutor-token',session_id:state.session_id},payload),'*');
-        window.reloadTutor=()=>document.querySelector('iframe').srcdoc=h.buildDocument(h.sanitizeHtml(window.content,document),window.currentState,'tutor-token',runtime,css,theme);
+        // A connected tutor: its lease is live for the whole test, which is what "Checking…" claims.
+        const now=Date.now(),at=ms=>new Date(now+ms).toISOString();
+        window.liveLease={supervision_schema:1,holder:'tutor-agent',provider:'generic',mode:'waiting',reviewing:[],started_at:at(-1000),last_seen_at:at(-1000),expires_at:at(3600000),ttl:3600};
+        window.reloadTutor=()=>document.querySelector('iframe').srcdoc=h.buildDocument(h.sanitizeHtml(window.content,document),window.currentState,'tutor-token',runtime,css,theme,[],null,window.liveLease);
         window.release=()=>{window.hold=false;for(const send of window.queue.splice(0))send();};
         // Agent-side writes arrive as live updates, exactly as the host forwards them.
         window.agentUpdate=(content)=>{if(content)window.content=content;post({type:'update',state:structuredClone(window.currentState),...(content?{body:h.sanitizeHtml(content,document)}:{})});};
@@ -142,7 +145,8 @@ let content=real?fs.readFileSync(real,'utf8'):'<main class="ros-document" id="ro
         await free.getByRole('button',{name:'Submit response',exact:true}).click();
         await frame.locator('body').evaluate(()=>new Promise(r=>setTimeout(r,50)));
         assert.equal(await free.locator('.ros-submit').textContent(),'Checking…');
-        await frame.getByLabel('Ask an open question during this session:',{exact:true}).fill('What does independence mean?');
+if(!(await frame.locator('.ros-side-panel').isVisible()))await frame.locator('.ros-panel-toggle').click();
+            await frame.getByLabel('Ask an open question during this session:',{exact:true}).fill('What does independence mean?');
         await frame.getByRole('button',{name:'Send',exact:true}).click();
         await frame.locator('.ros-question-history').getByText('What does independence mean?',{exact:true}).waitFor();
         await progressSnapshot('open-question',frame.locator('.ros-open-question'));

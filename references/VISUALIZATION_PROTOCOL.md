@@ -121,9 +121,11 @@ A static key-frame panel is the default when it teaches as well.
 
 The adapters stay optional to **install**, and Research OS runs without them. **When a vault has them installed,
 sessions use them by default; configuring them and leaving them idle is a defect.** Detect them cheaply, once per
-session, from `<vault>/.obsidian/community-plugins.json` (`obsidian-excalidraw-plugin`, `breadcrumbs`) and
-`<vault>/.obsidian/core-plugins.json` (`"bases": true`). If one is absent, fall back to the plain Markdown route and
-say so in one line; do not install a plugin yourself.
+session, with `python scripts/obsidian_plugins.py report --vault <vault>` (the resume brief from `html_sessions.py context`
+already lists it). It reads `<vault>/.obsidian/community-plugins.json`, `core-plugins.json` and each plugin's manifest, and
+reports a plugin that is absent, disabled, damaged or too new for the running Obsidian as not usable. If one is not usable,
+fall back to the plain Markdown route and say so in one line; do not install a plugin yourself. Every other optional
+plugin (search, retention, semantic discovery, audio, Canvas) is in `references/OBSIDIAN_INTEGRATIONS.md`.
 
 - **Excalidraw, for schematics of intent** (plans, pipelines, gates, dependency pictures, mechanisms). Generate the
   file with `python scripts/excalidraw_schematic.py --spec <spec.json> --out
@@ -141,6 +143,36 @@ say so in one line; do not install a plugin yourself.
   edges and no inferred or transitive relations; they never establish readiness, retention or approval.
 
 After adding any embed, run `python scripts/vault_health.py --root <vault>` and fix broken embeds before finishing.
+
+## Figures inside an HTML session
+
+A figure belongs in the explanation it illustrates, not at the end of the page. Sessions created by v0.9 carry
+`placement: explicit`: a visual that is declared but not placed is never appended silently. It becomes a visible
+diagnostic in the lesson and an error in `html_sessions.py validate`. (Sessions created before v0.9 keep their old
+behaviour and are not held to this.)
+
+1. **One drawing, two files.** For a schematic, `python scripts/visual_assets.py --root <vault> schematic --spec <spec.json>
+   --id VIS-<name> --concept <concept-id>` writes the editable Excalidraw source, an SVG export drawn from that same
+   scene, and the registry record linking them (`exports`, `source_sha256`). Asking again for an unchanged drawing reuses
+   what exists; a changed spec for an existing id is refused rather than overwriting a drawing someone may have edited.
+   After editing the drawing in Excalidraw, `visual_assets.py refresh VIS-<name>` regenerates the export. A drawing the
+   plugin saved compressed is reported, not guessed at: decompress it in Obsidian first. The SVG is drawn from the scene's
+   geometry in a clean style; it is not byte-identical to the plugin's own export, and nothing here was exercised inside
+   Obsidian itself (`visual_assets.py status` reports only what the vault's files say about the plugin).
+2. **Declare, then place.** `html_sessions.py attach-visual <session> VIS-<name>` copies the export into the session's
+   assets and declares it; `html_sessions.py place <session> --figure VIS-<name> --alt "<what a reader who cannot see it
+   needs>" --after-heading "<exact heading>" [--caption "..."]` writes the placeholder at that exact spot (or
+   `--after-text "<unique phrase>"`, or `--at-end`). Alt text is required. An ambiguous heading or phrase is refused, not
+   guessed. A widget is placed the same way with `--widget <id>`.
+3. **The page states what kind of evidence a figure is.** The label comes from the registry record, never from the
+   lesson: *Schematic, not to scale*; *Model-driven: computed from stated equations*; *Data-derived*; *Figure from a
+   cited source*. A model-driven or data-derived figure also states its verification: with a `verification_record` it
+   shows that record's outcome (`verified in scope`, `invalidated`, ...); without one it says *not independently
+   verified*. A tampered verification record is refused at attach time. A schematic cannot be recorded as quantitative,
+   and an Excalidraw drawing cannot back a quantitative plot.
+4. **SVG is drawing, not a program.** Only static elements are accepted (no script, foreignObject, animation, event
+   handler, outside reference or DOCTYPE; at most 1 MiB), checked when it is attached, saved, exported and shown by the
+   Obsidian companion.
 
 ## Simplest suitable backend
 

@@ -21,7 +21,12 @@ LOCK = '.research-tasks/update.lock'
 ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z')
 HASH = re.compile(r'[a-f0-9]{64}\Z')
 KINDS = {'question', 'source', 'claim', 'scope', 'criteria', 'data', 'code', 'plan',
-         'verified-evidence', 'scout-rationale', 'coordinator-history', 'approval', 'result', 'artifact'}
+         'verified-evidence', 'scout-rationale', 'coordinator-history', 'approval', 'result', 'artifact',
+         'context-receipt', 'library-inventory'}
+# Stages whose work depends on the project's graphs; each needs one fresh, usable receipt of a matching workflow.
+# Stage 3 (independent discovery) is deliberately absent: scouts get neutral questions, not project preferences.
+CONTEXT_STAGES = {7: {'literature'}, 8: {'decision-synthesis', 'research-review'}, 14: {'research-implement'},
+                  15: {'research-implement'}}
 STATES = {'READY', 'WAITING', 'BLOCKED', 'RUNNING', 'COMPLETE', 'FAILED', 'CANCELLED'}
 SPEC = {'task_id', 'role', 'goal', 'stage', 'research_refs', 'input_refs', 'dependencies',
         'independence_group', 'context_exposure', 'permissions', 'provider', 'writer_workspace'}
@@ -328,7 +333,11 @@ def approval(root, task):
         raise ValueError('human approval required')
     binding(root, ref, verify=True)
     record = read_json(relative(root, ref['path']))
-    shape(record, {'approval_schema', 'status', 'approved_by', 'approved_at', 'task_id', 'stage', 'plan_ref', 'write_paths', 'run', 'writer_workspace'})
+    base = {'approval_schema', 'status', 'approved_by', 'approved_at', 'task_id', 'stage', 'plan_ref', 'write_paths', 'run', 'writer_workspace'}
+    access.shape(record, base | {'acknowledged_risks'}, base)  # the risks the human saw and accepted building on (see risk_gate)
+    if 'acknowledged_risks' in record and (not isinstance(record['acknowledged_risks'], list) or len(record['acknowledged_risks']) > 200
+                                           or any(not isinstance(item, str) or not re.fullmatch(r'RISK-[a-f0-9]{10}', item) for item in record['acknowledged_risks'])):
+        raise ValueError('acknowledged risks are a list of RISK ids')
     if type(record['approval_schema']) is not int or record['approval_schema'] != 1 or record['status'] != 'approved':
         raise ValueError('recorded human approval required')
     access.safe_text(record['approved_by'])
@@ -361,6 +370,80 @@ def snapshot(root, task, reference, name):
     return dict(path=path, sha256=reference['sha256'], kind=reference['kind'])
 
 
+def context_gate(root, task):
+    """Reason code when a graph-dependent task lacks a fresh, usable context receipt; None when it has one."""
+    allowed = CONTEXT_STAGES.get(task['stage'])
+    if not allowed:
+        return None
+    refs = [i for i in task['input_refs'] if i['kind'] == 'context-receipt']
+    if len(refs) != 1:
+        return 'CONTEXT_REQUIRED'
+    import context_kernel as kernel
+    try:
+        receipt = kernel.load(relative(root, refs[0]['path']))
+        kernel.require(receipt)
+    except kernel.ContextError as exc:
+        return exc.code
+    except (OSError, ValueError, TypeError):
+        return 'CONTEXT_INVALID'
+    return None if receipt['workflow'] in allowed else 'CONTEXT_WORKFLOW_MISMATCH'
+
+
+def task_risks(root, task):
+    """Contradicted, unsupported or unresolved assumptions in the task's context receipt (stages 14 and 15); empty when none or unreadable."""
+    if task['stage'] not in {14, 15}:
+        return []
+    refs = [i for i in task['input_refs'] if i['kind'] == 'context-receipt']
+    if len(refs) != 1:
+        return []
+    import context_kernel as kernel
+    try:
+        return kernel.at_risk(kernel.load(relative(root, refs[0]['path'])))
+    except (kernel.ContextError, OSError, ValueError, TypeError):
+        return []
+
+
+def risk_gate(root, task):
+    """'ASSUMPTION_AT_RISK' when building or experimenting on assumptions the records contradict, unless the human's approval names them.
+
+    The approval record may carry ``acknowledged_risks``: the RISK ids the researcher was shown and chose to build on. A risk's id
+    changes with its state, so acknowledging one state is not acknowledging another.
+    """
+    risks = task_risks(root, task)
+    if not risks:
+        return None
+    try:
+        record = read_json(relative(root, task['permissions']['approval_ref']['path']))
+        acknowledged = set(record.get('acknowledged_risks') or [])
+    except (OSError, ValueError, TypeError, KeyError):
+        acknowledged = set()
+    return None if {r['id'] for r in risks} <= acknowledged else 'ASSUMPTION_AT_RISK'
+
+
+def inventory_gate(root, task):
+    """Reason code for the local-library inventory rule; None when the task satisfies it.
+
+    Independent discovery (stage 3) must stay neutral, so it may not carry the inventory. Reconciliation (stage 7) must
+    have looked at what the library already holds: exactly one inventory receipt that is intact and still describes the
+    library as it is now.
+    """
+    refs = [i for i in task['input_refs'] if i['kind'] == 'library-inventory']
+    if task['stage'] == 3:
+        return 'DISCOVERY_NOT_NEUTRAL' if refs else None
+    if task['stage'] != 7:
+        return None
+    if len(refs) != 1:
+        return 'INVENTORY_REQUIRED'
+    import scout
+    try:
+        receipt = scout.load_receipt(relative(root, refs[0]['path']))
+        library = receipt['library']
+        reason = scout.staleness(receipt, library.get('root') if library.get('configured') else None)
+    except (scout.ScoutError, OSError, ValueError, TypeError):
+        return 'INVENTORY_INVALID'
+    return 'INVENTORY_STALE' if reason else None
+
+
 def gate(root, task, tasks, providers, active=None, checked=None):
     active = set() if active is None else active
     checked = {} if checked is None else checked
@@ -388,10 +471,17 @@ def gate(root, task, tasks, providers, active=None, checked=None):
         state, reason = gate(root, dependency, tasks, providers, active, checked)
         if state != 'READY':
             return 'BLOCKED', 'DEPENDENCY_INVALID'
+    # Completed tasks keep their result without context; anything still to run needs it before approval is asked for.
+    reason = (context_gate(root, task) or inventory_gate(root, task)) if task['state'] != 'COMPLETE' else None
+    if reason:
+        return 'BLOCKED', reason
     try:
         approval(root, task)
     except (OSError, ValueError, TypeError):
         return 'BLOCKED', 'APPROVAL_REQUIRED'
+    reason = risk_gate(root, task) if task['state'] != 'COMPLETE' else None
+    if reason:
+        return 'BLOCKED', reason
     if task['stage'] == 7 and not any(tasks[k]['stage'] == 3 for k in task['dependencies']):
         return 'BLOCKED', 'DISCOVERY_REQUIRED'
     if task['stage'] == 8:
@@ -454,6 +544,9 @@ def view(root, data, providers, now):
                    role=task['role'], stage=task['stage'], provider=task['provider'],
                    actual_context_exposure=task['actual_context_exposure'],
                    cancel_requested=task['cancel_requested'])
+        risks = task_risks(root, task) if task['state'] != 'COMPLETE' else []
+        if risks:
+            row['at_risk'] = risks  # shown so the researcher can approve knowing them; see risk_gate
         if task['state'] == 'RUNNING':
             row['provider_state'] = provider_status(providers.get(task['provider']), task['handle'])
             row['stale'] = (timestamp(now) - timestamp(task['started_at'])).total_seconds() >= 3600

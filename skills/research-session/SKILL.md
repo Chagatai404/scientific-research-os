@@ -11,6 +11,8 @@ Read:
 - `references/SOURCE_POLICY.md`
 - `references/EVIDENCE_FORMAT.md` when handling consequential structured evidence
 - `references/PAPER_LIBRARY.md` when screening or saving selected papers
+- `references/LITERATURE_SCOUTING.md` for any literature search (inventory first, neutral discovery, then reconciliation)
+- `references/OBSIDIAN_INTEGRATIONS.md` for optional Obsidian plugins (detected from the vault's files; each has a built-in fallback)
 
 v0.8 contracts (literature/access/tasks/learning/ownership/defense helpers available):
 `references/LITERATURE_RELIABILITY_PROTOCOL.md`,
@@ -40,6 +42,9 @@ dependency bindings and isolated writer reservations before execution. Keep usef
 unrelated learning/preparation moving while tasks run. Stale time/cancel request
 does not prove stopping; preserve reservations until reconciliation. COMPLETE
 records collected artifacts, never independent source support or research acceptance.
+Before any build or experiment (stages 14 and 15) read "Assumptions at risk" in the resume brief: a contradicted, unsupported or
+unresolved assumption blocks the task (`ASSUMPTION_AT_RISK`) until the researcher's approval names it in `acknowledged_risks`. Tell the
+researcher what the risk is; never acknowledge one on their behalf.
 
 For authenticated scholarly access, use the bundled `scripts/paper_access.py`
 with a user-selected library/inbox and one sanitized request. It plans by default;
@@ -59,6 +64,14 @@ access and conflict qualifications visible; task/read completion is not verifica
 The existing EvidenceAtom CLI remains unchanged for legacy boards without this
 opt-in manifest; do not bypass the literature gate for claims in a manifest.
 
+Literature search is a chain you cannot skip a link of. First take the local library inventory
+(`python scripts/scout.py plan --config <local-config> --question ... --facet ... --out <new-dir>`); give the discovery
+scout `brief.json` only, never the library or the project's preferred answer; check its report with `scout.py check`;
+then `scout.py reconcile` it against the library (a stale inventory is refused) and hand an independent verifier only
+`scout.py handoff` packets. Task planning enforces it: a stage-7 reconciliation task needs one current `library-inventory`
+input and a stage-3 discovery task may not carry one. Reconciliation proposes integration and writes nothing; a collected
+PDF is not a record of reading and a candidate is never verified by the scout.
+
 For selected papers, use the configured local paper-library helper after reviewed
 metadata and relevance screening. Plan first; apply within the user's authorized
 scope. Preserve unavailable-PDF reasons and source access limits. The catalog
@@ -66,6 +79,22 @@ never updates learning grades or accepted claims; the literature scout stays rea
 Complete the literature session only after each selected useful paper has a saved
 PDF/metadata, existing-library match, unavailable PDF with citation, or explicit
 reviewed rejection. Report per-paper outcomes; a dry-run plan does not complete ingestion.
+
+## Context preflight (required)
+
+Before any planning or delegating, load context from the canonical records instead of relying on the chat:
+
+```
+python scripts/context_kernel.py preflight --workflow research-plan --target concept:<id>     --project "<project>" --vault "<vault>" [--session <path>] [--record <RQ-id>] [--expect-empty]
+```
+
+Read the receipt it prints. **BLOCKED** (exit 2) means an essential source is missing, invalid,
+unreadable or unconfigured: stop, report which source and why, and do not continue from memory.
+**DEGRADED** means continue only where the limitations do not reach, and say so. Empty is not
+unavailable: declare a new learner or project with `--expect-empty`. An unresolved concept is
+unknown, never demonstrated. Dependent actions check the receipt themselves (`html_sessions.py create`,
+`tasks.py` stages 7/8/14/15), so skipping this step fails rather than passes silently.
+See `references/CONTEXT_PROTOCOL.md`.
 
 ## Session start and end with the research registry
 

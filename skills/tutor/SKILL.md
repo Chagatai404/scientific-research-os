@@ -7,6 +7,40 @@ description: Source-grounded tutoring for mathematics, statistics, physics, quan
 
 Read `references/LEARNING_PROTOCOL.md`, `references/TUTOR_PLANNING.md` and `references/SOURCE_POLICY.md` before setup; do not reread them after every probe answer. In this repository, shared references live at `../../references/`; the installer copies them into each installed skill's `references/` directory.
 
+## Context preflight (required)
+
+Before any teaching or assessing, load context from the canonical records instead of relying on the chat:
+
+```
+python scripts/context_kernel.py preflight --workflow tutor --target concept:<id>     --project "<project>" --vault "<vault>" [--session <path>] [--record <RQ-id>] [--expect-empty]
+```
+
+Read the receipt it prints. **BLOCKED** (exit 2) means an essential source is missing, invalid,
+unreadable or unconfigured: stop, report which source and why, and do not continue from memory.
+**DEGRADED** means continue only where the limitations do not reach, and say so. Empty is not
+unavailable: declare a new learner or project with `--expect-empty`. An unresolved concept is
+unknown, never demonstrated. Dependent actions check the receipt themselves (`html_sessions.py create`,
+`tasks.py` stages 7/8/14/15), so skipping this step fails rather than passes silently.
+See `references/CONTEXT_PROTOCOL.md`.
+
+## Concept-first gates (required before teaching or probing)
+
+Concept first, project second, and checked rather than advised (`references/TUTORING_GATES.md`):
+
+1. Declare what each section teaches with `html_sessions.py declare-block` (kind, target concept, what it assumes and
+   introduces); the heading must match the lesson.
+2. Before posting a block or question, run `python scripts/tutor_gate.py --root <vault> check <session> --receipt <receipt>`.
+   Blocked means a prerequisite is unestablished (unknown mastery is unknown, never assumed): teach it first, probe it, or
+   branch to a prerequisite lesson. A concept explained earlier is *explained*, not *demonstrated*.
+3. Give every probe a contract (TESTS/ASSUMES/INTRODUCES, scope, dimension, method, units, probe, criteria), one
+   capability each, within the diagnostic budget that only the learner can extend. Choices are recognition only.
+4. A learner's request for another explanation (simpler, rigorous, derivation, visual, analogy, worked example, physical
+   meaning, implementation, prerequisites) is answered in the lesson with `answer-explanation`; it is never evidence.
+5. Review free responses against every criterion (`review --criteria-met ... --reviewed-by ...`); `tutor_gate.py evidence`
+   prints what could be proposed to the human for the ledger and writes nothing.
+6. Teach research code and methods as `implementation` blocks with all eight literacy items (why chosen, assumptions, how it
+   works, how to run, how to verify, where to change it, how it fails, alternatives).
+
 ## Workflow
 
 For v0.8 method/tool learning and interruptible branches, consult
@@ -189,10 +223,16 @@ Setup:
    map, sources and lesson log as needed.
 
 **Installed Obsidian adapters are used, not just configured.** When the vault has Excalidraw, Bases or Breadcrumbs
-(detect from `.obsidian/community-plugins.json` and `core-plugins.json`), follow the visualization protocol's
+(read the "Obsidian adapters" section of the resume brief, or run `python scripts/obsidian_plugins.py report --vault <vault>`; it
+checks enabled state and version compatibility and never installs anything), follow the visualization protocol's
 "Using the vault's installed Obsidian adapters": schematics through `scripts/excalidraw_schematic.py`, dashboards as
 embedded Base views, an `up` link on every new session note, and the prerequisite trail named when a capability is
-taught. Quantitative visuals remain verified figures.
+taught. Quantitative visuals remain verified figures. To find an older explanation use
+`python scripts/vault_search.py search "<question>" --vault <vault>` (add `--omnisearch` if the researcher runs Omnisearch's
+local server); a hit is a lead, never evidence of understanding. For practice use `python scripts/plugin_exports.py cards
+<session.md> --vault <vault>` and leave scheduling to the plugin; the learning ledger and `retention.py` stay the only schedule.
+Plugin-derived relations (Smart Connections, Breadcrumbs' implied edges) are suggestions only: record them with
+`vault_search.py suggest` and never as prerequisites. Full contract: `references/OBSIDIAN_INTEGRATIONS.md`.
 
 Teaching visuals appear **inline in the session** beside the question or explanation they serve:
 in the HTML view declare the verified image as a session resource and place it with
@@ -207,10 +247,13 @@ artifact instead. A visual being shown is never retrieval evidence; still ask th
 predict or explain.
 
 Answer submission is an explicit **Submit** or **Send**, never an idle timer. Listen with
-`html_sessions.py wait <session>` (bounded; run it in the background where the host allows) or
-let the learner say "submitted" in chat. React only to what it returns: the learner's latest
-submitted response for a question, or an unanswered open question. The learner sees
-"Checking…" until your `review` lands, so check promptly and do not leave a response unreviewed.
+`html_sessions.py wait <session> --holder <name>` (bounded; run it in the background where the host allows) or
+let the learner say "submitted" in chat. React only to what it returns: every unreviewed submission, unanswered open
+question or explanation request. A timeout is not the end of the lesson: the page shows *disconnected* once your lease
+expires and keeps what the learner submits, so listen again, or hand over with
+`python scripts/supervision.py --root <vault> resume <session>`. The learner sees "Checking…" only while your lease is
+live, so check promptly and never leave a submission unreviewed or mark a session completed with work pending
+(`references/HTML_SESSION_PROTOCOL.md`, "Durable supervision").
 
 Do **not** infer "finished" from file modification time going quiet. Composing an answer involves
 pauses for thought that are indistinguishable from completion, so no debounce threshold separates

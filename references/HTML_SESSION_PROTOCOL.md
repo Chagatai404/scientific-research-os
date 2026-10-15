@@ -58,14 +58,36 @@ develop instead of waiting for a whole block.
    happened: probe questions, then the teaching block, then the next questions.
    Append a teaching block with `append` before posting the question that follows it.
    Give every question a `solution` that explains the reasoning, not only the key.
-2. Listen with `wait <session> --timeout 900` (run it in the background where the
-   host supports it). It returns only on an explicit Submit or Send.
+2. Listen with `wait <session> --holder <name> --timeout 900` (run it in the background where the
+   host supports it). It returns on an explicit Submit or Send, or on a timeout, which is **not** the end of the
+   lesson. `--holder` renews a liveness lease so the page can say a tutor is connected (see below).
 3. Read the actual response, confidence, hints and attempts it reports, then record
    your check: `review <session> <question-id> --verdict correct|partially-correct|incorrect|reviewed
-   --feedback f.txt [--transcript t.md] [--next-question q.json]`. The learner sees
-   "Checking…" until then; your verdict, feedback and the prepared explanation then
-   appear under their answer, followed by the transcript entry and next question.
+   --feedback f.txt [--transcript t.md] [--next-question q.json]`. While your lease is live the learner sees
+   "Checking…"; otherwise "Saved, waiting for the tutor". Your verdict, feedback and the prepared explanation then
+   appear under their answer, followed by the transcript entry and next question. Every unreviewed submission is its
+   own pending item. A review stands for the attempt it names and every attempt before it (it also lists them in `covers`); v0.8
+   reviews recorded neither, and are read the same way, so a finished historical lesson does not come back as pending work. A
+   review of an earlier attempt never settles a later one, and a retry after a review waits for the tutor again.
 4. Answer open questions with `answer`; they appear in place the same way.
+
+### Durable supervision
+
+A bounded `wait` is not supervision, and a timeout never means the lesson is over. The page shows one of eight states, from
+the saved session and an expiring lease, never from hope: *active*, *waiting for learner* (a tutor is connected and idle),
+*response awaiting review*, *agent reviewing*, *paused*, *disconnected* (no live tutor: what the learner submits is saved
+and waits), *completed* and *failed (recoverable)*.
+
+- Liveness is a lease file beside the session (`<session>.supervision.json`) that an agent renews while it listens or
+  reviews (`wait --holder`, or `python scripts/supervision.py --root <vault> heartbeat <session> --holder <name> --mode reviewing`)
+  and that expires on its own. Two live agents never share a session (`--takeover` is a deliberate act). Nothing claims an
+  agent is still there after its lease ran out, and no provider is claimed to keep running once its process ends.
+- Pending work lives in the saved session, so it survives a timeout, a crash and a restart. A new agent starts with
+  `python scripts/supervision.py --root <vault> resume <session> [--apply]` (it also completes an interrupted write, never
+  overwriting later edits), then `wait --holder`.
+- Decisions are recorded with a reason: `pause`, `fail` (needs a reason, recoverable), `complete` (refused while any
+  submission still awaits review) and `reopen` (a completed session needs a reason). Free responses are never graded
+  without a review.
 
 An `answer` key gives MCQ/numeric questions an immediate local check; omit it when
 the reasoning must be reviewed. Verdicts are pending tutor feedback, never ledger
@@ -90,6 +112,64 @@ decisions and uncertainties. Include precise source locators. Match visual inter
 to learning value; mark schematic/model-driven demonstrations and assumptions. Do
 not portray illustrative mathematics as experimentally validated simulation data.
 Preserve literal LaTeX; report unsupported syntax instead of changing an expression.
+
+## Where visuals go
+
+A figure or interactive widget is part of the explanation it serves. Sessions created by v0.9 record
+`placement: explicit`: put a figure with `![alt](resource:ID "caption")` and a widget with
+`<!-- ros-widget: ID -->` where the lesson uses it (`html_sessions.py place` writes these for you), and declare it
+in the session's `resources` / `widgets`. A declared visual that the lesson never places, a placeholder with no
+declaration, and a visual placed twice are shown as visible diagnostics and reported by `validate`; nothing is
+appended to the end of the page. Sessions without the `placement` field keep their earlier behaviour. How figures are
+produced, labelled by evidence class and kept safe is in `references/VISUALIZATION_PROTOCOL.md`.
+
+## Titles, navigation and the questions panel
+
+**Titles say what is being studied.** Keep stable internal IDs in state; never put workflow positions or identifiers in
+a heading a learner reads ("Block 9 - Content 3", "Q3", "RQ-004", "Section 1"), and never leave a template slot such as
+`[Name the concept this part teaches]` unfilled. Write "Understanding multiscale dimensions".
+`html_sessions.py validate` reports both in sessions created by v0.9, and a session with no explicit title is named by
+its shallowest meaningful heading rather than its file name.
+
+**The page has three areas.** Navigation on the left (the section list with hierarchy, the current section, per-section
+progress, previous/next, "Where am I?", related lessons and notes), the lesson in the middle, and a questions panel on
+the right (ask a question, history with Open/Answered status, responses waiting for the tutor, and "Back to ..." which
+returns to the section a question was asked in). From 1600px wide all three are visible; on smaller windows the
+contents bar stays pinned and the questions panel is a drawer opened from a button (Escape closes it and returns
+focus). A question answered while the drawer is closed is signalled on its button.
+
+**The learner can ask for the same idea another way.** The panel offers nine styles (more simply, more rigorously, show the
+derivation, visually, an analogy, a worked example, physical meaning, how to implement it, review prerequisites). A request
+is recorded with the section it came from and listed in pending activity; the agent adds the explanation to the lesson under
+a new heading and links it with `html_sessions.py answer-explanation`. A request is never a response and never evidence. Concept-first gates,
+probe contracts, evidence proposals and implementation literacy are in `references/TUTORING_GATES.md`.
+
+**Related lessons come from recorded context, never invention.** `html_sessions.py navigation <session> [--apply]`
+derives prerequisites, the first and recent earlier lessons on the concept, and research applications from the context
+kernel's receipt and stores them as `navigation` (validated note references, at most 64). A source that is missing
+contributes nothing.
+
+**Links to other notes are requests, not hrefs.** A `[[Note]]` in a lesson (or an entry in `navigation`) asks the host to
+open it. The host re-validates the reference itself (relative path, optional `#heading`/`#^block`; no scheme, drive,
+absolute path, traversal or hidden folder), refuses anything the session does not itself link to, resolves it the way
+Obsidian resolves a wikilink, and opens it in a **new tab** so the lesson stays exactly where the learner left it. A
+standalone page cannot open notes and says so next to the link. Malformed targets stay visible but are not links. The
+host also remembers the reading position in memory so a rebuilt page (theme change, reload) returns to it.
+
+## Listening
+
+Each page offers a **Listen** control in the navigation: it reads the section in view (with its subsections, and a section that is
+only a title together with the one after it) using the browser's own speech synthesis. Nothing is installed or sent anywhere: voices
+on the device come first and are chosen by default; an online voice appears in its own group, is labelled as sending the text to a
+speech service, and is never selected for the learner. Pause remembers the place, Stop ends it, speed is adjustable, and the part
+being read is marked. What is read is the lesson text: question prompts, hints and solutions, interactive widgets, code (announced
+as a code block) and anything hidden are skipped. Equations are read from their TeX in words only where the spoken form is
+unambiguous (powers, fractions, roots, sums, Greek letters, common relations); any other expression is announced as an equation to
+read on the page rather than half-spoken. With no speech engine or no voice the control says so and the page is unaffected. The
+audio is a rendering of the page and adds no content; it is tested with a recording fake engine, not on a real device.
+
+Other optional Obsidian integrations (search, retention cards, Canvas, suggestions) and how they degrade are in
+`OBSIDIAN_INTEGRATIONS.md`.
 
 ## Obsidian and fallback
 

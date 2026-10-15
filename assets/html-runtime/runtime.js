@@ -40,12 +40,14 @@
   }
   function renderMath(element) {
     const tex = element.getAttribute('data-tex') || element.textContent;
+    // Keep the authored text (delimiters included) so a failure shows exactly what was written, however often this runs.
+    if (!element.hasAttribute('data-source')) element.setAttribute('data-source', element.textContent);
     try {
       if (!root.katex) throw new Error('Bundled mathematical renderer unavailable');
       element.innerHTML = root.katex.renderToString(tex, {displayMode: element.getAttribute('data-display') === 'true', throwOnError: true, trust: false, strict: 'warn', maxExpand: 1000, maxSize: 20, output: 'htmlAndMathml'});
       element.setAttribute('data-math-status', 'rendered');
     } catch (error) {
-      element.textContent = tex;
+      element.textContent = element.getAttribute('data-source') || tex;
       element.setAttribute('data-math-status', 'unsupported');
       element.setAttribute('title', 'Mathematics could not render. Original LaTeX preserved.');
       const warning = root.document.createElement('small');
@@ -54,6 +56,39 @@
     }
   }
   const VERDICTS = {correct: ['Correct', 'matches'], 'partially-correct': ['Partly correct', 'partial'], incorrect: ['Not quite', 'retry'], reviewed: ['Reviewed', 'pending']};
+  // Everything below mirrors scripts/supervision.py and scripts/html_sessions.py pending_activity; tests/fixtures/supervision-cases.json pins both.
+  // Work waiting for the tutor: every unreviewed submission (an earlier attempt counts until a review covers it), unanswered question and open explanation request.
+  function pendingOf(state, events) {
+    let count = 0;
+    for (const q of state.questions || []) {
+      const handled = new Set(), responses = (events || state.events || []).filter(event => event.type === 'response' && event.question_id === q.id);
+      const order = responses.map(event => event.event_id);
+      // A review stands for the attempt it names and every attempt before it (v0.8 reviewed only the latest and recorded no `covers`).
+      for (const review of q.reviews || []) {
+        handled.add(review.response_event_id); for (const id of review.covers || []) handled.add(id);
+        const at = order.indexOf(review.response_event_id); if (at >= 0) for (const id of order.slice(0, at + 1)) handled.add(id);
+      }
+      for (const event of responses) if (!handled.has(event.event_id)) count++;
+    }
+    for (const record of state.open_questions || []) if (!(typeof record.answer === 'string' && record.answer.trim())) count++;
+    for (const record of state.explanation_requests || []) if (record.status === 'open') count++;
+    return count;
+  }
+  // The honest status. Explicit decisions come from the saved session, liveness only from a lease that has not expired.
+  function supervisionOf(state, lease, now, events) {
+    const stored = (state.supervision && state.supervision.status) || 'active';
+    const decided = ['paused', 'completed', 'failed-recoverable'].includes(stored);
+    const alive = Boolean(lease) && Date.parse(lease.expires_at) > now;
+    const pending = pendingOf(state, events);
+    let status;
+    if (decided) status = stored;
+    else if (!alive) status = 'disconnected';
+    else if (lease.mode === 'reviewing' && (pending || (lease.reviewing || []).length)) status = 'agent-reviewing';
+    else if (pending) status = 'response-awaiting-review';
+    else if (lease.mode === 'working') status = 'active';
+    else status = 'waiting-for-learner';
+    return {status, alive, pending, reason: decided ? (state.supervision.reason || null) : null};
+  }
   function start() {
     const doc = root.document;
     const mount = doc.getElementById('ros-session');
@@ -64,6 +99,10 @@
     const host = root.ROS_HOST;
     let questions = new Map((state.questions || []).map(q => [q.id, q]));
     let localEvents = [...(state.events || [])];
+    // The tutor's lease and the host's clock arrive with the state; the page never trusts its own idea of whether anyone is listening.
+    let liveLease = state.supervision_live || null, clockOffset = typeof state.host_now === 'number' ? state.host_now - Date.now() : 0;
+    const nowMs = () => Date.now() + clockOffset;
+    const currentSupervision = () => supervisionOf(state, liveLease, nowMs(), localEvents);
     const pending = new Map();
     const failed = new Set();
     const panels = new Map();
@@ -74,13 +113,28 @@
     let contentNodes = [...mount.children];
     for (const child of contentNodes) keys.set(child, child.outerHTML);
     function node(tag, text) { const el = doc.createElement(tag); if (text !== undefined) el.textContent = text; return el; }
+    // Authored scientific text (prompts, options, hints, explanations, feedback, open questions) uses the shared inline grammar.
+    const Rich = root.ResearchOSRich;
+    function resolveReference(label) {
+      for (const target of mount.querySelectorAll('[data-eq-label]')) if (target.getAttribute('data-eq-label') === label) return target.getAttribute('data-eq-number');
+      return undefined;
+    }
+    function rich(tag, text) {
+      const el = doc.createElement(tag);
+      if (Rich) Rich.renderInto(el, Rich.parseInline(String(text)), doc, {onMath: renderMath, resolveReference}); else el.textContent = String(text);
+      return el;
+    }
+    function plain(text) { return Rich ? Rich.plainText(Rich.parseInline(String(text))) : String(text); }
     function button(text, callback) { const b = node('button', text); b.type = 'button'; b.addEventListener('click', callback); return b; }
     function within(scope, selector) { return [...(scope.matches && scope.matches(selector) ? [scope] : []), ...scope.querySelectorAll(selector)]; }
     const status = node('p'); status.className = 'ros-status'; status.setAttribute('role', 'status');
+    // Whether anyone is listening, said plainly (hidden on a standalone page, which has no tutor to be connected).
+    const supervisionLine = node('p'); supervisionLine.className = 'ros-supervision'; supervisionLine.setAttribute('role', 'status'); supervisionLine.hidden = true;
     status.textContent = host ? 'Answers save automatically.' : 'Standalone page: progress stays in this open page. Download it before closing.';
     const hasAttempt = id => localEvents.some(e => e.type === 'response' && e.question_id === id);
-    const emit = (type, question_id, response) => {
+    const emit = (type, question_id, response, origin) => {
       const event = {event_id: (root.crypto && root.crypto.randomUUID ? root.crypto.randomUUID() : 'event-' + Date.now() + '-' + (++counter)), type, question_id: question_id || null, response, created_at: new Date().toISOString()};
+      if (origin) event.origin = origin;
       localEvents.push(event);
       if (host) { pending.set(event.event_id, event); root.parent.postMessage({channel: 'research-os', token: host.token, session_id: state.session_id, event}, '*'); status.textContent = 'Saving…'; }
       else status.textContent = 'Progress recorded in this page only. Download progress before closing.';
@@ -88,6 +142,7 @@
       return event;
     };
     function mergeState(next) {
+      if (Object.prototype.hasOwnProperty.call(next, 'supervision_live')) { liveLease = next.supervision_live || null; if (typeof next.host_now === 'number') clockOffset = next.host_now - Date.now(); }
       state = Object.assign({}, state, next);
       questions = new Map((state.questions || []).map(q => [q.id, q]));
       const saved = new Set(next.events.map(e => e.event_id));
@@ -103,6 +158,11 @@
         const fresh = data.type === 'update' && typeof data.body === 'string' ? applyBody(data.body) : [];
         refreshAll();
         status.textContent = pending.size ? 'Saving…' : fresh.length ? 'Session updated.' : 'Progress saved.';
+      } else if (data.type === 'supervision') {
+        liveLease = data.live || null; if (typeof data.host_now === 'number') clockOffset = data.host_now - Date.now();
+        refreshAll();
+      } else if (data.type === 'navigated' || data.type === 'navigation-error') {
+        noteResult(data);
       } else if (data.type === 'error') {
         for (const id of pending.keys()) failed.add(id);
         pending.clear(); refreshAll();
@@ -119,6 +179,7 @@
       const header = mount.querySelector(':scope > .ros-session-header');
       if (questions.size) { if (header) header.after(progress); else mount.prepend(progress); if (status.parentElement !== progress) progress.append(status); }
       else if (header) header.append(status); else mount.prepend(status);
+      if (supervisionLine.previousElementSibling !== status) status.after(supervisionLine);
     }
     function updateProgress() {
       const recorded = [...questions.keys()].filter(hasAttempt).length;
@@ -138,6 +199,86 @@
         if (entry === active) entry.link.setAttribute('aria-current', 'location');
         else entry.link.removeAttribute('aria-current');
       }
+      toc.active = active || null;
+      refreshNavExtras(); reportPosition();
+    }
+    // Where the learner is: the section in view, its place in the lesson and how much of it has been answered.
+    const sectionTitle = entry => entry.heading.textContent.trim();
+    function jumpTo(heading) {
+      for (let parent = heading.parentElement; parent && parent !== mount; parent = parent.parentElement) if (parent.tagName === 'DETAILS') parent.open = true;
+      if (!heading.hasAttribute('tabindex')) heading.setAttribute('tabindex', '-1');
+      heading.focus({preventScroll: true}); heading.scrollIntoView({block: 'start', behavior: 'auto'}); scheduleSection();
+    }
+    function currentOrigin() {
+      const entry = toc && toc.active;
+      return entry && entry.heading.id ? {section: entry.heading.id, title: sectionTitle(entry).slice(0, 200)} : undefined;
+    }
+    function locationText() {
+      if (!toc || !toc.active) return (state.title || 'This session') + ' — no sections yet.';
+      const index = toc.entries.indexOf(toc.active), level = Number(toc.active.link.closest('li').dataset.level) || 2;
+      const trail = [state.title || 'Session'];
+      let depth = level;
+      const ancestors = [];
+      for (let i = index - 1; i >= 0 && depth > 1; i--) {
+        const l = Number(toc.entries[i].link.closest('li').dataset.level) || 2;
+        if (l < depth) { ancestors.unshift(sectionTitle(toc.entries[i])); depth = l; }
+      }
+      trail.push(...ancestors, sectionTitle(toc.active));
+      const answered = [...questions.keys()].filter(hasAttempt).length;
+      return trail.join(' › ') + '. Section ' + (index + 1) + ' of ' + toc.entries.length + (questions.size ? '; ' + answered + ' of ' + questions.size + ' responses recorded.' : '.');
+    }
+    function updateSectionProgress() {
+      if (!toc) return;
+      const all = [...mount.querySelectorAll('[data-question-id]')];
+      toc.entries.forEach((entry, i) => {
+        const next = toc.entries[i + 1];
+        const inside = all.filter(q => (entry.heading.compareDocumentPosition(q) & 4) && (!next || (next.heading.compareDocumentPosition(q) & 2)));
+        let badge = entry.link.querySelector('.ros-section-progress');
+        if (!inside.length) { badge && badge.remove(); delete entry.link.dataset.progress; return; }
+        const done = inside.filter(q => hasAttempt(q.getAttribute('data-question-id'))).length;
+        if (!badge) { badge = node('span'); badge.className = 'ros-section-progress'; entry.link.append(badge); }
+        entry.link.dataset.progress = done === inside.length ? 'done' : done ? 'partial' : 'none';
+        badge.replaceChildren();
+        const visible = node('span', done + '/' + inside.length); visible.setAttribute('aria-hidden', 'true');
+        const spoken = node('span', done + ' of ' + inside.length + ' questions answered'); spoken.className = 'ros-sr-only';
+        badge.append(visible, spoken);
+      });
+    }
+    const KIND_LABEL = {prerequisite: 'Prerequisite', earlier: 'Earlier lesson', 'first-taught': 'First taught', related: 'Related', application: 'Research application', evidence: 'Evidence', paper: 'Paper'};
+    function renderRelated() {
+      if (!toc || !toc.related) return;
+      const items = (Array.isArray(state.navigation) ? state.navigation : []).filter(item => item && typeof item.target === 'string' && Rich && Rich.validNoteTarget(item.target));
+      toc.related.replaceChildren(); toc.related.hidden = !items.length;
+      if (!items.length) return;
+      const relatedTitle = node('p', 'Related lessons and notes'); relatedTitle.className = 'ros-nav-heading'; toc.related.append(relatedTitle);
+      const list = node('ul');
+      for (const item of items) {
+        const li = node('li'), kind = node('span', KIND_LABEL[item.kind] || 'Related'); kind.className = 'ros-nav-kind';
+        const link = node('a', String(item.label)); link.className = 'ros-note-link'; link.setAttribute('href', '#ros-note-link'); link.setAttribute('role', 'link');
+        link.setAttribute('data-ros-target', item.target); link.title = item.note ? String(item.note) : item.target;
+        li.append(kind, link); list.append(li);
+      }
+      toc.related.append(list);
+    }
+    function refreshNavExtras() {
+      if (!toc || !toc.extra) return;
+      const index = toc.active ? toc.entries.indexOf(toc.active) : -1;
+      toc.previous.disabled = index <= 0; toc.next.disabled = index < 0 || index >= toc.entries.length - 1;
+      toc.previous.setAttribute('aria-label', index > 0 ? 'Previous section: ' + sectionTitle(toc.entries[index - 1]) : 'Previous section');
+      toc.next.setAttribute('aria-label', index >= 0 && index < toc.entries.length - 1 ? 'Next section: ' + sectionTitle(toc.entries[index + 1]) : 'Next section');
+      if (!toc.where.hidden) toc.where.textContent = locationText();
+    }
+    // The host remembers the position so a rebuilt page (theme change, reload) returns the learner to where they were.
+    let lastReported = '', reportTimer = 0;
+    function reportPosition() {
+      if (!host || !toc || !toc.active || !toc.active.heading.id) return;
+      root.clearTimeout(reportTimer);
+      reportTimer = root.setTimeout(() => {
+        const entry = toc && toc.active; if (!entry || !entry.heading.id) return;
+        const offset = Math.round(-entry.heading.getBoundingClientRect().top);
+        const key = entry.heading.id + ':' + offset; if (key === lastReported) return; lastReported = key;
+        root.parent.postMessage({channel: 'research-os', token: host.token, session_id: state.session_id, type: 'position', section: entry.heading.id, offset}, '*');
+      }, 400);
     }
     let scheduled = false;
     function scheduleSection() {
@@ -150,11 +291,120 @@
       if (toc.summary) toc.summary.tabIndex = wide.matches ? -1 : 0;
       scheduleSection();
     }
+    // Optional narration: the browser's own speech synthesis reads the section in view. Nothing leaves the device unless the learner
+    // picks an online voice, which is labelled as one. Equations are read from their TeX in words only where that is unambiguous.
+    const Narration = root.ResearchOSNarration;
+    const narrator = Narration ? Narration.create(root) : null;
+    let speaking = null;
+    function markSpeaking(element) {
+      if (speaking && speaking !== element) speaking.classList.remove('ros-speaking');
+      speaking = element || null;
+      if (speaking) { speaking.classList.add('ros-speaking'); if (speaking.scrollIntoView) speaking.scrollIntoView({block: 'nearest'}); }
+    }
+    function stopNarration() { if (narrator) narrator.stop(); markSpeaking(null); }
+    root.addEventListener('pagehide', stopNarration);
+    function listenTarget() {
+      const entry = toc && toc.active;
+      if (!entry) return null;
+      const levelOf = i => Number(toc.entries[i].link.closest('li').dataset.level) || 2;
+      const endAfter = from => { for (let i = from + 1; i < toc.entries.length; i++) if (levelOf(i) <= levelOf(from)) return i; return -1; };
+      let last = toc.entries.indexOf(entry), end = endAfter(last), chunks = Narration.chunksFor(mount, entry.heading, end < 0 ? null : toc.entries[end].heading);
+      // A section that is only a heading (such as the lesson title) is read together with the section that follows it.
+      while (end >= 0 && chunks.every(chunk => /^H[1-6]$/.test(chunk.element.tagName))) {
+        last = end; end = endAfter(last);
+        chunks = Narration.chunksFor(mount, entry.heading, end < 0 ? null : toc.entries[end].heading);
+      }
+      return {entry, chunks};
+    }
+    function setupListen() {
+      const group = node('div'); group.className = 'ros-listen'; group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'Listen to this section');
+      const note = node('p'); note.className = 'ros-listen-note'; note.setAttribute('role', 'status');
+      if (!narrator || !narrator.supported) {
+        note.textContent = 'Reading aloud needs speech synthesis, which this window does not provide. The page reads the same without it.';
+        group.append(note); return group;
+      }
+      const row = node('div'); row.className = 'ros-listen-row';
+      const play = button('▶ Listen', () => onPlay()); play.className = 'ros-listen-play';
+      const stopButton = button('■ Stop', () => stopNarration()); stopButton.className = 'ros-listen-stop'; stopButton.disabled = true; stopButton.setAttribute('aria-label', 'Stop reading aloud');
+      row.append(play, stopButton);
+      // Not a <details>: the navigation is itself a disclosure, and a nested one would make "the contents control" ambiguous.
+      const toggle = button('Voice and speed', () => showOptions(options.hidden)); toggle.className = 'ros-listen-toggle';
+      toggle.setAttribute('aria-expanded', 'false'); toggle.setAttribute('aria-controls', 'ros-listen-options');
+      const options = node('div'); options.className = 'ros-listen-options'; options.id = 'ros-listen-options'; options.hidden = true;
+      function showOptions(open) { options.hidden = !open; toggle.setAttribute('aria-expanded', String(open)); }
+      const voiceLabel = node('label', 'Voice'), voiceSelect = node('select'); voiceLabel.append(voiceSelect);
+      const rateLabel = node('label', 'Speed'), rateSelect = node('select'); rateLabel.append(rateSelect);
+      for (const [value, label] of [['0.75', 'Slower'], ['1', 'Normal'], ['1.25', 'Faster'], ['1.5', 'Fastest']]) { const o = node('option', label); o.value = value; rateSelect.append(o); }
+      rateSelect.value = '1';
+      options.append(voiceLabel, rateLabel);
+      group.append(row, toggle, options, note);
+      function render() {
+        const state = narrator.state;
+        play.textContent = state === 'speaking' ? '⏸ Pause' : state === 'paused' ? '▶ Resume' : '▶ Listen';
+        play.setAttribute('aria-label', state === 'speaking' ? 'Pause reading' : state === 'paused' ? 'Resume reading' : 'Listen to this section');
+        stopButton.disabled = state === 'idle';
+      }
+      function fillVoices() {
+        const list = narrator.voices(), kept = voiceSelect.value;
+        voiceSelect.replaceChildren();
+        const local = list.filter(v => v.local), online = list.filter(v => !v.local);
+        const language = doc.documentElement.lang || (root.navigator && root.navigator.language) || '';
+        const preferred = narrator.defaultVoice(language);
+        const add = (parent, v, suffix) => { const o = node('option', v.name + (v.lang ? ' (' + v.lang + ')' : '') + suffix); o.value = v.voiceURI; parent.append(o); };
+        if (!preferred) { const o = node('option', list.length ? 'Choose a voice' : 'No voices found'); o.value = ''; voiceSelect.append(o); }
+        if (local.length) { const g = node('optgroup'); g.label = 'On this device'; local.forEach(v => add(g, v, '')); voiceSelect.append(g); }
+        if (online.length) { const g = node('optgroup'); g.label = 'Online (the text is sent to a speech service)'; online.forEach(v => add(g, v, ' — online')); voiceSelect.append(g); }
+        voiceSelect.value = list.some(v => v.voiceURI === kept) ? kept : (preferred || '');
+        narrator.setVoice(voiceSelect.value || null);
+      }
+      fillVoices();
+      if (root.speechSynthesis && root.speechSynthesis.addEventListener) root.speechSynthesis.addEventListener('voiceschanged', fillVoices);
+      voiceSelect.addEventListener('change', () => {
+        narrator.setVoice(voiceSelect.value || null);
+        const chosen = narrator.voices().find(v => v.voiceURI === voiceSelect.value);
+        if (chosen && !chosen.local) note.textContent = 'This is an online voice: the text you listen to is sent to a speech service.';
+      });
+      rateSelect.addEventListener('change', () => narrator.setRate(Number(rateSelect.value)));
+      function onPlay() {
+        if (narrator.state === 'speaking') { narrator.pause(); render(); return; }
+        if (narrator.state === 'paused') { narrator.resume(); render(); return; }
+        const target = listenTarget();
+        if (!target || !target.chunks.length) { note.textContent = 'There is nothing to read aloud in this section.'; return; }
+        if (!voiceSelect.value) { note.textContent = narrator.voices().length ? 'Choose a voice first (Voice and speed).' : 'No speech voices were found on this device.'; showOptions(true); return; }
+        const title = sectionTitle(target.entry);
+        narrator.setVoice(voiceSelect.value); narrator.setRate(Number(rateSelect.value));
+        narrator.start(target.chunks, {rate: Number(rateSelect.value), voiceURI: voiceSelect.value}, {
+          part(item, position, total) { markSpeaking(item.chunk.element); note.textContent = 'Reading “' + title + '” aloud (part ' + (position + 1) + ' of ' + total + ').'; },
+          paused() { note.textContent = 'Paused.'; },
+          end(reason, detail) {
+            markSpeaking(null);
+            note.textContent = reason === 'finished' ? 'Finished reading “' + title + '”.' : reason === 'stopped' ? 'Stopped.' : reason === 'error' ? 'Speech stopped: ' + (detail || 'the speech engine reported an error') + '.' : 'There is nothing to read aloud in this section.';
+            render();
+          }
+        });
+        render();
+      }
+      return group;
+    }
     function setupToc(nav) {
       const disclosure = nav.querySelector('details');
       const entries = [...nav.querySelectorAll('a[href^="#"]')].map(link => ({link, heading:doc.getElementById(link.getAttribute('href').slice(1))})).filter(entry=>entry.heading);
       toc = {entries, disclosure, summary: disclosure?.querySelector('summary')};
       toc.summary?.addEventListener('click', event => { if (wide.matches) event.preventDefault(); });
+      if (disclosure && entries.length) {
+        // Orientation inside the navigation: previous/next, "Where am I?", and links to related lessons and notes.
+        const extra = node('div'); extra.className = 'ros-nav-extra';
+        const steps = node('div'); steps.className = 'ros-nav-steps';
+        const previous = button('← Prev', () => { const i = toc.active ? toc.entries.indexOf(toc.active) : 0; if (i > 0) jumpTo(toc.entries[i - 1].heading); });
+        const next = button('Next →', () => { const i = toc.active ? toc.entries.indexOf(toc.active) : -1; if (i < toc.entries.length - 1) jumpTo(toc.entries[i + 1].heading); });
+        const where = node('p'); where.className = 'ros-where'; where.id = 'ros-where'; where.hidden = true; where.setAttribute('role', 'status');
+        const ask = button('Where am I?', () => { where.hidden = !where.hidden; ask.setAttribute('aria-expanded', String(!where.hidden)); if (!where.hidden) where.textContent = locationText(); });
+        ask.setAttribute('aria-expanded', 'false'); ask.setAttribute('aria-controls', 'ros-where'); ask.className = 'ros-where-button';
+        const related = node('section'); related.className = 'ros-nav-related'; related.hidden = true; related.setAttribute('aria-label', 'Related lessons and notes');
+        steps.append(previous, next); extra.append(steps, setupListen(), ask, where, related); disclosure.append(extra);
+        Object.assign(toc, {extra, previous, next, where, related});
+        renderRelated(); updateSectionProgress();
+      }
       for (const {link, heading} of entries) link.addEventListener('click', event => {
         event.preventDefault();
         if (!wide.matches && disclosure) disclosure.open = false;
@@ -213,20 +463,23 @@
       const {latest, verdict, feedback} = verdictFor(panel);
       const saving = Boolean(latest && pending.has(latest.event_id));
       const lost = Boolean(latest && failed.has(latest.event_id));
-      // With a host, an unchecked response waits for the tutor; a standalone page has no one to wait for.
-      const checking = Boolean(latest && !lost && (saving || (!verdict && host)));
+      // With a host, an unchecked response waits for the tutor. "Checking" is claimed only while a tutor's lease is live;
+      // otherwise the response is saved and says so. A standalone page has no one to wait for.
+      const listening = Boolean(host && currentSupervision().alive);
+      const checking = Boolean(latest && !lost && (saving || (!verdict && host && listening)));
+      const savedForTutor = Boolean(latest && !lost && !saving && !verdict && host && !listening);
       const checked = Boolean(latest && !lost && !saving && (verdict || !host));
       panel.submit.disabled = Boolean(latest && !panel.dirty && !lost);
       panel.submit.textContent = !latest || panel.dirty ? 'Submit response' : lost ? 'Submit again' : checking ? 'Checking…' : 'Submitted';
       panel.submit.setAttribute('aria-busy', String(checking && !panel.dirty));
-      panel.chip.textContent = !latest ? 'Awaiting response' : lost ? 'Not saved' : checking ? 'Checking…' : verdict ? VERDICTS[verdict][0] : 'Saved in this page';
+      panel.chip.textContent = !latest ? 'Awaiting response' : lost ? 'Not saved' : checking ? 'Checking…' : verdict ? VERDICTS[verdict][0] : savedForTutor ? 'Saved, waiting for the tutor' : 'Saved in this page';
       panel.chip.dataset.state = !latest ? 'empty' : lost ? 'retry' : checking ? 'checking' : verdict ? VERDICTS[verdict][1] : 'pending';
       const showVerdict = Boolean(checked && verdict);
       panel.feedback.hidden = !showVerdict;
       if (showVerdict) {
         panel.feedback.dataset.state = VERDICTS[verdict][1];
         const label = node('strong', VERDICTS[verdict][0]); label.className = 'ros-verdict-label';
-        panel.feedback.replaceChildren(label, ...(feedback ? [node('span', feedback)] : []));
+        panel.feedback.replaceChildren(label, ...(feedback ? [rich('span', feedback)] : []));
       }
       for (const field of panel.fields) if (field.closest('.ros-option')) {
         const option = field.closest('.ros-option'); delete option.dataset.feedback;
@@ -257,7 +510,7 @@
         number = node('p'); number.className = 'ros-question-number';
         chip = node('span'); chip.className = 'ros-question-state'; heading.append(number, chip); body.append(heading);
       }
-      const prompt = node('h3', q.prompt); prompt.className = 'ros-question-prompt'; body.append(prompt);
+      const prompt = rich('h3', q.prompt); prompt.className = 'ros-question-prompt'; body.append(prompt);
       const form = node('form'); const fieldset = node('fieldset'); fieldset.className = 'ros-options'; fieldset.append(node('legend', q.kind === 'multi' ? 'Choose all that apply' : 'Your response')); form.append(fieldset);
       const fields = [];
       const optionValue = option => typeof option === 'object' ? String(option.value === undefined ? option.id : option.value) : String(option);
@@ -266,19 +519,19 @@
         const group = 'answer-' + (++uid);
         (q.options || []).forEach((option, index) => {
           const label = node('label'); label.className = 'ros-option'; const input = node('input'); input.type = q.kind === 'mcq' ? 'radio' : 'checkbox'; input.name = group; input.value = optionValue(option); input.dataset.index = String(index);
-          input.setAttribute('aria-label', optionLabel(option));
+          input.setAttribute('aria-label', plain(optionLabel(option)));
           const letter = node('span', index < 26 ? String.fromCharCode(65 + index) : String(index + 1)); letter.className = 'ros-option-letter'; letter.setAttribute('aria-hidden', 'true');
-          const text = node('span', optionLabel(option)); text.className = 'ros-option-text';
+          const text = rich('span', optionLabel(option)); text.className = 'ros-option-text';
           label.append(input, letter, text); fieldset.append(label); fields.push(input);
         });
       } else if (q.kind === 'matching' || q.kind === 'ordering') {
         const keys = q.kind === 'matching' ? Object.keys(q.answer || {}) : (q.options || q.answer || []);
         const choices = q.kind === 'matching' ? q.options || [...new Set(Object.values(q.answer || {}))] : keys;
         keys.forEach((key, index) => {
-          const label = node('label', q.kind === 'matching' ? key + ': ' : 'Position ' + (index + 1) + ': ');
+          const label = q.kind === 'matching' ? rich('label', key + ': ') : node('label', 'Position ' + (index + 1) + ': ');
           const select = node('select'); select.dataset.key = String(key); select.required = true; select.append(node('option', 'Choose…'));
           select.firstChild.value = '';
-          choices.forEach(value => { const o = node('option', optionLabel(value)); o.value = optionValue(value); select.append(o); });
+          choices.forEach(value => { const o = node('option', plain(optionLabel(value))); o.value = optionValue(value); select.append(o); });
           label.append(select); fieldset.append(label); fields.push(select);
         });
       } else {
@@ -307,7 +560,7 @@
       body.append(form);
       const hints = [];
       (q.hints || []).forEach((hint, index) => {
-        const text = node('p', hint); text.hidden = true; text.dataset.ros = 'hint'; text.className = 'ros-hint'; text.id = 'ros-hint-' + (++uid);
+        const text = rich('p', hint); text.hidden = true; text.dataset.ros = 'hint'; text.className = 'ros-hint'; text.id = 'ros-hint-' + (++uid);
         const reveal = button('Reveal hint ' + (index + 1), () => {
           text.hidden = false; reveal.disabled = true; reveal.setAttribute('aria-expanded', 'true'); emit('hint', q.id, index + 1);
           if (hints[index + 1]) hints[index + 1].reveal.hidden = false;
@@ -321,7 +574,7 @@
         // The explanation follows the check directly: no extra click between an answer and why.
         const explanation = node('div'); explanation.hidden = true; explanation.dataset.ros = 'solution'; explanation.className = 'ros-explanation';
         const title = node('p', 'Explanation'); title.className = 'ros-explanation-title';
-        explanation.append(title, node('p', q.solution)); panel.explanation = explanation; body.append(explanation);
+        explanation.append(title, rich('p', q.solution)); panel.explanation = explanation; body.append(explanation);
       }
       const confidence = node('div'); confidence.className = 'ros-confidence'; confidence.setAttribute('role', 'group');
       const confidenceLabel = node('span', 'Confidence (optional)'); confidenceLabel.id = 'ros-confidence-' + (++uid); confidence.setAttribute('aria-labelledby', confidenceLabel.id);
@@ -430,7 +683,7 @@
         previous = child;
       }
       contentNodes = ordered;
-      if (fresh.some(child => child.matches('.ros-toc'))) toc = null;
+      if (fresh.some(child => child.matches('.ros-toc'))) { stopNarration(); toc = null; }
       for (const child of fresh) enhance(child);
       placeProgress(); renumber();
       const arrived = fresh.filter(child => !child.matches('.ros-toc, .ros-session-header, [data-ros="legacy"]'));
@@ -450,43 +703,209 @@
     label.htmlFor = question.id;
     const capture = node('button', 'Send'); capture.type = 'button'; capture.className = 'ros-question-send';
     composer.append(question, capture); questionForm.append(label, composer);
-    const questionStatus = node('p'); questionStatus.setAttribute('role', 'status'); questionForm.append(questionStatus); mount.append(questionForm);
-    const history = node('section'); history.className = 'ros-question-history'; history.setAttribute('aria-label', 'Questions and answers'); history.dataset.rosOwned = ''; mount.append(history);
+    const questionStatus = node('p'); questionStatus.setAttribute('role', 'status'); questionForm.append(questionStatus);
+    const history = node('section'); history.className = 'ros-question-history'; history.setAttribute('aria-label', 'Questions and answers'); history.dataset.rosOwned = '';
+    // Questions live in a side panel that stays reachable while the lesson scrolls: always visible on a wide window,
+    // an accessible drawer opened from a button on a narrow one.
+    // An answer that arrives while the panel is closed is signalled on its button until the panel has been opened.
+    const seenAnswers = new Set(); let answeredNow = new Set(), firstConversation = true, lastFresh = 0;
+    const sidePanel = node('aside'); sidePanel.className = 'ros-side-panel'; sidePanel.id = 'ros-side-panel'; sidePanel.hidden = true; sidePanel.tabIndex = -1;
+    sidePanel.setAttribute('aria-label', 'Questions and answers');
+    const panelHead = node('div'); panelHead.className = 'ros-side-panel-head';
+    const panelClose = button('Close', () => setPanel(false)); panelClose.className = 'ros-panel-close'; panelClose.setAttribute('aria-label', 'Close the questions panel');
+    const panelTitle = node('p', 'Questions'); panelTitle.className = 'ros-side-panel-title';
+    panelHead.append(panelTitle, panelClose);
+    const waiting = node('section'); waiting.className = 'ros-waiting'; waiting.setAttribute('aria-label', 'Responses waiting for the tutor'); waiting.setAttribute('aria-live', 'polite');
+    // Ask for the same idea another way. This is a request the tutor answers in the lesson; it is never a response to a question
+    // and never counts as understanding demonstrated.
+    const MODES = [['simpler', 'More simply'], ['more-rigorous', 'More rigorously'], ['derivation', 'Show the derivation'], ['visual', 'Visually'], ['analogy', 'An analogy'],
+      ['worked-example', 'A worked example'], ['physical-interpretation', 'Physical meaning'], ['implementation', 'How to implement it'], ['prerequisites', 'Review prerequisites']];
+    const explain = node('section'); explain.className = 'ros-explain'; explain.setAttribute('aria-label', 'Ask for a different explanation');
+    const explainTitle = node('p', 'Explain this differently'); explainTitle.className = 'ros-explain-title';
+    const explainModes = node('div'); explainModes.className = 'ros-explain-modes'; explainModes.setAttribute('role', 'group'); explainModes.setAttribute('aria-label', 'Explanation styles');
+    const explainNote = node('p'); explainNote.className = 'ros-explain-note'; explainNote.setAttribute('role', 'status');
+    for (const [mode, label] of MODES) {
+      const ask = button(label, () => {
+        const origin = currentOrigin();
+        emit('explanation-request', null, mode, origin);
+        explainNote.textContent = 'Requested: ' + label.toLowerCase() + (origin ? ' for “' + origin.title + '”' : '') + '. The tutor adds it to the lesson; asking does not count as understanding it.';
+      });
+      ask.className = 'ros-explain-mode'; explainModes.append(ask);
+    }
+    explain.append(explainTitle, explainModes, explainNote);
+    sidePanel.append(panelHead, waiting, explain, questionForm, history);
+    const panelToggle = button('', () => setPanel(sidePanel.hidden)); panelToggle.className = 'ros-panel-toggle';
+    panelToggle.setAttribute('aria-controls', 'ros-side-panel'); panelToggle.setAttribute('aria-expanded', 'false');
+    doc.body.append(sidePanel, panelToggle);
+    const persistent = root.matchMedia('(min-width: 1600px)');
+    let panelOpen = false;
+    function setPanel(open, restoreFocus = true) {
+      panelOpen = open;
+      sidePanel.hidden = persistent.matches ? false : !open;
+      if (!sidePanel.hidden) { answeredNow.forEach(id => seenAnswers.add(id)); renderWaiting(); }
+      panelToggle.setAttribute('aria-expanded', String(persistent.matches || open));
+      if (persistent.matches) return;
+      if (open) sidePanel.focus({preventScroll: true}); else if (restoreFocus) panelToggle.focus({preventScroll: true});
+    }
+    persistent.addEventListener('change', () => setPanel(panelOpen, false));
+    sidePanel.addEventListener('keydown', event => { if (event.key === 'Escape' && !persistent.matches && !sidePanel.hidden) { event.preventDefault(); setPanel(false); } });
+    setPanel(false, false);
+    function goToSection(id) {
+      const heading = id && doc.getElementById(id);
+      if (!heading) return false;
+      if (!persistent.matches) setPanel(false, false);
+      jumpTo(heading); return true;
+    }
+    const ADAPT_LABEL = Object.fromEntries(MODES);
+    const isAnswered = r => r.kind === 'explanation' ? r.status === 'answered' : typeof r.answer === 'string' && r.answer.trim() !== '';
+    // Questions and requests for another explanation, oldest first; saved records plus anything still on its way to the host.
+    function conversationRecords() {
+      const asked = new Map((state.open_questions || []).map(q => [q.id, Object.assign({kind: 'question'}, q)]));
+      for (const event of localEvents) if (event.type === 'open-question' && !asked.has(event.event_id))
+        asked.set(event.event_id, {kind: 'question', id: event.event_id, prompt: event.response, origin: event.origin, created_at: event.created_at});
+      const requested = new Map((state.explanation_requests || []).map(r => [r.id, Object.assign({kind: 'explanation'}, r)]));
+      for (const event of localEvents) if (event.type === 'explanation-request' && !requested.has(event.event_id))
+        requested.set(event.event_id, {kind: 'explanation', id: event.event_id, mode: event.response, status: 'open', origin: event.origin, created_at: event.created_at});
+      return [...asked.values(), ...requested.values()].sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+    }
     function renderConversation() {
-      const records = new Map((state.open_questions || []).map(q => [q.id, q]));
-      for (const event of localEvents) if (event.type === 'open-question' && !records.has(event.event_id))
-        records.set(event.event_id, {id:event.event_id, prompt:event.response});
+      const records = conversationRecords();
       history.replaceChildren();
-      if (!records.size) return;
+      answeredNow = new Set(records.filter(isAnswered).map(r => r.id));
+      if (firstConversation) { firstConversation = false; answeredNow.forEach(id => seenAnswers.add(id)); }
+      if (!sidePanel.hidden) answeredNow.forEach(id => seenAnswers.add(id));
+      if (!records.length) return;
       history.append(node('h2', 'Questions and answers'));
-      for (const record of records.values()) {
-        const entry = node('article'); entry.className = 'ros-question-entry'; entry.dataset.openQuestionId = record.id;
-        entry.append(node('h3', 'Question'), node('p', record.prompt));
+      for (const record of records) {
+        const answered = isAnswered(record), explanation = record.kind === 'explanation';
+        const entry = node('article'); entry.className = explanation ? 'ros-question-entry ros-explanation-entry' : 'ros-question-entry'; entry.dataset.status = answered ? 'resolved' : 'open';
+        if (explanation) entry.dataset.explanationId = record.id; else entry.dataset.openQuestionId = record.id;
+        const chip = node('span', answered ? (explanation ? 'Explained' : 'Answered') : 'Open'); chip.className = 'ros-question-state'; chip.dataset.state = answered ? 'matches' : 'pending';
+        if (explanation) entry.append(chip, node('h3', 'Explanation requested'), node('p', ADAPT_LABEL[record.mode] || String(record.mode)));
+        else entry.append(chip, node('h3', 'Question'), rich('p', record.prompt));
+        const origin = record.origin;
+        if (origin && typeof origin.section === 'string' && doc.getElementById(origin.section)) {
+          const back = button('Back to ' + String(origin.title || 'where you asked'), () => goToSection(origin.section)); back.className = 'ros-return';
+          entry.append(back);
+        }
         const answer = node('div'); answer.className = 'ros-question-answer';
-        answer.append(node('h3', 'Answer'), node('p', typeof record.answer === 'string' && record.answer.trim() ? record.answer : 'Awaiting an answer from the session agent.'));
+        if (explanation) {
+          const where = record.answered_in;
+          answer.append(node('h3', 'Explained'));
+          if (answered && where && doc.getElementById(where.section)) {
+            const go = button('Go to “' + String(where.title || 'the explanation') + '”', () => goToSection(where.section)); go.className = 'ros-return';
+            answer.append(node('p', 'Added to the lesson.'), go);
+          } else answer.append(node('p', answered ? 'Added to the lesson.' : 'Waiting for the tutor to add this to the lesson.'));
+        } else answer.append(node('h3', 'Answer'), answered ? rich('p', record.answer) : node('p', 'Awaiting an answer from the session agent.'));
         entry.append(answer);
-        if (pending.has(record.id)) entry.append(node('small', 'Saving question...'));
+        if (pending.has(record.id)) entry.append(node('small', explanation ? 'Saving request...' : 'Saving question...'));
         history.append(entry);
       }
     }
+    // Responses the tutor has not checked yet, each with a way back to its question.
+    function renderWaiting() {
+      waiting.replaceChildren();
+      const items = [];
+      if (host) for (const panel of panels.values()) {
+        const {latest, verdict} = verdictFor(panel);
+        if (latest && !verdict && !failed.has(latest.event_id) && !pending.has(latest.event_id)) items.push(panel);
+      }
+      const open = conversationRecords().filter(r => !isAnswered(r)).length;
+      const count = items.length + open;
+      const fresh = [...answeredNow].filter(id => !seenAnswers.has(id)).length;
+      panelToggle.replaceChildren(node('span', fresh ? 'Questions — new answer' : 'Questions'));
+      if (count) { const badge = node('span', String(count)); badge.className = 'ros-count'; badge.setAttribute('aria-hidden', 'true'); panelToggle.append(badge); }
+      panelToggle.dataset.fresh = fresh ? 'true' : '';
+      panelToggle.setAttribute('aria-label', 'Questions panel' + (count ? ', ' + count + ' waiting' : '') + (fresh ? ', ' + fresh + ' new answer' + (fresh > 1 ? 's' : '') : ''));
+      if (fresh > lastFresh) status.textContent = 'Your question was answered. Open Questions to read the answer.';
+      lastFresh = fresh;
+      if (!items.length) return;
+      const waitingTitle = node('p', 'Waiting for the tutor'); waitingTitle.className = 'ros-waiting-title'; waiting.append(waitingTitle);
+      const list = node('ul');
+      for (const panel of items) {
+        const li = node('li'), go = button(panel.number.textContent || 'Question', () => { if (!persistent.matches) setPanel(false, false); panel.el.scrollIntoView({block: 'center'}); (panel.el.querySelector('textarea, input, button') || panel.el).focus({preventScroll: true}); });
+        go.className = 'ros-return'; li.append(go, node('span', ' — response recorded, not yet checked')); list.append(li);
+      }
+      waiting.append(list);
+    }
     function refreshAll() {
       for (const panel of panels.values()) refreshPanel(panel);
-      updateProgress(); renderConversation();
+      updateProgress(); renderConversation(); renderWaiting(); updateSectionProgress(); renderRelated(); renderSupervision();
     }
+    function renderSupervision() {
+      const view = host ? currentSupervision() : null;
+      lastSupervision = view ? view.status + '|' + view.pending + '|' + view.alive : '';
+      supervisionLine.hidden = !view;
+      if (!view) return;
+      const n = view.pending, who = n === 1 ? 'submission is' : n + ' submissions are';
+      const text = {
+        'active': 'The tutor is working on the lesson.',
+        'waiting-for-learner': 'The tutor is connected and waiting for your response.',
+        'response-awaiting-review': 'Your ' + who + ' saved. The tutor will review ' + (n === 1 ? 'it' : 'them') + '.',
+        'agent-reviewing': 'The tutor is reviewing your ' + (n === 1 ? 'submission' : 'submissions') + '.',
+        'paused': 'This session is paused' + (view.reason ? ': ' + view.reason : '.'),
+        'disconnected': n ? 'The tutor is not connected. Your ' + who + ' saved and will be reviewed when the tutor reconnects.' : 'The tutor is not connected. Anything you submit is saved and waits for the tutor.',
+        'completed': 'This session is completed.',
+        'failed-recoverable': 'The tutor stopped unexpectedly' + (view.reason ? ' (' + view.reason + ')' : '') + '. Your work is saved and the session can be resumed.',
+      }[view.status];
+      supervisionLine.dataset.status = view.status;
+      if (supervisionLine.textContent !== text) supervisionLine.textContent = text;  // unchanged text is not announced again
+    }
+    // A lease expires without anyone telling the page: look again, and redraw only when the answer changed.
+    let lastSupervision = '';
+    function tickSupervision() {
+      const view = currentSupervision();
+      if (host && view.status + '|' + view.pending + '|' + view.alive !== lastSupervision) refreshAll();
+    }
+    if (host) root.setInterval(tickSupervision, 3000);
     questionForm.addEventListener('submit', event => event.preventDefault());
     capture.addEventListener('click', () => {
       const text = question.value.trim(); if (!text || !questionForm.reportValidity()) return;
-      emit('open-question', null, text);
+      emit('open-question', null, text, currentOrigin());
       questionStatus.textContent = host ? 'Question sent. You can send another.' : 'Question recorded in this page. Download progress to keep it.';
       question.value = ''; question.focus();
     });
+    // Links to other notes are requests to the host, which validates the target and opens it in a new tab so this lesson stays put.
+    let lastLink = null, hintTimer = 0;
+    function hint(link, text, problem) {
+      const old = doc.querySelector('.ros-note-hint'); if (old) old.remove();
+      const el = node('span', text); el.className = 'ros-note-hint'; el.setAttribute('role', 'status'); if (problem) el.dataset.state = 'problem';
+      link.after(el); root.clearTimeout(hintTimer); hintTimer = root.setTimeout(() => el.remove(), 9000);
+    }
+    function openNote(target, link) {
+      lastLink = link;
+      if (!host) {
+        link.setAttribute('data-ros-state', 'unavailable');
+        hint(link, 'This opens the note “' + target + '” in Obsidian. A standalone page cannot open notes.', true);
+        return;
+      }
+      link.setAttribute('aria-busy', 'true'); hint(link, 'Opening “' + target + '”…', false);
+      root.parent.postMessage({channel: 'research-os', token: host.token, session_id: state.session_id, type: 'navigate', target}, '*');
+    }
+    function noteResult(data) {
+      const text = data.type === 'navigated' ? 'Opened “' + String(data.title || data.target) + '” in a new tab. This lesson stays where you left it.'
+        : 'Could not open “' + String(data.target || '') + '”: ' + String(data.message || 'the host refused').slice(0, 200);
+      if (lastLink && lastLink.isConnected) { lastLink.removeAttribute('aria-busy'); hint(lastLink, text, data.type !== 'navigated'); }
+      status.textContent = text;
+    }
+    doc.addEventListener('click', event => {
+      const link = event.target && event.target.closest ? event.target.closest('a.ros-note-link[data-ros-target]') : null;
+      if (!link) return;
+      event.preventDefault();
+      const target = link.getAttribute('data-ros-target');
+      if (Rich && Rich.validNoteTarget(target)) openNote(target, link);
+    });
     for (const child of contentNodes) enhance(child);
     placeProgress(); renumber(); refreshAll();
+    if (host && host.position && typeof host.position.section === 'string') {
+      const target = doc.getElementById(host.position.section);
+      if (target) root.requestAnimationFrame(() => root.scrollTo(0, target.getBoundingClientRect().top + root.scrollY + (Number(host.position.offset) || 0)));
+    }
     api.register = function (name, factory) { if (!/^[a-z][a-z0-9-]{0,63}$/.test(name) || typeof factory !== 'function' || extensions.has(name)) throw new Error('Unique bounded extension name required'); extensions.set(name, factory); for (const el of mount.querySelectorAll('[data-extension]')) if (el.getAttribute('data-extension') === name) runExtension(el, factory); };
     // Tell the host this page can take live updates instead of being rebuilt.
     if (host) root.parent.postMessage({channel: 'research-os', token: host.token, session_id: state.session_id, type: 'ready'}, '*');
   }
-  const api = {VOCABULARY, assess, samplingSE, vector, renderMath, start};
+  const api = {VOCABULARY, assess, samplingSE, vector, renderMath, pendingOf, supervisionOf, start};
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.ResearchOS = api;
   if (root.document) { if (root.document.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', start, {once: true}); else start(); }

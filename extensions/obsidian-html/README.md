@@ -20,8 +20,8 @@ The host removes all author scripts, styles, resource URLs and event handlers.
 It injects only the vault's installed `.research-os/runtime/session.js` and
 `session.css`; these files are trusted executable code and should come from the
 Research OS installer. Without them, content remains visible and the host reports
-that interactions are unavailable. SVG/Canvas markup is permitted. Links are
-inert in this first version. External images, frames and fetch/network resources
+that interactions are unavailable. SVG/Canvas markup is permitted. Ordinary links stay
+inert; a `[[Note]]` link or a navigation entry is a request the host validates (see "Navigation" below). External images, frames and fetch/network resources
 are blocked. Bundled font data URLs are allowed for offline math.
 
 Explicit local resources use `state.resources`, an array of
@@ -50,9 +50,10 @@ prevent a malicious approved script navigating its own frame; reviewing and appr
 code is therefore a trust boundary, not a claim of full network isolation.
 
 Image placeholders use `<img data-resource-id="diagram" alt="Description">`.
-Declared images without a placeholder are appended as captioned figures.
-Only declared PNG/JPEG/WebP resources with matching magic bytes become host-created
-data URLs. Existing `src`/`srcset` are always stripped. Unsupported images display
+A session that records `placement: explicit` (every session created by v0.9) never has a declared image appended: one
+without a placeholder is shown as a visible diagnostic. Older sessions keep the earlier behaviour and append it as a captioned figure.
+Only declared PNG/JPEG/WebP resources with matching magic bytes, and SVG files that pass a static allowlist (no scripts, event
+handlers, processing instructions, external references or foreign content), become host-created data URLs. Existing `src`/`srcset` are always stripped. Unsupported images display
 a visible explanation, and missing/invalid declared resources fail the view.
 Resources are capped at 32 files, 2 MiB per image and 8 MiB total. Module/image
 changes reload; rename/delete invalidates the view with a repair instruction.
@@ -62,7 +63,7 @@ restrictive CSP and a fresh token. The runtime receives `window.ROS_HOST` with
 `token`, `session_id`, and `state`. Events use
 `{channel: 'research-os', token, session_id, event}`; event fields are
 `event_id`, `type`, `question_id`, `response`, and optional `created_at`.
-Types: response, hint, solution, confidence, checkpoint, reset, open-question.
+Types: response, hint, solution, confidence, checkpoint, reset, open-question, explanation-request.
 Responses may be bounded JSON values. All types except open-question require a
 known question ID. The host timestamps receipt, preserves raw events and never
 updates mastery or canonical learning evidence. Replies return `type: 'state'`
@@ -80,6 +81,18 @@ update with the newly sanitized body, so the page does not reload; changed
 resources, runtime or theme, or a frame that has not signalled ready, reload the view. Rename/delete invalidates the view
 with an explicit repair instruction: rename all artifacts and update Markdown
 references using the session tooling before reopening.
+
+## Navigation, position and supervision (v0.9)
+
+- **Notes.** The page posts `{type: 'navigate', target}`. The host re-validates the target itself (relative note path with an optional
+  `#heading` or `#^block`; no scheme, drive, absolute path, traversal or hidden folder), refuses anything the session does not itself
+  declare, resolves it with `metadataCache.getFirstLinkpathDest`, and opens it with `workspace.openLinkText(..., 'tab')`, so the lesson
+  stays where the learner left it. Requests are throttled and a missing note produces a readable message.
+- **Position.** The page reports the section in view (`{type: 'position'}`); the host remembers it in memory and hands it to a rebuilt
+  page (theme change, reload). Nothing is written to the vault.
+- **Supervision.** The host polls the sibling `<session>.supervision.json` lease every few seconds and gives the page `supervision_live`
+  and `host_now`, so "a tutor is connected" is only ever said while a lease has not expired. A lease the host cannot read counts as no lease.
+- **The binding** between a session and its context receipt (local paths) is kept out of the page.
 
 Run `node tests/html-host.test.js` from the repository for host API mocks.
 Real browser CSP/sanitizer and desktop Obsidian lifecycle checks are separate

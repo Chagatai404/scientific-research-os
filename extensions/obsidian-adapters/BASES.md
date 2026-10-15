@@ -49,3 +49,7 @@ just to populate a dashboard. Structural ontology concept records also carry no 
 Bases is a core Obsidian feature. When a vault has the `.base` files, plan, session and hub notes embed their views
 (for example `![[Knowledge and Sources.base#Knowledge Frontier candidates (recorded state)]]`) instead of pasting
 lists. See "Using the vault's installed Obsidian adapters" in the visualization protocol.
+
+## Detection and fallback
+
+Whether this adapter is installed, enabled and compatible with the running Obsidian is read from the vault's files by `python scripts/obsidian_plugins.py report --vault <vault>`; every resume brief lists it. When it is absent or incompatible the built-in route is used and nothing breaks. See `references/OBSIDIAN_INTEGRATIONS.md`.

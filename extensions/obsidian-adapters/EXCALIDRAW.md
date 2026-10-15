@@ -56,3 +56,7 @@ visual. If the plugin is not installed, the exported SVG/PNG still embeds; the
 Installing the plugin stays optional. Once it is installed, sessions use it for schematics by default, through
 `scripts/excalidraw_schematic.py`, and register each drawing as an `inspected` conceptual schematic. An installed but
 unused Excalidraw is a defect. See "Using the vault's installed Obsidian adapters" in the visualization protocol.
+
+## Detection and fallback
+
+Whether this adapter is installed, enabled and compatible with the running Obsidian is read from the vault's files by `python scripts/obsidian_plugins.py report --vault <vault>`; every resume brief lists it. When it is absent or incompatible the built-in route is used and nothing breaks. See `references/OBSIDIAN_INTEGRATIONS.md`.

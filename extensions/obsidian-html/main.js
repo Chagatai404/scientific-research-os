@@ -9,21 +9,54 @@ const MAX_HTML = 4 * 1024 * 1024;
 const MAX_EVENTS = 10000;
 const RUNTIME = '.research-os/runtime/';
 const TRUST_REGISTRY = RUNTIME + 'extensions/trusted-modules.json';
-const TAGS = new Set(('a abbr article aside b blockquote br button caption code col colgroup dd details div dl dt em fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr i img input label legend li main mark nav ol option p pre section select small span strong sub summary sup table tbody td textarea th thead tr ul svg g path circle rect line polyline polygon ellipse text tspan canvas').split(' '));
+const TAGS = new Set(('a abbr article aside b blockquote br button caption code col colgroup dd del details div dl dt em fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr i img input label legend li main mark nav ol option p pre section select small span strong sub summary sup table tbody td textarea th thead tr ul svg g path circle rect line polyline polygon ellipse text tspan canvas').split(' '));
 const ATTRS = new Set(('id class title alt role aria-label aria-labelledby aria-describedby aria-expanded aria-live aria-hidden tabindex type name value start min max step placeholder checked disabled selected for open rows cols scope colspan rowspan width height viewbox d x y x1 x2 y1 y2 cx cy r rx ry points fill stroke stroke-width transform xmlns').split(' '));
 
 function sibling(path) { return path.replace(/\.html$/i, '.state.json'); }
+// Navigation is a validated host operation: the page asks, the host decides. Same syntax rule as scripts/rich_text.py and
+// the runtime (tests/fixtures/note-targets.json); the host never trusts the page's judgement of it.
+const NOTE_PATH_BAD = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\ufeff\\u2028\\u2029\\\\\\\\:*?"<>|]');
+const NOTE_SUB_BAD = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\ufeff\\u2028\\u2029]');
+const OPENABLE_NOTES = new Set(['md', 'html']);
+const ADAPT_MODES = ['simpler', 'more-rigorous', 'derivation', 'visual', 'analogy', 'worked-example', 'physical-interpretation', 'implementation', 'prerequisites'];
+function validNoteTarget(target) {
+  if (typeof target !== 'string' || target.length < 1 || target.length > 256 || /^\s|\s$/.test(target)) return false;
+  const hash = target.indexOf('#');
+  const path = hash < 0 ? target : target.slice(0, hash), sub = hash < 0 ? '' : target.slice(hash + 1);
+  if (!path || sub.length > 200 || NOTE_PATH_BAD.test(path) || NOTE_SUB_BAD.test(sub) || path.startsWith('/') || path.endsWith('/')) return false;
+  return path.split('/').every(part => part !== '' && part !== '.' && part !== '..' && !part.startsWith('.'));
+}
+// Only places the session itself names can be opened from it: wikilinks in its text and questions, and its navigation list.
+function declaredTargets(state) {
+  const found = new Set();
+  for (const item of Array.isArray(state && state.navigation) ? state.navigation : []) if (item && typeof item.target === 'string') found.add(item.target);
+  for (const match of JSON.stringify(state || {}).matchAll(/\[\[([^\[\]|\\]+?)(?:\|[^\[\]\\]*)?\]\]/g)) found.add(match[1].trim());
+  return found;
+}
+function resolveNote(app, target, sourcePath, state) {
+  if (!validNoteTarget(target)) throw new Error('That is not a note reference.');
+  if (!declaredTargets(state).has(target)) throw new Error('This session does not link to that note.');
+  const hash = target.indexOf('#');
+  const linkpath = hash < 0 ? target : target.slice(0, hash), subpath = hash < 0 ? '' : target.slice(hash);
+  const file = app.metadataCache && typeof app.metadataCache.getFirstLinkpathDest === 'function' ? app.metadataCache.getFirstLinkpathDest(linkpath, sourcePath) : null;
+  if (!file || file.children) throw new Error('No note named "' + linkpath + '" exists in this vault.');
+  if (!OPENABLE_NOTES.has(String(file.extension || '').toLowerCase()) || String(file.path).split('/').some(part => part.startsWith('.'))) throw new Error('That file cannot be opened from a session.');
+  return {file, subpath};
+}
 function validateResources(resources, sessionPath) {
   if (resources === undefined) return [];
   if (!Array.isArray(resources) || resources.length > 32) throw new Error('At most 32 approved resources are allowed.');
   const own = sessionPath.replace(/\.html$/i, '.assets/'); const folder = sessionPath.includes('/') ? sessionPath.slice(0, sessionPath.lastIndexOf('/') + 1) : ''; const relativeOwn = own.slice(folder.length); const ids = new Set();
   return resources.map(resource => {
-    if (!resource || typeof resource !== 'object' || Object.keys(resource).some(k => !['id', 'path', 'kind', 'alt', 'title', 'sha256'].includes(k))) throw new Error('Invalid resource declaration.');
+    if (!resource || typeof resource !== 'object' || Object.keys(resource).some(k => !['id', 'path', 'kind', 'alt', 'title', 'sha256', 'visual_id', 'visual_class', 'verification_outcome'].includes(k))) throw new Error('Invalid resource declaration.');
     const p = resource.path; const id = resource.id || p;
     if (typeof p !== 'string' || !p.length || p.length > 1024 || /[\\:%?#\x00-\x1f]/.test(p) || p.startsWith('/') || p.split('/').some((s, index) => !s || s === '.' || s === '..' || (s.startsWith('.') && !(index === 0 && s === '.research-os' && p.startsWith(RUNTIME + 'extensions/'))))) throw new Error('Unsafe resource path.');
     const resolved = p.startsWith(relativeOwn) ? folder + p : p;
     if (!resolved.startsWith(own) && !resolved.startsWith(RUNTIME + 'extensions/')) throw new Error('Resource is outside approved session/runtime extension directories.');
-    if (!['image', 'module'].includes(resource.kind) || (resource.kind === 'module' && !p.endsWith('.js')) || (resource.kind === 'image' && !/\.(png|jpe?g|webp)$/i.test(p))) throw new Error('Unsupported approved resource type.');
+    if (!['image', 'module'].includes(resource.kind) || (resource.kind === 'module' && !p.endsWith('.js')) || (resource.kind === 'image' && !/\.(png|jpe?g|webp|svg)$/i.test(p))) throw new Error('Unsupported approved resource type.');
+    if (resource.visual_id !== undefined && !(typeof resource.visual_id === 'string' && /^VIS-[A-Za-z0-9][A-Za-z0-9._-]*$/.test(resource.visual_id))) throw new Error('Invalid visual identity.');
+    if (resource.visual_class !== undefined && !['schematic', 'analytic', 'empirical', 'source'].includes(resource.visual_class)) throw new Error('Unsupported visual class.');
+    if (resource.verification_outcome !== undefined && !(typeof resource.verification_outcome === 'string' && /^[a-z-]{1,40}$/.test(resource.verification_outcome))) throw new Error('Invalid verification outcome.');
     if (resource.kind === 'module' && (typeof resource.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(resource.sha256))) throw new Error('Local modules require an explicit SHA-256 declaration.');
     if (typeof id !== 'string' || !id.length || id.length > 1024 || ids.has(id)) throw new Error('Invalid or duplicate resource ID.');
     for (const key of ['alt', 'title']) if (resource[key] !== undefined && (typeof resource[key] !== 'string' || resource[key].length > 2048)) throw new Error('Invalid resource description.');
@@ -35,10 +68,37 @@ function approveModule(resource, code, trustedModules) {
   if (digest !== resource.sha256 || !trustedModules || !Object.prototype.hasOwnProperty.call(trustedModules, resource.path) || trustedModules[resource.path] !== digest) throw new Error('Local module is not approved or changed: ' + resource.path + '. Review its code and explicitly approve its SHA-256 in plugin settings.');
   return code;
 }
+// Static drawing only, mirroring scripts/visual_assets.py: no scripting, embedding, animation or outside references.
+const SVG_ELEMENTS = new Set('svg g defs title desc rect circle ellipse line polyline polygon path text tspan marker lineargradient radialgradient stop clippath use style'.split(' '));
+function svgProblems(text) {
+  if (/<!\s*(doctype|entity)/i.test(text)) return ['DOCTYPE and ENTITY declarations are not allowed'];
+  if (text.replace(/^\s*<\?xml\s[^>]*\?>/, '').includes('<?')) return ['processing instructions (such as xml-stylesheet) are not allowed'];
+  const problems = [];
+  const tags = text.replace(/<!--[\s\S]*?-->/g, '').match(/<\s*[A-Za-z][^>]*>/g) || [];
+  if (!tags.length || !/^<\s*svg[\s>]/i.test(tags[0]) || !/xmlns\s*=\s*["']http:\/\/www\.w3\.org\/2000\/svg["']/.test(tags[0])) problems.push('the root element is not an SVG svg element');
+  for (const tag of tags) {
+    const name = tag.match(/^<\s*([A-Za-z][\w:.-]*)/)[1].toLowerCase();
+    if (!SVG_ELEMENTS.has(name)) problems.push('element not allowed: ' + name);
+    for (const attribute of tag.matchAll(/([A-Za-z_:][\w:.-]*)\s*=\s*("([^"]*)"|'([^']*)')/g)) {
+      const key = attribute[1].toLowerCase().replace(/^.*:/, ''); const value = attribute[3] !== undefined ? attribute[3] : attribute[4];
+      if (key.startsWith('on')) problems.push('event handler attribute: ' + key);
+      else if (key === 'href' && !value.startsWith('#')) problems.push('link to something outside the figure');
+      else if (/javascript:|expression\s*\(|@import|behavior\s*:|-moz-binding|url\(\s*(?!['"]?#)/i.test(value)) problems.push('attribute ' + key + ' reaches outside the figure');
+    }
+  }
+  const sheets = text.match(/<style[\s\S]*?<\/style>/gi) || [];
+  if (sheets.some(s => /javascript:|expression\s*\(|@import|behavior\s*:|-moz-binding|url\(\s*(?!['"]?#)/i.test(s))) problems.push('style sheet reaches outside the figure');
+  return Array.from(new Set(problems)).sort();
+}
 function imageData(bytes, path) {
   const b = Buffer.from(bytes);
   if (b.length > 2 * 1024 * 1024) throw new Error('Image exceeds 2 MiB limit.');
   let mime;
+  if (/\.svg$/i.test(path)) {
+    const problems = svgProblems(b.toString('utf8'));
+    if (problems.length) throw new Error('SVG is not safe to show inline: ' + problems.join('; '));
+    return 'data:image/svg+xml;base64,' + b.toString('base64');
+  }
   if (/\.png$/i.test(path) && b.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) mime = 'image/png';
   else if (/\.jpe?g$/i.test(path) && b[0] === 255 && b[1] === 216 && b[2] === 255) mime = 'image/jpeg';
   else if (/\.webp$/i.test(path) && b.subarray(0,4).toString() === 'RIFF' && b.subarray(8,12).toString() === 'WEBP') mime = 'image/webp';
@@ -83,14 +143,22 @@ function parseState(text) {
 }
 function validateEvent(event, state) {
   if (!event || typeof event !== 'object' || Array.isArray(event)) throw new Error('Invalid event.');
-  const allowed = new Set(['event_id', 'type', 'question_id', 'response', 'created_at']);
+  const allowed = new Set(['event_id', 'type', 'question_id', 'response', 'created_at', 'origin']);
   if (Object.keys(event).some(k => !allowed.has(k))) throw new Error('Unknown event field.');
+  if (event.origin !== undefined) {
+    // Where in the lesson an open question was asked, so the learner can return there.
+    const o = event.origin;
+    if (!['open-question', 'explanation-request'].includes(event.type) || !o || typeof o !== 'object' || Array.isArray(o) || Object.keys(o).some(k => !['section', 'title'].includes(k))
+      || typeof o.section !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(o.section) || typeof o.title !== 'string' || o.title.length > 200) throw new Error('Invalid question origin.');
+  }
   if (typeof event.event_id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(event.event_id)) throw new Error('Invalid event ID.');
-  if (!['response', 'hint', 'solution', 'confidence', 'checkpoint', 'reset', 'open-question'].includes(event.type)) throw new Error('Unsupported event type.');
-    if (event.type !== 'open-question' && !(event.type === 'checkpoint' && event.question_id == null) && !state.questions.some(q => q.id === event.question_id)) throw new Error('Unknown question.');
+  if (!['response', 'hint', 'solution', 'confidence', 'checkpoint', 'reset', 'open-question', 'explanation-request'].includes(event.type)) throw new Error('Unsupported event type.');
+    // A request for another explanation names one known mode and no question; it is never evidence of anything.
+    if (event.type === 'explanation-request' && (!ADAPT_MODES.includes(event.response) || (event.question_id !== undefined && event.question_id !== null))) throw new Error('Unknown explanation mode.');
+    if (event.type !== 'open-question' && event.type !== 'explanation-request' && !(event.type === 'checkpoint' && event.question_id == null) && !state.questions.some(q => q.id === event.question_id)) throw new Error('Unknown question.');
     if (event.type === 'open-question' && (typeof event.response !== 'string' || !event.response.trim())) throw new Error('Open question must have a prompt.');
     if (event.type === 'checkpoint' && (typeof event.response !== 'string' || !event.response.trim())) throw new Error('Checkpoint must include a raw explanation.');
-  if (event.question_id !== undefined && !(['checkpoint', 'open-question'].includes(event.type) && event.question_id === null) && (typeof event.question_id !== 'string' || event.question_id.length > 128)) throw new Error('Invalid question ID.');
+  if (event.question_id !== undefined && !(['checkpoint', 'open-question', 'explanation-request'].includes(event.type) && event.question_id === null) && (typeof event.question_id !== 'string' || event.question_id.length > 128)) throw new Error('Invalid question ID.');
   function checkValue(value, depth = 0) {
     if (depth > 4) throw new Error('Response nesting limit exceeded.');
     if (value === null || ['string', 'boolean'].includes(typeof value)) return;
@@ -106,7 +174,9 @@ function validateEvent(event, state) {
   if (event.created_at !== undefined && (typeof event.created_at !== 'string' || !Number.isFinite(Date.parse(event.created_at)))) throw new Error('Invalid event time.');
   return Object.assign({}, event, {created_at: new Date().toISOString(), status: 'pending-review'});
 }
-function sanitizeHtml(html, doc, images = new Map(), descriptions = new Map()) {
+// appendUnplaced keeps the historical behaviour (an image with no place follows the content); a session with
+// explicit placement shows a visible diagnostic from its own page instead and never appends.
+function sanitizeHtml(html, doc, images = new Map(), descriptions = new Map(), appendUnplaced = true) {
   if (typeof html !== 'string' || html.length > MAX_HTML) throw new Error('Session HTML exceeds size limit.');
   // Parse in a detached template: scripts cannot run and resources are never attached.
   const template = doc.createElement('template');
@@ -144,16 +214,38 @@ function sanitizeHtml(html, doc, images = new Map(), descriptions = new Map()) {
   visit(root);
   const used = new Set(Array.from(root.querySelectorAll('img[data-resource-id]')).map(n => n.getAttribute('data-resource-id')));
   for (const [id, data] of images) {
-    if (used.has(id)) continue;
+    if (used.has(id) || !appendUnplaced) continue;
     const figure = doc.createElement('figure'); const image = doc.createElement('img'); const caption = doc.createElement('figcaption');
     image.setAttribute('src', data); image.setAttribute('alt', descriptions.get(id) || 'Approved session image: ' + id); image.setAttribute('data-resource-id', id);
     caption.textContent = descriptions.get(id) || id; figure.appendChild(image); figure.appendChild(caption); root.appendChild(figure);
   }
   const wrapper = doc.createElement('div'); wrapper.appendChild(root); return wrapper.innerHTML;
 }
-function buildDocument(body, state, token, runtime, css, theme, modules = []) {
+// The context binding is for agents (it holds local paths); the sandboxed page never needs it.
+// The agent's liveness lease (scripts/supervision.py): same shape and bounds as the writer. Anything else reads as "no live agent".
+function parseLease(text) {
+  if (typeof text !== 'string' || text.length > 8192) return null;
+  let lease; try { lease = JSON.parse(text); } catch (_) { return null; }
+  const keys = ['supervision_schema', 'holder', 'provider', 'mode', 'reviewing', 'started_at', 'last_seen_at', 'expires_at', 'ttl'];
+  if (!lease || typeof lease !== 'object' || Array.isArray(lease) || Object.keys(lease).length !== keys.length || keys.some(k => !(k in lease)) || lease.supervision_schema !== 1) return null;
+  if (typeof lease.holder !== 'string' || !/^[A-Za-z0-9_.:@-]{1,64}$/.test(lease.holder) || typeof lease.provider !== 'string' || !/^[a-z0-9][a-z0-9._-]{0,31}$/.test(lease.provider)) return null;
+  if (!['waiting', 'reviewing', 'working'].includes(lease.mode) || !Number.isInteger(lease.ttl) || lease.ttl < 15 || lease.ttl > 3600) return null;
+  if (!Array.isArray(lease.reviewing) || lease.reviewing.length > 50 || lease.reviewing.some(x => typeof x !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(x))) return null;
+  const [started, seen, expires] = ['started_at', 'last_seen_at', 'expires_at'].map(k => Date.parse(lease[k]));
+  if (![started, seen, expires].every(Number.isFinite) || !(started <= seen && seen <= expires) || expires - seen > 3600000) return null;
+  return lease;
+}
+// What the page is shown. The lease and the host's clock ride along so the page can tell "waiting" from "disconnected" without trusting its own.
+function pageState(state, live = null) {
+  const visible = Object.assign({}, state); delete visible.context;
+  visible.supervision_live = live; visible.host_now = Date.now();
+  // Always present, so a decision that was withdrawn clears on the page instead of lingering through a merge.
+  if (!('supervision' in visible)) visible.supervision = null;
+  return visible;
+}
+function buildDocument(body, state, token, runtime, css, theme, modules = [], position = null, live = null) {
   const nonce = crypto.randomBytes(24).toString('hex');
-  const safeJSON = JSON.stringify({token, session_id: state.session_id, state}).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const safeJSON = JSON.stringify({token, session_id: state.session_id, state: pageState(state, live), position}).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const safeScript = runtime.replace(/<\/script/gi, '<\\/script');
   const safeCSS = css.replace(/<\/style/gi, '<\\/style');
   const moduleScripts = modules.map(code => '<script nonce="' + nonce + '">document.addEventListener("DOMContentLoaded",function(){"use strict";\n' + code.replace(/<\/script/gi, '<\\/script') + '\n},{once:true});</script>').join('');
@@ -185,6 +277,23 @@ class SessionHost extends Component {
     this.registerEvent(this.plugin.app.vault.on('delete', file => { if ([this.path, sibling(this.path), ...(this.resources || []).map(r => r.path)].includes(file.path)) { this.invalidated = true; this.fail('Session/resource artifact deleted. Reopen after repair.'); } }));
     this.registerEvent(this.plugin.app.workspace.on('css-change', () => { const theme = this.container.ownerDocument.body.classList.contains('theme-dark') ? 'dark' : 'light'; if (!this.loaded || theme !== this.loaded.theme) this.reload(); }));
     this.reload();
+    // The lease is a plain file the agent renews; Obsidian does not announce changes to it, so look at it now and then.
+    this.leaseTimer = setInterval(() => this.pollLease(), 5000);
+  }
+  leasePath() { return this.path.replace(/\.html$/i, '.supervision.json'); }
+  async readLease() {
+    try {
+      const adapter = this.plugin.app.vault.adapter;
+      if (typeof adapter.exists === 'function' && !(await adapter.exists(this.leasePath()))) return null;
+      return parseLease(await adapter.read(this.leasePath()));
+    } catch (_) { return null; }
+  }
+  async pollLease() {
+    if (this.invalidated || !this.token) return;
+    const lease = await this.readLease();
+    if (JSON.stringify(lease) === JSON.stringify(this.lease || null)) return;
+    this.lease = lease;
+    this.reply(this.token, {type: 'supervision', live: lease, host_now: Date.now()});
   }
   fail(message) { this.generation++; this.token = null; if (this.frame) { this.frame.remove(); this.frame = null; } this.status.textContent = message; this.status.classList.add('ros-error'); }
   async read(path, required = true) {
@@ -218,7 +327,7 @@ class SessionHost extends Component {
       const state = parseState(raw);
       // New resources need fresh approval and inlining; only content/state changes are patched live.
       if (JSON.stringify(state.resources || []) !== JSON.stringify(this.state.resources || []) || state.session_id !== this.state.session_id) { this.reload(); return; }
-      const message = {type: 'update', state};
+      const message = {type: 'update', state: pageState(state, this.lease || null)};
       if (html !== this.loaded.html) message.body = sanitizeHtml(html, this.container.ownerDocument, this.images || new Map(), new Map((this.resources || []).map(r => [r.id, r.alt])));
       this.loaded.html = html; this.loaded.raw = raw; this.state = state;
       this.reply(token, message);
@@ -232,6 +341,7 @@ class SessionHost extends Component {
       const [html, raw, runtime, css] = await Promise.all([this.read(this.path), this.read(sibling(this.path)), this.read(RUNTIME + 'session.js', false), this.read(RUNTIME + 'session.css', false)]);
       if (generation !== this.generation) return;
       const state = parseState(raw);
+      this.lease = await this.readLease();
       const resources = validateResources(state.resources, this.path); const images = new Map(); const modules = []; let total = 0;
       for (const resource of resources) {
         const adapter = this.plugin.app.vault.adapter;
@@ -258,10 +368,10 @@ class SessionHost extends Component {
       this.loaded = {html, raw, theme: this.container.ownerDocument.body.classList.contains('theme-dark') ? 'dark' : 'light'};
       this.state = state; this.resources = resources; this.images = images; this.token = crypto.randomBytes(32).toString('hex');
       const doc = this.container.ownerDocument;
-      const body = sanitizeHtml(html, doc, images, new Map(resources.map(r => [r.id, r.alt])));
+      const body = sanitizeHtml(html, doc, images, new Map(resources.map(r => [r.id, r.alt])), state.placement !== 'explicit');
       if (this.frame) this.frame.remove();
       this.frame = doc.createElement('iframe'); this.frame.className = 'ros-html-frame'; this.frame.title = this.state.title || 'Research OS session'; this.frame.setAttribute('sandbox', 'allow-scripts'); this.frame.setAttribute('referrerpolicy', 'no-referrer');
-      this.frame.srcdoc = buildDocument(body, this.state, this.token, runtime, css, doc.body.classList.contains('theme-dark') ? 'dark' : 'light', modules);
+      this.frame.srcdoc = buildDocument(body, this.state, this.token, runtime, css, doc.body.classList.contains('theme-dark') ? 'dark' : 'light', modules, this.position || null, this.lease || null);
       this.container.appendChild(this.frame); this.status.classList.remove('ros-error'); this.status.textContent = runtime ? '' : 'Interactive runtime is not installed; showing isolated session content.';
     } catch (error) { if (generation === this.generation) this.fail(error.message); }
   }
@@ -269,6 +379,12 @@ class SessionHost extends Component {
     const data = message.data;
     if (!this.frame || message.source !== this.frame.contentWindow || !data || data.channel !== 'research-os' || data.token !== this.token || data.session_id !== this.state.session_id) return;
     if (data.type === 'ready') { this.ready = true; return; }
+    if (data.type === 'position') {
+      // Remembered in memory only, so a reload (theme change, plugin refresh) returns the learner to where they were.
+      if (typeof data.section === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(data.section) && Number.isFinite(data.offset) && Math.abs(data.offset) < 1e6) this.position = {section: data.section, offset: data.offset};
+      return;
+    }
+    if (data.type === 'navigate') { this.navigate(data.target, this.token); return; }
     if (this.pending >= 32) { this.reply(this.token, {type: 'error', message: 'Too many pending events.'}); return; }
     this.pending++;
     const token = this.token; const generation = this.generation;
@@ -289,9 +405,18 @@ class SessionHost extends Component {
           if (!state.events.some(e => e.event_id === event.event_id)) {
             if (state.events.length >= MAX_EVENTS) throw new Error('Session event limit reached.');
             state.events.push(event); state.updated_at = event.created_at;
+            if (event.type === 'explanation-request') {
+              if (!Array.isArray(state.explanation_requests)) state.explanation_requests = [];
+              if (state.explanation_requests.length >= 200) throw new Error('Too many explanation requests.');
+              const asked = {id: event.event_id, mode: event.response, status: 'open', created_at: event.created_at};
+              if (event.origin) asked.origin = event.origin;
+              state.explanation_requests.push(asked);
+            }
             if (event.type === 'open-question') {
               if (!Array.isArray(state.open_questions)) state.open_questions = [];
-              state.open_questions.push({id: event.event_id, prompt: event.response, status: 'open', created_at: event.created_at, session_id: state.session_id, concept: state.metadata && state.metadata.concept || null, explanation_refs: []});
+              const record = {id: event.event_id, prompt: event.response, status: 'open', created_at: event.created_at, session_id: state.session_id, concept: state.metadata && state.metadata.concept || null, explanation_refs: []};
+              if (event.origin) record.origin = event.origin;
+              state.open_questions.push(record);
             }
           }
           const output = JSON.stringify(state, null, 2) + '\n'; if (output.length > MAX_STATE) throw new Error('Session state exceeds size limit.');
@@ -299,13 +424,26 @@ class SessionHost extends Component {
           this.state = state; return output;
         });
         } finally { releaseLock(); }
-        this.reply(token, {type: 'state', state: this.state});
+        this.reply(token, {type: 'state', state: pageState(this.state, this.lease || null)});
       } catch (error) { this.reply(token, {type: 'error', message: error.message}); }
       finally { this.writing = false; this.pending--; }
     });
   }
+  // Open a note the session links to, in a new tab so the lesson stays exactly where the learner left it.
+  async navigate(target, token) {
+    const now = Date.now();
+    try {
+      if (this.navigatedAt && now - this.navigatedAt < 400) throw new Error('Please wait a moment before opening another note.');
+      this.navigatedAt = now;
+      const workspace = this.plugin.app.workspace;
+      if (!workspace || typeof workspace.openLinkText !== 'function') throw new Error('Opening notes is not available in this Obsidian.');
+      const {file, subpath} = resolveNote(this.plugin.app, target, this.path, this.state);
+      await workspace.openLinkText(file.path + subpath, this.path, 'tab');
+      this.reply(token, {type: 'navigated', target, title: file.basename || file.path});
+    } catch (error) { this.reply(token, {type: 'navigation-error', target: typeof target === 'string' ? target.slice(0, 256) : '', message: error.message}); }
+  }
   reply(token, payload) { if (this.frame && token === this.token) this.frame.contentWindow.postMessage(Object.assign({channel: 'research-os', token, session_id: this.state.session_id}, payload), '*'); }
-  onunload() { clearTimeout(this.refreshTimer); if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
+  onunload() { clearTimeout(this.refreshTimer); clearInterval(this.leaseTimer); if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
 }
 class SessionView extends FileView {
   constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }
@@ -363,4 +501,4 @@ class ResearchOSHTML extends Plugin {
   onunload() { this.app.workspace.detachLeavesOfType(VIEW); }
 }
 module.exports = ResearchOSHTML;
-module.exports._test = {parseState, validateEvent, validateResources, approveModule, imageData, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling};
+module.exports._test = {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, resolveNote, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling};

@@ -19,6 +19,17 @@ Agents must not:
 - overwrite another agent's branch/work without inspection,
 - access secrets or credentials unless explicitly necessary and authorized.
 
+## Context comes from records, not memory
+
+Before consequential work (teaching, reviewing, planning, implementing, reconciling literature,
+synthesizing a decision), the coordinator runs `scripts/context_kernel.py preflight` and hands you
+its receipt, or you run it yourself. State which receipt you relied on. If it is **blocked**, stop
+and report the blocking source; if **degraded**, say what the limitations prevent you from claiming.
+Empty is not unavailable, and an unresolved concept is unknown, never demonstrated. A bounded
+retrieval is a bounded subgraph, not the whole graph. Independent roles below (discovery,
+verification, adversarial review) receive only the minimal context their design allows; the
+receipt does not override that. See `references/CONTEXT_PROTOCOL.md`.
+
 ## Independent research context
 
 When independence matters, context is part of the experimental design.
