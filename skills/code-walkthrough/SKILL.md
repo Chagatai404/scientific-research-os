@@ -49,6 +49,13 @@ See `references/CONTEXT_PROTOCOL.md`. Read the Student Brief in the receipt and 
    keeps `research/NOTEBOOK_COVERAGE.md`, the same with `--write` to regenerate it. Tell the researcher which gaps are new. In that repo notebooks
    are AI-written documentation of *finished* work, so never create or change one unasked, and never decide a unit is complete: the
    researcher does. The ledger is a derived file; leave it uncommitted for them to review. See `references/CODE_LEARNING_PROTOCOL.md`.
+8. **Notebooks as the thing to trace (research repos).** A notebook's stored outputs and prose are AI-written claims, not authority. To check one,
+   run it with `python scripts/notebook_trace.py run --repo <repo> --record <record.json> --notebook <id> --run`: only a notebook the researcher
+   listed in `approved_notebooks` runs, in a scratch clone of the committed state with its own `uv` environment (never the real source tree), with
+   secrets scrubbed from the environment and a timeout. It reports whether the fresh output matches, differs only in last digits or image bytes, or is
+   **stale**, and records the run in the record's `executed` list. A mutation exercise (`mutate --spec`) changes one string in a notebook cell or a
+   source file *of the copy*, runs the notebook before and after, and reports what changed: ask the researcher to predict first, show nothing until
+   they have, and never mutate the repository itself. Without `--run` both commands only describe what they would do. See `references/CODE_LEARNING_PROTOCOL.md`.
 
 ## Limits you must state
 

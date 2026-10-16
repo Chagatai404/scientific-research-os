@@ -108,3 +108,18 @@ Treat such a notebook's prose and stored outputs as claims to check against the 
 seen and when a notebook closed it. Evidence is read from the repository: **covered** means a notebook's code imports the module (directly, as a submodule or through the package's re-exports); **mentioned** means a notebook names it in backticks or as a path
 without importing it; **tested** means the test file the module map names exists; the **status** is the module map's own word. The tool never writes, runs or changes a notebook, never decides a unit is complete, and writes only the ledger, only with `--write`.
 After a unit is completed and its tests pass, run it and tell the researcher what is new; whether a gap deserves a notebook is theirs to decide.
+
+### Running notebooks to check them (`scripts/notebook_trace.py`)
+
+`trace` runs a listed command; for a research repo whose notebooks document completed work, the thing worth running is the notebook. The researcher lists notebooks in the record as
+`approved_notebooks`: `{"id", "path", "approved_by", "approved_at", "timeout"}` (a timeout in seconds, up to 7200; the heavy ones deserve a deliberate number). An agent never adds to that list.
+
+`notebook_trace.py run --repo <repo> --record <record.json> --notebook <id> --run` makes a scratch `git clone --local` of the committed state (so no `.env`, no virtual environment, nothing ignored, and uncommitted
+changes are not in it, which the output states), builds the copy's own environment with `uv sync --frozen`, scrubs secrets and any variable that points at the real environment from the process environment, and runs
+the notebook with `--allow-errors` so that a failing cell is reported, not fatal. The copy matters: a project's own virtual environment normally has the package installed *editable*, pointing at the real source,
+so a notebook run with it would import the real code. It compares fresh outputs with stored ones cell by cell: `identical`, `numerically-equal` (last-digit noise), `image-bytes-differ`, `text-differs` or `now-errors`;
+a notebook is **stale** if any cell's text now differs or now errors. It appends the run to `executed` (with `--update-record`), and removes the copy. A match shows the notebook still tells the truth about the code
+today, not that its explanation is right. Without `--run` it only describes what it would do.
+
+`mutate --spec` runs the notebook, applies **one** change (one string, found exactly once, in one code cell or one file under `src/` or `notebooks/` *of the copy*), runs it again and reports the cells that changed:
+a "what breaks" exercise. Ask for a prediction first and reveal nothing until it is made. The repository is never changed.
