@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.9.5 - 2026-10-16 - Teaching Depth, Domain Breadth, Voice
+
+Prepared locally on the `v0.9.5-teaching-voice-bio-chem` branch; not merged, pushed or tagged. The Obsidian companion is 0.3.0.
+Upgrade notes: [docs/MIGRATION_v0.9.5.md](docs/MIGRATION_v0.9.5.md). The plan and what was verified: [docs/plans/v0.9.5-plan.md](docs/plans/v0.9.5-plan.md).
+
+- **Teaching Cards.** A section declares its one idea, a prediction prompt, a word strip, vetted outside resources, a spoken script and a recording;
+  a layered lecture-note template and `teaching_lint.py` check what a program can. A section without a card renders as before.
+- **A learner model.** A term ledger and glossary, a Student Brief in the context receipt, a `confusable-with` edge; never a learning style.
+- **Click-to-load resources.** A registry of outside material with vetting states and licences; nothing loads until the learner clicks.
+- **Chemistry and biology.** Exact checks (formula balance, molar mass, stoichiometry, sequences), reviewer agents, audit skills and protocols.
+- **Accurate diagrams.** `diagram_spec.py` draws 2D and 3D geometry, molecules and C-alpha traces from coordinates that `structure_verify.py` checks
+  (geometry constraints, valence and formula, a PDB file bound by its hash); an interactive 3D viewer; registered at `rendered`, never `verified`.
+- **Code walkthroughs.** Default-on for consequential changes; a skipped one is recorded as an open ownership gap.
+- **Linked library indexes.** Every index entry carries a link built from an identifier, or says it has none; a read-only backfill plan.
+- **Animation.** `animate.py` detects ManimGX and Manim Community, lints scenes, renders with a layout and frame-edge check and registers a record;
+  slides through `manim-slides`. Engines are never installed for you.
+- **Voice.** `speech_text.py` says formulas in words in English and Turkish; `voice.py` keeps content-hashed recordings, transcribes, and compares
+  engines; a recorded-narration player on the page. **No local voice passed the listening test**; see `references/VOICE_PROTOCOL.md`.
+- **Renamed skill.** `visualize` is now `science-visualize`; the installer retires the old directory instead of deleting it.
+- **Rollout.** `html_design_rollout.py` now recognises a v0.9.0 installation as an upgrade baseline.
+- **Not verified.** Audible voice quality, Chatterbox on a GPU, playback inside a running Obsidian, ManimGX at 1080p60, YouTube and PhET embeds end to end,
+  and the Turkish phrasings by a native speaker. Licence notes (ManimGX, Piper and its Turkish voice) are in the protocols and the migration guide.
+
 ## 0.9.0 - 2026-10-13 - Scientific Integrity & Knowledge Navigation
 
 Prepared locally on the `v0.9-scientific-integrity` branch; not merged, pushed or tagged. The Obsidian companion is 0.2.0.

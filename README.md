@@ -497,6 +497,12 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
+**v0.9.5 — Teaching Depth, Domain Breadth, Voice** (prepared locally on the `v0.9.5-teaching-voice-bio-chem` branch; not merged, pushed or tagged).
+Teaching Cards, a learner model, click-to-load resources, chemistry and biology checks and reviewers, diagrams drawn from checked coordinates, code
+walkthroughs, linked library indexes, optional animation and optional voice. The animation and voice engines are yours to install and are never installed
+for you; **no local voice passed the listening test**. Read [the upgrade guide](docs/MIGRATION_v0.9.5.md) and, for what was and was not verified,
+[the plan](docs/plans/v0.9.5-plan.md); the earlier [v0.9 guide](docs/MIGRATION_v0.9.md) still applies to a v0.8 installation.
+
 **v0.9.0 — Scientific Integrity & Knowledge Navigation** (prepared locally on the `v0.9-scientific-integrity` branch; not merged, pushed or tagged).
 Agents consult the project's graphs before they work and cannot build on an assumption the records contradict; scientific claims are
 verified by executed checks; mathematics, figures, widgets and questions render where the lesson puts them; sessions have real

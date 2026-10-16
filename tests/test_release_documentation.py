@@ -70,6 +70,20 @@ class Guides(unittest.TestCase):
             self.assertIn(target, readme, target)
         self.assertIn('MIGRATION_v0.9', changelog)
         self.assertIn('MIGRATION_v0.9', text('docs/TROUBLESHOOTING.md'))
+        self.assertIn('docs/MIGRATION_v0.9.5.md', readme)
+        self.assertIn('docs/MIGRATION_v0.9.5.md', changelog)
+
+    def test_the_v095_guide_names_commands_that_exist_and_says_what_was_not_checked(self):
+        guide = text('docs/MIGRATION_v0.9.5.md')
+        for script, command in (('install.py', '--status'), ('library_index.py', 'backfill-plan'), ('html_design_rollout.py', '--backup'),
+                                ('animate.py', 'capabilities'), ('voice.py', 'providers')):
+            done = subprocess.run([sys.executable, str(ROOT / 'scripts' / script), '--help'], capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(done.returncode, 0, script)
+            self.assertIn(command, done.stdout, script + ' ' + command)
+            self.assertIn(command, guide, command)
+        self.assertIn('--library <library>', guide)
+        for needle in ('Not yet rehearsed on your real vault', 'Not checked, stated plainly', 'Voice quality', 'Undoing it'):
+            self.assertIn(needle, guide, needle)
 
 
 class Versions(unittest.TestCase):

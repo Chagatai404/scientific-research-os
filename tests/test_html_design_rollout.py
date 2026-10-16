@@ -73,5 +73,23 @@ class UpgradeFromV087(unittest.TestCase):
                 rollout.rollout(vault, [], Path(directory) / 'backup2')
 
 
+class UpgradeFromV090(unittest.TestCase):
+    @unittest.skipUnless(git_has('4f9a963'), 'the v0.9.0 release commit is not in this clone')
+    def test_a_vault_installed_at_the_v090_release_is_an_accepted_baseline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            vault = Path(directory) / 'vault'
+            for relative, source in [('.research-os/runtime/' + n, 'assets/html-runtime/' + n) for n in ('theme.css', 'session.css', 'runtime.js', 'session.js')] + [
+                    ('.obsidian/plugins/research-os-html/main.js', 'extensions/obsidian-html/main.js')]:
+                target = vault / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(subprocess.check_output(['git', 'show', '4f9a963:' + source], cwd=rollout.ROOT))
+            preview = rollout.rollout(vault, [], Path(directory) / 'backup')
+            self.assertTrue(preview['dry_run'])
+            self.assertEqual(len(preview['changes']), 5, 'every v0.9.0 file would be replaced, none refused')
+            (vault / '.obsidian/plugins/research-os-html/main.js').write_bytes(b'locally edited')
+            with self.assertRaisesRegex(ValueError, 'Locally modified'):
+                rollout.rollout(vault, [], Path(directory) / 'backup2')
+
+
 if __name__ == '__main__':
     unittest.main()
