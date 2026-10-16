@@ -15,6 +15,7 @@ from pathlib import Path
 
 import html_sessions as hs
 import knowledge as k
+import resources as library
 import terms as ledger
 from tutor_contract import scoped_question_issues
 
@@ -116,9 +117,38 @@ def literacy_issues(block_id, literacy):
     return out
 
 
-CARD_FIELDS = ('core_idea', 'predict', 'retrieve', 'visual', 'no_visual_reason', 'spoken')
+CARD_FIELDS = ('core_idea', 'predict', 'retrieve', 'visual', 'no_visual_reason', 'spoken', 'resources')
+RESOURCE_FIELDS = {'id', 'title', 'url', 'kind', 'lang', 'publisher', 'license', 'attribution', 'embed', 'video_id', 'start', 'end', 'vetted_on'}
+MAX_CARD_RESOURCES = 6
 FIGURE_ID = re.compile(r'[A-Za-z0-9_.-]{1,64}\Z')
 SPOKEN_LANG = re.compile(r'[a-z]{2,3}(?:-[A-Za-z]{2,4})?\Z')
+
+
+def resource_issues(block_id, items):
+    """The resources a card points to: a snapshot of vetted registry records (`resources.py card`), so a session stays self-contained."""
+    if not isinstance(items, list) or not items or len(items) > MAX_CARD_RESOURCES:
+        return [issue('CARD_RESOURCES', block_id, f'card.resources is a list of 1 to {MAX_CARD_RESOURCES} resources')]
+    out, seen = [], set()
+    for item in items:
+        ok = (isinstance(item, dict) and not set(item) - RESOURCE_FIELDS and {'id', 'title', 'url', 'kind', 'lang'} <= set(item)
+              and isinstance(item['id'], str) and library.ID.fullmatch(item['id']) and item['id'] not in seen
+              and all(isinstance(item.get(f), str) and 1 <= len(item[f]) <= 300 for f in ('title', 'publisher', 'license', 'attribution') if f in item)
+              and item['kind'] in library.KINDS and isinstance(item['lang'], str) and SPOKEN_LANG.match(item['lang'])
+              and item.get('embed') in library.EMBEDS)
+        if ok:
+            try:
+                library.https_url(item['url'])
+            except library.ResourceError:
+                ok = False
+        if ok and item.get('embed') == 'youtube':
+            ok = library.youtube_id(item['url']) == item.get('video_id') and item.get('video_id') is not None
+        if ok and any(f in item and (type(item[f]) is not int or not 0 <= item[f] <= 86400) for f in ('start', 'end')):
+            ok = False
+        if not ok:
+            out.append(issue('CARD_RESOURCES', block_id, 'each resource needs id (RES-…), title, an https url, kind and lang; a youtube embed needs its matching video_id'))
+            break
+        seen.add(item['id'])
+    return out
 
 
 def card_issues(block_id, card):
@@ -136,6 +166,8 @@ def card_issues(block_id, card):
         out.append(issue('CARD_VISUAL', block_id, 'card.visual is the id of a declared figure or widget'))
     if 'visual' in card and 'no_visual_reason' in card:
         out.append(issue('CARD_VISUAL', block_id, 'give card.visual or card.no_visual_reason, not both'))
+    if 'resources' in card:
+        out.extend(resource_issues(block_id, card['resources']))
     spoken = card.get('spoken', {})
     if 'spoken' in card and (not isinstance(spoken, dict) or not spoken or len(spoken) > 4
                              or any(not isinstance(lang, str) or not SPOKEN_LANG.match(lang) or not _text(script, 1, 4000)
@@ -468,6 +500,12 @@ def _definition_line(term, definition, *, bold):
     return f'> - **{term}** — {definition}' if bold else f'> - {term} — {definition}'
 
 
+def _resource_line(item):
+    host = (library.parse.urlsplit(item['url']).hostname or '').removeprefix('www.')
+    parts = [f"{item['kind']}, {item['lang']}"] + [item[f] for f in ('publisher', 'license', 'attribution') if item.get(f)] + [host]
+    return f"> - **{' '.join(item['title'].split())}** — {' · '.join(parts)} · `{item['id']}`"
+
+
 def _heading_level(line):
     match = re.match(r'(#{1,6})\s', line)
     return len(match[1]) if match else 7
@@ -511,6 +549,8 @@ def expand_cards(source, blocks):
                     reminders.append(_definition_line(*definitions[key], bold=False))
             if reminders:
                 top += ['> [!glossary]- Words from earlier in this lesson'] + reminders + ['']
+            if card.get('resources'):
+                top += ['> [!resource]- Go further'] + [_resource_line(r) for r in card['resources']] + ['']
             start = hits[0]
             level = _heading_level(lines[start])
             end = next((n for n, _ in headings if n > start and _heading_level(lines[n]) <= level), len(lines))

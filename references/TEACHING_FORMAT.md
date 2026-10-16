@@ -25,6 +25,7 @@ A teaching block (`html_sessions.py declare-block`) may carry a `card`:
 | `predict` | Optional prompt shown before the section (concept, intuition and derivation blocks should have one). Viewing is never evidence. |
 | `retrieve` | Optional prompt shown collapsed at the end of the section. |
 | `visual` / `no_visual_reason` | The id of the figure or widget that carries the idea, or the reason there is none. Not both. |
+| `resources` | Up to six links to vetted outside material (`references/RESOURCE_PROTOCOL.md`), each a snapshot from the registry: id, title, https url, kind, language, publisher, licence, attribution. Shown as a collapsed **Go further** list; nothing loads until the learner clicks. |
 | `spoken` | Language code → a script written to be heard: no notation, formulas said in words, under about 90 seconds. Narration reads this, never the formula text. |
 
 A card is optional and per block. A block without one renders exactly as before, so existing sessions do not change. With one,

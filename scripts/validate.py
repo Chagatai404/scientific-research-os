@@ -114,6 +114,8 @@ required = [
     ROOT / "scripts" / "terms.py",
     ROOT / "scripts" / "chembio_verify.py",
     ROOT / "scripts" / "code_walkthrough.py",
+    ROOT / "scripts" / "resources.py",
+    ROOT / "references" / "RESOURCE_PROTOCOL.md",
     ROOT / "references" / "CODE_LEARNING_PROTOCOL.md",
     ROOT / "agents" / "walkthrough-verifier.md",
     ROOT / "skills" / "code-walkthrough" / "SKILL.md",

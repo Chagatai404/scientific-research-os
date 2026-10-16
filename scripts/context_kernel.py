@@ -519,7 +519,7 @@ def build(request):
     ordered = [sources[name] for name in SOURCES]
     session_path = req['session']
     retrieval = {'limits': req['limits'], 'learner': None, 'research': None, 'project': payload['project'],
-                 'library': None, 'visuals': None, 'sessions': None, 'code': payload['code'],
+                 'library': None, 'visuals': None, 'sessions': None, 'code': payload['code'], 'resources': None,
                  'session': {'path': session_path, 'exists': bool(
                      session_path and ctx['vault'] and (ctx['vault'] / Path(session_path).with_suffix('.state.json')).is_file())}}
     if collection is not None and sources['learning']['status'] in {'ok', 'empty'}:
@@ -532,6 +532,14 @@ def build(request):
         retrieval['research'] = _research_view(req, registry, records, retrieval['learner'])
     if payload['library'] is not None:
         retrieval['library'] = _library_view(req, payload['library'])
+    if ctx['vault'] is not None:
+        # Vetted teaching resources for the target concept: informational, never a source that can block or degrade a receipt.
+        import resources
+        records, diagnostics = resources.load_all(resources.registry_dir(ctx['vault']))
+        concept = req['target']['id'] if req['target'] else None
+        retrieval['resources'] = {'status': 'ok' if records else 'empty', 'diagnostics': diagnostics[:req['limits']['max_diagnostics']],
+                                  'reusable': [resources.card_resource(r) for r in resources.reusable(records, concept)],
+                                  'stale': sorted(r['id'] for r in records.values() if resources.is_stale(r) and (concept is None or concept in r['concepts']))}
     if payload['visuals'] is not None:
         import visuals
         concept = req['target']['id'] if req['target'] else None

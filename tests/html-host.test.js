@@ -8,7 +8,7 @@ class Component { registerDomEvent() {} registerEvent() {} }
 const obsidian = {Plugin: Component, Component, FileView: Component, normalizePath: p => p};
 const file = path.join(__dirname, '../extensions/obsidian-html/main.js');
 const mod = {exports: {}};
-vm.runInNewContext(fs.readFileSync(file, 'utf8'), {require: name => name === 'obsidian' ? obsidian : require(name), module: mod, console, Date, Object, Set, Array, JSON, Number, Promise, Buffer, process, setTimeout, clearTimeout});
+vm.runInNewContext(fs.readFileSync(file, 'utf8'), {require: name => name === 'obsidian' ? obsidian : require(name), module: mod, console, Date, Object, Set, Array, JSON, Number, Promise, Buffer, URL, process, setTimeout, clearTimeout});
 const {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, resolveNote, acquireLock, buildDocument, SessionHost, sibling} = mod.exports._test;
 // The host decides note-reference syntax itself; it must agree with Python and the runtime on the shared fixture.
 const noteTargets = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/note-targets.json'), 'utf8'));
@@ -165,6 +165,33 @@ assert(!html.includes('title":"</script>'));
   assert.match(replies.at(-1).message, /wait a moment/);
   const workspace = host.plugin.app.workspace; host.plugin.app.workspace = {};
   assert.match((await go('Gamma distribution')).message, /not available/); host.plugin.app.workspace = workspace;
+  // Teaching resources: the page asks by id only; the host finds the address in the state it holds and opens only HTTPS without credentials.
+  const openedLinks = []; host.plugin.openExternal = href => { openedLinks.push(href); };
+  host.state = {...host.state, teaching: [{id: 'b', card: {resources: [
+    {id: 'RES-v', title: 'A video', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'},
+    {id: 'RES-plain', title: 'Plain http', url: 'http://example.org/x'}, {id: 'RES-cred', title: 'Credentials', url: 'https://user:pw@example.org/'}]}}]};
+  const ask = async (id, extra = {}) => {
+    host.openedAt = 0; const before = replies.length;
+    host.receive({source: host.frame.contentWindow, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'open-resource', id, ...extra}});
+    await new Promise(resolve => setTimeout(resolve, 15));
+    return replies.length > before ? replies.at(-1) : null;
+  };
+  answer = await ask('RES-v');
+  assert.equal(answer.type, 'resource-opened', JSON.stringify(answer)); assert.equal(answer.title, 'A video');
+  assert.deepEqual(openedLinks, ['https://www.youtube.com/watch?v=dQw4w9WgXcQ']);
+  for (const [id, expected] of [['RES-missing', /does not declare/], ['RES-plain', /Only HTTPS/], ['RES-cred', /Only HTTPS/],
+    ['https://evil.example/', /does not declare/], [null, /does not declare/], [{url: 'https://evil.example/'}, /does not declare/], [['RES-v'], /does not declare/]]) {
+    answer = await ask(id);
+    assert.equal(answer.type, 'resource-error', String(id)); assert.match(answer.message, expected, String(id));
+  }
+  assert.equal(openedLinks.length, 1, 'nothing else was opened');
+  assert.equal(await ask('RES-v', {token: 'wrong'}), null); assert.equal(await ask('RES-v', {session_id: 'other'}), null);
+  assert.equal(openedLinks.length, 1);
+  host.openedAt = Date.now();
+  host.receive({source: host.frame.contentWindow, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'open-resource', id: 'RES-v'}});
+  assert.match(replies.at(-1).message, /wait a moment/);
+  assert.equal(openedLinks.length, 1, 'requests are throttled');
+  delete host.plugin.openExternal;
   // The position the learner reached is remembered (validated) and handed back to a rebuilt page.
   host.receive({source: host.frame.contentWindow, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'position', section: 'section-0123456789ab', offset: 120}});
   assert.equal(JSON.stringify(host.position), JSON.stringify({section: 'section-0123456789ab', offset: 120}));

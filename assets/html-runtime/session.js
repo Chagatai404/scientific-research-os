@@ -639,7 +639,7 @@
 /* Research OS runtime v1. No host privileges, network calls or authoritative browser storage. */
 (function (root) {
   'use strict';
-  const VOCABULARY = 'concept definition equation derivation intuition warning evidence question mcq multi numeric matching ordering free-response hint solution code output figure widget checkpoint recall connection open-question decision legacy predict glossary'.split(' ');
+  const VOCABULARY = 'concept definition equation derivation intuition warning evidence question mcq multi numeric matching ordering free-response hint solution code output figure widget checkpoint recall connection open-question decision legacy predict glossary resource'.split(' ');
   function equal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
   function assess(q, response) {
     if (!q || !VOCABULARY.includes(q.kind)) throw new Error('Unsupported question kind');
@@ -801,6 +801,8 @@
         refreshAll();
       } else if (data.type === 'navigated' || data.type === 'navigation-error') {
         noteResult(data);
+      } else if (data.type === 'resource-opened' || data.type === 'resource-error') {
+        resourceResult(data);
       } else if (data.type === 'error') {
         for (const id of pending.keys()) failed.add(id);
         pending.clear(); refreshAll();
@@ -1289,6 +1291,7 @@
       for (const el of within(scope, '[data-question-id]')) { const q = questions.get(el.getAttribute('data-question-id')); if (q) buildQuestion(el, q); }
       for (const el of within(scope, '[data-ros="checkpoint"]')) el.append(button('Record checkpoint completed', () => emit('checkpoint', null, el.id || 'checkpoint')));
       for (const widget of within(scope, '[data-ros="widget"]')) buildWidget(widget);
+      for (const el of within(scope, '[data-ros="resource"]')) buildResources(el);
       for (const el of within(scope, '[data-extension]')) { const factory = extensions.get(el.getAttribute('data-extension')); if (factory) runExtension(el, factory); }
       for (const nav of within(scope, '.ros-toc')) setupToc(nav);
     }
@@ -1525,6 +1528,54 @@
         : 'Could not open “' + String(data.target || '') + '”: ' + String(data.message || 'the host refused').slice(0, 200);
       if (lastLink && lastLink.isConnected) { lastLink.removeAttribute('aria-busy'); hint(lastLink, text, data.type !== 'navigated'); }
       status.textContent = text;
+    }
+    // Teaching resources (Teaching Card `resources`). Nothing loads until the learner clicks: Open goes to the system browser (through the host
+    // when the page is sandboxed, which looks the address up itself); Play here exists only on a standalone page whose policy allows the player.
+    let lastResource = null;
+    function resourceSpecs() {
+      const map = new Map();
+      for (const block of Array.isArray(state.teaching) ? state.teaching : []) {
+        const list = block && block.card && Array.isArray(block.card.resources) ? block.card.resources : [];
+        for (const item of list) if (item && typeof item.id === 'string' && typeof item.url === 'string') map.set(item.id, item);
+      }
+      return map;
+    }
+    function openResource(spec, li, actions) {
+      lastResource = li;
+      if (!host) { root.open(spec.url, '_blank', 'noopener,noreferrer'); hint(actions, 'Opened in a new tab. This lesson stays where you left it.', false); return; }
+      hint(actions, 'Opening in your browser…', false);
+      root.parent.postMessage({channel: 'research-os', token: host.token, session_id: state.session_id, type: 'open-resource', id: spec.id}, '*');
+    }
+    function resourceResult(data) {
+      const text = data.type === 'resource-opened' ? 'Opened “' + String(data.title || data.id) + '” in your browser. This lesson stays where you left it.'
+        : 'Could not open it: ' + String(data.message || 'the host refused').slice(0, 200);
+      if (lastResource && lastResource.isConnected) hint(lastResource.querySelector('.ros-resource-actions') || lastResource, text, data.type !== 'resource-opened');
+      status.textContent = text;
+    }
+    function togglePlayer(spec, li, play) {
+      const open = li.querySelector('.ros-resource-player');
+      if (open) { open.remove(); play.textContent = 'Play here'; play.setAttribute('aria-expanded', 'false'); return; }
+      const box = node('div'); box.className = 'ros-resource-player'; const frame = node('iframe');
+      const query = ['rel=0']; if (Number.isInteger(spec.start)) query.push('start=' + spec.start); if (Number.isInteger(spec.end)) query.push('end=' + spec.end);
+      frame.src = 'https://www.youtube-nocookie.com/embed/' + spec.video_id + '?' + query.join('&'); frame.title = String(spec.title || 'Video');
+      frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation'); frame.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+      frame.setAttribute('allow', 'encrypted-media; picture-in-picture; fullscreen'); frame.setAttribute('loading', 'lazy'); frame.setAttribute('allowfullscreen', '');
+      box.append(frame); li.append(box); play.textContent = 'Close player'; play.setAttribute('aria-expanded', 'true');
+    }
+    function buildResources(el) {
+      const specs = resourceSpecs();
+      for (const li of el.querySelectorAll('li')) {
+        if (li.hasAttribute('data-ros-resource')) continue;
+        const code = li.querySelector('code'), spec = code ? specs.get(code.textContent.trim()) : null;
+        if (!spec) continue;
+        li.setAttribute('data-ros-resource', spec.id);
+        const actions = node('span'); actions.className = 'ros-resource-actions';
+        actions.append(button('Open', () => openResource(spec, li, actions)));
+        if (spec.embed === 'youtube' && !host && /^[A-Za-z0-9_-]{11}$/.test(String(spec.video_id))) {
+          const play = button('Play here', () => togglePlayer(spec, li, play)); play.setAttribute('aria-expanded', 'false'); actions.append(play);
+        }
+        li.append(' ', actions);
+      }
     }
     doc.addEventListener('click', event => {
       const link = event.target && event.target.closest ? event.target.closest('a.ros-note-link[data-ros-target]') : null;

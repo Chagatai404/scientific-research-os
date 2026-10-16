@@ -723,6 +723,16 @@ def _placement_notice(issues):
                    + html.escape(i['message']) + '</aside>' for i in issues)
 
 
+def _frame_src(state):
+    """A page that carries a vetted YouTube resource may frame the privacy-enhanced player, and nothing else. The Obsidian companion
+    builds its own policy (frame-src 'none'), so embeds exist only on standalone pages."""
+    for block in state.get("teaching", []):
+        card = block.get("card") if isinstance(block, dict) else None
+        if isinstance(card, dict) and any(isinstance(r, dict) and r.get("embed") == "youtube" for r in card.get("resources") or []):
+            return "; frame-src https://www.youtube-nocookie.com"
+    return ''
+
+
 def _teaching_source(state):
     """The lesson source as shown: implementation blocks carry their declared literacy items under their heading."""
     blocks = [b for b in state.get("teaching", []) if isinstance(b, dict) and b.get("kind") == "implementation" and isinstance(b.get("literacy"), dict)]
@@ -770,7 +780,7 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
         resources = '<link rel="stylesheet" href="' + prefix + '/session.css">'
         script = '<script src="' + prefix + '/session.js"></script>'
     return ('<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-            + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; font-src data:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'">'
+            + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; font-src data:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'' + _frame_src(state) + '">'
             + '<title>' + html.escape(state["title"]) + '</title>' + resources + '</head><body><main class="ros-document" id="ros-session">'
             + header
             + navigation + content + _questions_html(state, placed) + tail + resource_markup

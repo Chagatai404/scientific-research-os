@@ -221,6 +221,15 @@ function sanitizeHtml(html, doc, images = new Map(), descriptions = new Map(), a
   }
   const wrapper = doc.createElement('div'); wrapper.appendChild(root); return wrapper.innerHTML;
 }
+// Teaching resources a lesson declares on its Teaching Cards (snapshots of vetted registry records). Looked up by id in host-held state.
+function declaredResource(state, id) {
+  if (typeof id !== 'string' || !/^RES-[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/.test(id) || !state || !Array.isArray(state.teaching)) return null;
+  for (const block of state.teaching) {
+    const list = block && block.card && Array.isArray(block.card.resources) ? block.card.resources : [];
+    for (const item of list) if (item && item.id === id && typeof item.url === 'string') return item;
+  }
+  return null;
+}
 // The context binding is for agents (it holds local paths); the sandboxed page never needs it.
 // The agent's liveness lease (scripts/supervision.py): same shape and bounds as the writer. Anything else reads as "no live agent".
 function parseLease(text) {
@@ -385,6 +394,7 @@ class SessionHost extends Component {
       return;
     }
     if (data.type === 'navigate') { this.navigate(data.target, this.token); return; }
+    if (data.type === 'open-resource') { this.openResource(data.id, this.token); return; }
     if (this.pending >= 32) { this.reply(this.token, {type: 'error', message: 'Too many pending events.'}); return; }
     this.pending++;
     const token = this.token; const generation = this.generation;
@@ -441,6 +451,22 @@ class SessionHost extends Component {
       await workspace.openLinkText(file.path + subpath, this.path, 'tab');
       this.reply(token, {type: 'navigated', target, title: file.basename || file.path});
     } catch (error) { this.reply(token, {type: 'navigation-error', target: typeof target === 'string' ? target.slice(0, 256) : '', message: error.message}); }
+  }
+  // A teaching resource opens in the system browser. The page asks by id only; the URL comes from the state this host holds, is checked
+  // here, and is never taken from the sandboxed page. This host's page policy forbids frames, so nothing is ever embedded.
+  openResource(id, token) {
+    try {
+      const now = Date.now();
+      if (this.openedAt && now - this.openedAt < 400) throw new Error('Please wait a moment before opening another link.');
+      this.openedAt = now;
+      const spec = declaredResource(this.state, id);
+      if (!spec) throw new Error('This lesson does not declare that resource.');
+      let url; try { url = new URL(spec.url); } catch (_) { throw new Error('The resource link is not a valid URL.'); }
+      if (url.protocol !== 'https:' || url.username || url.password) throw new Error('Only HTTPS links without credentials open.');
+      const open = this.plugin.openExternal || (href => (typeof activeWindow !== 'undefined' ? activeWindow : window).open(href, '_blank', 'noopener,noreferrer'));
+      open(url.href);
+      this.reply(token, {type: 'resource-opened', id, title: String(spec.title || id).slice(0, 200)});
+    } catch (error) { this.reply(token, {type: 'resource-error', id: typeof id === 'string' ? id.slice(0, 80) : '', message: error.message}); }
   }
   reply(token, payload) { if (this.frame && token === this.token) this.frame.contentWindow.postMessage(Object.assign({channel: 'research-os', token, session_id: this.state.session_id}, payload), '*'); }
   onunload() { clearTimeout(this.refreshTimer); clearInterval(this.leaseTimer); if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
@@ -501,4 +527,4 @@ class ResearchOSHTML extends Plugin {
   onunload() { this.app.workspace.detachLeavesOfType(VIEW); }
 }
 module.exports = ResearchOSHTML;
-module.exports._test = {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, resolveNote, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling};
+module.exports._test = {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, declaredResource, resolveNote, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling};
