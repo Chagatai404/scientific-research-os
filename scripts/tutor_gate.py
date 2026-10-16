@@ -117,11 +117,12 @@ def literacy_issues(block_id, literacy):
     return out
 
 
-CARD_FIELDS = ('core_idea', 'predict', 'retrieve', 'visual', 'no_visual_reason', 'spoken', 'resources')
+CARD_FIELDS = ('core_idea', 'predict', 'retrieve', 'visual', 'no_visual_reason', 'spoken', 'resources', 'audio')
 RESOURCE_FIELDS = {'id', 'title', 'url', 'kind', 'lang', 'publisher', 'license', 'attribution', 'embed', 'video_id', 'start', 'end', 'vetted_on'}
 MAX_CARD_RESOURCES = 6
 FIGURE_ID = re.compile(r'[A-Za-z0-9_.-]{1,64}\Z')
 SPOKEN_LANG = re.compile(r'[a-z]{2,3}(?:-[A-Za-z]{2,4})?\Z')
+AUDIO_PATH = re.compile(r'[A-Za-z0-9][A-Za-z0-9 ._/-]{0,200}\.(?:wav|ogg|mp3)\Z')
 
 
 def resource_issues(block_id, items):
@@ -168,6 +169,11 @@ def card_issues(block_id, card):
         out.append(issue('CARD_VISUAL', block_id, 'give card.visual or card.no_visual_reason, not both'))
     if 'resources' in card:
         out.extend(resource_issues(block_id, card['resources']))
+    audio = card.get('audio')
+    if 'audio' in card and (not isinstance(audio, dict) or not audio or len(audio) > 4
+                            or any(not isinstance(lang, str) or not SPOKEN_LANG.match(lang) or not isinstance(path, str) or not AUDIO_PATH.match(path)
+                                   or any(part in {'', '.', '..'} for part in path.split('/')) for lang, path in audio.items())):
+        out.append(issue('CARD_AUDIO', block_id, 'card.audio maps a language code to a recording inside the vault (a relative .wav, .ogg or .mp3 path)'))
     spoken = card.get('spoken', {})
     if 'spoken' in card and (not isinstance(spoken, dict) or not spoken or len(spoken) > 4
                              or any(not isinstance(lang, str) or not SPOKEN_LANG.match(lang) or not _text(script, 1, 4000)
@@ -549,6 +555,8 @@ def expand_cards(source, blocks):
                     reminders.append(_definition_line(*definitions[key], bold=False))
             if reminders:
                 top += ['> [!glossary]- Words from earlier in this lesson'] + reminders + ['']
+            if card.get('audio'):
+                top += ['> [!listen] Recorded narration', '> `' + str(block.get('id')) + '`', '']
             if card.get('resources'):
                 top += ['> [!resource]- Go further'] + [_resource_line(r) for r in card['resources']] + ['']
             start = hits[0]

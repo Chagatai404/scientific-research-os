@@ -187,6 +187,12 @@ blockquote { margin: var(--ros-space-5) 0; padding: var(--ros-space-1) var(--ros
 .ros-callout-resource li { margin: var(--ros-space-2) 0; overflow-wrap: anywhere; }
 .ros-resource-actions { display: inline-flex; flex-wrap: wrap; gap: var(--ros-space-2); margin-left: var(--ros-space-2); vertical-align: middle; }
 .ros-resource-player { margin-top: var(--ros-space-3); }
+/* Recorded narration: a pre-rendered file played on request, one row per language. */
+.ros-callout-listen { --ros-callout-accent: var(--ros-info); --ros-callout-bg: var(--ros-surface); border: 1px solid var(--ros-border); }
+.ros-recording-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ros-space-2) var(--ros-space-3); margin: var(--ros-space-2) 0; }
+.ros-recording-label { font-weight: 600; min-width: 5rem; }
+.ros-recording audio { flex: 1 1 14rem; max-width: 100%; }
+.ros-recording-note { color: var(--ros-muted, inherit); font-size: .95em; }
 .ros-resource-player iframe { display: block; width: 100%; max-width: 40rem; aspect-ratio: 16 / 9; border: 0; border-radius: var(--ros-radius-md); background: var(--ros-surface); }
 details.ros-callout > summary { list-style-position: inside; margin: 0; padding-bottom: var(--ros-space-3); }
 :is(section,div,aside)[data-ros=definition], :is(section,div,aside)[data-ros=concept], :is(section,div,aside)[data-ros=evidence], :is(section,div,aside)[data-ros=decision] { border-radius: var(--ros-radius-md); background: var(--ros-accent-bg); padding: var(--ros-space-4) var(--ros-space-5); margin: var(--ros-space-5) 0; }

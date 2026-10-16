@@ -1,0 +1,24 @@
+{
+  "bakeoff_schema": 1,
+  "note": "Scripts for the voice bake-off (voice.py bakeoff). {{math: ...}} spans are said in words by speech_text.py; {{en: ...}} spans are spoken by the English voice. The Turkish was written without review by a native speaker.",
+  "samples": [
+    {"id": "en-plain", "lang": "en", "kind": "pure language",
+     "script": "A gamma distribution describes the waiting time until a fixed number of events has happened. If events arrive at a steady rate, waiting for three of them takes longer than waiting for one."},
+    {"id": "tr-plain", "lang": "tr", "kind": "pure language",
+     "script": "Gama dağılımı, belirli sayıda olay gerçekleşene kadar geçen bekleme süresini anlatır. Olaylar sabit bir hızla geliyorsa, üç olayı beklemek bir olayı beklemekten daha uzun sürer."},
+    {"id": "tr-mixed", "lang": "tr", "kind": "Turkish with English terms",
+     "script": "Bu yöntemde {{en: gradient descent}} algoritması, kaybı en küçük yapan parametreleri bulur. Öğrenme hızı çok büyükse {{en: loss}} değeri inip çıkar ve eğitim bir türlü oturmaz."},
+    {"id": "en-numbers", "lang": "en", "kind": "numbers and units",
+     "script": "The particle moves at 3.5 metres per second, has a mass of 2 kilograms, and its energy rose by 12%. After 40 seconds it had travelled 140 metres."},
+    {"id": "tr-numbers", "lang": "tr", "kind": "numbers and units",
+     "script": "Parçacık saniyede 3,5 metre hızla ilerliyor, kütlesi 2 kilogram ve enerjisi yüzde 12 arttı. 40 saniye sonra 140 metre yol almıştı."},
+    {"id": "en-formula", "lang": "en", "kind": "verbalized formulas",
+     "script": "The kinetic energy is {{math: E = \\frac{1}{2} m v^2}}, so doubling the speed multiplies the energy by four. For small angles, {{math: \\sin \\theta \\approx \\theta}}."},
+    {"id": "tr-formula", "lang": "tr", "kind": "verbalized formulas",
+     "script": "Kinetik enerji {{math: E = \\frac{1}{2} m v^2}} ile verilir; hız iki katına çıkarsa enerji dört katına çıkar. Küçük açılar için {{math: \\sin \\theta \\approx \\theta}} yazabiliriz."},
+    {"id": "en-passage", "lang": "en", "kind": "60-second passage",
+     "script": "Imagine a detector that records particles one at a time. The events arrive at random, but on average at a steady rate. The gamma distribution answers a simple question: how long do we wait until exactly {{math: k}} events have arrived? When {{math: k}} equals one, we wait for the first event, and the answer is the exponential distribution. When {{math: k}} is larger, the waiting times add up, so the average grows in proportion to {{math: k}}. The shape parameter {{math: k}} counts the events, and the rate parameter {{math: \\lambda}} says how quickly they come. The mean waiting time is {{math: \\frac{k}{\\lambda}}}, and its variance is {{math: \\frac{k}{\\lambda^2}}}. Notice what this tells us. Doubling the rate halves the mean waiting time, but it quarters the variance, so the waiting time becomes both shorter and more predictable. Before you read on, predict what happens to the shape of the curve as {{math: k}} grows large."},
+    {"id": "tr-passage", "lang": "tr", "kind": "60-second passage",
+     "script": "Parçacıkları tek tek kaydeden bir dedektör düşünelim. Olaylar rastgele gelir, ama ortalama olarak sabit bir hızla. Gama dağılımı basit bir soruyu yanıtlar: tam olarak {{math: k}} olay gelene kadar ne kadar beklememiz gerekir? {{math: k}} bire eşit olduğunda ilk olayı bekleriz ve yanıt üstel dağılımdır. {{math: k}} daha büyük olduğunda bekleme süreleri toplanır, bu yüzden ortalama süre {{math: k}} ile orantılı büyür. Şekil parametresi {{math: k}} olayları sayar, hız parametresi {{math: \\lambda}} ise olayların ne kadar çabuk geldiğini söyler. Ortalama bekleme süresi {{math: \\frac{k}{\\lambda}}}, varyansı ise {{math: \\frac{k}{\\lambda^2}}} olur. Bunun anlamına dikkat edin. Hızı iki katına çıkarmak ortalama süreyi yarıya, varyansı ise dörtte bire indirir; yani bekleme süresi hem kısalır hem de daha öngörülebilir olur. Devam etmeden önce tahmin edin: {{math: k}} büyüdükçe eğrinin şekli nasıl değişir?"}
+  ]
+}

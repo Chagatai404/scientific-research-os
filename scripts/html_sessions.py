@@ -19,6 +19,7 @@ import re
 import shutil
 import sys
 import time
+import urllib.parse
 import uuid
 
 from common import load_config, parse_frontmatter
@@ -27,6 +28,10 @@ import rich_text
 SCHEMA_VERSION = 1
 MAX_STATE_BYTES = 8 * 1024 * 1024
 MAX_EVENTS = 10000
+# A standalone export embeds each recorded narration it can; a recording over the per-file or the total limit stays out and that card uses the browser voice.
+MAX_EXPORT_AUDIO = 3 * 1024 * 1024
+MAX_EXPORT_AUDIO_TOTAL = 12 * 1024 * 1024
+AUDIO_TYPES = {".wav": "audio/wav", ".ogg": "audio/ogg", ".mp3": "audio/mpeg"}
 BRIDGE_MARKER = "\n<!-- research-os:html-session -->\n"
 RUNTIME = Path(__file__).resolve().parents[1] / "assets" / "html-runtime"
 
@@ -733,6 +738,34 @@ def _frame_src(state):
     return ''
 
 
+def _media_src(state, standalone):
+    """A page whose cards carry recorded narration may play audio from its own folder, or, when exported alone, from data it embeds. Nothing else."""
+    if any(isinstance(b, dict) and isinstance(b.get("card"), dict) and b["card"].get("audio") for b in state.get("teaching", [])):
+        return "; media-src " + ("data:" if standalone else "'self'")
+    return ''
+
+
+def _audio_urls(state, runtime_prefix, standalone, audio_data):
+    """Where each carded recording is played from: a path relative to this page (vault pages) or an embedded data URL (standalone export).
+    A page whose runtime prefix does not say where the vault is gets none, and falls back to the browser voice."""
+    marker, base = "/.research-os/runtime", None
+    if runtime_prefix == ".research-os/runtime":
+        base = ""
+    elif runtime_prefix.endswith(marker):
+        base = runtime_prefix[:-len(marker)] + "/"
+    urls = {}
+    for block in state.get("teaching", []):
+        card = block.get("card") if isinstance(block, dict) else None
+        audio = card.get("audio") if isinstance(card, dict) else None
+        if not isinstance(audio, dict):
+            continue
+        for lang, path in audio.items():
+            url = (audio_data or {}).get(path) if standalone else (None if base is None else base + urllib.parse.quote(path, safe="/"))
+            if url:
+                urls.setdefault(block["id"], {})[lang] = url
+    return urls
+
+
 def _teaching_source(state):
     """The lesson source as shown: implementation blocks carry their declared literacy items under their heading."""
     blocks = [b for b in state.get("teaching", []) if isinstance(b, dict) and b.get("kind") == "implementation" and isinstance(b.get("literacy"), dict)]
@@ -744,7 +777,7 @@ def _teaching_source(state):
     return tutor_gate.expand_cards(source, state["teaching"]) if cards else source
 
 
-def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, resource_markup="", resource_scripts="", resource_images=None):
+def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, resource_markup="", resource_scripts="", resource_images=None, audio_data=None):
     validate_state(state)
     placed, seen = set(), {}
     content = markdown_html(_teaching_source(state), page_title=state["title"], questions={q["id"]: q for q in state["questions"]}, placed=placed,
@@ -769,7 +802,11 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
     subtitle_markup = ('<p class="ros-session-context">' + html.escape(subtitle) + '</p>') if isinstance(subtitle, str) and subtitle.strip() else ''
     header = '<header class="ros-session-header"><h1>' + html.escape(state['title']) + '</h1>' + subtitle_markup + '</header>'
     # The context binding holds local paths and is for agents, not the page or a shared export.
-    data = json.dumps({k: v for k, v in state.items() if k != "context"}, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
+    page_state = {k: v for k, v in state.items() if k != "context"}
+    audio_urls = _audio_urls(state, runtime_prefix, standalone, audio_data)
+    if audio_urls:
+        page_state["audio_urls"] = audio_urls  # for the page only: the stored session never holds a resolved location
+    data = json.dumps(page_state, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
     if standalone:
         css = (RUNTIME / "session.css").read_text(encoding="utf-8")
         js = (RUNTIME / "session.js").read_text(encoding="utf-8")
@@ -780,7 +817,7 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
         resources = '<link rel="stylesheet" href="' + prefix + '/session.css">'
         script = '<script src="' + prefix + '/session.js"></script>'
     return ('<!doctype html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-            + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; font-src data:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'' + _frame_src(state) + '">'
+            + '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data:; font-src data:; connect-src \'none\'; form-action \'none\'; base-uri \'none\'' + _frame_src(state) + _media_src(state, standalone) + '">'
             + '<title>' + html.escape(state["title"]) + '</title>' + resources + '</head><body><main class="ros-document" id="ros-session">'
             + header
             + navigation + content + _questions_html(state, placed) + tail + resource_markup
@@ -1460,10 +1497,25 @@ def export_session(root, relative_md, destination):
         else:
             _approved_module(root, path, resource)
             scripts += '<script>document.addEventListener("DOMContentLoaded",function(){' + raw.decode("utf-8").replace("</script", "<\\/script") + '\n},{once:true});</script>'
+    audio_data, budget = {}, MAX_EXPORT_AUDIO_TOTAL
+    for block in state.get("teaching", []):
+        card = block.get("card") if isinstance(block, dict) else None
+        for path in (card["audio"].values() if isinstance(card, dict) and isinstance(card.get("audio"), dict) else ()):
+            if path in audio_data:
+                continue
+            try:
+                source = _path(root, path)
+                raw = source.read_bytes()
+            except (OSError, ValueError):
+                continue  # a missing recording leaves that card on the browser voice
+            if len(raw) > MAX_EXPORT_AUDIO or len(raw) > budget:
+                continue  # too large to embed: the exported page uses the browser voice for it
+            budget -= len(raw)
+            audio_data[path] = "data:" + AUDIO_TYPES[source.suffix.lower()] + ";base64," + base64.b64encode(raw).decode()
     destination = Path(destination)
     if destination.exists() or destination.is_symlink():
         raise ValueError("Export destination already exists; choose a new file to preserve user data")
-    _write(destination, render_html(state, standalone=True, resource_markup=markup, resource_scripts=scripts, resource_images=images).encode("utf-8"))
+    _write(destination, render_html(state, standalone=True, resource_markup=markup, resource_scripts=scripts, resource_images=images, audio_data=audio_data).encode("utf-8"))
     return destination
 
 

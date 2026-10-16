@@ -13,6 +13,7 @@ import re
 import sys
 
 import html_sessions as hs
+import speech_text as speech
 import terms as ledger
 import tutor_gate as tg
 from common import parse_frontmatter
@@ -131,10 +132,25 @@ def lint_blocks(state, glossary=None, term_states=None, lang=None, require_spoke
             if lang and spoken and lang not in spoken:
                 out.append(finding('SPOKEN_LANGUAGE', where, f'the card has spoken scripts for {", ".join(sorted(spoken))} but not {lang}'))
             for code, script in spoken.items():
-                if SPOKEN_NOTATION.search(script):
-                    out.append(finding('SPOKEN_HAS_MATH', where, f'spoken[{code}] contains notation; write formulas out in words'))
-                if words(script) > MAX_SPOKEN_WORDS:
-                    out.append(finding('SPOKEN_LONG', where, f'spoken[{code}] is {words(script)} words; split the section (limit {MAX_SPOKEN_WORDS})'))
+                # Formulas go in {{math: ...}} spans, which speech_text.py says in words; anything else must already be words.
+                try:
+                    plain = ' '.join(text for kind, text in speech.scan(script) if kind != 'math')
+                except speech.Unspeakable as exc:
+                    out.append(finding('SPOKEN_SPAN', where, f'spoken[{code}]: {exc}'))
+                    continue
+                if SPOKEN_NOTATION.search(plain):
+                    out.append(finding('SPOKEN_HAS_MATH', where, f'spoken[{code}] contains notation outside a {{{{math: ...}}}} span; write formulas out in words or put them in a span'))
+                spoken_words = words(script)
+                if code in speech.LANGUAGES:
+                    prepared = speech.prepare(script, code)
+                    for problem in prepared['problems']:
+                        out.append(finding('SPOKEN_UNSPEAKABLE', where, f'spoken[{code}] {problem}'))
+                    if not prepared['problems']:
+                        spoken_words = words(prepared['text'])
+                elif re.search(r'\{\{\s*(?:math|m)\s*:', script):
+                    out.append(finding('SPOKEN_MATH_LANGUAGE', where, f'spoken[{code}] has a formula span but there are no formula rules for {code}; write it in words'))
+                if spoken_words > MAX_SPOKEN_WORDS:
+                    out.append(finding('SPOKEN_LONG', where, f'spoken[{code}] is {spoken_words} words; split the section (limit {MAX_SPOKEN_WORDS})'))
         if formula_first:
             out.append(finding('FORMULA_FIRST', where, f"'{block['heading']}' opens with a formula; put the idea in words first"))
         if formulas > MAX_DISPLAY_FORMULAS:

@@ -1,0 +1,461 @@
+"""Narration for sessions: prepare spoken scripts, run a local speech engine, keep the audio in a content-hashed registry, transcribe, and compare engines.
+
+Standard library only. The engines (Piper, Chatterbox, faster-whisper) live in their own virtual environments and are run through ``voice_adapter.py``;
+nothing here imports one or installs one. Audio is written once and named by a hash of provider, voice and text, so unchanged text reuses its file and
+changed text never overwrites an old recording. The browser's own voice (the baseline already in every session page) makes no file.
+
+Commands: providers | prepare | speak | list | transcribe | bakeoff
+A transcript is text the learner said, never evidence that they understand; it enters the normal submit-and-review path.
+"""
+from __future__ import annotations
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import wave
+from array import array
+from pathlib import Path
+
+import speech_text
+
+SCHEMA = 1
+ADAPTER = Path(__file__).with_name('voice_adapter.py')
+ENV_VARIABLE = 'RESEARCH_OS_VOICE_ENVS'
+DEFAULT_TIMEOUT = 1800
+GAP_SECONDS = 0.12
+ENGINE_MODULE = {'piper': 'piper', 'chatterbox': 'chatterbox', 'whisper': 'faster_whisper'}
+
+# What each provider is. Licences of engines and voices are read from the installed packages and model cards when they are reported (bake-off report), not asserted here.
+PROVIDERS = {
+    'browser': {'files': False, 'local': True, 'online': False, 'engine': None, 'languages': 'those the operating system installs',
+                'note': 'The baseline: every session page reads aloud with the browser or Obsidian voice. It makes no file and needs nothing installed.'},
+    'piper': {'files': True, 'local': True, 'online': False, 'engine': 'piper', 'voice': 'a voice .onnx file per language (--voice tr=PATH)', 'cloning': False,
+              'note': 'CPU, fast. One Turkish voice (dfki) exists in the voice set. The engine package and each voice have their own licences: read them before a product ships either.'},
+    'chatterbox': {'files': True, 'local': True, 'online': False, 'engine': 'chatterbox', 'voice': 'a language id; an optional reference recording clones a voice', 'cloning': True,
+                   'note': 'Multilingual, including Turkish. Heavier: see the bake-off report for what it cost on this machine. Output carries an inaudible watermark (PerTh).'},
+    'cloud': {'files': True, 'local': False, 'online': True, 'engine': None, 'implemented': False,
+              'note': 'Declared, not built. A cloud voice would be opt-in and show the same "the text is sent to a speech service" notice the page already shows.'},
+}
+
+
+class VoiceError(ValueError):
+    pass
+
+
+# ---------------------------------------------------------------- running the adapter
+
+def run_command(args: list, timeout: int = DEFAULT_TIMEOUT) -> dict:
+    """Run a program without a shell. The one place this module starts a process, so tests replace it."""
+    started = time.monotonic()
+    env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', TOKENIZERS_PARALLELISM='false')
+    try:
+        done = subprocess.run([str(a) for a in args], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout, env=env)
+    except FileNotFoundError:
+        return {'code': 127, 'stdout': '', 'stderr': f'{args[0]}: not found', 'seconds': 0.0}
+    except subprocess.TimeoutExpired:
+        return {'code': 124, 'stdout': '', 'stderr': f'timed out after {timeout} s', 'seconds': float(timeout)}
+    return {'code': done.returncode, 'stdout': done.stdout, 'stderr': done.stderr, 'seconds': round(time.monotonic() - started, 2)}
+
+
+def python_of(env: Path) -> Path | None:
+    for sub in ('Scripts', 'bin', ''):
+        for name in ('python.exe', 'python'):
+            candidate = env / sub / name if sub else env / name
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def adapter(env: Path, *args, timeout: int = DEFAULT_TIMEOUT) -> dict:
+    """Run ``voice_adapter.py`` in an environment and return its JSON, or ``{'ok': False, 'error': ...}``."""
+    python = python_of(Path(env))
+    if python is None:
+        return {'ok': False, 'error': f'no Python found in {env}'}
+    done = run_command([python, ADAPTER, *args], timeout=timeout)
+    for line in reversed(done['stdout'].strip().splitlines()):
+        try:
+            result = json.loads(line)
+            return result if isinstance(result, dict) else {'ok': False, 'error': 'unexpected adapter output'}
+        except ValueError:
+            continue
+    return {'ok': False, 'error': (done['stderr'].strip().splitlines() or ['the adapter printed nothing'])[-1][:300]}
+
+
+def environments(envs: list[str] | None = None) -> list[Path]:
+    named = [Path(e) for e in (envs or []) if e]
+    return named or [Path(p) for p in os.environ.get(ENV_VARIABLE, '').split(os.pathsep) if p]
+
+
+def detect(envs: list[str] | None = None) -> list[dict]:
+    """Which engines each environment holds, and their versions. Reports only; nothing is installed."""
+    found = []
+    for env in environments(envs):
+        info = adapter(env, 'info', timeout=300)
+        if info.get('ok'):
+            found.append({'env': env, 'engines': info.get('engines', {}), 'torch': info.get('torch'), 'cuda': info.get('cuda'), 'python': info.get('python')})
+    return found
+
+
+def find_env(found: list[dict], provider: str) -> dict:
+    module = ENGINE_MODULE['whisper'] if provider == 'whisper' else ENGINE_MODULE.get(PROVIDERS.get(provider, {}).get('engine') or '', '')
+    for entry in found:
+        if module and module in entry['engines']:
+            return entry
+    raise VoiceError(f'no environment with {provider} was found; name one with --env or {ENV_VARIABLE}. Nothing is installed for you.')
+
+
+# ---------------------------------------------------------------- audio
+
+def read_wav(path: Path) -> tuple[array, int]:
+    with wave.open(str(path), 'rb') as handle:
+        if handle.getsampwidth() != 2 or handle.getnchannels() != 1:
+            raise VoiceError(f'{Path(path).name}: only 16-bit mono audio is joined')
+        samples = array('h')
+        samples.frombytes(handle.readframes(handle.getnframes()))
+        if sys.byteorder == 'big':
+            samples.byteswap()
+        return samples, handle.getframerate()
+
+
+def resample(samples: array, source: int, target: int) -> array:
+    """Linear interpolation. Only used when two voices of one narration run at different rates."""
+    if source == target or not samples:
+        return samples
+    count = max(1, round(len(samples) * target / source))
+    out = array('h')
+    for i in range(count):
+        position = i * (len(samples) - 1) / max(count - 1, 1)
+        low = int(position)
+        high = min(low + 1, len(samples) - 1)
+        out.append(int(samples[low] + (samples[high] - samples[low]) * (position - low)))
+    return out
+
+
+def join_wavs(files: list[Path], out: Path, gap: float = GAP_SECONDS) -> dict:
+    """Join mono 16-bit files with a short silence between them, at the first file's sample rate."""
+    pieces = [read_wav(f) for f in files]
+    rate = pieces[0][1]
+    joined = array('h')
+    silence = array('h', [0] * int(rate * gap))
+    for index, (samples, source) in enumerate(pieces):
+        if index:
+            joined.extend(silence)
+        joined.extend(resample(samples, source, rate))
+    if sys.byteorder == 'big':
+        joined.byteswap()
+    with wave.open(str(out), 'wb') as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(rate)
+        handle.writeframes(joined.tobytes())
+    return {'seconds': round(len(joined) / rate, 3), 'sample_rate': rate}
+
+
+def sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+# ---------------------------------------------------------------- the registry
+
+def narration_key(provider: str, version: str | None, voices: dict, segments: list[dict], device: str, rate: float) -> str:
+    payload = {'provider': provider, 'version': version, 'voices': voices, 'segments': segments, 'device': device, 'rate': rate}
+    return sha(json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+
+
+def parse_voices(pairs: list[str] | None) -> dict:
+    voices = {}
+    for pair in pairs or []:
+        lang, _, path = pair.partition('=')
+        if not lang or not path:
+            raise VoiceError(f'--voice expects lang=path, not {pair!r}')
+        voices[lang] = path
+    return voices
+
+
+def synth_segment(entry: dict, provider: str, segment: dict, voices: dict, device: str, rate: float, out: Path, workdir: Path, index: int) -> dict:
+    text_file = workdir / f'segment-{index}.txt'
+    text_file.write_text(segment['text'], encoding='utf-8')
+    args = ['synth', '--provider', provider, '--lang', segment['lang'], '--device', device, '--text-file', text_file, '--out', out]
+    if provider == 'piper':
+        if segment['lang'] not in voices:
+            raise VoiceError(f'no Piper voice for {segment["lang"]}: give --voice {segment["lang"]}=PATH')
+        args += ['--model', voices[segment['lang']], '--length-scale', str(rate)]
+    elif provider == 'chatterbox' and voices.get('prompt'):
+        args += ['--audio-prompt', voices['prompt']]
+    result = adapter(entry['env'], *args)
+    if not result.get('ok'):
+        raise VoiceError(f'{provider} failed on a {segment["lang"]} segment: {result.get("error")}')
+    return result
+
+
+def speak(root: Path, script: str, lang: str, provider: str, envs: list[str] | None = None, voices: dict | None = None, lexicon: dict | None = None,
+          device: str = 'cpu', rate: float = 1.0, directory: str = 'Narration', source: dict | None = None) -> dict:
+    """Prepare a script, speak it with a local engine, and register the audio. Reuses an existing recording of the same text and voice."""
+    if provider not in PROVIDERS or not PROVIDERS[provider]['files']:
+        raise VoiceError(f'{provider!r} makes no audio file here (use piper or chatterbox; the browser voice needs none)')
+    if not PROVIDERS[provider].get('engine'):
+        raise VoiceError(f'{provider} is declared, not built')
+    if not directory or '\\' in directory or ':' in directory or any(p in {'', '.', '..'} for p in directory.split('/')):
+        raise VoiceError('the directory is a relative path inside the vault')
+    prepared = speech_text.prepare(script, lang, lexicon)
+    if prepared['problems']:
+        raise VoiceError('the script cannot be spoken yet: ' + '; '.join(prepared['problems']))
+    if not prepared['segments']:
+        raise VoiceError('the script has nothing to say')
+    root, voices = Path(root).resolve(), voices or {}
+    entry = find_env(detect(envs), provider)
+    version = entry['engines'].get(ENGINE_MODULE[PROVIDERS[provider]['engine']])
+    voice_ids = {seg['lang']: (Path(voices[seg['lang']]).name if provider == 'piper' and seg['lang'] in voices else seg['lang']) for seg in prepared['segments']}
+    key = narration_key(provider, version, voice_ids, prepared['segments'], device, rate)
+    folder = root / directory
+    record_file, wav_file = folder / f'{key[:16]}.narration.json', folder / f'{key[:16]}.wav'
+    if record_file.exists():
+        existing = json.loads(record_file.read_text(encoding='utf-8-sig'))
+        return {'key': key, 'reused': True, 'audio': existing['audio']['file'], 'seconds': existing['audio']['seconds']}
+    started = time.time()
+    with tempfile.TemporaryDirectory(prefix='narrate-') as tmp:
+        work, parts, details = Path(tmp), [], []
+        for index, segment in enumerate(prepared['segments']):
+            part = work / f'part-{index}.wav'
+            details.append(synth_segment(entry, provider, segment, voices, device, rate, part, work, index))
+            parts.append(part)
+        joined = work / 'joined.wav'
+        info = join_wavs(parts, joined)
+        folder.mkdir(parents=True, exist_ok=True)
+        if wav_file.exists():
+            raise VoiceError(f'{wav_file.name} already exists without a record; remove it or change the text')
+        shutil.copyfile(joined, wav_file)
+    synth_seconds = round(sum(d.get('synth_seconds', 0) for d in details), 3)
+    record = {'narration_schema': SCHEMA, 'key': key, 'provider': provider, 'provider_version': version, 'device': device, 'rate': rate, 'lang': lang,
+              'voices': voice_ids, 'segments': prepared['segments'], 'text_sha256': sha(prepared['text'].encode('utf-8')),
+              'audio': {'file': wav_file.relative_to(root).as_posix(), 'sha256': sha(wav_file.read_bytes()), **info},
+              'rtf': round(synth_seconds / info['seconds'], 3) if info['seconds'] else None, 'created': time.strftime('%Y-%m-%d'),
+              'basis': 'Spoken from the script by a speech engine. A recording is not a check of the content: the script is reviewed as text.'}
+    if source:
+        record['source'] = source
+    record_file.write_text(json.dumps(record, indent=2, ensure_ascii=False, sort_keys=True) + '\n', encoding='utf-8', newline='\n')
+    return {'key': key, 'reused': False, 'audio': record['audio']['file'], 'seconds': info['seconds'], 'rtf': record['rtf'], 'wall_seconds': round(time.time() - started, 1)}
+
+
+def discover(root: Path, directory: str = 'Narration') -> list[dict]:
+    folder = Path(root).resolve() / directory
+    out = []
+    for path in sorted(folder.glob('*.narration.json')) if folder.is_dir() else []:
+        try:
+            record = json.loads(path.read_text(encoding='utf-8-sig'))
+        except (OSError, ValueError):
+            continue
+        if isinstance(record, dict) and record.get('narration_schema') == SCHEMA:
+            out.append(record)
+    return out
+
+
+# ---------------------------------------------------------------- speech to text and scoring
+
+def transcribe(audio: Path, envs: list[str] | None = None, lang: str | None = None, model: str = 'small', device: str = 'cpu', words: bool = False) -> dict:
+    """Text from a recording, with word times when asked. The text is the learner's answer to review, never evidence by itself."""
+    entry = find_env(detect(envs), 'whisper')
+    with tempfile.TemporaryDirectory(prefix='transcribe-') as tmp:
+        out = Path(tmp) / 'result.json'
+        args = ['transcribe', '--audio', audio, '--model', model, '--device', device, '--out', out] + (['--lang', lang] if lang else []) + (['--words'] if words else [])
+        result = adapter(entry['env'], *args)
+        if not result.get('ok'):
+            raise VoiceError('transcription failed: ' + str(result.get('error')))
+        return json.loads(out.read_text(encoding='utf-8'))
+
+
+def normalize(text: str) -> str:
+    """Lower-case with Turkish dotted and dotless i handled, punctuation removed, for comparing what was said with what was meant."""
+    text = text.replace('İ', 'i').replace('I', 'ı').lower()
+    return ' '.join(re.findall(r'\w+', text))
+
+
+def _distance(a: list, b: list) -> int:
+    previous = list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        current = [i]
+        for j, y in enumerate(b, 1):
+            current.append(min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (x != y)))
+        previous = current
+    return previous[-1]
+
+
+def error_rates(reference: str, heard: str) -> dict:
+    """Word and character error rates of a transcript against the intended text. A proxy for intelligibility, not a replacement for listening."""
+    ref, hyp = normalize(reference).split(), normalize(heard).split()
+    ref_chars, hyp_chars = list(normalize(reference).replace(' ', '')), list(normalize(heard).replace(' ', ''))
+    return {'wer': round(_distance(ref, hyp) / len(ref), 3) if ref else None, 'cer': round(_distance(ref_chars, hyp_chars) / len(ref_chars), 3) if ref_chars else None,
+            'words': len(ref)}
+
+
+# ---------------------------------------------------------------- bake-off
+
+def bakeoff(samples_file: Path, outdir: Path, providers: dict, envs: list[str] | None, whisper_model: str = 'small', only: list[str] | None = None,
+            lexicon: dict | None = None) -> dict:
+    """Run every sample through every provider and measure what a decision needs. ``providers`` maps a provider name to
+    ``{'voices': {lang: path}, 'device': 'cpu'|'cuda', 'languages': [...]}``. Audio is kept for listening; the listening rating is left blank on purpose."""
+    data = json.loads(Path(samples_file).read_text(encoding='utf-8-sig'))
+    outdir = Path(outdir)
+    found = detect(envs)
+    rows = []
+    for name, config in providers.items():
+        entry = find_env(found, name)
+        folder = outdir / name
+        folder.mkdir(parents=True, exist_ok=True)
+        for sample in data['samples']:
+            if (only and sample['id'] not in only) or sample['lang'] not in config.get('languages', [sample['lang']]):
+                continue
+            prepared = speech_text.prepare(sample['script'], sample['lang'], lexicon)
+            row = {'provider': name, 'sample': sample['id'], 'kind': sample['kind'], 'lang': sample['lang'], 'device': config.get('device', 'cpu'),
+                   'words': speech_text.words(prepared['text']), 'problems': prepared['problems']}
+            if prepared['problems']:
+                rows.append(dict(row, error='; '.join(prepared['problems'])))
+                continue
+            with tempfile.TemporaryDirectory(prefix='bake-') as tmp:
+                parts, details = [], []
+                try:
+                    for index, segment in enumerate(prepared['segments']):
+                        part = Path(tmp) / f'part-{index}.wav'
+                        details.append(synth_segment(entry, name, segment, config.get('voices', {}), config.get('device', 'cpu'), 1.0, part, Path(tmp), index))
+                        parts.append(part)
+                    target = folder / f'{sample["id"]}.wav'
+                    info = join_wavs(parts, target)
+                except VoiceError as exc:
+                    rows.append(dict(row, error=str(exc)))
+                    continue
+            synth = round(sum(d['synth_seconds'] for d in details), 3)
+            row.update({'audio_seconds': info['seconds'], 'synth_seconds': synth, 'rtf': round(synth / info['seconds'], 3),
+                        'cold_start_seconds': round(max(d['load_seconds'] for d in details), 3), 'peak_vram_mb': max((d.get('peak_vram_mb') or 0) for d in details) or None,
+                        'engine_versions': details[0].get('engine_versions'), 'audio': target.relative_to(outdir).as_posix(), 'spoken_text': prepared['text']})
+            try:
+                heard = transcribe(target, envs, sample['lang'], whisper_model)
+                # Whisper writes digits where the script says words; spell them the same way before comparing, or the voice is blamed for the formatting.
+                row.update({'heard': heard['text'], 'heard_language': heard['language'],
+                            **error_rates(prepared['text'], speech_text.spell_numbers(heard['text'], sample['lang']))})
+            except VoiceError as exc:
+                row['round_trip_error'] = str(exc)
+            rows.append(row)
+    report = {'bakeoff_schema': 1, 'whisper_model': whisper_model, 'created': time.strftime('%Y-%m-%d'), 'rows': rows,
+              'decision_rule': ['Turkish intelligibility to your ear', 'runs on this machine (CPU or the 6 GB GPU)', 'licence permits the future app', 'stability'],
+              'caveat': 'Word error rate against a Whisper transcript measures how well Whisper recovered the text, not how a person hears it; it can hide a voice that is clear to Whisper and odd to a listener. Your rating comes first.'}
+    outdir.mkdir(parents=True, exist_ok=True)
+    (outdir / 'report.json').write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n', encoding='utf-8', newline='\n')
+    (outdir / 'report.md').write_text(report_markdown(report), encoding='utf-8', newline='\n')
+    return report
+
+
+def report_markdown(report: dict) -> str:
+    lines = ['# Voice bake-off', '', f'Speech-to-text for the round trip: faster-whisper `{report["whisper_model"]}`. {report["caveat"]}', '',
+             '| Provider | Sample | Lang | Audio s | Synth s | RTF | Cold start s | VRAM MB | WER | CER | Your rating (1-5) |', '|---|---|---|---|---|---|---|---|---|---|---|']
+    for r in report['rows']:
+        if r.get('error'):
+            lines.append(f'| {r["provider"]} | {r["sample"]} | {r["lang"]} | failed: {r["error"][:80]} | | | | | | | |')
+            continue
+        lines.append(f'| {r["provider"]} | {r["sample"]} | {r["lang"]} | {r["audio_seconds"]} | {r["synth_seconds"]} | {r["rtf"]} | {r["cold_start_seconds"]} | '
+                     f'{r["peak_vram_mb"] or "-"} | {r.get("wer", "-")} | {r.get("cer", "-")} | |')
+    lines += ['', 'Decision rule, in order: ' + '; '.join(report['decision_rule']) + '.', '']
+    return '\n'.join(lines)
+
+
+# ---------------------------------------------------------------- command line
+
+def main(argv=None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding='utf-8')
+        except (AttributeError, ValueError):
+            pass
+    parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
+    sub = parser.add_subparsers(dest='command', required=True)
+
+    def common(p):
+        p.add_argument('--env', action='append', default=[], help=f'a virtual environment holding an engine (repeatable; or {ENV_VARIABLE})')
+
+    p = sub.add_parser('providers', help='what each provider is and which engines are installed here')
+    common(p)
+    p = sub.add_parser('prepare', help='the segments a script would be spoken as (exit 1 if a span cannot be said)')
+    p.add_argument('--lang', required=True)
+    p.add_argument('--text')
+    p.add_argument('--text-file', type=Path)
+    p.add_argument('--lexicon', type=Path)
+    p = sub.add_parser('speak', help='speak a script and register the audio')
+    common(p)
+    p.add_argument('--root', type=Path, required=True)
+    p.add_argument('--provider', choices=('piper', 'chatterbox'), required=True)
+    p.add_argument('--lang', required=True)
+    p.add_argument('--text')
+    p.add_argument('--text-file', type=Path)
+    p.add_argument('--voice', action='append', default=[], help='lang=path (Piper voices) or prompt=path (Chatterbox reference recording)')
+    p.add_argument('--lexicon', type=Path)
+    p.add_argument('--device', choices=('cpu', 'cuda'), default='cpu')
+    p.add_argument('--rate', type=float, default=1.0)
+    p.add_argument('--directory', default='Narration')
+    p = sub.add_parser('list', help='recordings in the registry')
+    p.add_argument('--root', type=Path, required=True)
+    p = sub.add_parser('transcribe', help='text from a recording')
+    common(p)
+    p.add_argument('audio', type=Path)
+    p.add_argument('--lang')
+    p.add_argument('--model', default='small')
+    p.add_argument('--device', default='cpu')
+    p.add_argument('--words', action='store_true')
+    p = sub.add_parser('bakeoff', help='run the sample scripts through each provider and write a report')
+    common(p)
+    p.add_argument('--samples', type=Path, default=Path(__file__).resolve().parent.parent / 'assets/speech/bakeoff-samples.json')
+    p.add_argument('--out', type=Path, required=True)
+    p.add_argument('--piper-voice', action='append', default=[], help='lang=path')
+    p.add_argument('--chatterbox-device', choices=('cpu', 'cuda'))
+    p.add_argument('--providers', default='piper,chatterbox')
+    p.add_argument('--whisper-model', default='small')
+    p.add_argument('--only', action='append', default=[])
+    p.add_argument('--lexicon', type=Path)
+    args = parser.parse_args(argv)
+    try:
+        if args.command == 'providers':
+            print(json.dumps({'providers': PROVIDERS, 'installed': [{**e, 'env': str(e['env'])} for e in detect(args.env)]}, indent=2, ensure_ascii=False))
+            return 0
+        if args.command in ('prepare', 'speak'):
+            script = args.text if args.text is not None else (args.text_file.read_text(encoding='utf-8') if args.text_file else None)
+            if script is None:
+                raise VoiceError('give --text or --text-file')
+            lexicon = speech_text.load_lexicon(args.lexicon)
+            if args.command == 'prepare':
+                prepared = speech_text.prepare(script, args.lang, lexicon)
+                print(json.dumps(prepared, indent=2, ensure_ascii=False))
+                return 1 if prepared['problems'] else 0
+            print(json.dumps(speak(args.root, script, args.lang, args.provider, args.env, parse_voices(args.voice), lexicon, args.device, args.rate, args.directory),
+                             indent=2, ensure_ascii=False))
+            return 0
+        if args.command == 'list':
+            print(json.dumps([{k: r[k] for k in ('key', 'provider', 'lang', 'created')} | {'audio': r['audio']['file'], 'seconds': r['audio']['seconds']} for r in discover(args.root)], indent=2))
+            return 0
+        if args.command == 'transcribe':
+            print(json.dumps(transcribe(args.audio, args.env, args.lang, args.model, args.device, args.words), indent=2, ensure_ascii=False))
+            return 0
+        if args.command == 'bakeoff':
+            providers = {}
+            for name in [n for n in args.providers.split(',') if n]:
+                if name == 'piper':
+                    voices = parse_voices(args.piper_voice)
+                    providers[name] = {'voices': voices, 'device': 'cpu', 'languages': sorted(voices)}
+                elif name == 'chatterbox':
+                    providers[name] = {'voices': {}, 'device': args.chatterbox_device or 'cpu', 'languages': ['en', 'tr']}
+                else:
+                    raise VoiceError(f'{name} is not a provider that can be compared')
+            report = bakeoff(args.samples, args.out, providers, args.env, args.whisper_model, args.only, speech_text.load_lexicon(args.lexicon))
+            print(report_markdown(report))
+            return 0
+    except (VoiceError, speech_text.Unspeakable, OSError, ValueError) as exc:
+        print(f'error: {exc}', file=sys.stderr)
+        return 2
+    return 2
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

@@ -1,7 +1,7 @@
 /* Research OS runtime v1. No host privileges, network calls or authoritative browser storage. */
 (function (root) {
   'use strict';
-  const VOCABULARY = 'concept definition equation derivation intuition warning evidence question mcq multi numeric matching ordering free-response hint solution code output figure widget checkpoint recall connection open-question decision legacy predict glossary resource'.split(' ');
+  const VOCABULARY = 'concept definition equation derivation intuition warning evidence question mcq multi numeric matching ordering free-response hint solution code output figure widget checkpoint recall connection open-question decision legacy predict glossary resource listen'.split(' ');
   function equal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
   function assess(q, response) {
     if (!q || !VOCABULARY.includes(q.kind)) throw new Error('Unsupported question kind');
@@ -654,6 +654,7 @@
       for (const el of within(scope, '[data-ros="checkpoint"]')) el.append(button('Record checkpoint completed', () => emit('checkpoint', null, el.id || 'checkpoint')));
       for (const widget of within(scope, '[data-ros="widget"]')) buildWidget(widget);
       for (const el of within(scope, '[data-ros="resource"]')) buildResources(el);
+      for (const el of within(scope, '[data-ros="listen"]')) buildRecording(el);
       for (const el of within(scope, '[data-extension]')) { const factory = extensions.get(el.getAttribute('data-extension')); if (factory) runExtension(el, factory); }
       for (const nav of within(scope, '.ros-toc')) setupToc(nav);
     }
@@ -938,6 +939,34 @@
         }
         li.append(' ', actions);
       }
+    }
+    // Recorded narration (Teaching Card `audio`): a pre-rendered file the learner plays. Nothing loads until they press play. Where the file cannot be reached
+    // (a sandboxed Obsidian view cannot open vault files) the page says so, and the Listen control keeps reading the section with the device voice.
+    const RECORDING = /^(?:data:audio\/(?:wav|x-wav|ogg|mpeg);base64,[A-Za-z0-9+\/=]+|(?:\.\.\/)*[A-Za-z0-9][A-Za-z0-9%._\/-]*\.(?:wav|ogg|mp3))$/;
+    function languageName(code) {
+      try { return new Intl.DisplayNames([code], {type: 'language'}).of(code) || code; } catch (_) { return code; }
+    }
+    function buildRecording(el) {
+      if (el.hasAttribute('data-ros-recording')) return;
+      const code = el.querySelector('code'), id = code ? code.textContent.trim() : '';
+      const urls = state && state.audio_urls && state.audio_urls[id];
+      if (!urls || typeof urls !== 'object') return;
+      el.setAttribute('data-ros-recording', id);
+      if (code && code.parentElement) code.parentElement.remove();
+      const list = node('div'); list.className = 'ros-recording';
+      for (const lang of Object.keys(urls)) {
+        const url = urls[lang];
+        if (typeof url !== 'string' || !RECORDING.test(url)) continue;
+        const row = node('p'); row.className = 'ros-recording-row';
+        const label = node('span', languageName(lang)); label.className = 'ros-recording-label';
+        const audio = node('audio'); audio.controls = true; audio.preload = 'none'; audio.src = url; audio.setAttribute('aria-label', 'Recorded narration, ' + languageName(lang));
+        audio.addEventListener('error', () => {
+          const note = node('span', 'This recording could not be loaded here. The Listen control reads the section with your device voice instead.');
+          note.className = 'ros-recording-note'; note.setAttribute('role', 'status'); audio.replaceWith(note);
+        });
+        row.append(label, ' ', audio); list.append(row);
+      }
+      if (list.children.length) (el.querySelector('.ros-callout-body') || el).append(list); else el.remove();
     }
     doc.addEventListener('click', event => {
       const link = event.target && event.target.closest ? event.target.closest('a.ros-note-link[data-ros-target]') : null;

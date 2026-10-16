@@ -57,7 +57,9 @@ Concept first, project second, and checked rather than advised (`references/TUTO
    (`core_idea`), a `predict` and a `retrieve` prompt, the `visual` or why there is none, and a `spoken` script written to be
    heard. The page shows the idea first, then the word strip for terms the block introduces, then the prose. Keep paragraphs
    short and say the idea before the formula. Check with `python scripts/teaching_lint.py blocks --root <vault> <session>`;
-   the lint is mechanical and does not judge whether the teaching is good. For outside material (a video, a simulation, an article)
+   the lint is mechanical and does not judge whether the teaching is good. Put formulas in the spoken script as `{{math: ...}}` and
+   other-language stretches as `{{en: ...}}` or `{{tr: ...}}`; `python scripts/voice.py prepare --lang tr --text-file script.txt`
+   shows what would be said, and `voice.py speak` records it for the card's `audio` (`references/VOICE_PROTOCOL.md`). For outside material (a video, a simulation, an article)
    use only resources the registry marks `vetted` (`python scripts/resources.py --vault <vault> list --concept <id> --status vetted`; the
    receipt also lists them under `retrieval.resources`), snapshot them into `card.resources`, and never vet your own find.
 

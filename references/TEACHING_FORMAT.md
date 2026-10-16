@@ -26,7 +26,8 @@ A teaching block (`html_sessions.py declare-block`) may carry a `card`:
 | `retrieve` | Optional prompt shown collapsed at the end of the section. |
 | `visual` / `no_visual_reason` | The id of the figure or widget that carries the idea, or the reason there is none. Not both. |
 | `resources` | Up to six links to vetted outside material (`references/RESOURCE_PROTOCOL.md`), each a snapshot from the registry: id, title, https url, kind, language, publisher, licence, attribution. Shown as a collapsed **Go further** list; nothing loads until the learner clicks. |
-| `spoken` | Language code → a script written to be heard: no notation, formulas said in words, under about 90 seconds. Narration reads this, never the formula text. |
+| `spoken` | Language code → a script written to be heard, under about 90 seconds. No raw notation: a formula goes in a `{{math: ...}}` span that `speech_text.py` says in words (English and Turkish), and a stretch in another language goes in `{{en: ...}}` or `{{tr: ...}}` so that language's voice speaks it. A formula the rules cannot say without guessing is reported (`SPOKEN_UNSPEAKABLE`), and you write it in words. Narration reads this, never the formula text. See `references/VOICE_PROTOCOL.md`. |
+| `audio` | Language code → a recording in the vault (`Narration/<key>.wav`, from `voice.py speak`). The page shows a **Recorded narration** player per language; nothing plays until pressed, and where a page cannot reach the file it says so and the Listen control reads the section with the device voice. |
 
 A card is optional and per block. A block without one renders exactly as before, so existing sessions do not change. With one,
 the page shows, under the heading and in this order: **In one idea**, **Predict first**, the **word strip**, then your prose; and a
@@ -64,7 +65,8 @@ no unfilled placeholder. It does not read your mind: a note that lints clean can
 `CARD_MISSING`, `CORE_IDEA_LONG`, `PREDICT_MISSING`, `RETRIEVE_MISSING`, `NO_VISUAL`, `FORMULA_FIRST`, `FORMULA_DENSITY` (more than
 three display formulas), `LONG_PARAGRAPH` (over 80 words), `TERM_BEFORE_INTRO` (a term used in a section before the one that
 introduces it), `UNDECLARED_TERM` (a glossary term used but neither declared nor known to the learner), and for spoken scripts
-`SPOKEN_MISSING`, `SPOKEN_LANGUAGE`, `SPOKEN_HAS_MATH`, `SPOKEN_LONG`. A malformed card is an error from the gate. The limits are
+`SPOKEN_MISSING`, `SPOKEN_LANGUAGE`, `SPOKEN_HAS_MATH` (notation outside a span), `SPOKEN_SPAN` (an unclosed span), `SPOKEN_UNSPEAKABLE` (a formula the rules cannot say),
+`SPOKEN_MATH_LANGUAGE` (a formula span in a language with no rules) and `SPOKEN_LONG` (counted on the words that will be said, formulas included). A malformed card is an error from the gate. The limits are
 conventions to keep sections readable, not findings of research; change them in the script if they do not suit you.
 
 ## Why this shape
