@@ -117,6 +117,7 @@ required = [
     ROOT / "scripts" / "diagram_spec.py",
     ROOT / "scripts" / "animate.py",
     ROOT / "scripts" / "fsrs_schedule.py",
+    ROOT / "scripts" / "notebook_coverage.py",
     ROOT / "references" / "FSRS_PROTOCOL.md",
     ROOT / "scripts" / "speech_text.py",
     ROOT / "scripts" / "voice.py",

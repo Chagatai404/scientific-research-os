@@ -98,3 +98,13 @@ python scripts/code_walkthrough.py --repo <repo> levels <record.json>           
 python scripts/code_walkthrough.py --repo <repo> ownership-gaps <record.json>          # proposals only
 python scripts/code_walkthrough.py --repo <repo> blocks <record.json>                  # teaching-block declarations
 ```
+
+## Notebook coverage in research repos (v0.9.5)
+
+Some research repositories keep notebooks as **AI-written documentation of completed, tested implementations**: reusable code lives in the package with tests, and a notebook later explains what was done.
+Treat such a notebook's prose and stored outputs as claims to check against the code, not as authority, and never add a notebook while the work it would describe is in progress.
+
+`python scripts/notebook_coverage.py scan --repo <repo>` (read-only) lists the source modules no notebook covers; `ledger --repo <repo> [--write]` regenerates `research/NOTEBOOK_COVERAGE.md`, a derived file that records when each gap was first
+seen and when a notebook closed it. Evidence is read from the repository: **covered** means a notebook's code imports the module (directly, as a submodule or through the package's re-exports); **mentioned** means a notebook names it in backticks or as a path
+without importing it; **tested** means the test file the module map names exists; the **status** is the module map's own word. The tool never writes, runs or changes a notebook, never decides a unit is complete, and writes only the ledger, only with `--write`.
+After a unit is completed and its tests pass, run it and tell the researcher what is new; whether a gap deserves a notebook is theirs to decide.

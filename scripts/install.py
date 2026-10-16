@@ -44,7 +44,7 @@ GRAPH_SKILLS = {"tutor", "course-study", "science-visualize", "research-session"
 RENAMED_SKILLS = {"visualize": "science-visualize"}
 GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py", "migrate_learning.py", "research.py", "visuals.py", "tutor_contract.py", "tutor_plan.py", "bootstrap.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
-                 "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py", "library_index.py", "terms.py", "teaching_lint.py", "code_walkthrough.py", "resources.py", "diagram_spec.py", "animate.py", "fsrs_schedule.py", "speech_text.py", "voice.py", "voice_adapter.py",
+                 "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py", "library_index.py", "terms.py", "teaching_lint.py", "code_walkthrough.py", "resources.py", "diagram_spec.py", "animate.py", "fsrs_schedule.py", "notebook_coverage.py", "speech_text.py", "voice.py", "voice_adapter.py",
                  "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py",
                  "context_kernel.py", "scientific_verify.py", "chembio_verify.py", "structure_verify.py", "rich_text.py", "visual_assets.py", "tutor_gate.py", "supervision.py",
                  # tasks.py gates reconciliation on the library inventory receipt that scout.py produces.

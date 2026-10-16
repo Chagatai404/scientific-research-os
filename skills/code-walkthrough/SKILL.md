@@ -44,6 +44,11 @@ See `references/CONTEXT_PROTOCOL.md`. Read the Student Brief in the receipt and 
    worktree and only if the researcher approves.
 6. **Evidence comes from the learner's answers**, reviewed against criteria and proposed to the ledger (`tutor_gate.py evidence`); your
    explanation and their viewing are not evidence.
+7. **Keep the notebook ledger current (research repos with a `notebooks/` folder).** When a unit is completed and its tests pass, run
+   `python scripts/notebook_coverage.py ledger --repo <repo>` (a dry run: it reports new and closed gaps), and, in a repo that already
+   keeps `research/NOTEBOOK_COVERAGE.md`, the same with `--write` to regenerate it. Tell the researcher which gaps are new. In that repo notebooks
+   are AI-written documentation of *finished* work, so never create or change one unasked, and never decide a unit is complete: the
+   researcher does. The ledger is a derived file; leave it uncommitted for them to review. See `references/CODE_LEARNING_PROTOCOL.md`.
 
 ## Limits you must state
 
