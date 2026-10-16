@@ -57,6 +57,15 @@ Back up the vault or commit it. Run every command without `--apply` first.
 - **Chemistry and biology**: exact checks for formulas, molar mass, stoichiometry and sequences; reviewer agents; audit skills.
 - **Code walkthroughs** for consequential changes, default-on; skipping one records an open ownership gap.
 - **Animation** (`animate.py`) and **voice** (`voice.py`), both optional and both detecting engines you installed.
+- **Review scheduling** (`fsrs_schedule.py`, `references/FSRS_PROTOCOL.md`): FSRS-6 estimates when each learned item is likely to be forgotten, from checked
+  attempts only (recognition and open-notes attempts do not count, and "Easy" is never produced). It is a derived view with generic parameters, not fitted
+  to you, and it never replaces a `Next review` you wrote. `fsrs_schedule.py due` lists what is due.
+- **Notebook coverage** (`notebook_coverage.py`, research repos only): lists completed, tested modules that no notebook imports and keeps a derived
+  `research/NOTEBOOK_COVERAGE.md`. Notebooks there are AI-written documentation of finished work; this never creates or edits one and never decides a unit is complete.
+- **Notebook trace** (`notebook_trace.py`, research repos only): runs notebooks *you* list under `approved_notebooks` in a scratch clone with its own `uv`
+  environment, and reports whether the fresh output matches the stored one or is stale. An approval may also name read-only `inputs` (ignored data copied into the
+  copy) and `groups` (the project's own dependency groups, installed into the copy only, which can be large downloads). A mutation exercise changes one
+  string in the copy and shows what moved. Nothing runs without `--run`, and the repository is never changed.
 
 ## What was checked, and what was not
 
@@ -68,6 +77,9 @@ lessons (one chemistry, one biology) from checked claims through a diagram, a sp
 
 - **Voice quality.** Both local engines tried were judged unnatural by ear, in English and Turkish. The recording feature works; no engine has passed the
   listening test, and Chatterbox was run on CPU only.
+- **Scheduling and notebooks.** The FSRS code matches the reference library on 1,260 reviews, but its parameters are defaults, not fitted to you. The notebook
+  trace ran against one real repository (`ams-ecal-qml`): notebook 08 matched, and 02, 03 and 05 came back stale without the cause being investigated. The
+  mutation exercise was tested with a fake runner, not on real code, and dependency `groups` were installed in a scratch copy but no notebook run has needed them.
 - **The Turkish phrasings** of spoken formulas were not reviewed by a native speaker.
 - **Obsidian.** The companion's `open-resource` handler and the recorded-narration fallback were tested in code, not inside a running Obsidian. YouTube playback
   and PhET embeds were not played end to end.

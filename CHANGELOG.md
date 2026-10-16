@@ -2,7 +2,7 @@
 
 ## 0.9.5 - 2026-10-16 - Teaching Depth, Domain Breadth, Voice
 
-Prepared locally on the `v0.9.5-teaching-voice-bio-chem` branch; not merged, pushed or tagged. The Obsidian companion is 0.3.0.
+Developed on the `v0.9.5-teaching-voice-bio-chem` branch and merged to `main`; not tagged. Release gates on the final state: 19 pass, 0 fail, 1 skipped. The Obsidian companion is 0.3.0.
 Upgrade notes: [docs/MIGRATION_v0.9.5.md](docs/MIGRATION_v0.9.5.md). The plan and what was verified: [docs/plans/v0.9.5-plan.md](docs/plans/v0.9.5-plan.md).
 
 - **Teaching Cards.** A section declares its one idea, a prediction prompt, a word strip, vetted outside resources, a spoken script and a recording;
@@ -20,7 +20,7 @@ Upgrade notes: [docs/MIGRATION_v0.9.5.md](docs/MIGRATION_v0.9.5.md). The plan an
   engines; a recorded-narration player on the page. **No local voice passed the listening test**; see `references/VOICE_PROTOCOL.md`.
 - **FSRS scheduling.** `fsrs_schedule.py` estimates when each learned item is likely to be forgotten (FSRS-6, matching the reference library on 1,260 reviews) from checked attempts; a derived estimate with generic parameters that never replaces a human `Next review`. See `references/FSRS_PROTOCOL.md`.
 - **Notebook coverage.** `notebook_coverage.py` lists the completed, tested modules of a research repo that no notebook covers and keeps a derived ledger of when each gap appeared and closed; it never creates or changes a notebook. See `references/CODE_LEARNING_PROTOCOL.md`.
-- **Notebook trace.** `notebook_trace.py` runs notebooks the researcher lists in a scratch copy with its own environment, compares fresh outputs with the stored ones (stale / matches), and runs one-string mutation exercises on the copy; never on the repository. See `references/CODE_LEARNING_PROTOCOL.md`.
+- **Notebook trace.** `notebook_trace.py` runs notebooks the researcher lists in a scratch copy with its own environment, compares fresh outputs with the stored ones (stale / matches), and runs one-string mutation exercises on the copy; never on the repository. An approval can name read-only `inputs` and the project's own dependency `groups`, installed into the copy only. See `references/CODE_LEARNING_PROTOCOL.md`.
 - **Renamed skill.** `visualize` is now `science-visualize`; the installer retires the old directory instead of deleting it.
 - **Rollout.** `html_design_rollout.py` now recognises a v0.9.0 installation as an upgrade baseline.
 - **Not verified.** Audible voice quality, Chatterbox on a GPU, playback inside a running Obsidian, ManimGX at 1080p60, YouTube and PhET embeds end to end,
