@@ -41,6 +41,7 @@ FORBIDDEN_CALLS = {'eval', 'exec', 'compile', '__import__'}
 FORBIDDEN_ATTRS = {('os', 'system'), ('os', 'popen'), ('os', 'remove'), ('os', 'unlink'), ('os', 'rmdir'), ('os', 'rename'), ('os', 'execv'),
                    ('os', 'spawnl'), ('os', 'startfile')}
 RANDOM_MODULES = {'random', 'secrets'}
+ROW_ENVIRONMENT = re.compile(r'\\begin\{(?:[pbvBV]?matrix|smallmatrix|aligned|align\*?|gathered|cases|array|split)\}')
 # Measured on this machine (2026-10-16, Windows, Python 3.11 venv): manim-slides 5.7.0 raises AttributeError (ManimConfig has no attribute
 # write_to_movie) when constructing a Slide under Manim Community 0.22.0, and works under 0.19.0.
 KNOWN_INCOMPATIBLE = [({'manim': '0.22.0', 'manim-slides': '5.7.0'},
@@ -198,6 +199,8 @@ def lint_source(text: str, spec: dict | None = None) -> dict:
                 errors.append(f'line {node.lineno}: imports {name}, which a teaching scene does not need (network, processes and file operations are blocked)')
             if name in RANDOM_MODULES:
                 uses_random = True
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and ROW_ENVIRONMENT.search(node.value) and '&' in node.value and ('\\\\' not in node.value):
+            warnings.append(f'line {node.lineno}: a LaTeX matrix or aligned environment has & but no row break (two backslashes): if rows are meant, check that the backslashes survived the editor or shell that wrote the file')
         if isinstance(node, ast.ClassDef):
             classes.append(node.name)
         if isinstance(node, ast.Call):
@@ -274,14 +277,69 @@ def keyframes(video: Path, strip: Path, poster: Path | None = None, count: int =
     return {'made': made, 'reason': None if len(made) == (2 if poster is not None else 1) else 'ffmpeg did not produce every frame'}
 
 
+EDGE_BAND = 2          # pixels from each side that count as the frame's edge
+EDGE_PIXELS = 12       # band pixels differing from the background before a side is reported
+EDGE_DELTA = 40        # grey-level difference from the background that counts as content
+
+
+def edge_contact(video: Path, info: dict | None = None, samples: int = 12) -> dict:
+    """Frames where drawn content touches the edge of the picture: the cropping ManimGX's ``inspect`` cannot see in 3D scenes.
+
+    Samples ``samples`` evenly spaced frames as grey pixels and compares each side's outer band with the background, taken from the first frame's corners.
+    Content that is meant to bleed off the frame (a full-bleed background) also reports; that is a prompt to look, not a verdict.
+    """
+    info = info or probe(video)
+    if not shutil.which('ffmpeg') or not info.get('duration') or not info.get('width'):
+        return {'checked': False, 'reason': 'ffmpeg or the video size was not available', 'touching': []}
+    width, height, size = info['width'], info['height'], info['width'] * info['height']
+    with tempfile.TemporaryDirectory(prefix='edge-') as tmp:
+        raw = Path(tmp) / 'frames.gray'
+        done = run_command(['ffmpeg', '-y', '-loglevel', 'error', '-i', str(video), '-vf', f'fps={samples / info["duration"]:.6f},format=gray', '-frames:v', str(samples),
+                            '-f', 'rawvideo', str(raw)], timeout=300)
+        if done['code'] != 0 or not raw.exists():
+            return {'checked': False, 'reason': 'ffmpeg could not read the frames', 'touching': []}
+        data = raw.read_bytes()
+    frames = [data[i * size:(i + 1) * size] for i in range(len(data) // size)]
+    if not frames:
+        return {'checked': False, 'reason': 'no frames were read', 'touching': []}
+    first = frames[0]
+    corners = sorted([first[0], first[width - 1], first[size - width], first[size - 1]])
+    background = corners[1]
+    touching = []
+    for index, frame in enumerate(frames):
+        rows = [frame[y * width:(y + 1) * width] for y in range(height)]
+        sides = {'top': frame[:EDGE_BAND * width], 'bottom': frame[size - EDGE_BAND * width:],
+                 'left': b''.join(row[:EDGE_BAND] for row in rows), 'right': b''.join(row[-EDGE_BAND:] for row in rows)}
+        hits = {name: sum(1 for b in band if abs(b - background) > EDGE_DELTA) for name, band in sides.items()}
+        hits = {name: n for name, n in hits.items() if n >= EDGE_PIXELS}
+        if hits:
+            touching.append({'t': round(index * info['duration'] / len(frames), 2), 'sides': hits})
+    return {'checked': True, 'frames': len(frames), 'touching': touching, 'background': background}
+
+
 # ---------------------------------------------------------------- choosing and running a backend
 
+def incompatibility(entry: dict) -> str | None:
+    """Why this Manim Community environment cannot make slides, if a pairing measured to fail is installed in it."""
+    for pins, message in KNOWN_INCOMPATIBLE:
+        if entry.get('version') and entry.get('manim_slides') and pins.get('manim') == entry['version'] and pins.get('manim-slides') == entry['manim_slides']:
+            return message
+    return None
+
+
 def choose(spec: dict, envs: list[str] | None = None, backend: str | None = None) -> dict | None:
-    """The first usable backend honouring the spec's preference. ManimGX before Manim Community unless the spec asks otherwise."""
+    """The first usable backend honouring the spec's preference. ManimGX before Manim Community unless the spec asks otherwise.
+
+    A spec that wants slides needs Manim Community with ``manim-slides`` in the same environment, and an environment whose pairing is known to fail
+    is skipped, so a working slides environment is chosen over a newer broken one.
+    """
     wanted = backend or spec.get('backend', 'auto')
     usable = capabilities(envs)['backends']
     if spec.get('slides') and wanted == 'auto':
         wanted = 'manim'
+    if spec.get('slides') and wanted == 'manim':
+        working = [e for e in usable if e['backend'] == 'manim' and e.get('manim_slides') and not incompatibility(e)]
+        usable = working or [e for e in usable if e['backend'] == 'manim' and not incompatibility(e)]
     for entry in usable:
         if wanted in ('auto', entry['backend']):
             if wanted == 'auto' and entry['backend'] != 'manimgx' and any(u['backend'] == 'manimgx' for u in usable):
@@ -325,6 +383,14 @@ def render_with(entry: dict, spec: dict, scene: Path, work: Path, allow_layout_p
                 shutil.move(str(produced[-1]), out)
     if done['code'] != 0 or not out.exists():
         raise AnimationError(f'{entry["backend"]} render failed (exit {done["code"]}): ' + _tail(done['stderr'] or done['stdout']))
+    if not layout['checked']:
+        # ManimGX inspect skips 3D scenes and Manim Community has no layout check, so look at the frames themselves for cropping.
+        edges = edge_contact(out)
+        layout['edge_contact'] = edges
+        if edges['touching']:
+            layout['problems'] = layout['problems'] + [f'about t={hit["t"]}s: content touches the {" and ".join(hit["sides"])} edge of the frame' for hit in edges['touching']]
+            if not allow_layout_problems:
+                raise LayoutProblems(layout)
     result = {'video': out, 'commands': commands, 'layout': layout, 'seconds': done['seconds']}
     if spec.get('slides') and entry['backend'] == 'manim':
         env = Path(entry['env']) if entry['env'] != 'PATH' else None
@@ -374,7 +440,7 @@ def render(spec_path: Path, root: Path, *, envs: list[str] | None = None, backen
     if entry is None:
         return {'visual_id': spec['id'], 'rendered': False, 'reused': False, 'missing': ['manimgx or manim (Community)' + (' with manim-slides' if spec.get('slides') else '')],
                 'fallback': 'No backend can render this scene here. Return the scene source and an unrendered storyboard, or key-frame panels, and say that nothing was rendered.',
-                'warnings': lint['warnings']}
+                'notes': capabilities(envs)['notes'], 'warnings': lint['warnings']}
     started = time.time()
     with tempfile.TemporaryDirectory(prefix='animate-') as tmp:
         work = Path(tmp)

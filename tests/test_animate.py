@@ -37,9 +37,9 @@ PROBE = json.dumps({'streams': [{'width': 1280, 'height': 720, 'r_frame_rate': '
 class Fake:
     """Stands in for every program animate.py starts. ``layout`` is what ManimGX's inspect says; ``fail`` makes the render step fail."""
 
-    def __init__(self, layout='layout: no problems in 12 samples', inspect_code=0, fail=False, slides='5.7.0', versions=None):
+    def __init__(self, layout='layout: no problems in 12 samples', inspect_code=0, fail=False, slides='5.7.0', versions=None, probe=PROBE, raw=None):
         self.calls, self.layout, self.inspect_code, self.fail, self.slides = [], layout, inspect_code, fail, slides
-        self.versions = versions or {}
+        self.versions, self.probe, self.raw = versions or {}, probe, raw
 
     def __call__(self, args, cwd=None, timeout=900):
         self.calls.append([str(a) for a in args])
@@ -50,9 +50,9 @@ class Fake:
         if name.startswith('python') and '-c' in args:
             return dict(ok, stdout=f'{self.slides}\n') if self.slides else dict(ok, code=1)
         if name == 'ffprobe':
-            return dict(ok, stdout=PROBE)
+            return dict(ok, stdout=self.probe)
         if name == 'ffmpeg':
-            Path(args[-1]).write_bytes(b'\x89PNG fake')
+            Path(args[-1]).write_bytes(self.raw if (self.raw is not None and 'rawvideo' in args) else b'\x89PNG fake')
             return ok
         if name == 'manimgx':
             if args[1] == 'inspect':
@@ -153,6 +153,16 @@ class Lint(unittest.TestCase):
         self.assertEqual([w for w in an.lint_source(random_scene, dict(SPEC, seed=3))['warnings'] if 'seed' in w], [])
         self.assertEqual([w for w in an.lint_source(random_scene + 'np.random.seed(1)\n')['warnings'] if 'seed' in w], [])
         self.assertTrue(any('seed' in w for w in an.lint_source(SCENE + '\nimport random\n')['warnings']))
+
+    def test_a_matrix_without_row_breaks_is_flagged_because_the_backslashes_may_have_been_lost(self):
+        good = SCENE + '\nA = m.MathTex(r"\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}")\n'
+        lost = SCENE + '\nA = m.MathTex(r"\\begin{pmatrix} a & b \\ c & d \\end{pmatrix}")\n'
+        self.assertEqual([w for w in an.lint_source(good)['warnings'] if 'row break' in w], [])
+        self.assertEqual(len([w for w in an.lint_source(lost)['warnings'] if 'row break' in w]), 1)
+        flat = SCENE + '\nB = m.MathTex(r"\\begin{aligned} x &= 1 y &= 2 \\end{aligned}")\n'
+        self.assertEqual(len([w for w in an.lint_source(flat)['warnings'] if 'row break' in w]), 1)
+        single = SCENE + '\nC = m.MathTex(r"\\begin{pmatrix} 1 \\end{pmatrix}")\n'
+        self.assertEqual([w for w in an.lint_source(single)['warnings'] if 'row break' in w], [], 'no & means one column; nothing to flag')
 
     def test_teaching_warnings_name_the_missing_prompt_and_slides(self):
         no_predict = {k: v for k, v in SPEC.items() if k != 'predict'}
@@ -320,6 +330,96 @@ class Rendering(Base):
         gx, ce = {'backend': 'manimgx', 'command': '/x/manimgx.exe'}, {'backend': 'manim', 'command': '/x/manim'}
         self.assertEqual(an.present_command(SPEC, gx), ['manimgx.exe', 'present', 'scene.py', 'Derivation'])
         self.assertEqual(an.present_command(SPEC, ce), ['manim-slides', 'present', 'Derivation'])
+
+
+SMALL = json.dumps({'streams': [{'width': 64, 'height': 36, 'r_frame_rate': '30/1'}], 'format': {'duration': '6.0'}})
+AREA = 64 * 36
+
+
+def frame(bottom=False, top=False, left=False, specks=0):
+    pixels = bytearray(AREA)
+    if bottom:
+        pixels[AREA - 128:] = b'\xff' * 128
+    if top:
+        pixels[:128] = b'\xff' * 128
+    if left:
+        for y in range(36):
+            pixels[y * 64:y * 64 + 2] = b'\xff\xff'
+    for i in range(specks):
+        pixels[i] = 255
+    return bytes(pixels)
+
+
+class EdgeContact(Base):
+    INFO = {'duration': 6.0, 'width': 64, 'height': 36}
+
+    def check(self, raw, **kwargs):
+        with mock.patch.object(an, 'run_command', Fake(raw=raw, probe=SMALL)):
+            return an.edge_contact(Path('v.mp4'), self.INFO, **kwargs)
+
+    def test_clean_frames_report_nothing(self):
+        found = self.check(frame() * 3)
+        self.assertEqual((found['checked'], found['frames'], found['touching']), (True, 3, []))
+
+    def test_content_on_the_edge_is_reported_by_side_and_time(self):
+        found = self.check(frame() + frame(bottom=True) + frame(top=True, left=True))
+        self.assertEqual([(h['t'], sorted(h['sides'])) for h in found['touching']], [(2.0, ['bottom']), (4.0, ['left', 'top'])])
+
+    def test_a_full_bleed_background_and_a_few_stray_pixels_are_not_cropping(self):
+        self.assertEqual(self.check(b'\xff' * AREA * 2)['touching'], [], 'the background is read from the first frame')
+        self.assertEqual(self.check(frame(specks=5) * 2)['touching'], [])
+
+    def test_unreadable_output_says_why_instead_of_passing(self):
+        self.assertEqual(self.check(b'')['checked'], False)
+        with mock.patch.object(an.shutil, 'which', lambda t: None):
+            self.assertIn('ffmpeg', an.edge_contact(Path('v.mp4'), self.INFO)['reason'])
+
+    def test_a_3d_render_with_cropped_frames_is_stopped_unless_allowed_and_then_recorded(self):
+        gx = make_env(self.dir, 'gx')
+        cropped = frame() + frame(bottom=True)
+        fake = Fake(layout='layout: not checked (a 3D scene)', probe=SMALL, raw=cropped)
+        with self.assertRaises(an.LayoutProblems) as caught:
+            self.run_render(fake, [gx])
+        self.assertIn('touches the bottom edge', str(caught.exception))
+        self.assertFalse((self.vault / 'Visuals').exists())
+        allowed = self.run_render(Fake(layout='layout: not checked (a 3D scene)', probe=SMALL, raw=cropped), [gx], allow_layout_problems=True)
+        self.assertEqual(len(allowed['layout']['problems']), 1)
+        report = json.loads((self.vault / 'Visuals/vis-complete-square/vis-complete-square.render.json').read_text(encoding='utf-8'))
+        self.assertEqual(report['layout']['edge_contact']['touching'][0]['sides'], {'bottom': 128})
+
+    def test_a_clean_3d_render_records_that_the_edges_were_checked(self):
+        result = self.run_render(Fake(layout='layout: not checked (a 3D scene)', probe=SMALL, raw=frame() * 3), [make_env(self.dir, 'gx')])
+        self.assertEqual((result['layout']['checked'], result['layout']['edge_contact']['checked']), (False, True))
+
+    def test_a_scene_inspect_already_checked_is_not_frame_scanned(self):
+        fake = Fake(probe=SMALL, raw=frame(bottom=True))
+        self.run_render(fake, [make_env(self.dir, 'gx')])
+        self.assertFalse(any('rawvideo' in call for call in fake.calls))
+
+
+class SlidesEnvironment(Base):
+    def setUp(self):
+        super().setUp()
+        self.new = make_env(self.dir, 'ce22', ('manim', 'manim-slides'))
+        self.old = make_env(self.dir, 'ce19', ('manim', 'manim-slides'))
+        self.fake = Fake(versions={str(self.new / 'Scripts' / 'manim.exe'): 'Manim Community v0.22.0', str(self.old / 'Scripts' / 'manim.exe'): 'Manim Community v0.19.0'})
+
+    def test_the_environment_with_the_known_bad_pairing_is_skipped_whichever_order(self):
+        slides = dict(SPEC, slides=True)
+        with mock.patch.object(an, 'run_command', self.fake):
+            for envs in ([self.new, self.old], [self.old, self.new]):
+                self.assertEqual(Path(an.choose(slides, [str(e) for e in envs])['env']).name, 'ce19')
+            self.assertEqual(Path(an.choose(dict(SPEC, backend='manim'), [str(self.new)])['env']).name, 'ce22', 'a plain animation may still use it')
+
+    def test_only_the_bad_pairing_means_no_slides_and_the_reason_is_returned(self):
+        result = self.run_render(self.fake, [self.new], dict(SPEC, slides=True))
+        self.assertFalse(result['rendered'])
+        self.assertTrue(any('write_to_movie' in n for n in result['notes']))
+        self.assertFalse((self.vault / 'Visuals').exists())
+
+    def test_the_working_environment_renders_the_deck(self):
+        result = self.run_render(self.fake, [self.new, self.old], dict(SPEC, slides=True))
+        self.assertEqual((result['version'], result['slides']), ('0.19.0', 'vis-complete-square.slides.html'))
 
 
 class CommandLine(unittest.TestCase):

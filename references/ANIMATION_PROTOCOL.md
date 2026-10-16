@@ -48,7 +48,10 @@ unrendered storyboard or key-frame panels and say that nothing was rendered.
 strip (they take static images only); the video opens from the vault.
 
 **Layout check.** ManimGX `inspect` checks 2D scenes for clipping, overlapping text, lines over text and small labels. Problems stop the render (exit 4) unless
-`--allow-layout-problems` records them. **3D scenes are not layout-checked, and Manim Community has no equivalent:** inspect the key frames yourself.
+`--allow-layout-problems` records them. **`inspect` does not check 3D scenes, and Manim Community has no layout check**, so for those `animate.py` samples twelve frames and reports
+any where drawn content touches the outer two pixels of a side (the background is read from the first frame's corners). That is how the cropped surface below is now caught. It stops the
+render the same way, and a scene meant to bleed off the frame passes with `--allow-layout-problems`. It finds cropping at the frame edge only; overlapping labels and unreadable text in 3D
+still need you to look at the key frames.
 
 ## Measured here (2026-10-16)
 
@@ -66,21 +69,27 @@ and output equivalence beyond viewing the frames. Only the ManimGX frames were i
 
 **What went wrong, kept on the record.** (1) A first test appeared to show ManimGX flattening `pmatrix` and `aligned`; the cause was my own shell collapsing `\\` to
 `\` in the scene file, and Manim Community drew the same broken source the same way. With the correct source ManimGX drew matrices and aligned lines properly. Check the
-generated source before blaming a backend. (2) The 3D surface is cropped at the top of the frame at one point of the camera orbit, and no tool reported it. (3) The LaTeX
-overflow in the first equations scene was caught by `inspect`, which is what it is for. (4) Importing `mitex` from `Typst(...)` as the docs suggest failed
-(`unknown variable: mitex`); native `MathTypst("mat(a, b; c, d)")` works. Not pursued.
+generated source before blaming a backend; `lint` now warns when a LaTeX matrix or aligned environment has `&` but no `\\` row break, which is what that mistake looked like. (2) The 3D surface
+was cropped at the **bottom** of the frame during the camera orbit and `inspect` did not report it (it skips 3D); the frame-edge check above reports it (bottom edge, five of twelve frames) and
+passes the same scene at `zoom=0.6`. (3) The LaTeX overflow in the first equations scene was caught by `inspect`, which is what it is for. (4) `mitex` cannot be imported from a scene: the engine
+resolves `@preview/mitex:0.2.7` but the module exports nothing a scene can call (`module mitex does not contain mitex`; `*` imports bring in nothing). It is the translator behind `MathTex`,
+so write LaTeX through `MathTex` and native Typst through `MathTypst("mat(a, b; c, d)")`, and do not import it.
 
 ## Slides (predict-first pauses)
 
 ManimGX treats a scene's sections as slides (`manimgx present`, interactive). Manim Community uses `manim-slides` (MIT): a `Slide` subclass with `self.next_slide()`;
 `render` then runs `manim-slides convert --to html --one-file --offline`, which wrote one self-contained HTML file (about 870 KB) with no external src or href, checked by
-reading the file. **`manim-slides` 5.7.0 fails under Manim Community 0.22.0** (`AttributeError: write_to_movie`) and works under 0.19.0 here: keep a separate environment pinned to
-`manim==0.19.0` for slides. `animate.py present spec.json` prints the presenting command and does not run it. The interactive presenters were not driven in this session.
+reading the file. **`manim-slides` 5.7.0 fails under Manim Community 0.22.0** (`AttributeError: write_to_movie`) and works under 0.19.0 here. `animate.py` knows this pairing: `capabilities`
+reports it, and a spec with `"slides": true` skips an environment that has it and picks a Manim Community environment with `manim-slides` that does not. Keep one pinned to `manim==0.19.0` for slides; with
+none, `render` returns `rendered: false` and says why. The list of known-bad pairings (`KNOWN_INCOMPATIBLE`) holds only what was measured here; other pairings are untested, not endorsed. `animate.py present spec.json` prints the presenting command and does not run it. The interactive presenters were not driven in this session.
 
 ## Licensing
 
-ManimGX's package metadata lists GPL-3.0-or-later among its licences (the native wheels bundle GPL components; the project's own code is MIT). That matters only if Research OS
-is ever distributed with it. `manim-slides` is MIT. Not checked: Manim Community's dependency licences.
+Read from the installed wheel's own files: ManimGX's code is MIT (Academa), but each wheel bundles FFmpeg (LGPL-2.1-or-later) and x264 (GPL-2.0-or-later), which the wheel's licence file says makes
+**the wheel as a whole GPL-3.0-or-later**; the bundled fonts carry their own licences (one listed as CC-BY-SA-3.0). GPL obligations attach to *distributing* that wheel, or software that bundles or
+links it. Running it yourself, or on a server you operate, to make videos does not put your own code under the GPL, and a video it writes is not a GPL work merely for having been encoded by x264.
+So: keep ManimGX an external tool a person installs and runs (as Research OS does: it never bundles or imports it), do not ship the wheel inside a product, and take legal advice before a
+commercial product depends on it. `manim-slides` is MIT. Not checked: Manim Community's dependency licences. This is a reading of the files, not legal advice.
 
 ## Not done
 
