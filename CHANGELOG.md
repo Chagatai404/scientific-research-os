@@ -18,6 +18,7 @@ Upgrade notes: [docs/MIGRATION_v0.9.5.md](docs/MIGRATION_v0.9.5.md). The plan an
   slides through `manim-slides`. Engines are never installed for you.
 - **Voice.** `speech_text.py` says formulas in words in English and Turkish; `voice.py` keeps content-hashed recordings, transcribes, and compares
   engines; a recorded-narration player on the page. **No local voice passed the listening test**; see `references/VOICE_PROTOCOL.md`.
+- **FSRS scheduling.** `fsrs_schedule.py` estimates when each learned item is likely to be forgotten (FSRS-6, matching the reference library on 1,260 reviews) from checked attempts; a derived estimate with generic parameters that never replaces a human `Next review`. See `references/FSRS_PROTOCOL.md`.
 - **Renamed skill.** `visualize` is now `science-visualize`; the installer retires the old directory instead of deleting it.
 - **Rollout.** `html_design_rollout.py` now recognises a v0.9.0 installation as an upgrade baseline.
 - **Not verified.** Audible voice quality, Chatterbox on a GPU, playback inside a running Obsidian, ManimGX at 1080p60, YouTube and PhET embeds end to end,

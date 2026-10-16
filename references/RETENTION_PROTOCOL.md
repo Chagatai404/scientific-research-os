@@ -35,3 +35,9 @@ for-use. Missing horizons are not invented and imply no automatic urgency. Unkno
 transfer is an optional diagnostic recommendation, not a scheduled retention debt.
 Existing dates, delayed evidence, targets and scalar schema-1 behavior are preserved.
 The helper writes nothing and runs offline; it adds no background scheduler.
+
+## When a learned item is likely to be forgotten (FSRS)
+
+`retention.py` orders what a session should probe; it is a deterministic heuristic and says so. `scripts/fsrs_schedule.py` adds a memory model beside it: an FSRS-6 estimate of recall probability today and a due date for
+each capability, scope and dimension, replayed from the checked attempts (`references/FSRS_PROTOCOL.md`). It is a derived estimate with generic parameters. It does not replace a human `Next review`, does not write dates,
+targets or mastery, counts neither recognition nor open-notes attempts, and never produces an *Easy* rating. Use it to see what is likely overdue; keep the probe budget and the delayed-retrieval rules above.

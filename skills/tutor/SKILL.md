@@ -299,7 +299,10 @@ is not cosmetic. The same rule applies to any append-only log kept in a research
 ## Retrieval checks
 
 For retention sessions use `references/RETENTION_PROTOCOL.md` and
-`scripts/retention.py`; include broader domains/subjects beyond the active project.
+`scripts/retention.py`; include broader domains/subjects beyond the active project. To see *when* each learned item is likely
+to be forgotten, `python scripts/fsrs_schedule.py due --root <records> --as-of YYYY-MM-DD` gives an FSRS-6 estimate from the
+checked attempts (`references/FSRS_PROTOCOL.md`): it is an estimate with generic parameters, not a schedule that replaces the
+researcher's `Next review` or `retention.py`, and it counts only memory reviews.
 For generated note equations use `references/MATH_RENDERING.md` and
 `scripts/math_notes.py`. Important equations use supported formula callouts.
 
