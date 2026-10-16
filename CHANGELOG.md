@@ -13,7 +13,7 @@ Upgrade notes: [docs/MIGRATION_v0.9.5.md](docs/MIGRATION_v0.9.5.md). The plan an
 - **Accurate diagrams.** `diagram_spec.py` draws 2D and 3D geometry, molecules and C-alpha traces from coordinates that `structure_verify.py` checks
   (geometry constraints, valence and formula, a PDB file bound by its hash); an interactive 3D viewer; registered at `rendered`, never `verified`.
 - **Code walkthroughs.** Default-on for consequential changes; a skipped one is recorded as an open ownership gap.
-- **Linked library indexes.** Every index entry carries a link built from an identifier, or says it has none; a read-only backfill plan.
+- **Linked library indexes.** Every index entry carries a link built from an identifier, or says it has none; a read-only backfill plan and a `backfill-apply` that backs each file up and changes only the planned lines.
 - **Animation.** `animate.py` detects ManimGX and Manim Community, lints scenes, renders with a layout and frame-edge check and registers a record;
   slides through `manim-slides`. Engines are never installed for you.
 - **Voice.** `speech_text.py` says formulas in words in English and Turkish; `voice.py` keeps content-hashed recordings, transcribes, and compares

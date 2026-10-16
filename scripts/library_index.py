@@ -2,7 +2,7 @@
 
 An index entry without a link cannot be followed, so every entry must carry a link built from an identifier
 (DOI, arXiv, source URL, saved PDF) or say plainly that it has none. Links are constructed deterministically from
-identifiers; nothing is fetched, guessed or written unless ``--write`` is given to ``index``.
+identifiers; nothing is fetched, guessed or written unless ``--write`` is given to ``index`` or ``--apply`` to ``backfill-apply``.
 """
 from __future__ import annotations
 import argparse
@@ -20,7 +20,7 @@ ENTRY_CUE = re.compile(r'arxiv|doi|et al\.|\.pdf|“[^”]+”|"[^"]+"', re.I)
 TABLE_HEADER_CUE = re.compile(r'paper|title|file|source|reference|citation', re.I)
 ARXIV_NEW = re.compile(r'(?<![\d.])(\d{4}\.\d{4,5})(v\d+)?(?![\d])')
 ARXIV_OLD = re.compile(r'\b([a-z]+(?:-[a-z]+)?)[_/](\d{7})(v\d+)?\b')
-DOI_TEXT = re.compile(r'\b(10\.\d{4,9}/[^\s|)>\]]+?)(?=[.,;]?(?:\s|$|[|)>\]]))')
+DOI_TEXT = re.compile(r'\b(10\.\d{4,9}/[^\s|)>\]`"\'“”<]+?)(?=[.,;]?(?:\s|$|[|)>\]`"\'“”<]))')
 ELSEVIER = re.compile(r'1-s2\.0-(S[0-9X]+)-main\.pdf', re.I)
 
 
@@ -155,6 +155,83 @@ def backfill_plan(index_files: list[Path], library: Path | None = None) -> dict:
     return plan
 
 
+def _with_addition(line: str, addition: str) -> str:
+    """The entry with ``addition`` appended without changing its structure: inside the last cell of a table row, at the end of a bullet."""
+    body = line.rstrip('\r\n')
+    ending = line[len(body):]
+    body = body.rstrip()
+    if body.lstrip().startswith('|') and body.endswith('|') and not body.endswith('\\|'):
+        return body[:-1].rstrip() + ' · ' + addition + ' |' + ending
+    return body + (' — ' if not body.lstrip().startswith('|') else ' · ') + addition + ending
+
+
+def plan_edits(text: str) -> dict:
+    """The exact edits a backfill would make to one index: ``edits`` (line, before, after) and ``skipped`` (entries it will not touch, with the reason).
+
+    An entry with exactly one link derivable from an identifier it already carries gets that link. An entry with no identifier at all gets the plain
+    ``no identifier`` marker. An entry with several different identifiers is skipped: it may cite other papers, and a link is never guessed.
+    """
+    lines = text.splitlines(keepends=True)
+    edits, skipped = [], []
+    for number, entry in entries(text):
+        if LINK.search(entry) or NO_IDENTIFIER in entry.casefold():
+            continue
+        proposals = [p for p in identifiers(entry) if p['confidence'] == 'exact']
+        if len(proposals) > 1:
+            skipped.append({'line': number, 'entry': entry.strip()[:140], 'reason': 'several different identifiers: left for the researcher',
+                            'proposals': [p['url'] for p in proposals]})
+            continue
+        addition = f"[{proposals[0]['label']}]({proposals[0]['url']})" if proposals else NO_IDENTIFIER
+        edits.append({'line': number, 'before': lines[number - 1], 'after': _with_addition(lines[number - 1], addition),
+                      'kind': 'link' if proposals else 'marker', 'basis': proposals[0]['basis'] if proposals else 'no identifier in the entry'})
+    return {'edits': edits, 'skipped': skipped}
+
+
+def apply_backfill(index_files: list[Path], backup_dir: Path, apply: bool = False) -> dict:
+    """Add links (or the marker) to unlinked entries of existing indexes. A dry run by default.
+
+    Before a file is written it is copied unchanged into ``backup_dir`` (which must not already hold that copy). After the edit the file is checked:
+    every line that was not an edit is byte-identical, the line count is unchanged, and the linter passes for each edited entry. A file that fails
+    the check is left as it was. Running it again changes nothing.
+    """
+    report = {'dry_run': not apply, 'files': []}
+    backup_dir = Path(backup_dir)
+    for index, path in enumerate(index_files):
+        path = Path(path)
+        if path.is_symlink() or not path.is_file() or path.suffix.lower() != '.md':
+            raise ValueError(f'{path}: only an existing Markdown file is edited')
+        raw = path.read_bytes()
+        text = raw.decode('utf-8')
+        plan = plan_edits(text)
+        row = {'file': str(path), 'edits': len(plan['edits']), 'links': sum(e['kind'] == 'link' for e in plan['edits']),
+               'markers': sum(e['kind'] == 'marker' for e in plan['edits']), 'skipped': plan['skipped'], 'changes': plan['edits'], 'written': False}
+        report['files'].append(row)
+        if not plan['edits']:
+            continue
+        lines = text.splitlines(keepends=True)
+        edited = list(lines)
+        for edit in plan['edits']:
+            edited[edit['line'] - 1] = edit['after']
+        after = ''.join(edited)
+        changed = {e['line'] for e in plan['edits']}
+        if len(after.splitlines(keepends=True)) != len(lines) or any(a != b for n, (a, b) in enumerate(zip(lines, edited), 1) if n not in changed):
+            raise ValueError(f'{path}: the edit would change more than the planned lines; nothing was written')
+        left = {f['line'] for f in lint(after)} & changed
+        if left:
+            raise ValueError(f'{path}: lines {sorted(left)} would still fail the linter; nothing was written')
+        if not apply:
+            continue
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup = backup_dir / f'{index:02d}-{path.name}'
+        with open(backup, 'xb') as handle:  # exclusive: an earlier backup is never overwritten
+            handle.write(raw)
+        temporary = path.with_name(path.name + '.backfill-tmp')
+        temporary.write_bytes(after.encode('utf-8'))
+        temporary.replace(path)
+        row['written'], row['backup'] = True, str(backup)
+    return report
+
+
 def write_index(root: Path, records: dict) -> Path:
     text = render(records)
     pl.atomic(root, 'INDEX.md', text.encode('utf-8'))
@@ -172,6 +249,10 @@ def main(argv=None) -> int:
     p = sub.add_parser('backfill-plan', help='read-only list of links derivable from identifiers')
     p.add_argument('--index', nargs='+', type=Path, default=[])
     p.add_argument('--library', type=Path)
+    p = sub.add_parser('backfill-apply', help='add links or the "no identifier" marker to unlinked entries (dry run unless --apply; backs up first)')
+    p.add_argument('--index', nargs='+', type=Path, required=True)
+    p.add_argument('--backup', type=Path, required=True, help='a folder for unchanged copies of every file before it is edited')
+    p.add_argument('--apply', action='store_true')
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, 'reconfigure'):  # titles carry non-ASCII; a redirected Windows stdout would otherwise use cp1252
         sys.stdout.reconfigure(encoding='utf-8')
@@ -186,6 +267,8 @@ def main(argv=None) -> int:
             bad = {str(f): lint(f.read_text(encoding='utf-8')) for f in args.files}
             print(json.dumps(bad, indent=2, ensure_ascii=False))
             return 1 if any(bad.values()) else 0
+        elif args.command == 'backfill-apply':
+            print(json.dumps(apply_backfill(args.index, args.backup, args.apply), indent=2, ensure_ascii=False))
         else:
             print(json.dumps(backfill_plan(args.index, args.library), indent=2, ensure_ascii=False))
     except (ValueError, OSError) as exc:

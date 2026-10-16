@@ -39,7 +39,7 @@ Back up the vault or commit it. Run every command without `--apply` first.
    the plugin in Obsidian.
 
 3. **Optional: link your paper-library indexes.** `python scripts/library_index.py backfill-plan --library <library>` is read-only and lists the links that can be
-   built from identifiers already in your catalog (nothing is fetched or guessed). Applying it edits your library, so it waits for your say-so.
+   built from identifiers already in your catalog (nothing is fetched or guessed). `library_index.py backfill-apply --index <files> --backup <new-folder>` shows the exact edits as a dry run; add `--apply` to write them. Applying edits your files, so it backs each one up first, changes only the planned lines and leaves an entry with several different identifiers for you. It was applied to the maintainer's library on 2026-10-17 (59 links in 4 files).
    `library_index.py lint` fails an index entry that has neither a link nor an explicit "no identifier" marker.
 
 4. **Optional: animation and voice engines.** Neither is installed for you. Put each in its own virtual environment and name it:
