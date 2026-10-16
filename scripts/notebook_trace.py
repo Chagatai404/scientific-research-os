@@ -32,6 +32,7 @@ SECRET = re.compile(r'KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|AUTH|COOKIE', 
 POINTS_BACK = {'VIRTUAL_ENV', 'UV_PROJECT_ENVIRONMENT', 'PYTHONPATH', 'PYTHONHOME', 'CONDA_PREFIX', 'UV_PYTHON'}
 NUMBER = re.compile(r'[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?')
 MUTABLE_PREFIXES = ('src/', 'notebooks/')
+GROUP_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]*')
 DEFAULT_INPUT_MB = 2048
 MAX_INPUT_MB = 20480
 # Names that are never copied into a scratch copy, whatever the researcher lists: credentials and keys.
@@ -81,7 +82,10 @@ def approvals(record: dict) -> dict[str, dict]:
         inputs, cap = item.get('inputs', []), item.get('max_input_mb', DEFAULT_INPUT_MB)
         if (not isinstance(inputs, list) or any(not _relative(p) or SECRET_NAME.search(p) for p in inputs) or type(cap) is not int or not 1 <= cap <= MAX_INPUT_MB):
             raise TraceError(f'inputs is a list of repo-relative paths with no secret-looking names, and max_input_mb is a whole number from 1 to {MAX_INPUT_MB}')
-        out[identifier] = dict(item, approved_by=who, timeout=timeout, inputs=inputs, max_input_mb=cap)
+        groups = item.get('groups', [])
+        if not isinstance(groups, list) or len(groups) > 6 or len(set(groups)) != len(groups) or any(not isinstance(g, str) or not GROUP_NAME.fullmatch(g) for g in groups):
+            raise TraceError('groups is a list of at most six distinct dependency-group names from the project\'s pyproject (letters, digits, dot, dash, underscore)')
+        out[identifier] = dict(item, approved_by=who, timeout=timeout, inputs=inputs, max_input_mb=cap, groups=groups)
     return out
 
 
@@ -159,11 +163,16 @@ def copy_inputs(repo: Path, copy: Path, inputs: list[str], max_mb: int) -> list[
     return copied
 
 
-def sync_environment(copy: Path, timeout: int = 1800) -> dict:
-    """``uv sync --frozen`` inside the copy, so it has its own environment from the lockfile. uv is detected, never installed."""
+def group_flags(groups) -> list[str]:
+    return [flag for group in groups or [] for flag in ('--group', group)]
+
+
+def sync_environment(copy: Path, timeout: int = 1800, groups=()) -> dict:
+    """``uv sync --frozen`` inside the copy, so it has its own environment from the lockfile, with any dependency groups the approval names (``--group``).
+    The groups install into the copy's environment only. uv is detected, never installed."""
     if not shutil.which('uv'):
         raise TraceError('uv was not found on the PATH; this tool does not install it')
-    done = run_command(['uv', 'sync', '--frozen'], cwd=copy, timeout=timeout, env=scrubbed_environment())
+    done = run_command(['uv', 'sync', '--frozen', *group_flags(groups)], cwd=copy, timeout=timeout, env=scrubbed_environment())
     if done['code'] != 0:
         raise TraceError('uv sync failed: ' + (done['stderr'] or done['stdout']).strip()[-400:])
     return {'seconds': done['seconds']}
@@ -171,14 +180,15 @@ def sync_environment(copy: Path, timeout: int = 1800) -> dict:
 
 # ---------------------------------------------------------------- running and comparing
 
-def execute(copy: Path, notebook: str, out_dir: Path, timeout: int) -> dict:
-    """Run one notebook in the copy's environment. A cell that raises is recorded in the output, not allowed to stop the run."""
+def execute(copy: Path, notebook: str, out_dir: Path, timeout: int, groups=()) -> dict:
+    """Run one notebook in the copy's environment. A cell that raises is recorded in the output, not allowed to stop the run. The same ``--group`` flags go to
+    ``uv run`` as to ``uv sync`` so that running does not undo the installed groups."""
     out_dir.mkdir(parents=True, exist_ok=True)
-    argv = ['uv', 'run', '--frozen', 'jupyter', 'nbconvert', '--to', 'notebook', '--execute', '--allow-errors', f'--ExecutePreprocessor.timeout={timeout}',
-            '--output-dir', str(out_dir), notebook]
-    done = run_command(argv, cwd=copy, timeout=timeout + 120, env=scrubbed_environment())
+    head = ['uv', 'run', '--frozen', *group_flags(groups)]
+    tail = ['jupyter', 'nbconvert', '--to', 'notebook', '--execute', '--allow-errors', f'--ExecutePreprocessor.timeout={timeout}', '--output-dir']
+    done = run_command(head + tail + [str(out_dir), notebook], cwd=copy, timeout=timeout + 120, env=scrubbed_environment())
     produced = out_dir / Path(notebook).name
-    return {'argv': ['uv', 'run', '--frozen', 'jupyter', 'nbconvert', '--to', 'notebook', '--execute', '--allow-errors', '--output-dir', '<scratch>/out', notebook],
+    return {'argv': head + tail[:-1] + ['--output-dir', '<scratch>/out', notebook],
             'exit_code': done['code'], 'seconds': done['seconds'], 'executed': produced if produced.is_file() else None, 'stderr_tail': done['stderr'].strip()[-600:]}
 
 
@@ -301,14 +311,14 @@ def trace_notebook(repo: Path, record: dict, approval_id: str, run: bool = False
     stored = load_notebook(source)
     if not run:
         return {'dry_run': True, 'would_do': ['clone the committed state into a scratch directory'] + ([f"copy these read-only inputs from the repository into it (up to {entry['max_input_mb']} MB): {', '.join(entry['inputs'])}"] if entry['inputs'] else [])
-                + ['uv sync --frozen in the copy', f"run {entry['path']} there (timeout {entry['timeout']} s, errors recorded not fatal)",
+                + [('uv sync --frozen' + ''.join(f' --group {g}' for g in entry['groups']) + ' in the copy'), f"run {entry['path']} there (timeout {entry['timeout']} s, errors recorded not fatal)",
                                               'compare fresh outputs with the stored ones', 'remove the scratch directory' if not keep else 'keep the scratch directory'],
                 'approved_by': entry['approved_by'], 'note': 'nothing was executed; pass --run to execute'}
     scratch = prepare_copy(repo, parent)
     try:
         inputs = copy_inputs(repo, scratch['copy'], entry['inputs'], entry['max_input_mb']) if entry['inputs'] else []
-        sync = sync_environment(scratch['copy'])
-        result = execute(scratch['copy'], entry['path'], scratch['parent'] / 'out', entry['timeout'])
+        sync = sync_environment(scratch['copy'], groups=entry['groups'])
+        result = execute(scratch['copy'], entry['path'], scratch['parent'] / 'out', entry['timeout'], entry['groups'])
         if result['executed'] is None:
             raise TraceError('the notebook produced no output file: ' + result['stderr_tail'][-300:])
         fresh = load_notebook(result['executed'])
@@ -374,12 +384,12 @@ def mutation_exercise(repo: Path, record: dict, approval_id: str, spec: dict, ru
     try:
         if entry['inputs']:
             copy_inputs(repo, scratch['copy'], entry['inputs'], entry['max_input_mb'])
-        sync_environment(scratch['copy'])
-        base = execute(scratch['copy'], entry['path'], scratch['parent'] / 'baseline', entry['timeout'])
+        sync_environment(scratch['copy'], groups=entry['groups'])
+        base = execute(scratch['copy'], entry['path'], scratch['parent'] / 'baseline', entry['timeout'], entry['groups'])
         if base['executed'] is None:
             raise TraceError('the baseline run produced no output file: ' + base['stderr_tail'][-300:])
         applied = apply_mutation(scratch['copy'], spec)
-        after = execute(scratch['copy'], entry['path'], scratch['parent'] / 'mutated', entry['timeout'])
+        after = execute(scratch['copy'], entry['path'], scratch['parent'] / 'mutated', entry['timeout'], entry['groups'])
         if after['executed'] is None:
             raise TraceError('the mutated run produced no output file: ' + after['stderr_tail'][-300:])
         comparison = compare(load_notebook(base['executed']), load_notebook(after['executed']), roots=[scratch['copy']])

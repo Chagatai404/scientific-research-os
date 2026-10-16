@@ -55,7 +55,7 @@ See `references/CONTEXT_PROTOCOL.md`. Read the Student Brief in the receipt and 
    secrets scrubbed from the environment and a timeout. It reports whether the fresh output matches, differs only in last digits or image bytes, or is
    **stale**, and records the run in the record's `executed` list. A mutation exercise (`mutate --spec`) changes one string in a notebook cell or a
    source file *of the copy*, runs the notebook before and after, and reports what changed: ask the researcher to predict first, show nothing until
-   they have, and never mutate the repository itself. Without `--run` both commands only describe what they would do. See `references/CODE_LEARNING_PROTOCOL.md`.
+   they have, and never mutate the repository itself. A notebook that needs an optional dependency group runs only if the researcher's approval names it in `groups`; it installs into the copy, never the real environment. Without `--run` both commands only describe what they would do. See `references/CODE_LEARNING_PROTOCOL.md`.
 
 ## Limits you must state
 

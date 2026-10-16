@@ -112,7 +112,7 @@ After a unit is completed and its tests pass, run it and tell the researcher wha
 ### Running notebooks to check them (`scripts/notebook_trace.py`)
 
 `trace` runs a listed command; for a research repo whose notebooks document completed work, the thing worth running is the notebook. The researcher lists notebooks in the record as
-`approved_notebooks`: `{"id", "path", "approved_by", "approved_at", "timeout"}` (a timeout in seconds, up to 7200; the heavy ones deserve a deliberate number). An agent never adds to that list.
+`approved_notebooks`: `{"id", "path", "approved_by", "approved_at", "timeout"}` (a timeout in seconds, up to 7200; the heavy ones deserve a deliberate number), plus optional `inputs` (read-only repo-relative files or folders copied into the scratch copy, with `max_input_mb`) and optional `groups` (up to six names of dependency groups from the project's own `pyproject.toml`, installed with `uv sync --frozen --group <name>` into the copy's environment only; a group can be a multi-gigabyte download, so the researcher names it). An agent never adds to that list.
 
 `notebook_trace.py run --repo <repo> --record <record.json> --notebook <id> --run` makes a scratch `git clone --local` of the committed state (so no `.env`, no virtual environment, nothing ignored, and uncommitted
 changes are not in it, which the output states), builds the copy's own environment with `uv sync --frozen`, scrubs secrets and any variable that points at the real environment from the process environment, and runs

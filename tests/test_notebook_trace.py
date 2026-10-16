@@ -456,6 +456,49 @@ class Inputs(unittest.TestCase):
         self.assertFalse((self.dir / 'run').exists())
 
 
+class DependencyGroups(unittest.TestCase):
+    """A notebook that needs an optional dependency group installs it in the scratch copy only, and only when the researcher named it."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        self.repo = make_repo(self.dir / 'repo')
+        which = mock.patch.object(nt.shutil, 'which', lambda name: '/bin/' + name)
+        which.start()
+        self.addCleanup(which.stop)
+
+    def approved(self, **extra):
+        return {'approved_notebooks': [dict({'id': 'NB-1', 'path': NOTEBOOK, 'approved_by': 'x'}, **extra)]}
+
+    def test_no_groups_by_default_and_names_are_validated(self):
+        self.assertEqual(nt.approvals(self.approved())['NB-1']['groups'], [])
+        self.assertEqual(nt.approvals(self.approved(groups=['geant4', 'ml']))['NB-1']['groups'], ['geant4', 'ml'])
+        for bad in ('ml', [7], [''], ['-ml'], ['ml', 'ml'], ['a b'], ['ml;rm'], ['--index-url=x'], ['../x'], [f'g{i}' for i in range(7)]):
+            with self.assertRaises(nt.TraceError, msg=bad):
+                nt.approvals(self.approved(groups=bad))
+
+    def test_the_groups_reach_both_uv_sync_and_uv_run_and_the_dry_run_names_them(self):
+        fake = Fake()
+        record = self.approved(groups=['geant4', 'validation'])
+        with mock.patch.object(nt, 'run_command', fake):
+            dry = nt.trace_notebook(self.repo, record, 'NB-1', run=False)
+            nt.trace_notebook(self.repo, record, 'NB-1', run=True, parent=self.dir / 'run')
+        self.assertIn('--group geant4 --group validation', ' '.join(dry['would_do']))
+        self.assertEqual(fake.calls[0][:7], ['uv', 'sync', '--frozen', '--group', 'geant4', '--group', 'validation'])
+        self.assertEqual(fake.calls[1][:7], ['uv', 'run', '--frozen', '--group', 'geant4', '--group', 'validation'])
+
+    def test_without_groups_the_commands_are_unchanged_and_a_mutation_exercise_uses_them_too(self):
+        fake = Fake()
+        with mock.patch.object(nt, 'run_command', fake):
+            nt.trace_notebook(self.repo, self.approved(), 'NB-1', run=True, parent=self.dir / 'a')
+            self.assertEqual(fake.calls[0], ['uv', 'sync', '--frozen'])
+            fake.calls.clear()
+            nt.mutation_exercise(self.repo, self.approved(groups=['ml']), 'NB-1', {'kind': 'source', 'path': 'src/pkg/value.py', 'find': '3', 'replace': '4'},
+                                 run=True, parent=self.dir / 'b')
+        self.assertTrue(all('--group' in c and c[c.index('--group') + 1] == 'ml' for c in fake.calls), fake.calls)
+
+
 class PathNormalisation(unittest.TestCase):
     ROOT_A, ROOT_B = 'C:\\Users\\me\\research', 'C:\\Temp\\scratch\\copy'
 
