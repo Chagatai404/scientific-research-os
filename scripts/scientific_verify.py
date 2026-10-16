@@ -27,6 +27,7 @@ import re
 import sys
 
 import chembio_verify as _chembio
+import structure_verify as _structure
 
 SCHEMA = 1
 OUTCOMES = ('verified-in-scope', 'partially-verified', 'invalidated', 'unresolved', 'not-checked')
@@ -35,7 +36,7 @@ CONSEQUENCES = ('routine', 'consequential')
 QUANTITATIVE = ('evaluate', 'equivalent', 'integral', 'derivative', 'limit', 'rate-interval', 'propagation')
 STRUCTURAL = ('dimensional', 'resampling-unit', 'fit-partition', 'assumption-declared', 'regime-match', 'mapping-declared')
 # Exact discrete rules (chemistry and biology): stoichiometry, molar mass, sequences. See chembio_verify.py.
-DISCRETE = tuple(_chembio.RUNNERS)
+DISCRETE = tuple(_chembio.RUNNERS) + tuple(_structure.RUNNERS)
 KINDS = QUANTITATIVE + STRUCTURAL + DISCRETE
 CONTEXT_WORKFLOWS = {'math-review', 'statistics-review', 'physics-review', 'chemistry-review', 'biology-review', 'research-review', 'decision-synthesis', 'research-implement'}
 SEVERITIES = ('A', 'B', 'C', 'D')  # the existing A-D research triage: A blocks, D is an optional refinement
@@ -50,6 +51,7 @@ CLASS = {'exact-arithmetic': 'direct-evaluation', 'floating-point': 'direct-eval
          'library': 'independent-implementation', 'approximation': 'approximation',
          'linear-propagation': 'linear-propagation', 'monte-carlo': 'monte-carlo'}
 CLASS.update(_chembio.CLASS)
+CLASS.update(_structure.CLASS)
 # A high-precision rerun of the same integral or limit is the same method, not a second reconstruction.
 CLASS_OVERRIDE = {('integral', 'high-precision'): 'quadrature', ('limit', 'high-precision'): 'limit-sequence'}
 
@@ -1247,7 +1249,9 @@ FIELDS = {
     'mapping-declared': ({'observable_a', 'observable_b'}, {'mapping'}),
 }
 RUNNERS.update(_chembio.RUNNERS)
+RUNNERS.update(_structure.RUNNERS)
 FIELDS.update(_chembio.FIELDS)
+FIELDS.update(_structure.FIELDS)
 COMMON = {'id', 'kind', 'optional', 'require_methods', 'note', 'formulation'}
 
 

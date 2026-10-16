@@ -201,6 +201,14 @@ when it still answers the teaching question. Otherwise return an explicitly
 unrendered source/storyboard and the missing capability, not a claimed finished
 animation. Do not silently substitute invented motion for unavailable simulation.
 
+## Diagrams made from a spec (v0.9.5)
+
+For geometry, molecules and biomolecular structure, make the figure from a declarative spec that carries the numbers, and check those numbers
+(`references/DIAGRAM_PROTOCOL.md`, `scripts/diagram_spec.py`): static SVG for sessions, an interactive viewer page for a browser, a registry record at
+`rendered`, and `geometry-constraint`, `molecule-graph` and `structure-source` checks built from the same spec. The registry label and the verification
+tiers above apply unchanged; a rendered diagram is a draft until inspected and verified. Detect optional renderers with `diagram_spec.py capabilities`;
+do not assume RDKit, PyVista or Graphviz exist.
+
 ## Declare what the visual represents
 
 | Kind | Meaning and provenance |

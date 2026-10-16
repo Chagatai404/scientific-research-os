@@ -188,7 +188,7 @@ class EngineIntegration(unittest.TestCase):
         for kind in cb.RUNNERS:
             self.assertIn(kind, sv.KINDS)
             self.assertIn(kind, sv.FIELDS)
-        self.assertEqual(set(sv.DISCRETE), set(cb.RUNNERS))
+        self.assertEqual(set(sv.DISCRETE), set(cb.RUNNERS) | set(sv._structure.RUNNERS))
         protocol = (ROOT / 'references/VERIFICATION_PROTOCOL.md').read_text(encoding='utf-8')
         for kind in cb.RUNNERS:
             self.assertIn(f'| `{kind}` |', protocol)

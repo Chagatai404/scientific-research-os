@@ -41,6 +41,12 @@ local copies of the shared references.
 5. For tutoring, follow with an explanation or transfer check; do not treat viewing
    as demonstrated understanding or automatically promote permanent knowledge.
 
+**Geometry, molecules and structures.** For a construction, a solid, a molecule or a protein backbone, do not draw by hand: write a diagram
+spec and let the tools draw and check it (`references/DIAGRAM_PROTOCOL.md`). `python scripts/diagram_spec.py validate|render|register|from-pdb|
+verification-spec|capabilities`. The spec carries the coordinates, atoms and constraints; the SVG is drawn from it; `verification-spec` checks the same numbers
+with `scientific_verify.py`. The result is `rendered`, never `verified`, until it is inspected and checked under the verification tiers. Sessions embed the
+static SVG views; the interactive viewer page opens in a browser. A schematic is marked `"schematic": true` and never presented as to scale.
+
 For work that introduces a research model, simulation, or experiment, read
 `references/RESEARCH_PROTOCOL.md` and preserve its explicit approval boundary.
 Rendering an already authorized teaching artifact does not start another research

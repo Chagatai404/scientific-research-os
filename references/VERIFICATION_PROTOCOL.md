@@ -50,6 +50,9 @@ list). They are parsed and interpreted; nothing is evaluated by Python and nothi
 | `molar-mass` | sum of tabulated atomic weights (`tabulated-weights`) | the molar mass differs from `expected` beyond the tolerance (default relative 1e-3) | an element has no verified weight in the table |
 | `stoichiometry` | mole ratios from a balanced equation (`mole-ratio`): limiting reagent and theoretical moles or grams | the equation is unbalanced, or a computed amount differs from `expected` | an element has no verified weight |
 | `sequence-check` | rule-based DNA, RNA or protein checks (`sequence-rules`): alphabet, length, reverse complement, transcript, standard-code translation, GC content | any stated property differs | - |
+| `geometry-constraint` | lengths, angles, parallel, perpendicular, incidence, coplanarity and area recomputed from the coordinates (`coordinate-recompute`) | a declared constraint is not satisfied by the declared coordinates | - |
+| `molecule-graph` | valence, formula, charge and molar mass from an explicit atom and bond graph (`graph-recompute`) | a valence is not allowed, or the formula, charge or mass differs | an element has no valence rule or no verified weight |
+| `structure-source` | a PDB-format file bound by SHA-256 (`pdb-records`): identifier, method, resolution, chains, residue ranges, sequence, residue identity | the file differs from its hash, or a claim about it is false | the file does not state the thing claimed (a resolution for an NMR model) |
 
 ## Chemistry and biology checks (v0.9.5)
 
@@ -65,6 +68,15 @@ given. An element missing from the table makes `molar-mass` and `stoichiometry` 
 Independence: `atom-count` (counting) and `nullspace` (linear algebra) are different method classes, so one `formula-balance` check can
 support a consequential claim. A consequential molar-mass or yield claim needs a second route, for example an `evaluate` check of the
 same arithmetic given as a second `formulation`. Units: `dimensional` also knows `L`, `M` (mol/L), `cal`, `atm` and `bar`.
+
+## Diagram and structure checks (v0.9.5)
+
+`scripts/structure_verify.py` checks the *numbers* a figure is drawn from (`DIAGRAM_PROTOCOL.md`): a diagram spec's coordinates satisfy its declared
+constraints, a molecule graph is chemically consistent, and a structure file says what is claimed about it. `diagram_spec.py verification-spec`
+builds the check from the same spec the picture was drawn from, so the two cannot drift apart. These do not show that the geometry models the real
+object, that a structure is the right protein, or that a database entry is current. Only PDB-format files are read (mmCIF is refused, not guessed);
+residue numbers are PDB numbering, which may differ from a reference sequence's. The file path in a `structure-source` check is resolved from the
+directory the engine runs in, and the hash pins the exact file.
 
 ## Outcomes
 
