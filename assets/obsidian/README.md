@@ -41,6 +41,14 @@ Knowledge/
 └── 90 Templates/
 ```
 
+## Lecture notes you can recall from
+
+`25_Lecture_Note.md` is the layered lecture note ([teaching format](../../references/TEACHING_FORMAT.md)): **L0** a one-sentence
+gist and the words you need; **L1** "core in 60 seconds", three or more collapsed question callouts to answer from memory
+before opening the answer; **L2** the full lecture; **L3** the derivation and sources. The first screen is retrieval, not a
+summary to reread. Check a note with `python scripts/teaching_lint.py note <note.md>`; the lint is mechanical and says nothing
+about whether the teaching is good or the learner knows it.
+
 ## Install
 
 Copy all `.md` files from this bundle into:

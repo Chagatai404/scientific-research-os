@@ -41,6 +41,16 @@ The learner view comes from the context receipt (`html_sessions.py context --jso
 * **A question** may assume only what is established, explained *before it in the lesson*, or defined in its own
   `INTRODUCES`.
 
+### Terms are checked too
+
+A block may also list the words its text uses: `"terms": ["probability density", "shape parameter"]`. Each term must be
+introduced by this or an earlier block (`introduces`), or recorded as `defined`, `used` or `fluent` for this learner in the term
+ledger (`references/LEARNER_MODEL.md`), in the language of the lesson (`tutor_gate.py check … --lang tr`). Otherwise:
+
+* a term the ledger has not seen, or marks shaky, is an error (`UNDEFINED_TERM`): define it first;
+* a term introduced before but never restated by the learner is a warning (`TERM_NOT_RESTATED`);
+* with no ledger available the term is treated as unknown and only warns (`TERM_UNKNOWN`). Unknown is never assumed known.
+
 ## 3. Every probe carries a contract
 
 On the question: `contract` (`TESTS`, `ASSUMES`, `INTRODUCES`), `scope` (conceptual, transfer, project_application),

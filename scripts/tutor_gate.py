@@ -15,6 +15,7 @@ from pathlib import Path
 
 import html_sessions as hs
 import knowledge as k
+import terms as ledger
 from tutor_contract import scoped_question_issues
 
 BLOCK_KINDS = ('concept', 'intuition', 'derivation', 'review', 'application', 'implementation')
@@ -115,6 +116,34 @@ def literacy_issues(block_id, literacy):
     return out
 
 
+CARD_FIELDS = ('core_idea', 'predict', 'retrieve', 'visual', 'no_visual_reason', 'spoken')
+FIGURE_ID = re.compile(r'[A-Za-z0-9_.-]{1,64}\Z')
+SPOKEN_LANG = re.compile(r'[a-z]{2,3}(?:-[A-Za-z]{2,4})?\Z')
+
+
+def card_issues(block_id, card):
+    """A Teaching Card: the one idea, in words, before anything else; optional predict and retrieve prompts, a visual or the
+    reason there is none, and a script written to be heard (references/TEACHING_FORMAT.md)."""
+    if not isinstance(card, dict) or set(card) - set(CARD_FIELDS):
+        return [issue('CARD_SHAPE', block_id, 'card is an object with only: ' + ', '.join(CARD_FIELDS))]
+    out = []
+    if not _text(card.get('core_idea'), 1, 400):
+        out.append(issue('CARD_CORE_IDEA', block_id, 'a card needs core_idea: the one idea of this section in words (at most 400 characters)'))
+    for field in ('predict', 'retrieve', 'no_visual_reason'):
+        if field in card and not _text(card[field], 1, 400):
+            out.append(issue('CARD_TEXT', block_id, f'card.{field} is text of at most 400 characters'))
+    if 'visual' in card and (not isinstance(card['visual'], str) or not FIGURE_ID.match(card['visual'])):
+        out.append(issue('CARD_VISUAL', block_id, 'card.visual is the id of a declared figure or widget'))
+    if 'visual' in card and 'no_visual_reason' in card:
+        out.append(issue('CARD_VISUAL', block_id, 'give card.visual or card.no_visual_reason, not both'))
+    spoken = card.get('spoken', {})
+    if 'spoken' in card and (not isinstance(spoken, dict) or not spoken or len(spoken) > 4
+                             or any(not isinstance(lang, str) or not SPOKEN_LANG.match(lang) or not _text(script, 1, 4000)
+                                    for lang, script in spoken.items())):
+        out.append(issue('CARD_SPOKEN', block_id, 'card.spoken maps a language code to a script of at most 4000 characters'))
+    return out
+
+
 def block_issues(state):
     """Structure of the declared teaching blocks, and each block's heading line. No learner needed."""
     blocks = state.get('teaching', [])
@@ -124,7 +153,7 @@ def block_issues(state):
     out, located, seen = [], [], set()
     for block in blocks:
         where = block.get('id') if isinstance(block, dict) else '?'
-        if (not isinstance(block, dict) or set(block) - {'id', 'heading', 'kind', 'target', 'assumes', 'introduces', 'literacy'}
+        if (not isinstance(block, dict) or set(block) - {'id', 'heading', 'kind', 'target', 'assumes', 'introduces', 'literacy', 'terms', 'card'}
                 or not {'id', 'heading', 'kind', 'target'} <= set(block)):
             out.append(issue('BLOCK_SHAPE', where, 'a teaching block needs id, heading, kind and target (optional: assumes, introduces, literacy)'))
             continue
@@ -140,6 +169,9 @@ def block_issues(state):
         if (not isinstance(assumes, list) or len(set(map(str, assumes))) != len(assumes) or any(not isinstance(a, str) or not k.ID.fullmatch(a) for a in assumes)
                 or block.get('target') in assumes):
             out.append(issue('BLOCK_ASSUMES', where, 'assumes is a list of distinct concept ids, not including the target'))
+        used = block.get('terms', [])
+        if not isinstance(used, list) or len(used) > 30 or any(not _text(term, 1, 100) for term in used):
+            out.append(issue('BLOCK_TERMS', where, 'terms lists the (at most 30) terms the block uses, as text'))
         introduces = block.get('introduces', {})
         if not isinstance(introduces, dict) or any(not _text(term, 1, 100) or not _text(definition, 1, 500) for term, definition in introduces.items()):
             out.append(issue('BLOCK_INTRODUCES', where, 'introduces maps each new term to its definition'))
@@ -148,6 +180,8 @@ def block_issues(state):
             out.append(issue('BLOCK_HEADING', where, f"{'no' if not hits else 'more than one'} heading reads exactly {block['heading']!r}; a declaration must match the lesson"))
         else:
             located.append((block, hits[0]))
+        if 'card' in block:
+            out.extend(card_issues(where, block['card']))
         if block['kind'] == 'implementation':
             out.extend(literacy_issues(where, block.get('literacy')))
         elif 'literacy' in block:
@@ -269,13 +303,46 @@ def _question_lines(lines, questions):
     return {q['id']: marked.get(q['id'], end + i) for i, q in enumerate(questions)}
 
 
-def introduction_gate(state, learner):
+def term_issues(block, introduced, view, lang):
+    """Terms a block uses must be introduced by this or an earlier block, or recorded as defined for this learner.
+
+    ``view`` is ``None`` when no term ledger is available: that is unknown, so it only warns. A term the ledger has not seen,
+    or marks shaky, is an error: teach it first. Introduced earlier but never restated by the learner is a warning."""
+    out = []
+    for text in block.get('terms', []) if isinstance(block.get('terms'), list) else []:
+        try:
+            key = ledger.term_id(text)
+        except ValueError:
+            continue
+        if key in introduced:
+            continue
+        if view is None:
+            out.append(issue('TERM_UNKNOWN', block['id'], f"'{block['heading']}' uses '{text}', and no term ledger is available: it is treated as unknown", 'warning'))
+            continue
+        state = ledger.best_state(view.get(key, {}), lang)
+        if state in ledger.KNOWN:
+            continue
+        if state == 'introduced':
+            out.append(issue('TERM_NOT_RESTATED', block['id'], f"'{block['heading']}' uses '{text}', which was introduced before but never restated by the learner", 'warning'))
+        else:
+            out.append(issue('UNDEFINED_TERM', block['id'], f"'{block['heading']}' uses '{text}', which is {state} for this learner and is not introduced earlier; define it first"))
+    return out
+
+
+def introduction_gate(state, learner, terms=None, lang=None):
     """May this session introduce what it introduces, in this order, to this learner? Teaching is not evidence:
     a concept explained earlier is *explained*, never *demonstrated*, and unknown mastery stays unknown."""
     problems, located = block_issues(state)
     lines, _ = _lines(state)
     explained, blocks, issues, unknown = {}, [], list(problems), set()
+    introduced = set()
     for block, line in located:
+        for text in (block.get('introduces') or {}):
+            try:
+                introduced.add(ledger.term_id(text))
+            except ValueError:
+                pass
+        issues.extend(term_issues(block, introduced, terms, lang))
         dependencies = []
         for concept in block.get('assumes', []):
             status = status_of(learner, concept)
@@ -309,12 +376,12 @@ def introduction_gate(state, learner):
     return {'blocks': blocks, 'unknown_mastery': sorted(unknown), 'issues': issues}
 
 
-def check(state, learner=None):
+def check(state, learner=None, terms=None, lang=None):
     """Structure, then (when a learner view is given) the introduction gate. ``learner=None`` says the gate was not run."""
     structure = structural_issues(state)
     result = {'opted_in': opted_in(state), 'gate_run': learner is not None and opted_in(state), 'gate': None, 'issues': list(structure)}
     if learner is not None and result['opted_in']:
-        gate = introduction_gate(state, learner)
+        gate = introduction_gate(state, learner, terms, lang)
         result['gate'] = {key: gate[key] for key in ('blocks', 'unknown_mastery')}
         known = {(i['code'], i['where'], i['message']) for i in structure}
         result['issues'].extend(i for i in gate['issues'] if (i['code'], i['where'], i['message']) not in known)
@@ -396,6 +463,70 @@ def literacy_markdown(block):
     return out
 
 
+def _definition_line(term, definition, *, bold):
+    term, definition = ' '.join(str(term).split()), ' '.join(str(definition).split())
+    return f'> - **{term}** — {definition}' if bold else f'> - {term} — {definition}'
+
+
+def _heading_level(line):
+    match = re.match(r'(#{1,6})\s', line)
+    return len(match[1]) if match else 7
+
+
+def expand_cards(source, blocks):
+    """The lesson with each carded block's core idea, prediction prompt and word strip under its heading, and its retrieval
+    prompt at the section end (projection only; the stored source is unchanged). Blocks without a valid card are untouched.
+
+    The word strip lists what this page can actually define: the terms the block introduces, and, as a reminder, terms it uses
+    that an earlier block of this lesson introduced.
+    """
+    lines = source.replace('\r\n', '\n').split('\n')
+    headings = [(n, text) for n, heading, text in hs.prose_lines(lines) if heading]
+    definitions, inserts = {}, []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        introduced = block.get('introduces') if isinstance(block.get('introduces'), dict) else {}
+        card = block.get('card')
+        hits = [n for n, text in headings if text.strip() == str(block.get('heading')).strip()]
+        if isinstance(card, dict) and len(hits) == 1 and not card_issues(block.get('id'), card):
+            top = ['> [!concept] In one idea', '> ' + ' '.join(card['core_idea'].split()), '']
+            if card.get('predict'):
+                top += ['> [!predict] Predict first', '> ' + ' '.join(card['predict'].split()), '']
+            if introduced:
+                top += ['> [!glossary]+ New words in this section'] + [_definition_line(w, d, bold=True) for w, d in introduced.items()] + ['']
+            own = set()
+            for word in introduced:
+                try:
+                    own.add(ledger.term_id(word))
+                except ValueError:
+                    pass
+            reminders = []
+            for word in block.get('terms') if isinstance(block.get('terms'), list) else []:
+                try:
+                    key = ledger.term_id(word)
+                except ValueError:
+                    continue
+                if key in definitions and key not in own:
+                    reminders.append(_definition_line(*definitions[key], bold=False))
+            if reminders:
+                top += ['> [!glossary]- Words from earlier in this lesson'] + reminders + ['']
+            start = hits[0]
+            level = _heading_level(lines[start])
+            end = next((n for n, _ in headings if n > start and _heading_level(lines[n]) <= level), len(lines))
+            inserts.append((start + 1, [''] + top))
+            if card.get('retrieve'):
+                inserts.append((end, ['', '> [!recall]- Check yourself', '> ' + ' '.join(card['retrieve'].split()), '']))
+        for word, definition in introduced.items():
+            try:
+                definitions.setdefault(ledger.term_id(word), (word, definition))
+            except ValueError:
+                pass
+    for position, extra in sorted(inserts, key=lambda item: item[0], reverse=True):
+        lines[position:position] = extra
+    return '\n'.join(lines)
+
+
 def expand_literacy(source, blocks):
     """The lesson source with each implementation block's literacy items inserted under its heading (projection only)."""
     lines = source.replace('\r\n', '\n').split('\n')
@@ -418,6 +549,7 @@ def main(argv=None):
     sub = parser.add_subparsers(dest='command', required=True)
     gate = sub.add_parser('check', help='gate a session: structure, then prerequisites against the learner record')
     gate.add_argument('session')
+    gate.add_argument('--lang', help='language of the lesson, for term states (default: best across languages)')
     source = gate.add_mutually_exclusive_group(required=True)
     source.add_argument('--receipt', type=Path, help='context receipt (the "receipt" of html_sessions.py context --json, or a receipt file)')
     source.add_argument('--learner', type=Path, help='JSON {concept-id: state}')
@@ -432,12 +564,15 @@ def main(argv=None):
         if args.command == 'evidence':
             print(json.dumps(evidence_proposal(state, args.question), ensure_ascii=False, indent=2))
             return 0
+        term_data = None
         if args.no_learner:
             view = None
         else:
             data = json.loads((args.receipt or args.learner).read_text(encoding='utf-8'))
-            view = learner_view(data['receipt'] if isinstance(data, dict) and isinstance(data.get('receipt'), dict) else data)
-        result = check(state, view)
+            receipt = data['receipt'] if isinstance(data, dict) and isinstance(data.get('receipt'), dict) else data
+            view = learner_view(receipt)
+            term_data = ledger.term_view(receipt) if args.receipt else None
+        result = check(state, view, term_data, args.lang)
     except (OSError, ValueError, KeyError) as exc:
         print(json.dumps({'error': str(exc)}, ensure_ascii=False))
         return 2

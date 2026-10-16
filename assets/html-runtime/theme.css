@@ -164,6 +164,12 @@ blockquote { margin: var(--ros-space-5) 0; padding: var(--ros-space-1) var(--ros
 .ros-callout:is(.ros-callout-definition,.ros-callout-established-fact,.ros-callout-fact,.ros-callout-answer,.ros-callout-reveal) { --ros-callout-accent: var(--ros-success); --ros-callout-bg: var(--ros-success-bg); }
 .ros-callout:is(.ros-callout-warning,.ros-callout-assumption) { --ros-callout-accent: var(--ros-warning); --ros-callout-bg: var(--ros-warning-bg); }
 .ros-callout-formula { --ros-callout-accent: var(--ros-accent); --ros-callout-bg: var(--ros-surface); border: 1.5px dashed var(--ros-border-strong); }
+/* Teaching Card (v0.9.5): the prediction prompt, and the glossary strip that defines words before the section uses them. */
+.ros-callout-predict { --ros-callout-accent: var(--ros-practice); --ros-callout-bg: var(--ros-practice-bg); }
+.ros-callout-glossary { --ros-callout-accent: var(--ros-info); --ros-callout-bg: var(--ros-surface); border: 1px solid var(--ros-border); }
+.ros-callout-glossary ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 0 var(--ros-space-5); }
+.ros-callout-glossary li { margin: 0; padding: var(--ros-space-2) 0; border-top: 1px solid var(--ros-border); font-size: .95em; overflow-wrap: anywhere; }
+.ros-callout-glossary li > strong:first-child { color: var(--ros-callout-accent); }
 details.ros-callout > summary { list-style-position: inside; margin: 0; padding-bottom: var(--ros-space-3); }
 :is(section,div,aside)[data-ros=definition], :is(section,div,aside)[data-ros=concept], :is(section,div,aside)[data-ros=evidence], :is(section,div,aside)[data-ros=decision] { border-radius: var(--ros-radius-md); background: var(--ros-accent-bg); padding: var(--ros-space-4) var(--ros-space-5); margin: var(--ros-space-5) 0; }
 :is(section,div)[data-ros=checkpoint] { border: 1px solid var(--ros-border); border-radius: var(--ros-radius-lg); background: var(--ros-surface); padding: var(--ros-space-5); margin: var(--ros-space-6) 0; }

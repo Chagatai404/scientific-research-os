@@ -1,9 +1,11 @@
 ---
-name: visualize
-description: Create scientific teaching diagrams, plots, interactive explorations, or physics/mathematical animations when relationships, geometry, scale, parameters, or evolution are clearer visually. Use for explanatory scientific visuals, not decorative imagery or general website design.
+name: science-visualize
+description: Create scientific teaching diagrams, plots, interactive explorations, or physics/mathematical animations when relationships, geometry, scale, parameters, or evolution are clearer visually. Use for explanatory scientific visuals tied to a concept being learned or a research claim; for generic business charts, dashboards or decorative imagery use a general charting or design skill instead.
 ---
 
-# Visualize
+# Science Visualize
+
+Formerly `visualize`; renamed in v0.9.5 so it cannot be confused with a host's built-in chart tool.
 
 Read `references/VISUALIZATION_PROTOCOL.md` before creating the visual. Read
 `references/SOURCE_POLICY.md` for scientific claims needing evidence, and

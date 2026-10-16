@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / 'tests'))
 import install
 from test_context_kernel import AS_OF, KernelCase
 
-WORKFLOW_SKILLS = ('tutor', 'course-study', 'research-session', 'research-review', 'derive', 'visualize')
+WORKFLOW_SKILLS = ('tutor', 'course-study', 'research-session', 'research-review', 'derive', 'science-visualize')
 
 
 class InstalledParityTests(KernelCase):

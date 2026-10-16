@@ -40,6 +40,9 @@ Exit status 2 means **blocked**. Print the blocking source and stop; do not cont
 | math-review | advisory | essential | advisory | advisory | advisory | off | off |
 | statistics-review | advisory | essential | advisory | advisory | advisory | off | off |
 | physics-review | advisory | essential | advisory | advisory | advisory | off | off |
+| chemistry-review | advisory | essential | advisory | advisory | advisory | off | off |
+| biology-review | advisory | essential | advisory | advisory | advisory | off | off |
+| code-walkthrough | advisory | essential | essential | advisory | off | advisory | advisory |
 | research-plan | advisory | essential | essential | advisory | advisory | off | advisory |
 | research-implement | advisory | essential | essential | advisory | advisory | off | off |
 | literature | advisory | advisory | advisory | off | essential | off | off |
@@ -47,6 +50,18 @@ Exit status 2 means **blocked**. Print the blocking source and stop; do not cont
 | decision-synthesis | advisory | essential | advisory | advisory | advisory | off | off |
 
 Project sources (research, project, code) are `not-applicable` when no project is named.
+
+## Weight of an interaction
+
+Not every question is a session. Choose the lightest mode that honestly serves the request, and say which one is in use.
+
+| Mode | When | What runs | What it cannot do |
+|---|---|---|---|
+| **Quick answer** | One-off question, formula, definition or "derive this for me" with no request to be taught, tracked or resumed. | Answer directly from authoritative sources. Optionally `preflight --workflow standalone-question` (no project or vault needed) so the answer respects what the record already says the learner knows. | Write a session, a ledger row or any retention evidence. Say "not recorded" and offer to turn it into a session. |
+| **Session** | The user asks to be tutored or taught, starts or continues a session, wants progress kept, or the work is research-linked. | Full workflow preflight, concept-first gates, HTML session artifacts, supervision. | Nothing is skipped; this is the existing contract. |
+
+Escalate from a quick answer the moment the user asks to practise, be checked, or keep the result. De-escalate
+only by the user's choice. A quick answer is never evidence of understanding and never promotes a permanent note.
 
 ## Source statuses
 

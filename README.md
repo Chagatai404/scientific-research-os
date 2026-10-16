@@ -84,14 +84,17 @@ tests/                   Lightweight self-checks
 
 - `course-study` — university coursework, from syllabus and lectures to practice, exams and prerequisite repair.
 - `notes-to-latex` — faithful handwritten technical notes to LaTeX, with visible ambiguity and disclosed corrections.
-- `tutor` — source-grounded live tutoring with prerequisite probing and retrieval checks.
-- `visualize` — scientific diagrams, plots, interactive exploration, and physics/mathematical animation.
+- `tutor` — source-grounded live tutoring with prerequisite probing and retrieval checks, for mathematics, statistics, physics, chemistry and biology.
+- `science-visualize` (formerly `visualize`) — scientific diagrams, plots, interactive exploration, and physics/mathematical animation.
 - `study-source` — deeply study a paper, book chapter, website, lecture, or video.
 - `derive` — reconstruct mathematics/physics from assumptions and sanity checks.
 - `form-hypothesis` — turn ideas into falsifiable scientific hypotheses.
 - `design-experiment` — design reproducible experiments before running them.
 - `stats-audit` — audit statistical validity and leakage.
 - `physics-audit` — audit physical assumptions, units, geometry, and limiting behavior.
+- `code-walkthrough` — teach the researcher the code that was written or inherited: approach first, change units, claims tied to checkable locators and recorded executions, probes, and open ownership gaps for what was skipped.
+- `chemistry-audit` — audit stoichiometry, units, representations, mechanism claims, sources and laboratory safety.
+- `biology-audit` — audit experimental design, replication, model-system scope, sequence/structure sources, small-sample statistics and biosafety.
 - `research-review` — adversarial review of claims and evidence.
 - `research-session` — orchestrate a complete human-led research session.
 - `geant4` — plan and validate detector/particle simulation with explicit physical configuration.
@@ -105,6 +108,9 @@ Skills describe workflows and capabilities. They are not tied to a particular mo
 - literature-scout
 - source-verifier
 - physics-reviewer
+- chemistry-reviewer
+- biology-reviewer
+- walkthrough-verifier
 - statistics-reviewer
 - reproducibility-auditor
 - adversarial-reviewer

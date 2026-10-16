@@ -22,7 +22,7 @@ class ResearchContracts(unittest.TestCase):
         for term in ('authoritative existing visual', 'Never treat a visually plausible generated image as scientific evidence',
                      'Only `verified` assets', 'schematic, explicitly labelled', 'user-requested'):
             self.assertIn(term, flat)
-        for name in ('skills/visualize/SKILL.md', 'skills/tutor/SKILL.md'):
+        for name in ('skills/science-visualize/SKILL.md', 'skills/tutor/SKILL.md'):
             text = ' '.join((ROOT / name).read_text(encoding='utf-8').split())
             self.assertIn('source-first', text)
 

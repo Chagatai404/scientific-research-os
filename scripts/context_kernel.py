@@ -34,6 +34,9 @@ POLICY = {
     'math-review':         dict(learning=A, research=E, project=A, code=A, library=A, visuals=O, sessions=O),
     'statistics-review':   dict(learning=A, research=E, project=A, code=A, library=A, visuals=O, sessions=O),
     'physics-review':      dict(learning=A, research=E, project=A, code=A, library=A, visuals=O, sessions=O),
+    'chemistry-review':    dict(learning=A, research=E, project=A, code=A, library=A, visuals=O, sessions=O),
+    'biology-review':      dict(learning=A, research=E, project=A, code=A, library=A, visuals=O, sessions=O),
+    'code-walkthrough':    dict(learning=A, research=E, project=E, code=A, library=O, visuals=A, sessions=A),
     'research-plan':       dict(learning=A, research=E, project=E, code=A, library=A, visuals=O, sessions=A),
     'research-implement':  dict(learning=A, research=E, project=E, code=A, library=A, visuals=O, sessions=O),
     'literature':          dict(learning=A, research=A, project=A, code=O, library=E, visuals=O, sessions=O),
@@ -521,6 +524,10 @@ def build(request):
                      session_path and ctx['vault'] and (ctx['vault'] / Path(session_path).with_suffix('.state.json')).is_file())}}
     if collection is not None and sources['learning']['status'] in {'ok', 'empty'}:
         retrieval['learner'] = _learner(req, collection)
+        # The Student Brief: which terms the learner is recorded as knowing. Informational; a missing ledger never degrades a receipt.
+        import terms
+        closure = {n['id'] for n in retrieval['learner']['nodes']} | ({req['target']['id']} if req['target'] else set())
+        retrieval['learner']['student'] = terms.brief(ctx['vault'], closure)
     if registry is not None and records and sources['research']['status'] == 'ok':
         retrieval['research'] = _research_view(req, registry, records, retrieval['learner'])
     if payload['library'] is not None:

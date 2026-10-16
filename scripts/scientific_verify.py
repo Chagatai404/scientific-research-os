@@ -26,14 +26,18 @@ import random
 import re
 import sys
 
+import chembio_verify as _chembio
+
 SCHEMA = 1
 OUTCOMES = ('verified-in-scope', 'partially-verified', 'invalidated', 'unresolved', 'not-checked')
 PASS, FAIL, INCONCLUSIVE, ERROR = 'pass', 'fail', 'inconclusive', 'error'
 CONSEQUENCES = ('routine', 'consequential')
 QUANTITATIVE = ('evaluate', 'equivalent', 'integral', 'derivative', 'limit', 'rate-interval', 'propagation')
 STRUCTURAL = ('dimensional', 'resampling-unit', 'fit-partition', 'assumption-declared', 'regime-match', 'mapping-declared')
-KINDS = QUANTITATIVE + STRUCTURAL
-CONTEXT_WORKFLOWS = {'math-review', 'statistics-review', 'physics-review', 'research-review', 'decision-synthesis', 'research-implement'}
+# Exact discrete rules (chemistry and biology): stoichiometry, molar mass, sequences. See chembio_verify.py.
+DISCRETE = tuple(_chembio.RUNNERS)
+KINDS = QUANTITATIVE + STRUCTURAL + DISCRETE
+CONTEXT_WORKFLOWS = {'math-review', 'statistics-review', 'physics-review', 'chemistry-review', 'biology-review', 'research-review', 'decision-synthesis', 'research-implement'}
 SEVERITIES = ('A', 'B', 'C', 'D')  # the existing A-D research triage: A blocks, D is an optional refinement
 MAX_EXPRESSION, MAX_NODES, MAX_CHECKS, MAX_POINTS = 2000, 400, 40, 2000
 DEFAULT_TOLERANCE = {'rel': 1e-9, 'abs': 1e-12}
@@ -45,6 +49,7 @@ CLASS = {'exact-arithmetic': 'direct-evaluation', 'floating-point': 'direct-eval
          'finite-difference': 'finite-difference', 'limit-sequence': 'limit-sequence', 'exact-interval': 'exact-interval',
          'library': 'independent-implementation', 'approximation': 'approximation',
          'linear-propagation': 'linear-propagation', 'monte-carlo': 'monte-carlo'}
+CLASS.update(_chembio.CLASS)
 # A high-precision rerun of the same integral or limit is the same method, not a second reconstruction.
 CLASS_OVERRIDE = {('integral', 'high-precision'): 'quadrature', ('limit', 'high-precision'): 'limit-sequence'}
 
@@ -538,6 +543,9 @@ BASE_UNITS = {
     'J': (1.0, _d(M=1, L=2, T=-2)), 'W': (1.0, _d(M=1, L=2, T=-3)), 'C': (1.0, _d(I=1, T=1)),
     'V': (1.0, _d(M=1, L=2, T=-3, I=-1)), 'T': (1.0, _d(M=1, T=-2, I=-1)),
     'eV': (1.602176634e-19, _d(M=1, L=2, T=-2)), 'barn': (1e-28, _d(L=2)), 'b': (1e-28, _d(L=2)),
+    # Chemistry: exact by definition (litre, molar = mol/L, thermochemical calorie, standard atmosphere, bar).
+    'L': (1e-3, _d(L=3)), 'M': (1e3, _d(N=1, L=-3)), 'cal': (4.184, _d(M=1, L=2, T=-2)), 'atm': (101325.0, _d(M=1, L=-1, T=-2)),
+    'bar': (1e5, _d(M=1, L=-1, T=-2)),
     # Radiation/interaction lengths depend on the material: deliberately their own dimensions.
     'X0': (1.0, _d(X0=1)), 'lambda_I': (1.0, _d(lambdaI=1)), 'MIP': (1.0, _d(MIP=1)), '1': (1.0, Dim()),
 }
@@ -1238,6 +1246,8 @@ FIELDS = {
     'regime-match': ({'source', 'target'}, set()),
     'mapping-declared': ({'observable_a', 'observable_b'}, {'mapping'}),
 }
+RUNNERS.update(_chembio.RUNNERS)
+FIELDS.update(_chembio.FIELDS)
 COMMON = {'id', 'kind', 'optional', 'require_methods', 'note', 'formulation'}
 
 
@@ -1283,7 +1293,7 @@ def run_check(spec, check):
             'formulation': check.get('formulation', 'primary')}
     try:
         methods = RUNNERS[check['kind']](spec, check)
-    except (ExpressionError, VerificationError) as exc:
+    except (ExpressionError, VerificationError, _chembio.ChemError) as exc:
         return dict(head, status=ERROR, methods=[], error=str(exc), passing_families=[], not_run=[])
     except (KeyError, TypeError, AttributeError) as exc:
         return dict(head, status=ERROR, methods=[], error=f'malformed check: {type(exc).__name__}: {exc}', passing_families=[], not_run=[])
@@ -1343,7 +1353,7 @@ def independent_classes(results):
     def label(r, f):
         cls = CLASS_OVERRIDE.get((r['kind'], f), CLASS[f])
         return cls if r.get('formulation', 'primary') == 'primary' else f"{cls}:{r['formulation']}"
-    return sorted({label(r, f) for r in results if r['status'] == PASS and r['kind'] in QUANTITATIVE
+    return sorted({label(r, f) for r in results if r['status'] == PASS and r['kind'] in QUANTITATIVE + DISCRETE
                    for f in r.get('passing_families', []) if f in CLASS})
 
 
@@ -1407,7 +1417,7 @@ def run(spec, *, receipt=None, now=None):
     record = {'verification_schema': SCHEMA, 'verification_id': spec['verification_id'], 'claim': spec['claim'], 'outcome': outcome,
               'scope': scope_of(spec, results), 'checks': clean(results), 'findings': findings,
               'independent_classes': independent_classes(results),
-              'independent_families': sorted({f for r in results if r['status'] == PASS and r['kind'] in QUANTITATIVE
+              'independent_families': sorted({f for r in results if r['status'] == PASS and r['kind'] in QUANTITATIVE + DISCRETE
                                               for f in r.get('passing_families', [])}),
               'not_verified': [f['message'] for f in findings if f['code'] in ('OBLIGATION_UNMET', 'INDEPENDENCE_MISSING', 'NO_OBLIGATIONS')],
               'inputs': spec.get('inputs', {}), 'source': spec.get('source'), 'reviewer': spec.get('reviewer'), 'context': context,

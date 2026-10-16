@@ -639,7 +639,7 @@
 /* Research OS runtime v1. No host privileges, network calls or authoritative browser storage. */
 (function (root) {
   'use strict';
-  const VOCABULARY = 'concept definition equation derivation intuition warning evidence question mcq multi numeric matching ordering free-response hint solution code output figure widget checkpoint recall connection open-question decision legacy'.split(' ');
+  const VOCABULARY = 'concept definition equation derivation intuition warning evidence question mcq multi numeric matching ordering free-response hint solution code output figure widget checkpoint recall connection open-question decision legacy predict glossary'.split(' ');
   function equal(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
   function assess(q, response) {
     if (!q || !VOCABULARY.includes(q.kind)) throw new Error('Unsupported question kind');

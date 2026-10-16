@@ -29,17 +29,24 @@ V08_AGENT_REFERENCES = {
 # v0.9: the verification protocol travels with every role that audits a quantitative claim.
 V09_AGENT_REFERENCES = {role: ("VERIFICATION_PROTOCOL.md",) for role in (
     "mathematics-reviewer", "statistics-reviewer", "physics-reviewer", "adversarial-reviewer",
-    "ml-reviewer", "simulation-reviewer", "qml-reviewer")}
+    "ml-reviewer", "simulation-reviewer", "qml-reviewer", "chemistry-reviewer", "biology-reviewer", "walkthrough-verifier")}
+# v0.9.5: the domain protocol travels with the reviewer for that domain.
+DOMAIN_AGENT_REFERENCES = {"chemistry-reviewer": ("CHEMISTRY_PROTOCOL.md",), "biology-reviewer": ("BIOLOGY_PROTOCOL.md",),
+                           "walkthrough-verifier": ("CODE_LEARNING_PROTOCOL.md",)}
 
 
 # Standard-library helpers the graph-first workflows call from an installed skill
 # directory (`python scripts/<helper>.py`); they import each other by module name.
-GRAPH_SKILLS = {"tutor", "course-study", "visualize", "research-session", "research-review", "defend-research"}
+GRAPH_SKILLS = {"tutor", "course-study", "science-visualize", "research-session", "research-review", "defend-research", "code-walkthrough"}
+
+# Skills renamed between releases. The old directory is moved aside (never deleted) so that a host does not
+# see two skills for one capability; it is recognized as ours only if it carries our shared reference.
+RENAMED_SKILLS = {"visualize": "science-visualize"}
 GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py", "migrate_learning.py", "research.py", "visuals.py", "tutor_contract.py", "tutor_plan.py", "bootstrap.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
-                 "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py",
+                 "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py", "library_index.py", "terms.py", "teaching_lint.py", "code_walkthrough.py",
                  "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py",
-                 "context_kernel.py", "scientific_verify.py", "rich_text.py", "visual_assets.py", "tutor_gate.py", "supervision.py",
+                 "context_kernel.py", "scientific_verify.py", "chembio_verify.py", "rich_text.py", "visual_assets.py", "tutor_gate.py", "supervision.py",
                  # tasks.py gates reconciliation on the library inventory receipt that scout.py produces.
                  "scout.py",
                  # Optional Obsidian adapters: detection, vault search, and generated cards/canvas (all degrade to built-in routes).
@@ -51,9 +58,9 @@ GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py",
 SESSION_HELPERS = ("html_sessions.py", "common.py", "research.py", "knowledge.py", "ontology.py",
                    "validate_evidence.py", "computational_manifest.py",
                    # The context kernel gates every session; this is its complete import closure.
-                   "context_kernel.py", "migrate_learning.py", "paper_library.py", "visuals.py",
+                   "context_kernel.py", "migrate_learning.py", "paper_library.py", "library_index.py", "terms.py", "visuals.py",
                    # Stdlib-only verification engine: every review workflow can execute its checks.
-                   "scientific_verify.py",
+                   "scientific_verify.py", "chembio_verify.py",
                    # The shared scientific inline grammar html_sessions renders with.
                    "rich_text.py",
                    # `html_sessions.py place` / `attach-visual` put registered figures into a lesson.
@@ -110,6 +117,30 @@ def codex_agent_toml(meta: dict[str, str], body: str) -> str:
     )
 
 
+def retire_renamed_skills(base: Path, dry: bool) -> None:
+    """Move a previously installed skill that has been renamed into ``.research-os-retired``.
+
+    Only a directory that is provably an earlier Research OS install is touched: a SKILL.md whose name is the
+    old name and a shipped ``references/SOURCE_POLICY.md``. Anything else is left alone and reported.
+    """
+
+    for old, new in RENAMED_SKILLS.items():
+        legacy = base / old
+        if not legacy.is_dir():
+            continue
+        text = (legacy / "SKILL.md").read_text(encoding="utf-8") if (legacy / "SKILL.md").is_file() else ""
+        ours = f"name: {old}\n" in text and (legacy / "references" / "SOURCE_POLICY.md").is_file()
+        if not ours:
+            print(f"{legacy} is not a Research OS install; left in place (it may shadow {new})")
+            continue
+        stamp = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+        target = base / ".research-os-retired" / stamp / old
+        print(f"{'[dry] ' if dry else ''}retire renamed skill {legacy} -> {target} (replaced by {new})")
+        if not dry:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(legacy), str(target))
+
+
 def install_skills(base: Path, dry: bool) -> None:
     """Install each skill together with the shared Research OS references.
 
@@ -119,6 +150,7 @@ def install_skills(base: Path, dry: bool) -> None:
     """
 
     shared_references = ROOT / "references"
+    retire_renamed_skills(base, dry)
 
     for skill in sorted((ROOT / "skills").iterdir()):
         if not skill.is_dir() or not (skill / "SKILL.md").exists():
@@ -165,7 +197,7 @@ def agent_policy(role: str) -> str:
     evidence_policy = ""
     compute_policy = ""
     v08_policy = ""
-    for name in ("ORCHESTRATION_PROTOCOL.md", *V08_AGENT_REFERENCES.get(role, ()), *V09_AGENT_REFERENCES.get(role, ())):
+    for name in ("ORCHESTRATION_PROTOCOL.md", *V08_AGENT_REFERENCES.get(role, ()), *V09_AGENT_REFERENCES.get(role, ()), *DOMAIN_AGENT_REFERENCES.get(role, ())):
         v08_policy += "\n" + (ROOT / "references" / name).read_text(encoding="utf-8")
     if role in COMPUTE_AGENTS:
         for name in ("COMPUTATIONAL_PROTOCOL.md", "SOURCE_POLICY.md", *COMPUTE_AGENTS[role]):
@@ -224,8 +256,48 @@ def install_html_companion(cfg: dict, dry: bool) -> None:
         install_runtime(vault)
 
 
+def skill_status(base: Path) -> dict[str, str]:
+    """Compare installed skills with the repository by content, never by modification time.
+
+    The installer rewrites a file only when its bytes differ, so an unchanged skill keeps its old date and is
+    still current. Values: ``current``, ``drifted`` (SKILL.md or a shared reference/helper differs),
+    ``missing``, or ``legacy`` (an old name that a rename has replaced).
+    """
+
+    result: dict[str, str] = {}
+    for skill in sorted((ROOT / "skills").iterdir()):
+        if not (skill / "SKILL.md").is_file():
+            continue
+        installed = base / skill.name
+        if not (installed / "SKILL.md").is_file():
+            result[skill.name] = "missing"
+            continue
+        pairs = [(skill / "SKILL.md", installed / "SKILL.md")]
+        pairs += [(p, installed / "references" / p.name) for p in (ROOT / "references").glob("*.md")]
+        drifted = any(not dst.is_file() or dst.read_bytes() != src.read_bytes() for src, dst in pairs)
+        result[skill.name] = "drifted" if drifted else "current"
+    for old in RENAMED_SKILLS:
+        if (base / old).is_dir():
+            result[old] = "legacy"
+    return result
+
+
+def print_status(cfg: dict, target: str) -> bool:
+    clean = True
+    for name, key in (("claude", "claude_skills"), ("codex", "codex_skills")):
+        if target not in ("all", name):
+            continue
+        base = expand(cfg["install"][key])
+        print(f"{name}: {base}")
+        for skill, state in skill_status(base).items():
+            clean &= state == "current"
+            print(f"  {state:8} {skill}")
+    return clean
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--status", action="store_true", help="report installed-vs-repository drift by content and exit")
     ap.add_argument("--target", choices=["all", "claude", "codex"], default="all")
     ap.add_argument("--obsidian", action="store_true")
     ap.add_argument("--html-companion", action="store_true", help="stage companion plugin/runtime; enable manually in Obsidian")
@@ -234,6 +306,9 @@ def main() -> None:
 
     cfg = load_config()
     ins = cfg["install"]
+
+    if args.status:
+        raise SystemExit(0 if print_status(cfg, args.target) else 1)
 
     if args.target in ("all", "claude"):
         install_skills(expand(ins["claude_skills"]), args.dry_run)

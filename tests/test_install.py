@@ -286,8 +286,8 @@ class InstallationTests(unittest.TestCase):
                 capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-            skill = self.tmp_path / f"{target}-skills/visualize"
-            self.assertEqual((skill / "SKILL.md").read_bytes(), (ROOT / "skills/visualize/SKILL.md").read_bytes())
+            skill = self.tmp_path / f"{target}-skills/science-visualize"
+            self.assertEqual((skill / "SKILL.md").read_bytes(), (ROOT / "skills/science-visualize/SKILL.md").read_bytes())
             self.assertEqual((skill / "references/VISUALIZATION_PROTOCOL.md").read_text(encoding="utf-8"), canonical)
             latex = self.tmp_path / f"{target}-skills/notes-to-latex"
             self.assertEqual((latex / "SKILL.md").read_bytes(), (ROOT / "skills/notes-to-latex/SKILL.md").read_bytes())
@@ -346,6 +346,41 @@ class InstallationTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+
+    def test_status_reports_content_drift_not_modification_time(self):
+        base = self.tmp_path / 'status-skills'
+        with redirect_stdout(io.StringIO()):
+            install.install_skills(base, False)
+        self.assertEqual(set(install.skill_status(base).values()), {'current'})
+        stale = base / 'tutor/SKILL.md'
+        stale.write_text(stale.read_text(encoding='utf-8') + '\nlocal edit\n', encoding='utf-8')
+        # An old timestamp on identical content is still current.
+        import os
+        os.utime(base / 'derive/SKILL.md', (1, 1))
+        state = install.skill_status(base)
+        self.assertEqual(state['tutor'], 'drifted')
+        self.assertEqual(state['derive'], 'current')
+
+    def test_renamed_skill_is_retired_not_deleted_and_foreign_directories_are_left(self):
+        base = self.tmp_path / 'rename-skills'
+        legacy = base / 'visualize'
+        (legacy / 'references').mkdir(parents=True)
+        (legacy / 'SKILL.md').write_text('---\nname: visualize\n---\nold\n', encoding='utf-8')
+        (legacy / 'references/SOURCE_POLICY.md').write_text('policy', encoding='utf-8')
+        with redirect_stdout(io.StringIO()):
+            install.install_skills(base, True)
+        self.assertTrue(legacy.is_dir(), 'dry run must not move anything')
+        with redirect_stdout(io.StringIO()):
+            install.install_skills(base, False)
+        self.assertFalse(legacy.exists())
+        self.assertTrue(any((base / '.research-os-retired').rglob('SKILL.md')))
+        self.assertTrue((base / 'science-visualize/SKILL.md').is_file())
+        foreign = self.tmp_path / 'foreign-skills'
+        (foreign / 'visualize').mkdir(parents=True)
+        (foreign / 'visualize/SKILL.md').write_text('---\nname: visualize\n---\nsomeone else\n', encoding='utf-8')
+        with redirect_stdout(io.StringIO()):
+            install.install_skills(foreign, False)
+        self.assertTrue((foreign / 'visualize/SKILL.md').is_file(), 'not a Research OS install: left alone')
 
     def test_dry_run_creates_no_files(self):
         tmp_path = self.tmp_path

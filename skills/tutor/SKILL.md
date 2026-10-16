@@ -1,9 +1,21 @@
 ---
 name: tutor
-description: Source-grounded tutoring for mathematics, statistics, physics, quantum computing, machine learning, or coding. Use when the user wants to learn or deeply understand a concept, derivation, paper idea, or technical method rather than merely receive an answer.
+description: Source-grounded tutoring session for mathematics, statistics, physics, chemistry, biology, quantum computing, machine learning, or coding. Use when the user asks to be tutored or taught, starts or continues a learning session, or wants a concept learned with tracked progress. For a one-off question or formula explanation, answer directly in quick-answer mode instead of opening a session.
 ---
 
 # Tutor
+
+## Choose the weight first
+
+A one-off question ("what is X", "explain this formula") is a **quick answer**: answer directly, cite authoritative
+sources, write no session and no evidence, say it was not recorded, and offer a session. The preflight, gates and
+HTML session below apply to **session mode**: the user asked to be tutored, to continue a session, or to keep
+progress, or the work is research-linked. Escalate the moment the user wants practice or a record
+(`references/CONTEXT_PROTOCOL.md`, "Weight of an interaction").
+
+For chemistry or biology also read `references/CHEMISTRY_PROTOCOL.md` or `references/BIOLOGY_PROTOCOL.md`: the representation
+levels, the misconceptions worth probing, the sources, and the safety boundary (teach mechanisms and methods; do not supply
+routes to weapons, explosives, illicit drugs or the enhancement of dangerous pathogens).
 
 Read `references/LEARNING_PROTOCOL.md`, `references/TUTOR_PLANNING.md` and `references/SOURCE_POLICY.md` before setup; do not reread them after every probe answer. In this repository, shared references live at `../../references/`; the installer copies them into each installed skill's `references/` directory.
 
@@ -40,6 +52,12 @@ Concept first, project second, and checked rather than advised (`references/TUTO
    prints what could be proposed to the human for the ledger and writes nothing.
 6. Teach research code and methods as `implementation` blocks with all eight literacy items (why chosen, assumptions, how it
    works, how to run, how to verify, where to change it, how it fails, alternatives).
+
+7. Present each block as a **Teaching Card** (`references/TEACHING_FORMAT.md`): declare `card` with the one idea in words
+   (`core_idea`), a `predict` and a `retrieve` prompt, the `visual` or why there is none, and a `spoken` script written to be
+   heard. The page shows the idea first, then the word strip for terms the block introduces, then the prose. Keep paragraphs
+   short and say the idea before the formula. Check with `python scripts/teaching_lint.py blocks --root <vault> <session>`;
+   the lint is mechanical and does not judge whether the teaching is good.
 
 ## Workflow
 
@@ -85,7 +103,7 @@ Research validity remains separate.
 7. Make at least one visual per tutoring block (visual cadence in
    `references/VISUALIZATION_PROTOCOL.md`). First reuse a verified asset for the
    concept if one exists and prefer an authoritative source visual over generating
-   one (source-first policy). Then use the `visualize` skill if available, or follow
+   one (source-first policy). Then use the `science-visualize` skill if available, or follow
    the protocol directly; delegate bounded production to the visualizer when useful.
    Verify it yourself under the protocol's verification tiers (independent
    recomputation; a separate bounded reviewer only when the tier requires it), then
@@ -98,7 +116,9 @@ Research validity remains separate.
 10. At block end preserve retrieval evidence, distinguish current demonstration from
     delayed retention, and choose follow-up using the learning protocol and existing
     retention target.
-11. Propose permanent concept/derivation/quiz notes, but do not silently promote them.
+11. Propose permanent concept/derivation/quiz notes, but do not silently promote them. For a lecture note use the layered
+    template (`25_Lecture_Note.md`: gist and words, collapsed recall questions, lecture, derivation and sources) so the note
+    can be recalled from at a glance; check it with `python scripts/teaching_lint.py note <note.md>`.
 
 ## Session start and block end
 
@@ -115,7 +135,10 @@ Research validity remains separate.
    never merge optimistic mastery.
 5. Find reusable **verified** visuals (`scripts/visuals.py --reusable --concept <id>`),
    preferring an authoritative source visual over generating one.
-6. Prepare terminology definitions for terms the learner may not have established.
+6. Prepare terminology definitions for terms the learner may not have established. Read the receipt's Student Brief
+   (`retrieval.learner.student`; `references/LEARNER_MODEL.md`): define `unseen` and `shaky` terms before a block uses them, in
+   the lesson language, and list each block's words in its `terms` so the gate can check them. After a reviewed answer, record
+   the term event (`python scripts/terms.py --vault <vault> record ... --reviewed-by <name>`); presenting a term is only `introduced`.
 7. Prepare each question with its TESTS / ASSUMES / INTRODUCES contract.
 8. Begin the bounded probe or lesson.
 

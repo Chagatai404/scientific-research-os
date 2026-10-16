@@ -9,6 +9,11 @@ Read `references/RESEARCH_PROTOCOL.md`.
 For computational experiments also read `references/COMPUTATIONAL_PROTOCOL.md`
 and the applicable Geant4, ML or QML protocol. This extends the plan, not its
 authorization semantics.
+For an experiment done at a bench or with living material also read `references/BIOLOGY_PROTOCOL.md` and apply its wet-lab design
+annex (controls, biological replicates, randomization and blinding, sample-size justification, pre-specified analysis, materials with
+identifiers, and the ethics, animal-care, human-subjects and biosafety approvals). For chemistry read `references/CHEMISTRY_PROTOCOL.md`;
+a procedure to be carried out needs a hazard analysis. A plan missing its approvals or hazard analysis is not ready for the human
+approval gate.
 
 Before running anything, define:
 

@@ -600,7 +600,7 @@ class ScenarioJ(KernelCase):
             for helper in helpers:
                 with self.subTest(provider=provider, helper=helper):
                     self.assertEqual((self.skills[provider] / 'research-session/scripts' / helper).read_bytes(), (ROOT / 'scripts' / helper).read_bytes())
-            for skill in ('tutor', 'derive', 'visualize', 'research-review'):  # session helpers reach every workflow that writes sessions
+            for skill in ('tutor', 'derive', 'science-visualize', 'research-review'):  # session helpers reach every workflow that writes sessions
                 with self.subTest(provider=provider, skill=skill):
                     self.assertEqual((self.skills[provider] / skill / 'scripts/obsidian_plugins.py').read_bytes(), (ROOT / 'scripts/obsidian_plugins.py').read_bytes())
 

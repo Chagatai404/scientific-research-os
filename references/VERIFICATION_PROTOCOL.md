@@ -46,6 +46,25 @@ list). They are parsed and interpreted; nothing is evaluated by Python and nothi
 | `assumption-declared` | structural | - | a required assumption is not declared |
 | `regime-match` | structural | - | target regime not inside the source regime |
 | `mapping-declared` | structural | - | no mapping between two observables |
+| `formula-balance` | atom and charge counts per side (`atom-count`), and the coefficients that balance the species by a null-space solve (`nullspace`) | an element or the charge is not conserved, or the claimed coefficients are not the balancing ones | the species allow several independent balanced reactions |
+| `molar-mass` | sum of tabulated atomic weights (`tabulated-weights`) | the molar mass differs from `expected` beyond the tolerance (default relative 1e-3) | an element has no verified weight in the table |
+| `stoichiometry` | mole ratios from a balanced equation (`mole-ratio`): limiting reagent and theoretical moles or grams | the equation is unbalanced, or a computed amount differs from `expected` | an element has no verified weight |
+| `sequence-check` | rule-based DNA, RNA or protein checks (`sequence-rules`): alphabet, length, reverse complement, transcript, standard-code translation, GC content | any stated property differs | - |
+
+## Chemistry and biology checks (v0.9.5)
+
+`scripts/chembio_verify.py` adds four exact, standard-library checks. They verify arithmetic and rules, not chemistry or biology:
+that an equation balances, not that the reaction happens; that a translation follows the standard genetic code, not that the sequence
+is the right gene; that a yield follows from mole ratios, not that it is achievable. Equations need a space either side of the reaction
+`+` (`2 H2 + O2 -> 2 H2O`); charges use `^` (`Fe^3+`, `SO4^2-`); `e-` is an electron; hydrates use `·` or `*`.
+
+Atomic weights: single values and intervals come from the CIAAW Standard Atomic Weights 2024 page (read 2026-10-16); where CIAAW gives
+only an interval the rounded IUPAC conventional value is used, which was not on that page and agrees with the interval to the digits
+given. An element missing from the table makes `molar-mass` and `stoichiometry` `inconclusive`, never guessed. The record names this source.
+
+Independence: `atom-count` (counting) and `nullspace` (linear algebra) are different method classes, so one `formula-balance` check can
+support a consequential claim. A consequential molar-mass or yield claim needs a second route, for example an `evaluate` check of the
+same arithmetic given as a second `formulation`. Units: `dimensional` also knows `L`, `M` (mol/L), `cal`, `atm` and `bar`.
 
 ## Outcomes
 

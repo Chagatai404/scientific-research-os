@@ -46,7 +46,7 @@ It does not modify notes or automatically assess the learner. See the
 
 ### Scientific visualization
 
-The `visualize` skill and `visualizer` agent share
+The `science-visualize` skill and `visualizer` agent share
 [`VISUALIZATION_PROTOCOL.md`](../references/VISUALIZATION_PROTOCOL.md). Backends
 are optional capabilities, not installer/validator dependencies. This includes
 Manim Community for explanatory animation; Research OS does not install it or

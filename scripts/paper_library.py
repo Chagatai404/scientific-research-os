@@ -353,6 +353,8 @@ def ingest(root, item, *, apply=False, download=False, source_root=None, knowled
             atomic(root, '.catalog/' + paper['paper_id'] + '.paper.json', (json.dumps(paper, indent=2, sort_keys=True, ensure_ascii=False) + '\n').encode('utf-8'))
             records[paper['paper_id']] = paper
             atomic(root, '.indexes/index.json', (json.dumps(indexes(records), indent=2, sort_keys=True, ensure_ascii=False) + '\n').encode('utf-8'))
+            import library_index  # lazy: library_index imports this module
+            library_index.write_index(root, records)  # INDEX.md: every row linked from identifiers
         return {'outcome': 'already-in-library' if existing else paper['ingestion_status'] if apply else 'planned',
                 'applied': apply, 'paper': paper,
                 'pdf_action': 'would-fetch' if not apply and download and pdf and pdf['access'] == 'open' else 'none'}

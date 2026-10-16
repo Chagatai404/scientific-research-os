@@ -89,6 +89,23 @@ memberships and missing metadata, preserving first nonempty bibliographic values
 Explicit useful/rejected decisions can revise screening; found/screened cannot
 downgrade it. Review substantive metadata corrections explicitly in the catalog.
 
+## Linked indexes
+
+Every index entry must be followable. `python scripts/library_index.py index --root <library>` renders a Markdown index of the
+catalog (stdout; `--write` writes `<library>/INDEX.md`, and `paper_library.py --apply` refreshes it), and each row carries links built
+**from identifiers only**: DOI to `https://doi.org/<doi>`, arXiv to `https://arxiv.org/abs/<id>`, the source URL, and the saved PDF.
+A paper with no usable identifier says `no identifier`; a link is never guessed or fetched.
+
+`python scripts/library_index.py lint <index.md>...` fails (exit 1) on any table row or bullet that looks like a paper reference but
+has neither a link (web, Markdown, or `[[wikilink]]`) nor the `no identifier` marker. A literature pass is not complete until the
+index it produced lints clean. This extends the completion rule above; `tasks.py` does not enforce it yet.
+
+`python scripts/library_index.py backfill-plan --index <hand-written.md>... [--library <root>]` is **read-only**: it lists, per
+unlinked entry, links derivable from an identifier already present (an arXiv id in the entry or file name, a DOI, an Elsevier PII in
+a file name) and marks them `exact`. A publisher-style file name that does not determine a DOI (the same pattern occurs under more than
+one DOI prefix) yields no link, only the `no identifier` marker. It also lists library PDFs that appear in no index. Applying a plan to a hand-written index, the library or the vault is a
+separate step that needs the researcher's approval.
+
 ## Storage and access
 
 - .catalog/PAPER-<id>.paper.json is the canonical bibliographic record, including

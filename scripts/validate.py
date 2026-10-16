@@ -70,7 +70,7 @@ for p in sorted((ROOT / "agents").glob("*.md")):
         errors.append(f"{p}: invalid agent name or filename mismatch")
     if meta.get("mode") not in {"read-only", "controlled-write"}:
         errors.append(f"{p}: agent mode must be read-only or controlled-write")
-    if name in {"simulation-reviewer", "ml-reviewer", "qml-reviewer"} and meta.get("mode") != "read-only":
+    if name in {"simulation-reviewer", "ml-reviewer", "qml-reviewer", "chemistry-reviewer", "biology-reviewer", "walkthrough-verifier"} and meta.get("mode") != "read-only":
         errors.append(f"{p}: computational reviewer mode must be read-only")
     if name in agent_names:
         errors.append(f"Duplicate agent name: {name}")
@@ -105,11 +105,26 @@ required = [
     ROOT / "references" / "LEARNING_PROTOCOL.md",
     ROOT / "references" / "TUTOR_PLANNING.md",
     ROOT / "references" / "VISUALIZATION_PROTOCOL.md",
-    ROOT / "skills" / "visualize" / "SKILL.md",
+    ROOT / "skills" / "science-visualize" / "SKILL.md",
     ROOT / "assets" / "obsidian" / "00_Tutor_Session.md",
     ROOT / "assets" / "obsidian" / "13_Knowledge_Graph.md",
     ROOT / "scripts" / "knowledge.py",
     ROOT / "scripts" / "tutor_plan.py",
+    ROOT / "scripts" / "library_index.py",
+    ROOT / "scripts" / "terms.py",
+    ROOT / "scripts" / "chembio_verify.py",
+    ROOT / "scripts" / "code_walkthrough.py",
+    ROOT / "references" / "CODE_LEARNING_PROTOCOL.md",
+    ROOT / "agents" / "walkthrough-verifier.md",
+    ROOT / "skills" / "code-walkthrough" / "SKILL.md",
+    ROOT / "references" / "CHEMISTRY_PROTOCOL.md",
+    ROOT / "references" / "BIOLOGY_PROTOCOL.md",
+    ROOT / "agents" / "chemistry-reviewer.md",
+    ROOT / "agents" / "biology-reviewer.md",
+    ROOT / "skills" / "chemistry-audit" / "SKILL.md",
+    ROOT / "skills" / "biology-audit" / "SKILL.md",
+    ROOT / "scripts" / "teaching_lint.py",
+    ROOT / "assets" / "obsidian" / "25_Lecture_Note.md",
     ROOT / "scripts" / "validate_evidence.py",
     ROOT / "references" / "EVIDENCE_FORMAT.md",
 ]

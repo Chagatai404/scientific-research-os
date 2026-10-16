@@ -149,6 +149,22 @@ duplicated reviews without a reason. They remain advisory, cannot accept researc
 conclusions or authorize implementation, and may run reproductions only within
 explicitly approved scope.
 
+## Domain specialists (chemistry and biology)
+
+- **chemistry-reviewer:** stoichiometry, units, representations, mechanisms and sources under CHEMISTRY_PROTOCOL and the
+  verification protocol (`formula-balance`, `molar-mass`, `stoichiometry`).
+- **biology-reviewer:** experimental design, replication, controls, sequence and structure sources and statistics for small samples
+  under BIOLOGY_PROTOCOL and the verification protocol (`sequence-check`, `assumption-declared`).
+
+Both are read-only, advisory, receive only the claim, sources and acceptance criteria they need, and flag unsafe laboratory steps as
+blockers (see the safety boundary in each protocol). They never accept research conclusions or authorize an experiment.
+
+## Code comprehension specialist
+
+- **walkthrough-verifier:** re-checks the claims a code walkthrough makes about the code (locators, recorded executions, probe answers
+  computed from the code) under CODE_LEARNING_PROTOCOL. Read-only; it may run only commands the researcher approved in the walkthrough
+  record, and it never explains the code on the author's behalf or marks anything the learner has not shown they understand.
+
 ## v0.8 contract routing (literature/access/orchestration available)
 
 `ORCHESTRATION_PROTOCOL.md` defines durable task state, immutable input/context

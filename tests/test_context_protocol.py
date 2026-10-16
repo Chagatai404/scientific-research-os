@@ -12,6 +12,8 @@ import install
 
 SKILL_WORKFLOWS = {'tutor': 'tutor', 'course-study': 'course-study', 'research-session': 'research-plan',
                    'research-review': 'research-review', 'stats-audit': 'statistics-review', 'physics-audit': 'physics-review',
+                   'chemistry-audit': 'chemistry-review', 'biology-audit': 'biology-review',
+                   'code-walkthrough': 'code-walkthrough',
                    'design-experiment': 'research-plan', 'form-hypothesis': 'research-plan', 'derive': 'math-review',
                    'ml-experiment': 'research-implement', 'geant4': 'research-implement', 'qml-experiment': 'research-implement'}
 

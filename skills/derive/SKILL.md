@@ -1,9 +1,13 @@
 ---
 name: derive
-description: Reconstruct a mathematical, statistical, physical, or ML formula from motivations, definitions, and assumptions. Use when the user wants to understand where an equation comes from or needs a derivation they can reproduce themselves.
+description: Reconstruct a mathematical, statistical, physical, or ML formula from motivations, definitions, and assumptions. Use when the user wants to understand where an equation comes from or needs a derivation they can reproduce themselves. A request to simply show a derivation is a quick answer (no session); open a session only when the user wants to practise, be checked, or keep it.
 ---
 
 # Derive
+
+**Weight.** Quick answer: do steps 1–11 below in chat and say the result was not recorded. Session mode (the user wants
+to reproduce it, be checked, or keep it, or the derivation supports research): run the preflight and session artifacts
+below. See `references/CONTEXT_PROTOCOL.md`, "Weight of an interaction".
 
 1. State the target result.
 2. Explain what problem forces us to introduce this quantity/result.

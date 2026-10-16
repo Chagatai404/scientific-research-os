@@ -726,10 +726,12 @@ def _placement_notice(issues):
 def _teaching_source(state):
     """The lesson source as shown: implementation blocks carry their declared literacy items under their heading."""
     blocks = [b for b in state.get("teaching", []) if isinstance(b, dict) and b.get("kind") == "implementation" and isinstance(b.get("literacy"), dict)]
-    if not blocks:
+    cards = any(isinstance(b, dict) and isinstance(b.get("card"), dict) for b in state.get("teaching", []))
+    if not blocks and not cards:
         return state["source_markdown"]
     import tutor_gate  # imports this module, so it is loaded on demand
-    return tutor_gate.expand_literacy(state["source_markdown"], blocks)
+    source = tutor_gate.expand_literacy(state["source_markdown"], blocks) if blocks else state["source_markdown"]
+    return tutor_gate.expand_cards(source, state["teaching"]) if cards else source
 
 
 def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, resource_markup="", resource_scripts="", resource_images=None):
