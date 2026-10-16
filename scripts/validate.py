@@ -115,6 +115,8 @@ required = [
     ROOT / "scripts" / "chembio_verify.py",
     ROOT / "scripts" / "structure_verify.py",
     ROOT / "scripts" / "diagram_spec.py",
+    ROOT / "scripts" / "animate.py",
+    ROOT / "references" / "ANIMATION_PROTOCOL.md",
     ROOT / "references" / "DIAGRAM_PROTOCOL.md",
     ROOT / "scripts" / "code_walkthrough.py",
     ROOT / "scripts" / "resources.py",

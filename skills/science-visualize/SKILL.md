@@ -47,6 +47,12 @@ verification-spec|capabilities`. The spec carries the coordinates, atoms and con
 with `scientific_verify.py`. The result is `rendered`, never `verified`, until it is inspected and checked under the verification tiers. Sessions embed the
 static SVG views; the interactive viewer page opens in a browser. A schematic is marked `"schematic": true` and never presented as to scale.
 
+**Animation.** For motion, write one Manim Community scene and a spec, and let `scripts/animate.py` detect a backend, lint, render and register it
+(`references/ANIMATION_PROTOCOL.md`): `python scripts/animate.py capabilities|validate|lint|render|keyframes|present`. The spec needs a `basis` for the motion (or
+`"schematic": true`) and a `predict` prompt; the result is a poster, a key-frame strip and a record at `rendered`, never `verified`. ManimGX is preferred,
+Manim Community the baseline, and `manim-slides` (pinned to a compatible Manim version) gives predict-first pauses. Nothing is installed for you; with no backend,
+return the scene and an unrendered storyboard and say nothing was rendered. A scene is code: render only scenes you have read.
+
 For work that introduces a research model, simulation, or experiment, read
 `references/RESEARCH_PROTOCOL.md` and preserve its explicit approval boundary.
 Rendering an already authorized teaching artifact does not start another research

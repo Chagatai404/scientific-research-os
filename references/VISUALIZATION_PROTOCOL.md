@@ -201,6 +201,12 @@ when it still answers the teaching question. Otherwise return an explicitly
 unrendered source/storyboard and the missing capability, not a claimed finished
 animation. Do not silently substitute invented motion for unavailable simulation.
 
+## Animations made from a scene and a spec (v0.9.5)
+
+The tooling for motion is in `references/ANIMATION_PROTOCOL.md` (`scripts/animate.py`): backend detection, scene lint, a recorded render, a poster and a key-frame strip, and a
+registry record at `rendered`. Every rule above still applies: a stated basis for the motion, no fabricated physics, predict before play, and inspection of the initial,
+intermediate and final frames. ManimGX's layout check covers 2D scenes only; inspect 3D key frames yourself.
+
 ## Diagrams made from a spec (v0.9.5)
 
 For geometry, molecules and biomolecular structure, make the figure from a declarative spec that carries the numbers, and check those numbers
