@@ -435,6 +435,27 @@ class KokoroBoard(unittest.TestCase):
         with mock.patch.object(vc, 'run_command', fake), self.assertRaisesRegex(vc.VoiceError, 'no board widget'):
             vc.bind_board_audio(self.vault, 'Sessions/lecture.md', 'nope', provider='kokoro', envs=[str(self.env)], voices=self.voices)
 
+    def test_steps_added_to_an_open_board_while_it_is_being_narrated_are_not_lost(self):
+        import board_script
+        import html_sessions as hs
+        hs.install_runtime(self.vault)
+        hs.create_session(self.vault, 'Sessions/live.md', '# Live\n\n<!-- ros-widget: board1 -->\n', title='Live',
+                          widgets=[{'id': 'board1', 'kind': 'board', 'script': dict(BOARD, open=True)}])
+        real = vc.speak_board
+
+        def slow(root, script, **kwargs):
+            result = real(root, script, **kwargs)
+            grown = board_script.append_steps(script, [{'id': 'later', 'say': 'Added meanwhile.'}], open_=False)   # the agent writes on while we narrate
+            hs.update_session(root, 'Sessions/live.md', widgets=[{'id': 'board1', 'kind': 'board', 'script': grown}])
+            return result
+        fake = BatchAdapter(engines=self.engines)
+        with mock.patch.object(vc, 'run_command', fake), mock.patch.object(vc, 'speak_board', slow):
+            vc.bind_board_audio(self.vault, 'Sessions/live.md', 'board1', provider='kokoro', envs=[str(self.env)], voices=self.voices)
+        widget = hs.load_session(self.vault, 'Sessions/live.md')['widgets'][0]
+        self.assertEqual([s['id'] for s in widget['script']['steps']][-1], 'later', 'the step added during narration survives')
+        self.assertFalse(widget['script']['open'])
+        self.assertEqual(sorted(widget['audio']), ['a', 'b', 'c'])
+
     def test_the_command_line_prints_the_map_for_a_script_file_and_changes_nothing_else(self):
         import contextlib
         import io

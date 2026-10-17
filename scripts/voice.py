@@ -390,6 +390,11 @@ def bind_board_audio(root: Path, session: str, widget_id: str, **options) -> dic
     if widget is None:
         raise VoiceError(f'the session has no board widget {widget_id!r}')
     result = speak_board(root, widget['script'], **options)
+    # Narrating takes a minute or more, and an open board may have grown meanwhile: change only this widget's recordings in the session as it is now.
+    widgets = [dict(w) for w in html_sessions.load_session(root, session).get('widgets', [])]
+    widget = next((w for w in widgets if w.get('id') == widget_id and w.get('kind') == 'board'), None)
+    if widget is None:
+        raise VoiceError(f'the board widget {widget_id!r} was removed while it was being narrated')
     if result['audio']:
         widget['audio'] = result['audio']
     else:
