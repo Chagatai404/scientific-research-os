@@ -202,6 +202,108 @@
     };
   }
 
+  // Recorded sentences: a clip per step (found by the step's id), played through an audio element; the silence the delivery puts after a sentence is waited out
+  // afterwards, with timers that can be paused. A step with no clip, a clip that will not play, and one that never ends are said by `fallback` instead (the device
+  // voice, or timed captions), so the lecture never stops. clips: {stepId: {url, seconds, pause}}, built by the page's builder, never by the script.
+  const clipOk = c => !!c && typeof c.url === 'string' && c.url.length > 0 && (c.url.startsWith('data:audio/') || !/^[a-z][a-z0-9+.-]*:/i.test(c.url)) &&
+    num(c.seconds, 0.1, 600) && num(c.pause, 0, 5);
+  function audioSpeaker(win, clips, fallback, clock) {
+    clock = clock || realClock;
+    const Player = win && win.Audio;
+    const ready = {};
+    for (const id of Object.keys(clips || {})) if (clipOk(clips[id])) ready[id] = clips[id];
+    const supported = typeof Player === 'function' && Object.keys(ready).length > 0;
+    const timers = createTimers(clock);
+    let rate = 1, current = null;
+    function release(entry) {
+      clock.clearTimeout(entry.watchdog);
+      if (entry.audio) {
+        for (const [type, fn] of entry.listeners) entry.audio.removeEventListener(type, fn);
+        try { entry.audio.pause(); } catch (_) { /* nothing playing */ }
+      }
+    }
+    function finish(entry) {
+      if (entry.done) return;
+      entry.done = true; release(entry);
+      if (current === entry) current = null;
+      entry.resolve();
+    }
+    // The sentence is said by the fallback voice from the start (the clip failed or is missing).
+    function useFallback(entry) {
+      if (entry.done || entry.delegate) return;
+      release(entry); entry.audio = null;
+      entry.delegate = fallback;
+      fallback.speak(entry.text, entry.opts).then(() => finish(entry), () => finish(entry));
+      if (entry.paused) fallback.pause();
+    }
+    function arm(entry) {
+      clock.clearTimeout(entry.watchdog);
+      entry.watchdog = clock.setTimeout(() => useFallback(entry), (entry.clip.seconds / rate * 1.5 + 5) * 1000);
+    }
+    function play(entry) {
+      try {
+        const started = entry.audio.play();
+        if (started && typeof started.catch === 'function') started.catch(() => useFallback(entry));
+      } catch (_) { useFallback(entry); }
+    }
+    return {
+      kind: 'recorded', supported, fallback, clips: ready,
+      has: id => supported && has(ready, id),
+      speak(text, opts) {
+        const clip = supported && opts && typeof opts.id === 'string' && has(ready, opts.id) ? ready[opts.id] : null;
+        return new Promise(resolve => {
+          const entry = {text, opts, clip, resolve, done: false, paused: false, ended: false, delegate: null, audio: null, listeners: [], watchdog: null};
+          current = entry;
+          if (!clip) { useFallback(entry); return; }
+          let audio;
+          try { audio = new Player(clip.url); } catch (_) { useFallback(entry); return; }
+          entry.audio = audio;
+          audio.playbackRate = rate;
+          const onEnded = () => {
+            entry.ended = true;
+            clock.clearTimeout(entry.watchdog);
+            timers.sleep(clip.pause / rate * 1000).then(() => finish(entry));
+          };
+          entry.listeners = [['ended', onEnded], ['error', () => useFallback(entry)]];
+          for (const [type, fn] of entry.listeners) audio.addEventListener(type, fn);
+          arm(entry);
+          play(entry);
+        });
+      },
+      pause() {
+        timers.pause();
+        const entry = current;
+        if (!entry || entry.done || entry.paused) return;
+        entry.paused = true;
+        if (entry.delegate) { fallback.pause(); return; }
+        clock.clearTimeout(entry.watchdog);
+        try { if (entry.audio && !entry.ended) entry.audio.pause(); } catch (_) { /* nothing playing */ }
+      },
+      resume() {
+        timers.resume();
+        const entry = current;
+        if (!entry || entry.done || !entry.paused) return;
+        entry.paused = false;
+        if (entry.delegate) { fallback.resume(); return; }
+        if (entry.audio && !entry.ended) { arm(entry); play(entry); }
+      },
+      cancel() {
+        const entry = current;
+        current = null;
+        timers.resume(); timers.flush();
+        if (!entry) return;
+        if (entry.delegate) fallback.cancel();
+        finish(entry);
+      },
+      setRate(r) {
+        rate = r > 0 ? r : 1;
+        if (current && current.audio) current.audio.playbackRate = rate;
+        fallback.setRate(rate);
+      },
+      setVoice(uri) { if (fallback.setVoice) fallback.setVoice(uri); }
+    };
+  }
+
   // ----------------------------------------------------------------------------------------------------------------- the player
   // Runs a script step by step: the sentence is spoken while the step's actions fire at their delays; the step ends when both are done.
   // effects: {apply(action, {instant, index}) -> promise, pause(), resume(), finishAll(), reset()}.
@@ -218,7 +320,7 @@
         skipping = false;
         onEvent('step', {index: i, step});
         const jobs = [];
-        if (typeof step.say === 'string' && step.say.trim()) jobs.push(Promise.resolve().then(() => speaker.speak(step.say.trim(), {index: i})).catch(() => {}));
+        if (typeof step.say === 'string' && step.say.trim()) jobs.push(Promise.resolve().then(() => speaker.speak(step.say.trim(), {index: i, id: step.id})).catch(() => {}));
         for (const action of step.do || []) {
           const wait = action.delay > 0 ? timers.sleep(action.delay * 1000) : Promise.resolve();
           jobs.push(wait.then(() => (token === run ? effects.apply(action, {instant: reduced || skipping, index: i}) : null)).catch(() => {}));
@@ -476,10 +578,20 @@
     const device = deviceSpeaker(win, options.clock);
     if (device.supported) speakers.device = device;
     speakers.captions = silentSpeaker(options.clock);
+    // Recorded sentences (the page's builder gives one clip per step whose sentence still matches its recording); any step without one is said by the voice below.
+    let recorded = null;
+    if (options.clips) {
+      recorded = audioSpeaker(win, options.clips, speakers.device || speakers.captions, options.clock);
+      if (recorded.supported) speakers.recorded = recorded; else recorded = null;
+    }
     for (const [id, extra] of Object.entries(options.speakers || {})) if (extra && typeof extra.speak === 'function') speakers[id] = extra;
-    const labels = Object.assign({device: 'Device voice', captions: 'Captions only (timed)'}, options.speakerLabels || {});
+    const labels = Object.assign({device: 'Device voice', captions: 'Captions only (timed)', recorded: 'Recorded voice'}, options.speakerLabels || {});
+    const spoken = s => s.steps.filter(step => typeof step.say === 'string' && step.say.trim());
+    const coverage = s => { const all = spoken(s), have = all.filter(step => recorded.has(step.id)).length; return have === all.length ? 'Recorded voice' : `Recorded voice (${have} of ${all.length} sentences)`; };
+    if (recorded) labels.recorded = coverage(script);
     for (const id of Object.keys(speakers)) { const o = node('option', labels[id] || id); o.value = id; voice.append(o); }
-    const initial = options.speaker && speakers[options.speaker] ? options.speaker : (speakers.device ? 'device' : 'captions');
+    const complete = !!recorded && spoken(script).every(step => recorded.has(step.id));
+    const initial = options.speaker && speakers[options.speaker] ? options.speaker : (complete ? 'recorded' : speakers.device ? 'device' : 'captions');
     let speaker = speakers[initial];
     voice.value = initial;
 
@@ -542,6 +654,7 @@
         if (result.ok) {
           figure.setAttribute('data-hand', next.hand || DEFAULT_HAND);
           renderTranscript(next);
+          if (recorded) { const option = [...voice.children].find(o => o.value === 'recorded'); if (option) option.textContent = coverage(next); }
           mark(player.status === 'playing' || player.status === 'paused' ? player.index : -1);
           refresh();
         }
@@ -551,5 +664,5 @@
     };
   }
 
-  return {SCHEMA, WIDTH, HEIGHT, COLORS, SIZES, HANDS, MAX, validate, pathProblem, normalizePath, estimate, createTimers, silentSpeaker, deviceSpeaker, createPlayer, mount};
+  return {SCHEMA, WIDTH, HEIGHT, COLORS, SIZES, HANDS, MAX, validate, pathProblem, normalizePath, estimate, createTimers, silentSpeaker, deviceSpeaker, audioSpeaker, createPlayer, mount};
 });

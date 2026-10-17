@@ -253,6 +253,212 @@ function rig(steps, extra, effectDuration) {
     assert.equal(B.deviceSpeaker({}).supported, false);
   }
 
+  // The recorded voice. A clip per step, found by the step's id; the sentence ends when the clip has ended and the delivery's pause has been waited out;
+  // anything that goes wrong (no clip, a refused play(), an error, a clip that never ends) hands that sentence to the fallback voice, and the lecture goes on.
+  function fakeAudioClass() {
+    const made = [];
+    class FakeAudio {
+      constructor(url) { this.url = url; this.playbackRate = 1; this.plays = 0; this.pauses = 0; this.listeners = {}; made.push(this); }
+      addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || new Set()).add(fn); }
+      removeEventListener(type, fn) { if (this.listeners[type]) this.listeners[type].delete(fn); }
+      play() { this.plays++; return FakeAudio.rejectPlay ? Promise.reject(new Error('NotAllowedError')) : Promise.resolve(); }
+      pause() { this.pauses++; }
+      fire(type) { for (const fn of [...(this.listeners[type] || [])]) fn({}); }
+      get listening() { return Object.values(this.listeners).reduce((n, set) => n + set.size, 0); }
+    }
+    FakeAudio.made = made;
+    return FakeAudio;
+  }
+  function fakeFallback() {
+    const log = [], waiting = [];
+    return {log, waiting, rate: 1,
+      speak(text) { log.push(['speak', text]); return new Promise(resolve => waiting.push(resolve)); },
+      pause() { log.push(['pause']); }, resume() { log.push(['resume']); }, setRate(r) { this.rate = r; },
+      cancel() { log.push(['cancel']); while (waiting.length) waiting.shift()(); },
+      finish() { const r = waiting.shift(); if (r) r(); return !!r; }};
+  }
+  const CLIP = {url: 'data:audio/wav;base64,AAAA', seconds: 3, pause: 0.5};
+  function recordedRig(clips) {
+    const clock = fakeClock(), Audio = fakeAudioClass(), fallback = fakeFallback();
+    const speaker = B.audioSpeaker({Audio}, clips || {a: CLIP, b: Object.assign({}, CLIP, {pause: 0.3})}, fallback, clock);
+    let settled = 0;
+    const say = (text, id) => speaker.speak(text, {index: 0, id}).then(() => { settled++; });
+    return {clock, Audio, fallback, speaker, say, get settled() { return settled; }};
+  }
+
+  // A clip ends the sentence only after the clip itself and then the pause after it.
+  {
+    const r = recordedRig();
+    r.say('One.', 'a');
+    await tick();
+    assert.equal(r.Audio.made.length, 1);
+    assert.equal(r.Audio.made[0].url, CLIP.url);
+    assert.equal(r.Audio.made[0].plays, 1);
+    assert.deepEqual(r.fallback.log, [], 'the device voice and captions are not used while a clip plays');
+    await settle(r.clock, 5000);
+    assert.equal(r.settled, 0, 'the clip has not ended');
+    r.Audio.made[0].fire('ended');
+    await settle(r.clock, 499);
+    assert.equal(r.settled, 0, 'the pause after the sentence is waited out');
+    await settle(r.clock, 1);
+    assert.equal(r.settled, 1);
+    assert.equal(r.Audio.made[0].listening, 0, 'nothing is left listening on a finished clip');
+    r.say('Two.', 'b');
+    await tick();
+    r.Audio.made[1].fire('ended');
+    await settle(r.clock, 300);
+    assert.equal(r.settled, 2, 'a colon uses its own, shorter pause as recorded');
+  }
+
+  // Everything that goes wrong falls back for that sentence only.
+  {
+    const r = recordedRig();
+    r.say('No clip for this one.', 'zzz');
+    r.say('No id at all.', undefined);
+    await tick();
+    assert.deepEqual(r.fallback.log, [['speak', 'No clip for this one.']].concat([['speak', 'No id at all.']]));
+    assert.equal(r.Audio.made.length, 0);
+    r.speaker.cancel(); await tick();
+  }
+  {
+    const r = recordedRig();
+    r.Audio.rejectPlay = true;          // the browser refuses to start sound
+    r.say('Refused.', 'a');
+    await tick(); await tick();
+    assert.deepEqual(r.fallback.log, [['speak', 'Refused.']]);
+    assert.equal(r.Audio.made[0].listening, 0, 'the refused clip is let go');
+    r.fallback.finish(); await tick(); await tick();
+    assert.equal(r.settled, 1, 'the fallback ends the sentence');
+    r.Audio.rejectPlay = false;
+    r.say('Next.', 'b'); await tick();
+    assert.equal(r.Audio.made[1].plays, 1, 'the next sentence tries its clip again');
+    r.speaker.cancel();
+  }
+  {
+    const r = recordedRig();
+    r.say('Broken clip.', 'a'); await tick();
+    r.Audio.made[0].fire('error'); await tick();
+    assert.deepEqual(r.fallback.log, [['speak', 'Broken clip.']]);
+    r.Audio.made[0].fire('ended'); await tick();   // a late event from the abandoned clip changes nothing
+    assert.equal(r.settled, 0);
+    r.fallback.finish(); await tick(); await tick();
+    assert.equal(r.settled, 1);
+  }
+  {
+    const r = recordedRig();
+    r.say('Stalls.', 'a'); await tick();
+    await settle(r.clock, 9400);
+    assert.deepEqual(r.fallback.log, [], 'not before the clip is clearly overdue');
+    await settle(r.clock, 200);
+    assert.deepEqual(r.fallback.log, [['speak', 'Stalls.']], 'a clip that never ends does not stall the lecture');
+    r.speaker.cancel();
+  }
+
+  // Pause holds the clip, its watchdog and the pause after it; resume carries on from there. Cancel ends the sentence at once.
+  {
+    const r = recordedRig();
+    r.say('Pausable.', 'a'); await tick();
+    r.speaker.pause();
+    assert.equal(r.Audio.made[0].pauses, 1);
+    await settle(r.clock, 60000);
+    assert.deepEqual(r.fallback.log, [], 'the watchdog does not run while paused');
+    assert.equal(r.settled, 0);
+    r.speaker.resume();
+    assert.equal(r.Audio.made[0].plays, 2);
+    r.Audio.made[0].fire('ended');
+    await settle(r.clock, 200);
+    r.speaker.pause();
+    await settle(r.clock, 5000);
+    assert.equal(r.settled, 0, 'paused inside the pause after the sentence');
+    r.speaker.resume();
+    await settle(r.clock, 299);
+    assert.equal(r.settled, 0);
+    await settle(r.clock, 1);
+    assert.equal(r.settled, 1);
+    assert.equal(r.Audio.made[0].plays, 2, 'a finished clip is not played again on resume');
+  }
+  {
+    const r = recordedRig();
+    r.say('Cut.', 'a'); await tick();
+    r.speaker.cancel(); await tick();
+    assert.equal(r.settled, 1);
+    assert.equal(r.Audio.made[0].pauses, 1);
+    assert.equal(r.Audio.made[0].listening, 0);
+    r.say('After a pause.', 'b'); await tick();
+    r.Audio.made[1].fire('ended');
+    r.speaker.pause();
+    r.speaker.cancel(); await tick();
+    assert.equal(r.settled, 2, 'cancelling while paused in the pause after a sentence still ends it');
+  }
+  {
+    const r = recordedRig();   // the fallback voice is paused, resumed and cancelled with the sentence it is saying
+    r.say('Fallback sentence.', 'zzz'); await tick();
+    r.speaker.pause(); r.speaker.resume(); r.speaker.cancel(); await tick();
+    assert.deepEqual(r.fallback.log.map(l => l[0]), ['speak', 'pause', 'resume', 'cancel']);
+    assert.equal(r.settled, 1);
+  }
+
+  // Speed changes the playback rate and the pause after a sentence; it reaches the fallback voice too.
+  {
+    const r = recordedRig();
+    r.speaker.setRate(2);
+    assert.equal(r.fallback.rate, 2);
+    r.say('Fast.', 'a'); await tick();
+    assert.equal(r.Audio.made[0].playbackRate, 2);
+    r.speaker.setRate(1.25);
+    assert.equal(r.Audio.made[0].playbackRate, 1.25, 'a change during a sentence applies at once');
+    r.speaker.setRate(2);
+    r.Audio.made[0].fire('ended');
+    await settle(r.clock, 249);
+    assert.equal(r.settled, 0);
+    await settle(r.clock, 1);
+    assert.equal(r.settled, 1, 'half a second at double speed is a quarter of a second');
+  }
+
+  // Only clips the builder could have made are used; a page without audio support is unsupported, not broken.
+  {
+    const clock = fakeClock(), Audio = fakeAudioClass(), fallback = fakeFallback();
+    const bad = {a: {url: 'http://example.org/a.wav', seconds: 3, pause: 0.5}, b: {url: 'javascript:alert(1)', seconds: 3, pause: 0.5}, c: {url: 'data:text/html;base64,AAAA', seconds: 3, pause: 0.5},
+      d: {url: 'Narration/ok.wav', seconds: 0, pause: 0.5}, e: {url: 'Narration/ok.wav', seconds: 3, pause: 9}, f: null, g: {url: 'x'}, h: {url: 'Narration/ok.wav', seconds: 3, pause: 0.5},
+      i: {url: '../Narration/a b.wav', seconds: 1.5, pause: 0}};
+    const speaker = B.audioSpeaker({Audio}, bad, fallback, clock);
+    assert.deepEqual(Object.keys(speaker.clips), ['h', 'i']);
+    assert.equal(speaker.supported, true);
+    assert.equal(B.audioSpeaker({Audio}, {a: bad.a}, fallback, clock).supported, false, 'nothing usable');
+    assert.equal(B.audioSpeaker({}, {h: bad.h}, fallback, clock).supported, false, 'no Audio in this page');
+    assert.equal(B.audioSpeaker(null, undefined, fallback, clock).supported, false);
+  }
+
+  // Through the player: the cues start with the clip and the step ends with it, whatever the captions estimate would have said.
+  {
+    const clock = fakeClock(), Audio = fakeAudioClass(), fallback = fakeFallback(), effects = fakeEffects(clock);
+    const speaker = B.audioSpeaker({Audio}, {s1: {url: 'Narration/s1.wav', seconds: 20, pause: 0.5}, s2: {url: 'Narration/s2.wav', seconds: 2, pause: 0.5}}, fallback, clock);
+    const steps = [{id: 's1', say: 'A long recorded sentence.', do: [w({id: 'now'}), w({id: 'later', delay: 4})]}, {id: 's2', say: 'Second.', do: [w({id: 'u'})]}, {id: 's3', say: 'Unrecorded.'}];
+    const player = B.createPlayer({script: script(steps), speaker, effects, clock});
+    player.start(); await tick();
+    assert.deepEqual(effects.log.map(e => [e.id, e.at]), [['now', 0]]);
+    await settle(clock, 4000);
+    assert.deepEqual(effects.log.map(e => [e.id, e.at]), [['now', 0], ['later', 4000]], 'a cue at 4 s fires 4 s into the clip');
+    await settle(clock, 6000);
+    assert.equal(Audio.made.length, 1, 'the second step waits for the first clip, though the captions would have finished long ago');
+    Audio.made[0].fire('ended'); await settle(clock, 500);
+    assert.equal(Audio.made.length, 2);
+    assert.equal(Audio.made[1].url, 'Narration/s2.wav');
+    Audio.made[1].fire('ended'); await settle(clock, 500);
+    assert.deepEqual(fallback.log, [['speak', 'Unrecorded.']], 'a step with no clip is said by the fallback');
+    fallback.finish(); await tick(); await tick();
+    assert.equal(player.status, 'done');
+    // Skip cuts the clip short and moves on.
+    const before = Audio.made.length;
+    player.replay(); await tick();
+    assert.equal(Audio.made.length, before + 1);
+    assert.equal(Audio.made[before].url, 'Narration/s1.wav');
+    player.skip(); await tick(); await tick(); await tick();
+    assert.equal(Audio.made[before].pauses > 0, true, 'skipping stops the clip');
+    assert.equal(Audio.made.length, before + 2);
+    assert.equal(Audio.made[before + 1].url, 'Narration/s2.wav', 'and the second step starts');
+  }
+
   // The shipped bundle contains exactly this module.
   const bundle = fs.readFileSync(path.join(__dirname, '../assets/html-runtime/session.js'), 'utf8').replace(/\r\n/g, '\n');
   assert(bundle.includes(fs.readFileSync(path.join(__dirname, '../assets/html-runtime/board.js'), 'utf8').replace(/\r\n/g, '\n')),

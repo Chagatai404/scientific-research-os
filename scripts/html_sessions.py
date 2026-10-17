@@ -252,6 +252,26 @@ def _validate_navigation(items):
             raise ValueError("Invalid session navigation entry")
 
 
+BOARD_AUDIO_PATH = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._/-]{0,200}\.(?:wav|ogg|mp3)\Z")
+
+
+def _validate_board_audio(audio, step_id):
+    """A board widget's recordings: one per step, each a vault-relative file with its length, the silence to wait after it and the hash of the sentence it
+    was made for. Nothing here is a URL; the page gets addresses only from the builder, and only for entries whose sentence has not changed since."""
+    if not isinstance(audio, dict) or len(audio) > 200:
+        raise ValueError("Invalid board audio")
+    for key, entry in audio.items():
+        if (not isinstance(key, str) or not step_id.fullmatch(key) or not isinstance(entry, dict) or set(entry) != {"file", "seconds", "pause", "say_sha256"}
+                or not isinstance(entry["file"], str) or not BOARD_AUDIO_PATH.match(entry["file"]) or any(p in {"", ".", ".."} for p in entry["file"].split("/"))
+                or not _plain_number(entry["seconds"], 0.1, 600) or not _plain_number(entry["pause"], 0, 5)
+                or not isinstance(entry["say_sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", entry["say_sha256"])):
+            raise ValueError("Invalid board audio entry")
+
+
+def _plain_number(value, low, high):
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and value == value and low <= value <= high
+
+
 def validate_state(state):
     if not isinstance(state, dict) or state.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("Unsupported HTML session schema")
@@ -271,6 +291,8 @@ def validate_state(state):
         if widget["kind"] == "board":
             import board_script  # a lecture is untrusted data written by an agent; the page re-checks it with the same rules
             board_script.check(widget.get("script"))
+            if "audio" in widget:
+                _validate_board_audio(widget["audio"], board_script.ID)
     if "context" in state:
         _validate_context(state["context"])
     if state.get("placement") not in (None, "explicit"):
@@ -742,20 +764,50 @@ def _frame_src(state):
 
 
 def _media_src(state, standalone):
-    """A page whose cards carry recorded narration may play audio from its own folder, or, when exported alone, from data it embeds. Nothing else."""
-    if any(isinstance(b, dict) and isinstance(b.get("card"), dict) and b["card"].get("audio") for b in state.get("teaching", [])):
+    """A page whose cards or boards carry recorded narration may play audio from its own folder, or, when exported alone, from data it embeds. Nothing else."""
+    if any(isinstance(b, dict) and isinstance(b.get("card"), dict) and b["card"].get("audio") for b in state.get("teaching", [])) or _board_audio(state):
         return "; media-src " + ("data:" if standalone else "'self'")
     return ''
+
+
+def _board_audio(state):
+    """The recordings of the board widgets that are still true: ``{widget id: {step id: entry}}``, leaving out any whose sentence has changed since it was
+    recorded (the hash no longer matches) or whose step is gone, so a revised sentence is never read in the old recording."""
+    found = {}
+    for widget in state.get("widgets", []):
+        if not isinstance(widget, dict) or widget.get("kind") != "board" or not isinstance(widget.get("audio"), dict):
+            continue
+        says = {s["id"]: s.get("say", "").strip() for s in widget["script"]["steps"]}
+        current = {step: entry for step, entry in widget["audio"].items() if says.get(step) and _hash(says[step].encode("utf-8")) == entry["say_sha256"]}
+        if current:
+            found[widget["id"]] = current
+    return found
+
+
+def _audio_base(runtime_prefix):
+    """Where the vault is, relative to this page: '' beside the runtime folder, '../' one folder down, and so on. None when the prefix does not say."""
+    marker = "/.research-os/runtime"
+    if runtime_prefix == ".research-os/runtime":
+        return ""
+    return runtime_prefix[:-len(marker)] + "/" if runtime_prefix.endswith(marker) else None
+
+
+def _board_audio_urls(state, runtime_prefix, standalone, audio_data):
+    """Where each board recording is played from, as for cards: a path relative to this page, or an embedded data URL in a standalone export. The page gets the
+    length and the pause too; a step without an address plays with the page's other voices."""
+    base, urls = _audio_base(runtime_prefix), {}
+    for widget_id, steps in _board_audio(state).items():
+        for step, entry in steps.items():
+            url = (audio_data or {}).get(entry["file"]) if standalone else (None if base is None else base + urllib.parse.quote(entry["file"], safe="/"))
+            if url:
+                urls.setdefault(widget_id, {})[step] = {"url": url, "seconds": entry["seconds"], "pause": entry["pause"]}
+    return urls
 
 
 def _audio_urls(state, runtime_prefix, standalone, audio_data):
     """Where each carded recording is played from: a path relative to this page (vault pages) or an embedded data URL (standalone export).
     A page whose runtime prefix does not say where the vault is gets none, and falls back to the browser voice."""
-    marker, base = "/.research-os/runtime", None
-    if runtime_prefix == ".research-os/runtime":
-        base = ""
-    elif runtime_prefix.endswith(marker):
-        base = runtime_prefix[:-len(marker)] + "/"
+    base = _audio_base(runtime_prefix)
     urls = {}
     for block in state.get("teaching", []):
         card = block.get("card") if isinstance(block, dict) else None
@@ -809,6 +861,9 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
     audio_urls = _audio_urls(state, runtime_prefix, standalone, audio_data)
     if audio_urls:
         page_state["audio_urls"] = audio_urls  # for the page only: the stored session never holds a resolved location
+    board_audio = _board_audio_urls(state, runtime_prefix, standalone, audio_data)
+    if board_audio:
+        page_state["board_audio"] = board_audio
     data = json.dumps(page_state, ensure_ascii=False).replace("<", "\\u003c").replace("&", "\\u0026")
     if standalone:
         css = (RUNTIME / "session.css").read_text(encoding="utf-8")
@@ -1501,20 +1556,24 @@ def export_session(root, relative_md, destination):
             _approved_module(root, path, resource)
             scripts += '<script>document.addEventListener("DOMContentLoaded",function(){' + raw.decode("utf-8").replace("</script", "<\\/script") + '\n},{once:true});</script>'
     audio_data, budget = {}, MAX_EXPORT_AUDIO_TOTAL
+    wanted = []
     for block in state.get("teaching", []):
         card = block.get("card") if isinstance(block, dict) else None
-        for path in (card["audio"].values() if isinstance(card, dict) and isinstance(card.get("audio"), dict) else ()):
-            if path in audio_data:
-                continue
-            try:
-                source = _path(root, path)
-                raw = source.read_bytes()
-            except (OSError, ValueError):
-                continue  # a missing recording leaves that card on the browser voice
-            if len(raw) > MAX_EXPORT_AUDIO or len(raw) > budget:
-                continue  # too large to embed: the exported page uses the browser voice for it
-            budget -= len(raw)
-            audio_data[path] = "data:" + AUDIO_TYPES[source.suffix.lower()] + ";base64," + base64.b64encode(raw).decode()
+        wanted += card["audio"].values() if isinstance(card, dict) and isinstance(card.get("audio"), dict) else ()
+    for steps in _board_audio(state).values():   # only recordings still true of their sentences are worth the bytes
+        wanted += [entry["file"] for entry in steps.values()]
+    for path in wanted:
+        if path in audio_data:
+            continue
+        try:
+            source = _path(root, path)
+            raw = source.read_bytes()
+        except (OSError, ValueError):
+            continue  # a missing recording leaves that card or step on the browser voice
+        if len(raw) > MAX_EXPORT_AUDIO or len(raw) > budget:
+            continue  # too large to embed: the exported page uses the browser voice for it
+        budget -= len(raw)
+        audio_data[path] = "data:" + AUDIO_TYPES[source.suffix.lower()] + ";base64," + base64.b64encode(raw).decode()
     destination = Path(destination)
     if destination.exists() or destination.is_symlink():
         raise ValueError("Export destination already exists; choose a new file to preserve user data")

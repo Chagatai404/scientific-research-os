@@ -635,7 +635,9 @@
       const declared = (state.widgets || []).find(w => w.id === widget.id);
       if (widget.querySelector('.ros-board')) return;
       if (!Board || !declared || !declared.script) { widget.append(node('p', 'This board has no lecture to show.')); return; }
-      boards.set(widget.id, Board.mount(widget, declared.script, {doc, win: root, renderMath}));
+      // Recorded sentences come with the page (state.board_audio, built beside the page and only for sentences that still match their recording). A page
+      // inside Obsidian's sandbox is given the host's state without them, and its board speaks with the device voice or timed captions instead.
+      boards.set(widget.id, Board.mount(widget, declared.script, {doc, win: root, renderMath, clips: (state.board_audio || {})[widget.id]}));
     }
     function buildWidget(widget) {
       const type = widget.getAttribute('data-widget');

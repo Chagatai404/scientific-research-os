@@ -83,8 +83,12 @@ The blackboard: `data-widget="board"` is a widget whose declaration carries a `s
 `references/HTML_SESSION_PROTOCOL.md`). `board.js` performs it on an always-dark chalk board (fixed colours, whatever the page theme); `board.css`
 styles it. Writing uses Kalam by default (Kalam, Patrick Hand and Caveat are bundled, SIL OFL 1.1; a script may set `hand` to `kalam`, `patrick`,
 `caveat`, `kalam-patrick` or `patrick-kalam`, the last two writing titles in one font and the rest in the other). Formulas are KaTeX, typeset in chalk
-colours, not handwritten. The module is also a plain API (`ResearchOSBoard.mount`, `createPlayer`, `validate`, `silentSpeaker`, `deviceSpeaker`);
-`mount` accepts extra `speakers` ({`speak(text)` -> promise, `pause`, `resume`, `cancel`, `setRate`}), which is how a recorded or streamed voice plugs in.
+colours, not handwritten. The module is also a plain API (`ResearchOSBoard.mount`, `createPlayer`, `validate`, `silentSpeaker`, `deviceSpeaker`,
+`audioSpeaker`); `mount` accepts extra `speakers` ({`speak(text, {index, id})` -> promise, `pause`, `resume`, `cancel`, `setRate`}), which is how a streamed
+voice plugs in. **Recorded sentences** are `mount(..., {clips})`, `clips` being `{stepId: {url, seconds, pause}}`: `runtime.js` passes `state.board_audio[widgetId]`,
+which `html_sessions.py` builds beside the page (a path relative to the page, or an embedded `data:` URL in a standalone export) only for steps whose sentence
+still matches the one that was recorded. The recorded voice plays a step's clip, waits out the `pause` the delivery puts after the sentence, and says any step
+without a clip, a clip that fails to play or one that stalls with the device voice or timed captions; it is the default voice only when every spoken step has a clip.
 `board.js`, `board.css` and `runtime.js` are editable sources; run `python build.py --refresh` after changing any of them.
 
 Approved locally bundled extensions may call

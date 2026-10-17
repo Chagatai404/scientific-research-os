@@ -65,6 +65,8 @@ SESSION_HELPERS = ("html_sessions.py", "common.py", "research.py", "knowledge.py
                    "rich_text.py",
                    # A board widget's lecture script is checked by validate_state with the same rules the page uses.
                    "board_script.py",
+                   # `voice.py board` records a board's sentences (the session protocol names it); it starts the engine through voice_adapter.py and says text with speech_text.py.
+                   "voice.py", "voice_adapter.py", "speech_text.py",
                    # `html_sessions.py place` / `attach-visual` put registered figures into a lesson.
                    "visual_assets.py", "excalidraw_schematic.py",
                    # Concept-first gates for tutoring sessions (prerequisites, probe contracts, evidence proposals).

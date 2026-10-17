@@ -8,6 +8,7 @@ cannot be trusted with Turkish characters.
     python voice_adapter.py synth --provider piper --model tr_TR-dfki-medium.onnx --text-file in.txt --out out.wav
     python voice_adapter.py synth --provider chatterbox --lang tr --device cpu --text-file in.txt --out out.wav
     python voice_adapter.py synth --provider kokoro --model-dir DIR --text-file in.txt --out out.wav
+    python voice_adapter.py synth --provider kokoro --model-dir DIR --batch-file items.json     (many texts, one model load)
     python voice_adapter.py transcribe --model small --lang tr --audio in.wav --out words.json --words
 """
 from __future__ import annotations
@@ -124,9 +125,8 @@ def parse_blend(spec: str) -> list[tuple[str, float]]:
     return [(n, w / total) for n, w in parts]
 
 
-def synth_kokoro(args, text: str, out: Path) -> dict:
-    """One model load, one pass over the sentences, a set silence after each (shorter after a colon), one 16-bit mono WAV."""
-    import numpy as np
+def load_kokoro(args):
+    """The model, the (blended) voice style and the load time. Raises with a plain message when the model files or a voice are missing."""
     from kokoro_onnx import Kokoro
     folder = Path(args.model_dir or '')
     for name in (KOKORO_MODEL, KOKORO_VOICES):
@@ -141,7 +141,14 @@ def synth_kokoro(args, text: str, out: Path) -> dict:
     if missing:
         raise ValueError(f'unknown Kokoro voice {missing[0]!r}; available: {", ".join(sorted(known))}')
     style = blend[0][0] if len(blend) == 1 else sum(w * model.get_voice_style(n) for n, w in blend)
+    return model, style, round(loaded - started, 3)
+
+
+def render_kokoro(model, style, text: str, args, out: Path) -> dict:
+    """One pass over the sentences of ``text``, a set silence between them (shorter after a colon, none after the last), one 16-bit mono WAV."""
+    import numpy as np
     sentences, parts, rate, first = split_sentences(text), [], 24000, None
+    started = time.perf_counter()
     for index, sentence in enumerate(sentences):
         t = time.perf_counter()
         audio, rate = model.create(sentence, voice=style, speed=args.speed, lang='en-us')
@@ -155,8 +162,28 @@ def synth_kokoro(args, text: str, out: Path) -> dict:
         handle.setsampwidth(2)
         handle.setframerate(int(rate))
         handle.writeframes(samples.tobytes())
-    return {'load_seconds': round(loaded - started, 3), 'synth_seconds': round(time.perf_counter() - loaded, 3), 'sentences': len(sentences),
-            'first_sentence_seconds': round(first or 0.0, 3)}
+    return {'synth_seconds': round(time.perf_counter() - started, 3), 'sentences': len(sentences), 'first_sentence_seconds': round(first or 0.0, 3)}
+
+
+def synth_kokoro(args, text: str, out: Path) -> dict:
+    """One model load, one text, one WAV."""
+    model, style, load_seconds = load_kokoro(args)
+    return {'load_seconds': load_seconds, **render_kokoro(model, style, text, args, out)}
+
+
+def synth_kokoro_batch(args) -> dict:
+    """One model load for many texts: ``--batch-file`` is a JSON list of {"id", "text", "out"}. Each text is rendered exactly as ``synth_kokoro`` would
+    render it alone (no silence added after the last sentence), so a recording does not depend on what it was batched with."""
+    items = json.loads(Path(args.batch_file).read_text(encoding='utf-8'))
+    if not isinstance(items, list) or not items or any(not isinstance(i, dict) or not {'id', 'text', 'out'} <= set(i) for i in items):
+        raise ValueError('the batch file is a non-empty list of {id, text, out}')
+    model, style, load_seconds = load_kokoro(args)
+    results = []
+    for item in items:
+        done = render_kokoro(model, style, str(item['text']).strip(), args, Path(item['out']))
+        seconds, rate = wav_seconds(Path(item['out']))
+        results.append({'id': item['id'], 'audio_seconds': round(seconds, 3), 'sample_rate': rate, **done})
+    return {'load_seconds': load_seconds, 'synth_seconds': round(sum(r['synth_seconds'] for r in results), 3), 'items': results}
 
 
 def transcribe(args) -> int:
@@ -196,8 +223,9 @@ def main(argv=None) -> int:
     p.add_argument('--model', help='piper: the .onnx voice file')
     p.add_argument('--lang', default='en')
     p.add_argument('--device', choices=('cpu', 'cuda'), default='cpu')
-    p.add_argument('--text-file', type=Path, required=True)
-    p.add_argument('--out', type=Path, required=True)
+    p.add_argument('--text-file', type=Path)
+    p.add_argument('--out', type=Path)
+    p.add_argument('--batch-file', type=Path, help='kokoro: a JSON list of {id, text, out}; the model loads once for all of them')
     p.add_argument('--length-scale', type=float, default=1.0, help='piper: above 1 is slower')
     p.add_argument('--audio-prompt', help='chatterbox: a reference voice recording')
     p = sub.add_parser('transcribe')
@@ -214,6 +242,14 @@ def main(argv=None) -> int:
             return emit({'ok': True, 'python': sys.version.split()[0], 'engines': versions(), **torch_state()})
         if args.command == 'transcribe':
             return transcribe(args)
+        if args.batch_file:
+            if args.provider != 'kokoro' or args.device != 'cpu':
+                return fail('--batch-file is for Kokoro on the CPU')
+            started = time.perf_counter()
+            details = synth_kokoro_batch(args)
+            return emit({'ok': True, 'provider': 'kokoro', 'total_seconds': round(time.perf_counter() - started, 3), 'device': 'cpu', 'engine_versions': versions(), **details})
+        if not args.text_file or not args.out:
+            return fail('synth needs --text-file and --out')
         text = args.text_file.read_text(encoding='utf-8').strip()
         if not text:
             return fail('the text file is empty')

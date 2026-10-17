@@ -139,6 +139,113 @@ const DARK = 'rgb(28, 36, 33)';
     await page.close();
   }
 
+  // Recorded sentences (stand-in tones, not speech): the board offers the recorded voice, is paced by the recording and its pause, pauses and skips with it, says the
+  // step that has no recording with the fallback, and plays from an embedded copy (standalone) or from a path beside the page (vault page) under the page's own policy.
+  const consoleErrors = [];
+  async function openRecorded(file, options = {}) {
+    const context = await browser.newContext({viewport: {width: 1280, height: 900}, colorScheme: 'dark', reducedMotion: 'no-preference'});
+    // Keep every audio element the board makes (the page does not attach them), note when each ends and starts, and take the device voice away so the sentence
+    // with no recording is told by the timed captions instead of whatever this machine's speech engine does.
+    await context.addInitScript(() => {
+      window.__audios = [];
+      const Native = window.Audio;
+      window.Audio = function (src) {
+        const a = new Native(src);
+        a.__madeAt = performance.now();
+        a.addEventListener('ended', () => { a.__endedAt = performance.now(); });
+        window.__audios.push(a);
+        return a;
+      };
+      Object.defineProperty(window, 'speechSynthesis', {value: undefined, configurable: true});
+    });
+    const page = await context.newPage();
+    page.on('pageerror', e => errors.push(e.message));
+    page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+    page.on('request', r => { if (!/^(file|data|blob):/.test(r.url())) requests.push(r.url()); });
+    await page.route(/^https?:/, r => r.abort());
+    await page.goto('file:///' + file.replace(/\\/g, '/'));
+    await page.locator('.ros-board').waitFor();
+    if (options.record !== false) await page.selectOption('.ros-board select >> nth=0', 'recorded');
+    return page;
+  }
+  const audio = (page, i, field) => page.evaluate(([n, f]) => (window.__audios[n] ? window.__audios[n][f] : undefined), [i, field]);
+  const caption = page => page.locator('.ros-board-caption').textContent();
+
+  {
+    // A page whose board has no recordings does not offer the recorded voice.
+    const page = await open();
+    assert.equal(await page.locator('.ros-board-bar select').first().locator('option[value="recorded"]').count(), 0, 'no recordings, no recorded voice');
+    await page.close();
+  }
+  {
+    const page = await openRecorded(built.standalone_audio, {record: false});
+    const options = await page.evaluate(() => [...document.querySelector('.ros-board-bar select').options].map(o => [o.value, o.textContent]));
+    assert.deepEqual(options, [['captions', 'Captions only (timed)'], ['recorded', 'Recorded voice (2 of 3 sentences)']], 'coverage is said in the label');
+    assert.equal(await page.locator('.ros-board-bar select').first().inputValue(), 'captions', 'a board with gaps in its recordings does not default to the recorded voice');
+    await page.selectOption('.ros-board select >> nth=0', 'recorded');
+
+    await page.click('.ros-board-play');
+    await page.waitForFunction(() => window.__audios.length === 1 && window.__audios[0].currentTime > 0.5, null, {timeout: 15000});
+    assert((await audio(page, 0, 'src')).startsWith('data:audio/wav;base64,'), 'the standalone page plays its embedded copy');
+    assert.equal(await caption(page), 'First.');
+    assert.equal(await audio(page, 0, 'playbackRate'), 1);
+
+    // Pause holds the recording where it is; resume continues from there.
+    await page.click('.ros-board-play');
+    assert.equal(await status(page), 'paused');
+    const heldAt = await audio(page, 0, 'currentTime');
+    await page.waitForTimeout(700);
+    assert.equal(await audio(page, 0, 'paused'), true);
+    assert(Math.abs((await audio(page, 0, 'currentTime')) - heldAt) < 0.05, 'the recording did not move while paused');
+    await page.click('.ros-board-play');
+    await page.waitForFunction(h => window.__audios[0].currentTime > h + 0.4, heldAt, {timeout: 10000});
+
+    // The step lasts as long as the recording: well past the 1.7 s the captions would have allowed, it is still the first sentence, and nothing else has started.
+    await page.waitForFunction(() => window.__audios[0].currentTime > 2.2, null, {timeout: 10000});
+    assert.equal(await caption(page), 'First.');
+    assert.equal(await page.evaluate(() => window.__audios.length), 1);
+    assert.equal(await status(page), 'playing');
+
+    // The next sentence starts after the recording and the pause the delivery puts after it, not before.
+    await page.waitForFunction(() => window.__audios.length === 2, null, {timeout: 15000});
+    const gap = await page.evaluate(() => window.__audios[1].__madeAt - window.__audios[0].__endedAt);
+    assert(gap >= 450 && gap < 1200, `the pause after the sentence is waited out (0.5 s): ${gap} ms`);
+    assert.equal(await caption(page), 'Second.');
+    assert((await audio(page, 1, 'src')).startsWith('data:audio/wav;base64,') && (await audio(page, 1, 'src')) !== (await audio(page, 0, 'src')), 'its own recording');
+
+    // The sentence with no recording is told by the fallback, and the lecture finishes.
+    await done(page);
+    assert.equal(await caption(page), 'Third.');
+    assert.equal(await page.evaluate(() => window.__audios.length), 2, 'no recording was invented for the third sentence');
+    assert.deepEqual(await page.evaluate(() => window.__audios.map(a => a.ended)), [true, true]);
+    assert.equal(await count(page, '.ros-board-stroke'), 2, 'the drawing still follows the sentences');
+    assert.equal(await count(page, '.ros-board-math'), 0, 'the last step erased the formula');
+    await page.close();
+  }
+  {
+    // Speed reaches the recording; Skip cuts it short and goes on.
+    const page = await openRecorded(built.standalone_audio);
+    await page.selectOption('.ros-board select >> nth=1', '1.25');
+    await page.click('.ros-board-play');
+    await page.waitForFunction(() => window.__audios.length === 1 && window.__audios[0].currentTime > 0.3, null, {timeout: 15000});
+    assert.equal(await audio(page, 0, 'playbackRate'), 1.25);
+    await page.getByRole('button', {name: 'Skip step'}).click();
+    await page.waitForFunction(() => window.__audios.length === 2, null, {timeout: 10000});
+    assert.equal(await audio(page, 0, 'paused'), true, 'skipping stops the recording');
+    assert.equal(await caption(page), 'Second.');
+    await page.close();
+  }
+  {
+    // The vault page plays from a path beside it, which its own policy allows.
+    const page = await openRecorded(built.vault_page);
+    await page.click('.ros-board-play');
+    await page.waitForFunction(() => window.__audios.length === 1 && window.__audios[0].currentTime > 0.3, null, {timeout: 15000});
+    assert((await audio(page, 0, 'src')).endsWith('/Narration/s1.wav'), await audio(page, 0, 'src'));
+    assert((await page.evaluate(() => document.querySelector('meta[http-equiv="Content-Security-Policy"]').content)).includes("media-src 'self'"));
+    await page.close();
+  }
+
+  assert.deepEqual(consoleErrors, [], 'no console errors (a blocked recording would be reported here)');
   assert.deepEqual(errors, [], 'page errors');
   assert.deepEqual(requests, [], 'no network request');
   await browser.close();

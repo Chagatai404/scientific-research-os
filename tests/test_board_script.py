@@ -104,6 +104,20 @@ class InSessions(unittest.TestCase):
         self.assertIn('data-widget="board"', page)
         self.assertIn('id="lecture"', page)
 
+    def test_recordings_follow_the_sentences_the_board_speaks_and_survive_appended_steps(self):
+        import re
+        import voice as vc
+        sentences = bs.speech(LECTURE)
+        audio = {'a': {'file': 'Narration/0123456789abcdef.wav', 'seconds': 2.0, 'pause': 0.5, 'say_sha256': vc.say_digest(sentences[0])}}
+        widget = {'id': 'lecture', 'kind': 'board', 'script': dict(LECTURE, open=True), 'audio': audio}
+        self.make(widget)
+        longer = bs.append_steps(widget['script'], [{'id': 'd', 'say': 'And one more thing.'}], open_=False)
+        hs.update_session(self.root, 'Sessions/Gradients.md', widgets=[dict(widget, script=longer)])
+        page = (self.root / 'Sessions/Gradients.html').read_text(encoding='utf-8')
+        state = json.loads(re.search(r'id="ros-session-data">(.*?)</script>', page, re.S)[1].replace('\\u003c', '<').replace('\\u0026', '&'))
+        self.assertEqual(sorted(state['board_audio']['lecture']), ['a'], 'the earlier step keeps its recording; the new one has none yet')
+        self.assertEqual([s['say'] for s in longer['steps'] if s.get('say')][:2], sentences[:2], 'appending never changes a sentence that was already recorded')
+
     def test_a_bad_board_is_refused_before_anything_is_written(self):
         broken = copy.deepcopy(LECTURE)
         broken['steps'][0]['do'][0]['color'] = 'not-a-colour'

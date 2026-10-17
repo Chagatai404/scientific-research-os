@@ -140,11 +140,26 @@ widgets=[...])`) makes the open board play them in place. Steps already started 
 lecture" and waits for Replay. The learner can Pause, Skip a step, Replay, change speed and choose the voice. Open questions use the existing Send panel;
 an answer is more steps on the board, not a separate channel, and is recorded as before (no evidence, no mastery).
 
-**What it does not do yet.** The board speaks with the device voice or shows timed captions only. The Kokoro voice (`VOICE_PROTOCOL.md`) is not yet played
-from the page: `mount` takes extra `speakers` for that, but no recorded or streamed audio is connected, and Obsidian's sandbox cannot open vault audio
-files. A `board-append` command, hand-raising mid-sentence, a lint that every concept is explained on the board, and spoken questions are the next slices
-(`docs/plans/v0.9.6-live-board-plan.md`). Tested in real Chrome on a captions-only voice; not tested inside Obsidian or Safari, with a real device voice, or by
-a learner, and legibility is the researcher's judgement (Kalam was chosen over Patrick Hand, which read as too casual).
+**Recorded voice.** `python scripts/voice.py board --root <vault> --session <note.md> --widget <id> --env <kokoro env> --voice model_dir=<models>` speaks every
+spoken step of a board with the chosen Kokoro delivery (`VOICE_PROTOCOL.md`; one model load for all the steps not yet recorded), registers one recording per step
+in the narration registry (`Narration/<key>.wav`, the key the sentence would have if spoken alone) and stores
+`audio: {step id: {file, seconds, pause, say_sha256}}` in the widget's declaration. The script is not touched: it stays plain JSON an agent writes and never carries
+a path or an address. A sentence the voice cannot say (another language, a formula the speech rules refuse) is listed under `refused` and that step keeps the
+page's other voices. The page is given addresses only by `html_sessions.py`: a path relative to the page in a vault page, an embedded copy in a standalone export
+(3 MB a file, 12 MB across the page, shared with card narration; what does not fit stays out, and that step falls back). Only a step whose sentence still hashes to
+`say_sha256` gets one, so editing a sentence drops its old recording instead of reading the old words under the new caption; run `voice.py board` again to
+record the new one. The board plays the clip, then waits the pause the delivery puts after a sentence (0.5 s, 0.3 s after a colon), then starts the next step;
+cues start with the clip and a step ends with it. A step with no recording, a recording that will not play and one that stalls are said by the device voice or
+timed captions, and the recorded voice is the default only when every spoken step has one. The pause, resume, skip and speed controls act on the recording.
+
+**What it does not do yet.** A `board-append` command, hand-raising mid-sentence, a lint that every concept is explained on the board, and spoken questions
+are the next slices (`docs/plans/v0.9.6-live-board-plan.md`). Recordings are not available inside Obsidian: the companion's frame has no media permission and
+is given the session state without the page's addresses, so a board there uses the device voice or captions until the host can pass audio bytes over its
+bridge (not built). Recordings are 24 kHz WAV, about 48 KB a second, so one exported page holds roughly four minutes of lecture; compressed audio is not made
+here yet. A recording is added to a page when it is built, so steps appended to an open board later play with the other voices until the page is rebuilt. Cue
+delays are seconds from the start of a sentence, not aligned to words. Tested in real Chrome with stand-in tones (not speech) and the captions fallback; the
+recording path through the real engine was run once on the example lecture. Not tested inside Obsidian or Safari, with a real device voice, or by a learner:
+nobody has listened to the board speak, and legibility is the researcher's judgement (Kalam was chosen over Patrick Hand, which read as too casual).
 
 ## Titles, navigation and the questions panel
 

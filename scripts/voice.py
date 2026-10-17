@@ -4,7 +4,7 @@ Standard library only. The engines (Piper, Chatterbox, faster-whisper) live in t
 nothing here imports one or installs one. Audio is written once and named by a hash of provider, voice and text, so unchanged text reuses its file and
 changed text never overwrites an old recording. The browser's own voice (the baseline already in every session page) makes no file.
 
-Commands: providers | prepare | speak | list | transcribe | bakeoff
+Commands: providers | prepare | speak | board | list | transcribe | bakeoff
 A transcript is text the learner said, never evidence that they understand; it enters the normal submit-and-review path.
 """
 from __future__ import annotations
@@ -231,6 +231,32 @@ def synth_segment(entry: dict, provider: str, segment: dict, voices: dict, devic
     return result
 
 
+def narration_identity(prepared: dict, provider: str, voices: dict, version: str | None, device: str, rate: float) -> tuple[dict, str]:
+    """The voice ids and the registry key of a prepared script. One definition, so a sentence has the same key whether it is spoken alone or as a step of a board."""
+    voice_ids = {seg['lang']: (Path(voices[seg['lang']]).name if provider == 'piper' and seg['lang'] in voices else seg['lang']) for seg in prepared['segments']}
+    if provider == 'kokoro':
+        voice_ids = {lang: kokoro_voice_id(kokoro_settings(voices)) for lang in voice_ids}
+    return voice_ids, narration_key(provider, version, voice_ids, prepared['segments'], device, rate)
+
+
+def write_record(root: Path, record_file: Path, wav_file: Path, key: str, provider: str, version: str | None, device: str, rate: float, lang: str,
+                 voice_ids: dict, prepared: dict, info: dict, synth_seconds: float, source: dict | None = None) -> dict:
+    record = {'narration_schema': SCHEMA, 'key': key, 'provider': provider, 'provider_version': version, 'device': device, 'rate': rate, 'lang': lang,
+              'voices': voice_ids, 'segments': prepared['segments'], 'text_sha256': sha(prepared['text'].encode('utf-8')),
+              'audio': {'file': wav_file.relative_to(root).as_posix(), 'sha256': sha(wav_file.read_bytes()), **info},
+              'rtf': round(synth_seconds / info['seconds'], 3) if info['seconds'] else None, 'created': time.strftime('%Y-%m-%d'),
+              'basis': 'Spoken from the script by a speech engine. A recording is not a check of the content: the script is reviewed as text.'}
+    if source:
+        record['source'] = source
+    record_file.write_text(json.dumps(record, indent=2, ensure_ascii=False, sort_keys=True) + '\n', encoding='utf-8', newline='\n')
+    return record
+
+
+def check_directory(directory: str) -> None:
+    if not directory or '\\' in directory or ':' in directory or any(p in {'', '.', '..'} for p in directory.split('/')):
+        raise VoiceError('the directory is a relative path inside the vault')
+
+
 def speak(root: Path, script: str, lang: str, provider: str, envs: list[str] | None = None, voices: dict | None = None, lexicon: dict | None = None,
           device: str = 'cpu', rate: float = 1.0, directory: str = 'Narration', source: dict | None = None) -> dict:
     """Prepare a script, speak it with a local engine, and register the audio. Reuses an existing recording of the same text and voice."""
@@ -238,8 +264,7 @@ def speak(root: Path, script: str, lang: str, provider: str, envs: list[str] | N
         raise VoiceError(f'{provider!r} makes no audio file here (use kokoro, piper or chatterbox; the browser voice needs none)')
     if not PROVIDERS[provider].get('engine'):
         raise VoiceError(f'{provider} is declared, not built')
-    if not directory or '\\' in directory or ':' in directory or any(p in {'', '.', '..'} for p in directory.split('/')):
-        raise VoiceError('the directory is a relative path inside the vault')
+    check_directory(directory)
     prepared = speech_text.prepare(script, lang, lexicon)
     if prepared['problems']:
         raise VoiceError('the script cannot be spoken yet: ' + '; '.join(prepared['problems']))
@@ -251,10 +276,7 @@ def speak(root: Path, script: str, lang: str, provider: str, envs: list[str] | N
             kokoro_settings(voices, seg['lang'], device, rate)
     entry = find_env(detect(envs), provider)
     version = entry['engines'].get(ENGINE_MODULE[PROVIDERS[provider]['engine']])
-    voice_ids = {seg['lang']: (Path(voices[seg['lang']]).name if provider == 'piper' and seg['lang'] in voices else seg['lang']) for seg in prepared['segments']}
-    if provider == 'kokoro':
-        voice_ids = {lang: kokoro_voice_id(kokoro_settings(voices)) for lang in voice_ids}
-    key = narration_key(provider, version, voice_ids, prepared['segments'], device, rate)
+    voice_ids, key = narration_identity(prepared, provider, voices, version, device, rate)
     folder = root / directory
     record_file, wav_file = folder / f'{key[:16]}.narration.json', folder / f'{key[:16]}.wav'
     if record_file.exists():
@@ -274,15 +296,106 @@ def speak(root: Path, script: str, lang: str, provider: str, envs: list[str] | N
             raise VoiceError(f'{wav_file.name} already exists without a record; remove it or change the text')
         shutil.copyfile(joined, wav_file)
     synth_seconds = round(sum(d.get('synth_seconds', 0) for d in details), 3)
-    record = {'narration_schema': SCHEMA, 'key': key, 'provider': provider, 'provider_version': version, 'device': device, 'rate': rate, 'lang': lang,
-              'voices': voice_ids, 'segments': prepared['segments'], 'text_sha256': sha(prepared['text'].encode('utf-8')),
-              'audio': {'file': wav_file.relative_to(root).as_posix(), 'sha256': sha(wav_file.read_bytes()), **info},
-              'rtf': round(synth_seconds / info['seconds'], 3) if info['seconds'] else None, 'created': time.strftime('%Y-%m-%d'),
-              'basis': 'Spoken from the script by a speech engine. A recording is not a check of the content: the script is reviewed as text.'}
-    if source:
-        record['source'] = source
-    record_file.write_text(json.dumps(record, indent=2, ensure_ascii=False, sort_keys=True) + '\n', encoding='utf-8', newline='\n')
+    record = write_record(root, record_file, wav_file, key, provider, version, device, rate, lang, voice_ids, prepared, info, synth_seconds, source)
     return {'key': key, 'reused': False, 'audio': record['audio']['file'], 'seconds': info['seconds'], 'rtf': record['rtf'], 'wall_seconds': round(time.time() - started, 1)}
+
+
+def say_digest(say: str) -> str:
+    """Identifies the sentence a recording was made for; the page plays a step's recording only while its sentence still hashes to this."""
+    return sha(say.strip().encode('utf-8'))
+
+
+def speak_board(root: Path, script: dict, provider: str = 'kokoro', envs: list[str] | None = None, voices: dict | None = None, lexicon: dict | None = None,
+                device: str = 'cpu', rate: float = 1.0, directory: str = 'Narration') -> dict:
+    """Speak every sentence of a board script as its own recording in the narration registry, with one model load for all the sentences that are not yet recorded.
+
+    A step's recording is exactly what ``speak`` gives for that sentence alone (same key), so nothing depends on what else is on the board and unchanged sentences are
+    reused. Returns ``{'audio': {step id: {file, seconds, pause, say_sha256}}, 'refused': {step id: reason}, 'synthesized', 'reused'}``. A sentence that cannot be
+    spoken (a formula the rules refuse, another language) is refused on its own and the board keeps working: that step uses the page's other voices.
+    ``pause`` is the silence the rated delivery puts after the sentence; the recording itself has none, and the page waits it out.
+    """
+    import board_script
+    if provider != 'kokoro':
+        raise VoiceError('a board is narrated through Kokoro, which loads once for many sentences; speak another provider step by step with speak()')
+    check_directory(directory)
+    board_script.check(script)
+    root, voices = Path(root).resolve(), voices or {}
+    settings = kokoro_settings(voices, 'en', device, rate)
+    plan, refused = {}, {}
+    for step in script['steps']:
+        say = step.get('say', '').strip()
+        if not say:
+            continue
+        prepared = speech_text.prepare(say, 'en', lexicon)
+        problem = '; '.join(prepared['problems']) or (None if prepared['segments'] else 'there is nothing to say')
+        if not problem:
+            try:
+                for segment in prepared['segments']:
+                    kokoro_settings(voices, segment['lang'], device, rate)
+            except VoiceError as exc:
+                problem = str(exc)
+        if not problem and len(prepared['segments']) != 1:
+            problem = 'the sentence mixes languages'
+        if problem:
+            refused[step['id']] = problem
+        else:
+            plan[step['id']] = (say, prepared)
+    started, entry, version, keyed, missing = time.time(), None, None, {}, {}
+    folder = root / directory
+    if plan:
+        entry = find_env(detect(envs), provider)
+        version = entry['engines'].get(ENGINE_MODULE[PROVIDERS[provider]['engine']])
+    for step_id, (say, prepared) in plan.items():
+        voice_ids, key = narration_identity(prepared, provider, voices, version, device, rate)
+        keyed[step_id] = (say, key)
+        if not (folder / f'{key[:16]}.narration.json').exists():
+            missing.setdefault(key, (voice_ids, prepared))
+    if missing:
+        folder.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix='narrate-board-') as tmp:
+            work = Path(tmp)
+            items = [{'id': key, 'text': prepared['segments'][0]['text'], 'out': str(work / f'{key[:16]}.wav')} for key, (_, prepared) in missing.items()]
+            (work / 'batch.json').write_text(json.dumps(items), encoding='utf-8')
+            result = adapter(entry['env'], 'synth', '--provider', 'kokoro', '--device', device, '--model-dir', settings['model_dir'], '--voice-blend', settings['blend'],
+                             '--speed', str(settings['speed']), '--gap', str(settings['gap']), '--colon-gap', str(settings['colon_gap']), '--batch-file', work / 'batch.json')
+            if not result.get('ok'):
+                raise VoiceError(f'kokoro failed on the board: {result.get("error")}')
+            details = {item.get('id'): item for item in result.get('items', [])}
+            for key, (voice_ids, prepared) in missing.items():
+                if key not in details:
+                    raise VoiceError('the engine returned no audio for one sentence of the board')
+                wav_file = folder / f'{key[:16]}.wav'
+                if wav_file.exists():
+                    raise VoiceError(f'{wav_file.name} already exists without a record; remove it or change the text')
+                joined = work / f'joined-{key[:16]}.wav'
+                info = join_wavs([work / f'{key[:16]}.wav'], joined)
+                shutil.copyfile(joined, wav_file)
+                write_record(root, folder / f'{key[:16]}.narration.json', wav_file, key, provider, version, device, rate, 'en', voice_ids, prepared, info,
+                             details[key].get('synth_seconds', 0))
+    audio = {}
+    for step_id, (say, key) in keyed.items():
+        record = json.loads((folder / f'{key[:16]}.narration.json').read_text(encoding='utf-8-sig'))
+        audio[step_id] = {'file': record['audio']['file'], 'seconds': record['audio']['seconds'],
+                          'pause': settings['colon_gap'] if say.endswith(':') else settings['gap'], 'say_sha256': say_digest(say)}
+    return {'audio': audio, 'refused': refused, 'synthesized': len(missing), 'reused': len([k for _, k in keyed.values() if k not in missing]),
+            'wall_seconds': round(time.time() - started, 1)}
+
+
+def bind_board_audio(root: Path, session: str, widget_id: str, **options) -> dict:
+    """Narrate a session's board widget and store the recordings in its declaration (``audio``), replacing what was there. The script itself is not changed."""
+    import html_sessions
+    state = html_sessions.load_session(root, session)
+    widgets = [dict(w) for w in state.get('widgets', [])]
+    widget = next((w for w in widgets if w.get('id') == widget_id and w.get('kind') == 'board'), None)
+    if widget is None:
+        raise VoiceError(f'the session has no board widget {widget_id!r}')
+    result = speak_board(root, widget['script'], **options)
+    if result['audio']:
+        widget['audio'] = result['audio']
+    else:
+        widget.pop('audio', None)
+    html_sessions.update_session(root, session, widgets=widgets)
+    return result
 
 
 def discover(root: Path, directory: str = 'Narration') -> list[dict]:
@@ -439,6 +552,16 @@ def main(argv=None) -> int:
     p.add_argument('--device', choices=('cpu', 'cuda'), default='cpu')
     p.add_argument('--rate', type=float, default=1.0)
     p.add_argument('--directory', default='Narration')
+    p = sub.add_parser('board', help='speak every sentence of a blackboard lecture, one recording per step, and store them in the board widget')
+    common(p)
+    p.add_argument('--root', type=Path, required=True)
+    p.add_argument('--session', help='the session note (relative to the vault); with --widget the recordings are stored in that board widget')
+    p.add_argument('--widget')
+    p.add_argument('--script', type=Path, help='a board script file instead of a session: prints the audio map and changes nothing else')
+    p.add_argument('--provider', choices=('kokoro',), default='kokoro')
+    p.add_argument('--voice', action='append', default=[], help='model_dir=FOLDER and optional blend= speed= gap= colon_gap= (as for speak)')
+    p.add_argument('--lexicon', type=Path)
+    p.add_argument('--directory', default='Narration')
     p = sub.add_parser('list', help='recordings in the registry')
     p.add_argument('--root', type=Path, required=True)
     p = sub.add_parser('transcribe', help='text from a recording')
@@ -475,6 +598,18 @@ def main(argv=None) -> int:
                 return 1 if prepared['problems'] else 0
             print(json.dumps(speak(args.root, script, args.lang, args.provider, args.env, parse_voices(args.voice), lexicon, args.device, args.rate, args.directory),
                              indent=2, ensure_ascii=False))
+            return 0
+        if args.command == 'board':
+            options = dict(provider=args.provider, envs=args.env, voices=parse_voices(args.voice), lexicon=speech_text.load_lexicon(args.lexicon), directory=args.directory)
+            if bool(args.script) == bool(args.session):
+                raise VoiceError('give --script FILE, or --session NOTE with --widget ID')
+            if args.script:
+                result = speak_board(args.root, json.loads(args.script.read_text(encoding='utf-8-sig')), **options)
+            elif not args.widget:
+                raise VoiceError('--session needs --widget ID')
+            else:
+                result = bind_board_audio(args.root, args.session, args.widget, **options)
+            print(json.dumps(result, indent=2, ensure_ascii=False))
             return 0
         if args.command == 'list':
             print(json.dumps([{k: r[k] for k in ('key', 'provider', 'lang', 'created')} | {'audio': r['audio']['file'], 'seconds': r['audio']['seconds']} for r in discover(args.root)], indent=2))
