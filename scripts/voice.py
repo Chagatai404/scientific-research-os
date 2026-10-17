@@ -416,6 +416,47 @@ def discover(root: Path, directory: str = 'Narration') -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------- the worker for spoken questions
+LEASE_FILE = 'worker.json'
+LEASE_MAX_AGE = 10.0          # seconds; a worker beats every two, so a lease older than this means nobody is listening
+
+
+def lease_state(directory: Path, now: float | None = None) -> dict:
+    """What the page may say about the voice worker: ``ready``, ``busy``, ``warming``, ``error``, ``stopped`` or ``off`` (no worker, or one that stopped beating).
+    Never claims a worker is listening unless its lease is recent."""
+    now = time.time() if now is None else now
+    try:
+        lease = json.loads((Path(directory) / LEASE_FILE).read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError):
+        return {'state': 'off', 'reason': 'no worker has run here'}
+    if not isinstance(lease, dict) or not isinstance(lease.get('heartbeat'), (int, float)):
+        return {'state': 'off', 'reason': 'the worker record is unreadable'}
+    state = lease.get('state')
+    if state in ('stopped', 'error'):
+        return {'state': state, 'reason': lease.get('last_error'), 'model': lease.get('model'), 'device': lease.get('device')}
+    if now - lease['heartbeat'] > LEASE_MAX_AGE * (6 if state == 'warming' else 1):   # a model can take a while to load; a beating worker cannot go quiet
+        return {'state': 'off', 'reason': f'the worker has not reported for {int(now - lease["heartbeat"])} s'}
+    return {'state': state if state in ('ready', 'busy', 'warming') else 'off', 'model': lease.get('model'), 'device': lease.get('device'),
+            'warm_seconds': lease.get('warm_seconds'), 'fallback_reason': lease.get('fallback_reason'), 'transcribed': lease.get('transcribed'), 'failed': lease.get('failed')}
+
+
+def worker_args(directory: Path, model: str = 'small', device: str = 'cuda', language: str = 'en', keep_audio: bool = False) -> list[str]:
+    compute = 'float16' if device == 'cuda' else 'int8'
+    args = ['serve', '--dir', str(directory), '--model', model, '--device', device, '--compute-type', compute, '--language', language]
+    return args + (['--keep-audio'] if keep_audio else [])
+
+
+def run_worker(envs: list[str] | None, directory: Path, model: str = 'small', device: str = 'cuda', language: str = 'en', keep_audio: bool = False) -> int:
+    """Run the worker in the foreground until it is stopped (Ctrl+C, or create ``<directory>/stop``). The model loads once and stays loaded."""
+    entry = find_env(detect(envs), 'whisper')
+    python = python_of(Path(entry['env']))
+    if python is None:
+        raise VoiceError(f'no Python found in {entry["env"]}')
+    command = [str(python), str(ADAPTER), *worker_args(Path(directory), model, device, language, keep_audio)]
+    env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', TOKENIZERS_PARALLELISM='false')
+    return subprocess.call(command, env=env)
+
+
 # ---------------------------------------------------------------- speech to text and scoring
 
 def transcribe(audio: Path, envs: list[str] | None = None, lang: str | None = None, model: str = 'small', device: str = 'cpu', words: bool = False) -> dict:
@@ -567,6 +608,15 @@ def main(argv=None) -> int:
     p.add_argument('--voice', action='append', default=[], help='model_dir=FOLDER and optional blend= speed= gap= colon_gap= (as for speak)')
     p.add_argument('--lexicon', type=Path)
     p.add_argument('--directory', default='Narration')
+    p = sub.add_parser('worker', help='keep Whisper loaded for spoken questions (runs until stopped; create <dir>/stop to stop it)')
+    common(p)
+    p.add_argument('--dir', type=Path, required=True, help='the voice folder, normally <vault>/.research-os/voice')
+    p.add_argument('--model', default='small')
+    p.add_argument('--device', choices=('cpu', 'cuda'), default='cuda')
+    p.add_argument('--language', default='en')
+    p.add_argument('--keep-audio', action='store_true')
+    p = sub.add_parser('worker-status', help='whether a voice worker is listening (reads its lease; starts nothing)')
+    p.add_argument('--dir', type=Path, required=True)
     p = sub.add_parser('list', help='recordings in the registry')
     p.add_argument('--root', type=Path, required=True)
     p = sub.add_parser('transcribe', help='text from a recording')
@@ -616,6 +666,12 @@ def main(argv=None) -> int:
                 result = bind_board_audio(args.root, args.session, args.widget, **options)
             print(json.dumps(result, indent=2, ensure_ascii=False))
             return 0
+        if args.command == 'worker':
+            return run_worker(args.env, args.dir, args.model, args.device, args.language, args.keep_audio)
+        if args.command == 'worker-status':
+            status = lease_state(args.dir)
+            print(json.dumps(status, indent=2, ensure_ascii=False))
+            return 0 if status['state'] in ('ready', 'busy', 'warming') else 1
         if args.command == 'list':
             print(json.dumps([{k: r[k] for k in ('key', 'provider', 'lang', 'created')} | {'audio': r['audio']['file'], 'seconds': r['audio']['seconds']} for r in discover(args.root)], indent=2))
             return 0

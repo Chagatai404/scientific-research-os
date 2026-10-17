@@ -10,12 +10,14 @@ cannot be trusted with Turkish characters.
     python voice_adapter.py synth --provider kokoro --model-dir DIR --text-file in.txt --out out.wav
     python voice_adapter.py synth --provider kokoro --model-dir DIR --batch-file items.json     (many texts, one model load)
     python voice_adapter.py transcribe --model small --lang tr --audio in.wav --out words.json --words
+    python voice_adapter.py serve --dir VOICE_DIR --model small --device cuda     (a persistent worker for spoken questions; stop it by creating VOICE_DIR/stop)
 """
 from __future__ import annotations
 import argparse
 import importlib.metadata
 import importlib.util
 import json
+import re
 import sys
 import time
 import wave
@@ -186,6 +188,167 @@ def synth_kokoro_batch(args) -> dict:
     return {'load_seconds': load_seconds, 'synth_seconds': round(sum(r['synth_seconds'] for r in results), 3), 'items': results}
 
 
+# ---------------------------------------------------------------- the speech-to-text worker (spoken questions)
+# A worker keeps one Whisper model loaded and answers audio dropped in `<dir>/inbox`. The host (the Obsidian plugin) records the learner's voice and writes it
+# there; the worker writes `<dir>/out/<id>.json` and a lease `<dir>/worker.json` that says whether anyone is listening. The loop knows nothing about Whisper
+# (it takes a function), so it is tested with a fake; only ``make_transcriber`` imports the engine.
+VOICE_NAME = re.compile(r'[A-Za-z0-9_-]{1,64}\.(webm|ogg|wav)\Z')   # \Z, not $: "a.webm" followed by a newline is not a safe name
+MAX_AUDIO_BYTES = 3 * 1024 * 1024
+MAX_AUDIO_SECONDS = 120
+MAX_PENDING = 20
+OUTPUT_KEEP_SECONDS = 3600
+LEASE_FILE = 'worker.json'
+
+
+def add_cuda_dll_paths() -> list[str]:
+    """The CUDA libraries come from pip packages (nvidia-cublas-cu12, nvidia-cudnn-cu12); Windows only finds their DLLs once their folders are searchable."""
+    import os
+    import site
+    found = []
+    for base in site.getsitepackages():
+        for folder in sorted((Path(base) / 'nvidia').glob('*/bin')):
+            found.append(str(folder))
+            if hasattr(os, 'add_dll_directory'):
+                os.add_dll_directory(str(folder))
+            os.environ['PATH'] = str(folder) + os.pathsep + os.environ.get('PATH', '')
+    return found
+
+
+def write_json_atomic(path: Path, data: dict) -> None:
+    import os
+    tmp = path.with_name(path.name + '.tmp')
+    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
+    os.replace(tmp, path)
+
+
+def silent_wav(path: Path, seconds: float = 1.0, rate: int = 16000) -> None:
+    with wave.open(str(path), 'wb') as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(rate)
+        handle.writeframes(bytes(2 * int(rate * seconds)))
+
+
+def make_transcriber(model_name: str, device: str, compute_type: str, language: str | None):
+    """Load Whisper once and warm it up (the first GPU call takes about half a minute, so it happens before anyone is told the worker is ready).
+    A GPU that fails to load or warm falls back to the CPU, and the reason is reported. Returns (transcribe(path) -> dict, details)."""
+    import tempfile
+    add_cuda_dll_paths()
+    from faster_whisper import WhisperModel
+    attempts = [(device, compute_type)] + ([('cpu', 'int8')] if device == 'cuda' else [])
+    fallback, model, used = None, None, None
+    for dev, comp in attempts:
+        started = time.perf_counter()
+        try:
+            model = WhisperModel(model_name, device=dev, compute_type=comp)
+            with tempfile.TemporaryDirectory(prefix='warm-') as tmp:
+                warm = Path(tmp) / 'warm.wav'
+                silent_wav(warm)
+                list(model.transcribe(str(warm), language=language or 'en', beam_size=1)[0])
+            used = (dev, comp, round(time.perf_counter() - started, 2))
+            break
+        except Exception as exc:  # noqa: BLE001 - the reason is part of the report
+            fallback = f'{dev}: {type(exc).__name__}: {exc}'[:300]
+            model = None
+    if model is None:
+        raise RuntimeError(fallback or 'no speech model could be loaded')
+
+    def transcribe_file(path: Path) -> dict:
+        started = time.perf_counter()
+        segments, info = model.transcribe(str(path), language=language or None, beam_size=5, vad_filter=True,
+                                          vad_parameters={'min_silence_duration_ms': 500})
+        text = ' '.join(s.text.strip() for s in segments).strip()
+        return {'text': text, 'language': info.language, 'audio_seconds': round(info.duration, 2), 'transcribe_seconds': round(time.perf_counter() - started, 2)}
+    details = {'model': model_name, 'device': used[0], 'compute_type': used[1], 'warm_seconds': used[2], 'fallback_reason': fallback if used[0] != device else None}
+    return transcribe_file, details
+
+
+def serve_loop(directory: Path, transcribe_file, details: dict, *, now=time.time, sleep=time.sleep, poll: float = 0.25, beat: float = 2.0, settle: float = 0.6,
+               keep_audio: bool = False, max_loops: int | None = None) -> dict:
+    """Answer audio in ``<directory>/inbox`` until ``<directory>/stop`` appears. Returns the final counts. Never raises on a bad file: it writes an error result."""
+    import os
+    inbox, out = Path(directory) / 'inbox', Path(directory) / 'out'
+    inbox.mkdir(parents=True, exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
+    stop = Path(directory) / 'stop'
+    if stop.exists():
+        stop.unlink()
+    lease = {'schema': 1, 'pid': os.getpid(), 'started_at': now(), 'transcribed': 0, 'failed': 0, 'last_error': None, **details}
+
+    def publish(state: str) -> None:
+        lease.update(state=state, heartbeat=now())
+        write_json_atomic(Path(directory) / LEASE_FILE, lease)
+    publish('ready')
+    last_beat, last_clean, loops = now(), now(), 0
+    while not stop.exists() and (max_loops is None or loops < max_loops):
+        loops += 1
+        waiting = []
+        for path in inbox.iterdir():
+            if not path.is_file():
+                continue
+            if not VOICE_NAME.match(path.name):
+                path.unlink(missing_ok=True)   # nothing but a recording with a safe name belongs here
+                continue
+            if now() - path.stat().st_mtime < settle:
+                continue                        # still being written
+            waiting.append(path)
+        waiting.sort(key=lambda p: (p.stat().st_mtime, p.name))
+        for path in waiting[MAX_PENDING:]:
+            write_json_atomic(out / f'{path.stem}.json', {'id': path.stem, 'error': 'The voice queue is full; try again in a moment.'})
+            path.unlink(missing_ok=True)
+        for path in waiting[:MAX_PENDING]:
+            publish('busy')
+            result = {'id': path.stem}
+            try:
+                if path.stat().st_size > MAX_AUDIO_BYTES:
+                    raise ValueError(f'The recording is larger than {MAX_AUDIO_BYTES // 1048576} MB.')
+                heard = transcribe_file(path)
+                if heard.get('audio_seconds', 0) > MAX_AUDIO_SECONDS:
+                    raise ValueError(f'The recording is longer than {MAX_AUDIO_SECONDS} seconds.')
+                result.update(heard, model=lease.get('model'), device=lease.get('device'))
+                lease['transcribed'] += 1
+            except Exception as exc:  # noqa: BLE001 - the learner sees this message, the loop goes on
+                result['error'] = f'{type(exc).__name__}: {exc}'[:300]
+                lease['failed'] += 1
+                lease['last_error'] = result['error']
+            write_json_atomic(out / f'{path.stem}.json', result)
+            if keep_audio:
+                (Path(directory) / 'kept').mkdir(exist_ok=True)   # out of the inbox, or it would be heard again on the next pass
+                os.replace(path, Path(directory) / 'kept' / path.name)
+            else:
+                path.unlink(missing_ok=True)
+        if waiting:
+            publish('ready')
+            last_beat = now()
+        elif now() - last_beat >= beat:
+            publish('ready')
+            last_beat = now()
+        if now() - last_clean >= 60:
+            for old in out.glob('*.json'):
+                if now() - old.stat().st_mtime > OUTPUT_KEEP_SECONDS:
+                    old.unlink(missing_ok=True)
+            last_clean = now()
+        sleep(poll)
+    publish('stopped')
+    return {'transcribed': lease['transcribed'], 'failed': lease['failed']}
+
+
+def serve(args) -> int:
+    import os
+    directory = Path(args.dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    stub = {'schema': 1, 'state': 'warming', 'pid': os.getpid(), 'heartbeat': time.time(), 'model': args.model, 'device': args.device}
+    write_json_atomic(directory / LEASE_FILE, stub)        # visible while the model loads, so the page can say "warming up"
+    try:
+        transcribe_file, details = make_transcriber(args.model, args.device, args.compute_type, None if args.language == 'auto' else args.language)
+    except Exception as exc:  # noqa: BLE001
+        write_json_atomic(directory / LEASE_FILE, dict(stub, state='error', heartbeat=time.time(), last_error=f'{type(exc).__name__}: {exc}'[:300]))
+        return fail(f'{type(exc).__name__}: {exc}'[:600])
+    print(json.dumps({'ok': True, 'state': 'ready', **details}, ensure_ascii=True), flush=True)
+    counts = serve_loop(directory, transcribe_file, details, keep_audio=args.keep_audio)
+    return emit({'ok': True, 'stopped': True, **counts})
+
+
 def transcribe(args) -> int:
     from faster_whisper import WhisperModel
     started = time.perf_counter()
@@ -236,12 +399,21 @@ def main(argv=None) -> int:
     p.add_argument('--compute-type', default='int8')
     p.add_argument('--words', action='store_true')
     p.add_argument('--out')
+    p = sub.add_parser('serve', help='keep Whisper loaded and answer recordings dropped in <dir>/inbox (spoken questions)')
+    p.add_argument('--dir', required=True)
+    p.add_argument('--model', default='small')
+    p.add_argument('--device', choices=('cpu', 'cuda'), default='cuda')
+    p.add_argument('--compute-type', default='float16')
+    p.add_argument('--language', default='en', help="a language code, or 'auto' to detect it (unreliable on a few words)")
+    p.add_argument('--keep-audio', action='store_true', help='keep each recording after it is transcribed (by default it is deleted)')
     args = parser.parse_args(argv)
     try:
         if args.command == 'info':
             return emit({'ok': True, 'python': sys.version.split()[0], 'engines': versions(), **torch_state()})
         if args.command == 'transcribe':
             return transcribe(args)
+        if args.command == 'serve':
+            return serve(args)
         if args.batch_file:
             if args.provider != 'kokoro' or args.device != 'cpu':
                 return fail('--batch-file is for Kokoro on the CPU')
