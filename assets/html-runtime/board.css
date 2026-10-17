@@ -1,10 +1,10 @@
 /* Research OS blackboard (board.js). The board is always chalk on dark slate, whatever the page theme; only the controls under it follow the page. */
 /* A hand is the writing font; a paired hand uses one font for titles (the large and huge sizes) and the other for everything else. */
-.ros-board{margin:1.5rem 0;--board-font:"Patrick Hand","Atkinson Hyperlegible Next",system-ui,sans-serif;--board-title:var(--board-font);--title-weight:400}
-.ros-board[data-hand="caveat"]{--board-font:"Caveat","Patrick Hand",system-ui,sans-serif}
-.ros-board[data-hand="kalam"]{--board-font:"Kalam","Patrick Hand",system-ui,sans-serif;--title-weight:700}
-.ros-board[data-hand="kalam-patrick"]{--board-title:"Kalam","Patrick Hand",system-ui,sans-serif;--title-weight:700;--board-font:"Patrick Hand","Atkinson Hyperlegible Next",system-ui,sans-serif}
-.ros-board[data-hand="patrick-kalam"]{--board-title:"Patrick Hand","Atkinson Hyperlegible Next",system-ui,sans-serif;--board-font:"Kalam","Patrick Hand",system-ui,sans-serif}
+.ros-board{margin:1.5rem 0;--board-font:"Kalam","Atkinson Hyperlegible Next",system-ui,sans-serif;--board-title:var(--board-font);--title-weight:700}
+.ros-board[data-hand="patrick"]{--board-font:"Patrick Hand","Atkinson Hyperlegible Next",system-ui,sans-serif;--title-weight:400}
+.ros-board[data-hand="caveat"]{--board-font:"Caveat","Kalam",system-ui,sans-serif;--title-weight:400}
+.ros-board[data-hand="kalam-patrick"]{--board-title:"Kalam","Atkinson Hyperlegible Next",system-ui,sans-serif;--board-font:"Patrick Hand","Atkinson Hyperlegible Next",system-ui,sans-serif}
+.ros-board[data-hand="patrick-kalam"]{--board-title:"Patrick Hand","Atkinson Hyperlegible Next",system-ui,sans-serif;--title-weight:400;--board-font:"Kalam","Atkinson Hyperlegible Next",system-ui,sans-serif}
 .ros-board-write[data-size="huge"],.ros-board-write[data-size="large"]{font-family:var(--board-title);font-weight:var(--title-weight)}
 .ros-board-frame{background:#4a3b2c;padding:clamp(6px,1.2vw,14px);border-radius:6px;box-shadow:0 2px 0 #2f2418,0 10px 24px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.12)}
 .ros-board-surface{position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:3px;background:

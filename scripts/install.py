@@ -46,7 +46,7 @@ GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
                  "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py", "library_index.py", "terms.py", "teaching_lint.py", "code_walkthrough.py", "resources.py", "diagram_spec.py", "animate.py", "fsrs_schedule.py", "notebook_coverage.py", "notebook_trace.py", "speech_text.py", "voice.py", "voice_adapter.py",
                  "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py",
-                 "context_kernel.py", "scientific_verify.py", "chembio_verify.py", "structure_verify.py", "rich_text.py", "visual_assets.py", "tutor_gate.py", "supervision.py",
+                 "context_kernel.py", "scientific_verify.py", "chembio_verify.py", "structure_verify.py", "rich_text.py", "board_script.py", "visual_assets.py", "tutor_gate.py", "supervision.py",
                  # tasks.py gates reconciliation on the library inventory receipt that scout.py produces.
                  "scout.py",
                  # Optional Obsidian adapters: detection, vault search, and generated cards/canvas (all degrade to built-in routes).
@@ -63,6 +63,8 @@ SESSION_HELPERS = ("html_sessions.py", "common.py", "research.py", "knowledge.py
                    "scientific_verify.py", "chembio_verify.py", "structure_verify.py",
                    # The shared scientific inline grammar html_sessions renders with.
                    "rich_text.py",
+                   # A board widget's lecture script is checked by validate_state with the same rules the page uses.
+                   "board_script.py",
                    # `html_sessions.py place` / `attach-visual` put registered figures into a lesson.
                    "visual_assets.py", "excalidraw_schematic.py",
                    # Concept-first gates for tutoring sessions (prerequisites, probe contracts, evidence proposals).

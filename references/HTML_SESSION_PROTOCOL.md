@@ -123,6 +123,29 @@ declaration, and a visual placed twice are shown as visible diagnostics and repo
 appended to the end of the page. Sessions without the `placement` field keep their earlier behaviour. How figures are
 produced, labelled by evidence class and kept safe is in `references/VISUALIZATION_PROTOCOL.md`.
 
+## The blackboard (v0.9.6)
+
+A lecture can be given on a blackboard in the page: a widget of kind `board` whose declaration carries a `script`, placed where the lecture belongs with
+`<!-- ros-widget: ID -->` like any widget. The script is plain JSON any agent can write: `{"board_schema": 1, "hand": "kalam", "open": false, "steps": [...]}`.
+Each step has an `id`, one spoken sentence `say`, and `do` actions that start while it is spoken (`delay` seconds after the sentence starts):
+`write`, `math` (TeX, typeset by KaTeX), `draw` (an absolute SVG path), `arrow`, `circle`, `rect`, `axes`, `plot` (points the agent computed),
+`dot`, `move` (a dot along a path), `highlight`, `erase`. Coordinates are board units, 160 wide and 90 high. Cues follow sentences, never clock time, so a
+slow voice cannot desynchronise the board; a step ends when its sentence and its drawing are both done. `python scripts/board_script.py check|speech
+script.json` validates a script and lists what would be spoken; `examples/board-lecture-gradient.json` is a worked lecture whose curve is computed from
+its formula. A script is untrusted: text only becomes text, a path is parsed and rebuilt, colours and sizes are names from a fixed table, an unknown key
+is an error, and the page re-checks with the same rules (`tests/fixtures/board-cases.json` pins both).
+
+**Live.** While `open` is true the page shows "Waiting for the tutor" at the end; adding steps to the widget (`html_sessions.update_session(root, session,
+widgets=[...])`) makes the open board play them in place. Steps already started must not change: a changed earlier step shows "The tutor revised the
+lecture" and waits for Replay. The learner can Pause, Skip a step, Replay, change speed and choose the voice. Open questions use the existing Send panel;
+an answer is more steps on the board, not a separate channel, and is recorded as before (no evidence, no mastery).
+
+**What it does not do yet.** The board speaks with the device voice or shows timed captions only. The Kokoro voice (`VOICE_PROTOCOL.md`) is not yet played
+from the page: `mount` takes extra `speakers` for that, but no recorded or streamed audio is connected, and Obsidian's sandbox cannot open vault audio
+files. A `board-append` command, hand-raising mid-sentence, a lint that every concept is explained on the board, and spoken questions are the next slices
+(`docs/plans/v0.9.6-live-board-plan.md`). Tested in real Chrome on a captions-only voice; not tested inside Obsidian or Safari, with a real device voice, or by
+a learner, and legibility is the researcher's judgement (Kalam was chosen over Patrick Hand, which read as too casual).
+
 ## Titles, navigation and the questions panel
 
 **Titles say what is being studied.** Keep stable internal IDs in state; never put workflow positions or identifiers in

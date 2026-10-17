@@ -2,7 +2,7 @@
 
 `session.js` and `session.css` are the complete offline bundles. KaTeX 0.16.22
 uses locally embedded WOFF2 fonts. Document fonts (Atkinson Hyperlegible Next and
-Mono, Source Serif 4; Fontsource 5.3.0, SIL OFL 1.1, see `FONTS-LICENSE.txt`) are
+Mono, Source Serif 4, and the blackboard's handwriting Kalam, Patrick Hand and Caveat; Fontsource 5.3.0, SIL OFL 1.1, see `FONTS-LICENSE.txt`) are
 kept in `fonts/` and embedded the same way; `dependency-lock.json` lists their
 hashes. After editing `theme.css` or `runtime.js`, run `python build.py --refresh`
 to rebuild the bundles from the already verified KaTeX. `dependency-lock.json` records original
@@ -78,6 +78,14 @@ standard-error formula for independent finite-variance observations; `vector`
 demonstrates Euclidean vector components. SVG and Canvas are accompanied by
 accessible numerical text and model limitations. These are neither validated
 simulations nor experimental data.
+
+The blackboard: `data-widget="board"` is a widget whose declaration carries a `script` (`board_schema: 1`, see `scripts/board_script.py` and
+`references/HTML_SESSION_PROTOCOL.md`). `board.js` performs it on an always-dark chalk board (fixed colours, whatever the page theme); `board.css`
+styles it. Writing uses Kalam by default (Kalam, Patrick Hand and Caveat are bundled, SIL OFL 1.1; a script may set `hand` to `kalam`, `patrick`,
+`caveat`, `kalam-patrick` or `patrick-kalam`, the last two writing titles in one font and the rest in the other). Formulas are KaTeX, typeset in chalk
+colours, not handwritten. The module is also a plain API (`ResearchOSBoard.mount`, `createPlayer`, `validate`, `silentSpeaker`, `deviceSpeaker`);
+`mount` accepts extra `speakers` ({`speak(text)` -> promise, `pause`, `resume`, `cancel`, `setRate`}), which is how a recorded or streamed voice plugs in.
+`board.js`, `board.css` and `runtime.js` are editable sources; run `python build.py --refresh` after changing any of them.
 
 Approved locally bundled extensions may call
 `ResearchOS.register('name', (element, {emit,renderMath}) => {...})` to enhance
