@@ -56,6 +56,12 @@ dataset) and its engine is GPL. Chatterbox's licences fit a product and its Turk
 The working hypothesis in the plan (Piper local tier, Chatterbox quality tier) therefore stands only for personal use today. The decision rule is, in order: Turkish intelligibility to your ear; runs on this
 machine; licence permits the future app; stability.
 
+## Blind listening test (v0.9.6)
+
+`python scripts/voice_blind_test.py build manifest.json page.html [--seed N]` builds one offline page from audio files you already have: every sample says the same text, they appear as "Sample 1, 2, ..." in a seeded random order, you rate each 1 to 5 for a twenty minute lecture and say whether you would keep listening, and the voices are named only after you press Reveal. `page.key.json` beside it holds the key. A manifest entry may have `"role": "anchor"` (a voice known to be poor; a high rating for it means the rater is not discriminating) or `"role": "repeat"` with an id `<candidate id>-repeat` (the same file twice; the two ratings should be close). It embeds the audio (16 MB limit), runs no engine and sends nothing anywhere. The key sits in the page data, so the blinding holds against a casual look only. Results are downloaded as JSON; the page keeps unsent ratings in the browser's storage when it can.
+
+First use, 2026-10-17: `voice-listening/blind-english-1/` holds seven samples of one English lecture paragraph (five Kokoro-82M voices, Windows SAPI Zira as the anchor, one repeat). Kokoro ran through `kokoro-onnx` 0.6.1 in its own environment on CPU, whole paragraph at once: real-time factor 0.71 to 1.04 (about 24 to 29 s of audio in 17 to 30 s), model load 3.4 s. **Not rated yet.** Page behaviour was checked in a browser (all seven files decode, rating and reveal work); nothing was listened to.
+
 ## The registry and the page
 
 `python scripts/voice.py speak --root <vault> --provider piper --env DIR --lang tr --text-file s.txt --voice tr=<dfki.onnx> --voice en=<lessac.onnx>` writes `Narration/<key>.wav` and
