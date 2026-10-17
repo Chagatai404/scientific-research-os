@@ -107,6 +107,7 @@
     const failed = new Set();
     const panels = new Map();
     const extensions = new Map();
+    const boards = new Map();
     let counter = 0, uid = 0;
     // Top-level content nodes keyed by their sanitized source, so live updates reuse unchanged enhanced nodes.
     const keys = new WeakMap();
@@ -149,6 +150,11 @@
       for (const id of saved) { pending.delete(id); failed.delete(id); }
       // Saved events are authoritative; keep only local events still on their way to the host.
       localEvents = [...next.events, ...localEvents.filter(e => !saved.has(e.event_id))];
+      // A tutor who is still writing a lecture adds steps to the board's script; the open board picks them up in place.
+      for (const [id, controller] of boards) {
+        const declared = (state.widgets || []).find(w => w.id === id);
+        if (declared && declared.script && controller.update) controller.update(declared.script);
+      }
     }
     if (host) root.addEventListener('message', message => {
       const data = message.data;
@@ -623,8 +629,17 @@
       hints.forEach((hint, i) => { if (localEvents.some(e => e.type === 'hint' && e.question_id === q.id && Number(e.response) >= i + 1)) { hint.text.hidden = false; hint.reveal.hidden = false; hint.reveal.disabled = true; hint.reveal.setAttribute('aria-expanded', 'true'); if (hints[i + 1]) hints[i + 1].reveal.hidden = false; } });
       panels.set(q.id, panel);
     }
+    // The blackboard: a lecture written as a board script (scripts/board_script.py) in the widget's declaration, performed by board.js.
+    function buildBoard(widget) {
+      const Board = root.ResearchOSBoard;
+      const declared = (state.widgets || []).find(w => w.id === widget.id);
+      if (widget.querySelector('.ros-board')) return;
+      if (!Board || !declared || !declared.script) { widget.append(node('p', 'This board has no lecture to show.')); return; }
+      boards.set(widget.id, Board.mount(widget, declared.script, {doc, win: root, renderMath}));
+    }
     function buildWidget(widget) {
       const type = widget.getAttribute('data-widget');
+      if (type === 'board') { buildBoard(widget); return; }
       if (type !== 'sampling' && type !== 'vector') { widget.append(node('p', 'This local widget is unsupported. Its original content is preserved.')); return; }
       const description = type === 'sampling' ? 'Analytic model: standard error σ/√n for independent observations with common finite variance. This is a formula demonstration, not measured or simulated data.' : 'Euclidean model: vector components x = r cos θ, y = r sin θ. This is an analytic schematic.';
       widget.append(node('p', description));

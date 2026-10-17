@@ -266,8 +266,11 @@ def validate_state(state):
         if not isinstance(state.get(key), list):
             raise ValueError(f"Invalid {key}")
     for widget in state.get("widgets", []):
-        if not isinstance(widget, dict) or widget.get("kind") not in {"sampling", "vector"} or not isinstance(widget.get("id"), str):
+        if not isinstance(widget, dict) or widget.get("kind") not in {"sampling", "vector", "board"} or not isinstance(widget.get("id"), str):
             raise ValueError("Unsupported session widget")
+        if widget["kind"] == "board":
+            import board_script  # a lecture is untrusted data written by an agent; the page re-checks it with the same rules
+            board_script.check(widget.get("script"))
     if "context" in state:
         _validate_context(state["context"])
     if state.get("placement") not in (None, "explicit"):

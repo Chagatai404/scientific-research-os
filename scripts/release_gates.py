@@ -25,7 +25,7 @@ BROWSER_TESTS = ('html-runtime-browser.js', 'html-browser-e2e.cjs', 'html-compon
                  'html-design-browser.cjs', 'html-gallery-browser.cjs', 'html-navigation-browser.cjs',
                  'html-tutor-browser.cjs', 'html-richtext-browser.cjs', 'html-visuals-browser.cjs', 'html-workspace-browser.cjs',
                  'html-supervision-browser.cjs', 'html-narration-browser.cjs', 'html-scenarios-browser.cjs', 'html-visual-parity.cjs')
-NODE_TESTS = ('html-host.test.js', 'html-runtime-unit.js', 'richtext-conformance.js', 'narration-unit.js')
+NODE_TESTS = ('html-host.test.js', 'html-runtime-unit.js', 'richtext-conformance.js', 'narration-unit.js', 'board-unit.js')
 SESSION_INPUT_TESTS = {'html-navigation-browser.cjs'}
 # Needs material the repository cannot supply; reported as SKIPPED, never as passed.
 EXTERNAL_INPUT_TESTS = {'html-visual-parity.cjs': 'requires the externally supplied recitation reference page and the one historical session whose content its later assertions describe '

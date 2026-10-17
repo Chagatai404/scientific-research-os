@@ -1,0 +1,28 @@
+/* Research OS blackboard (board.js). The board is always chalk on dark slate, whatever the page theme; only the controls under it follow the page. */
+.ros-board{margin:1.5rem 0;--board-font:"Patrick Hand","Atkinson Hyperlegible Next",system-ui,sans-serif}
+.ros-board[data-hand="caveat"]{--board-font:"Caveat","Patrick Hand",system-ui,sans-serif}
+.ros-board-frame{background:#4a3b2c;padding:clamp(6px,1.2vw,14px);border-radius:6px;box-shadow:0 2px 0 #2f2418,0 10px 24px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.12)}
+.ros-board-surface{position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:3px;background:
+  radial-gradient(130% 100% at 25% 15%,rgba(255,255,255,.07),transparent 55%),
+  radial-gradient(120% 90% at 85% 95%,rgba(0,0,0,.4),transparent 60%),
+  repeating-linear-gradient(100deg,rgba(255,255,255,.012) 0 6px,transparent 6px 14px),#1c2421;box-shadow:inset 0 0 40px rgba(0,0,0,.55);color:#f4f0e6}
+.ros-board-ink{position:absolute;inset:0;width:100%;height:100%}
+.ros-board-text{position:absolute;inset:0;pointer-events:none}
+.ros-board-item{position:absolute;white-space:pre-wrap;line-height:1.12;color:var(--ink,#f4f0e6);font-family:var(--board-font);
+  font-size:calc(var(--fs,3.2) * var(--bw,800px) / 100);letter-spacing:.01em;text-shadow:0 0 .6px currentColor,0 0 7px rgba(244,240,230,.16)}
+.ros-board-math{font-family:"KaTeX_Main","Times New Roman",serif}
+.ros-board-math .katex{font-size:1.05em;color:inherit}
+.ros-board-math small{font-size:.5em}
+.ros-board-pen{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none}
+.ros-board-pen::after{content:"";position:absolute;left:-1px;top:-4px;width:18px;height:7px;border-radius:2px;background:#f2eee3;transform:rotate(-38deg);transform-origin:left center;box-shadow:0 0 8px rgba(255,255,255,.55)}
+.ros-board-pen[hidden],.ros-board-hint[hidden]{display:none}
+.ros-board-hint{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--board-font);font-size:calc(4.4 * var(--bw,800px) / 100);color:rgba(244,240,230,.32);pointer-events:none}
+.ros-board-bar{display:flex;flex-wrap:wrap;gap:.5rem .9rem;align-items:center;margin-top:.7rem}
+.ros-board-bar button{min-height:2.25rem;padding:.3rem .9rem;cursor:pointer}
+.ros-board-bar button:disabled{cursor:default;opacity:.55}
+.ros-board-bar label{display:inline-flex;gap:.35rem;align-items:center}
+.ros-board-state{opacity:.8}
+.ros-board-caption{min-height:1.6em;margin:.5rem 0 0;font-style:italic}
+.ros-board-transcript{margin-top:.4rem}
+.ros-board-transcript li[aria-current="step"]{font-weight:600}
+.ros-board-written{opacity:.75}

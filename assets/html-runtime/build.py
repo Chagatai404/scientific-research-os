@@ -24,6 +24,9 @@ DOCUMENT_FONTS = {
         'Atkinson Hyperlegible Next': 'https://registry.npmjs.org/@fontsource-variable/atkinson-hyperlegible-next/-/atkinson-hyperlegible-next-5.3.0.tgz',
         'Atkinson Hyperlegible Mono': 'https://registry.npmjs.org/@fontsource-variable/atkinson-hyperlegible-mono/-/atkinson-hyperlegible-mono-5.3.0.tgz',
         'Source Serif 4': 'https://registry.npmjs.org/@fontsource-variable/source-serif-4/-/source-serif-4-5.3.0.tgz',
+        # The blackboard's handwriting (board.js). Patrick Hand is the default hand; Caveat is the more cursive alternative. Both SIL OFL 1.1.
+        'Patrick Hand': 'https://registry.npmjs.org/@fontsource/patrick-hand/-/patrick-hand-5.3.0.tgz',
+        'Caveat': 'https://registry.npmjs.org/@fontsource-variable/caveat/-/caveat-5.3.0.tgz',
     },
     'faces': [
         ('Atkinson Hyperlegible Next', 'normal', '200 800', 'atkinson-hyperlegible-next-latin-wght-normal.woff2', LATIN),
@@ -34,6 +37,10 @@ DOCUMENT_FONTS = {
         ('Source Serif 4', 'normal', '200 900', 'source-serif-4-latin-ext-wght-normal.woff2', LATIN_EXT),
         ('Source Serif 4', 'italic', '200 900', 'source-serif-4-latin-wght-italic.woff2', LATIN),
         ('Source Serif 4', 'italic', '200 900', 'source-serif-4-latin-ext-wght-italic.woff2', LATIN_EXT),
+        ('Patrick Hand', 'normal', '400', 'patrick-hand-latin-400-normal.woff2', LATIN),
+        ('Patrick Hand', 'normal', '400', 'patrick-hand-latin-ext-400-normal.woff2', LATIN_EXT),
+        ('Caveat', 'normal', '400 700', 'caveat-latin-wght-normal.woff2', LATIN),
+        ('Caveat', 'normal', '400 700', 'caveat-latin-ext-wght-normal.woff2', LATIN_EXT),
     ],
 }
 
@@ -55,11 +62,13 @@ def document_fonts():
 
 def write_bundle(katex_css, katex_js, inventory):
     fonts_css, inventory['document_fonts'] = document_fonts()
-    # KaTeX, then the shared inline grammar, then narration, then the runtime that uses all three. refresh() splits on the first
+    # KaTeX, then the shared inline grammar, then narration, then the blackboard, then the runtime that uses all four. refresh() splits on the first
     # "/* Research OS runtime" marker, which richtext.js carries, so the bundle round-trips.
     (TARGET / 'session.js').write_bytes(KATEX_HEADER.encode() + katex_js + b'\n;\n' + (TARGET / 'richtext.js').read_bytes()
-                                        + b'\n' + (TARGET / 'narration.js').read_bytes() + b'\n' + (TARGET / 'runtime.js').read_bytes())
-    (TARGET / 'session.css').write_text(KATEX_HEADER + katex_css + '\n' + fonts_css + (TARGET / 'theme.css').read_text(encoding='utf-8'), encoding='utf-8')
+                                        + b'\n' + (TARGET / 'narration.js').read_bytes() + b'\n' + (TARGET / 'board.js').read_bytes()
+                                        + b'\n' + (TARGET / 'runtime.js').read_bytes())
+    (TARGET / 'session.css').write_text(KATEX_HEADER + katex_css + '\n' + fonts_css + (TARGET / 'theme.css').read_text(encoding='utf-8')
+                                        + '\n' + (TARGET / 'board.css').read_text(encoding='utf-8'), encoding='utf-8')
     (TARGET / 'dependency-lock.json').write_text(json.dumps(inventory, indent=2) + '\n', encoding='utf-8')
 
 
