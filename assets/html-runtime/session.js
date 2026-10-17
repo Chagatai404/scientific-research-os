@@ -650,7 +650,7 @@
   const SCHEMA = 1, WIDTH = 160, HEIGHT = 90, SVG_NS = 'http://www.w3.org/2000/svg';
   const COLORS = {chalk: '#f4f0e6', yellow: '#f6d96b', blue: '#8cc8ff', green: '#9ae6b4', pink: '#ffb4c8', orange: '#ffbd7a'};
   const SIZES = {small: 2.3, medium: 3.2, large: 4.6, huge: 6.8};   // font size as a percentage of the board width
-  const HANDS = ['patrick', 'caveat'];
+  const HANDS = ['patrick', 'caveat', 'kalam', 'kalam-patrick', 'patrick-kalam'];   // the last two pair a title font with a body font
   const MAX = {steps: 200, perStep: 12, actions: 1500, say: 600, text: 300, tex: 400, path: 1500, numbers: 300, points: 400};
   const ID = /^[A-Za-z0-9_-]{1,64}$/;
   const ARITY = {M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, Z: 0};
@@ -964,6 +964,7 @@
     function textItem(action, className) {
       const el = doc.createElement('div');
       el.className = 'ros-board-item ' + className;
+      el.setAttribute('data-size', SIZES[action.size] ? action.size : 'medium');
       el.style.left = f(action.at[0] / WIDTH * 100) + '%';
       el.style.top = f(action.at[1] / HEIGHT * 100) + '%';
       el.style.setProperty('--fs', String(SIZES[action.size] || SIZES.medium));

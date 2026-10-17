@@ -246,7 +246,7 @@
    "ok": true
   },
   {
-   "name": "the default hand",
+   "name": "the patrick hand",
    "script": {
     "board_schema": 1,
     "steps": [
@@ -257,6 +257,51 @@
      }
     ],
     "hand": "patrick"
+   },
+   "ok": true
+  },
+  {
+   "name": "the kalam hand",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "s1",
+      "say": "Hello.",
+      "do": []
+     }
+    ],
+    "hand": "kalam"
+   },
+   "ok": true
+  },
+  {
+   "name": "the kalam-patrick hand",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "s1",
+      "say": "Hello.",
+      "do": []
+     }
+    ],
+    "hand": "kalam-patrick"
+   },
+   "ok": true
+  },
+  {
+   "name": "the patrick-kalam hand",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "s1",
+      "say": "Hello.",
+      "do": []
+     }
+    ],
+    "hand": "patrick-kalam"
    },
    "ok": true
   },

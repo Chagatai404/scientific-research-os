@@ -27,6 +27,7 @@ DOCUMENT_FONTS = {
         # The blackboard's handwriting (board.js). Patrick Hand is the default hand; Caveat is the more cursive alternative. Both SIL OFL 1.1.
         'Patrick Hand': 'https://registry.npmjs.org/@fontsource/patrick-hand/-/patrick-hand-5.3.0.tgz',
         'Caveat': 'https://registry.npmjs.org/@fontsource-variable/caveat/-/caveat-5.3.0.tgz',
+        'Kalam': 'https://registry.npmjs.org/@fontsource/kalam/-/kalam-5.3.0.tgz',
     },
     'faces': [
         ('Atkinson Hyperlegible Next', 'normal', '200 800', 'atkinson-hyperlegible-next-latin-wght-normal.woff2', LATIN),
@@ -41,6 +42,10 @@ DOCUMENT_FONTS = {
         ('Patrick Hand', 'normal', '400', 'patrick-hand-latin-ext-400-normal.woff2', LATIN_EXT),
         ('Caveat', 'normal', '400 700', 'caveat-latin-wght-normal.woff2', LATIN),
         ('Caveat', 'normal', '400 700', 'caveat-latin-ext-wght-normal.woff2', LATIN_EXT),
+        ('Kalam', 'normal', '400', 'kalam-latin-400-normal.woff2', LATIN),
+        ('Kalam', 'normal', '400', 'kalam-latin-ext-400-normal.woff2', LATIN_EXT),
+        ('Kalam', 'normal', '700', 'kalam-latin-700-normal.woff2', LATIN),
+        ('Kalam', 'normal', '700', 'kalam-latin-ext-700-normal.woff2', LATIN_EXT),
     ],
 }
 

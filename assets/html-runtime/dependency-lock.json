@@ -37,7 +37,8 @@
       "Atkinson Hyperlegible Mono": "https://registry.npmjs.org/@fontsource-variable/atkinson-hyperlegible-mono/-/atkinson-hyperlegible-mono-5.3.0.tgz",
       "Source Serif 4": "https://registry.npmjs.org/@fontsource-variable/source-serif-4/-/source-serif-4-5.3.0.tgz",
       "Patrick Hand": "https://registry.npmjs.org/@fontsource/patrick-hand/-/patrick-hand-5.3.0.tgz",
-      "Caveat": "https://registry.npmjs.org/@fontsource-variable/caveat/-/caveat-5.3.0.tgz"
+      "Caveat": "https://registry.npmjs.org/@fontsource-variable/caveat/-/caveat-5.3.0.tgz",
+      "Kalam": "https://registry.npmjs.org/@fontsource/kalam/-/kalam-5.3.0.tgz"
     },
     "fonts": {
       "atkinson-hyperlegible-next-latin-wght-normal.woff2": "18b2a1a39a2fa298b0ba5390aca68462669826c90925656f1c1f6796e0e1bbaf",
@@ -51,7 +52,11 @@
       "patrick-hand-latin-400-normal.woff2": "ac5bc9033b2572bf84d39f7150c1634e37ed16e8dbee632d6d0bceac0bbf0199",
       "patrick-hand-latin-ext-400-normal.woff2": "c16846bad9501534b8402172c18f87e927146c4e63af2942f1fa8ad8ba7e6e70",
       "caveat-latin-wght-normal.woff2": "891951df5e8b5b0f0bc760d31375405e795c666b5add70437de12d4a6482b33f",
-      "caveat-latin-ext-wght-normal.woff2": "f626b95c1efa95cf6b7c9b043d3bbe8862b6abbe5f55a082102f33f7de2fd4f9"
+      "caveat-latin-ext-wght-normal.woff2": "f626b95c1efa95cf6b7c9b043d3bbe8862b6abbe5f55a082102f33f7de2fd4f9",
+      "kalam-latin-400-normal.woff2": "954410601a823f37e219f7930b7446f86afa15621326a7078d56fb9c910135cb",
+      "kalam-latin-ext-400-normal.woff2": "1099e56781c48f97dc66c8df2039a640ded07742acd4c6f2c9dc6350c3e3f324",
+      "kalam-latin-700-normal.woff2": "252063af6ade8b9a744cde4ddad0fc21ea53b8ba711eed121a0c2e8610ea9c93",
+      "kalam-latin-ext-700-normal.woff2": "1fc176f6b1fbc091d4321ef2c9b683a6f512f645b9f22c460c2e2f3d298fcf74"
     }
   }
 }
