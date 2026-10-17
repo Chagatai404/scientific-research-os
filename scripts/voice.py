@@ -29,7 +29,11 @@ ADAPTER = Path(__file__).with_name('voice_adapter.py')
 ENV_VARIABLE = 'RESEARCH_OS_VOICE_ENVS'
 DEFAULT_TIMEOUT = 1800
 GAP_SECONDS = 0.12
-ENGINE_MODULE = {'piper': 'piper', 'chatterbox': 'chatterbox', 'whisper': 'faster_whisper'}
+ENGINE_MODULE = {'piper': 'piper', 'chatterbox': 'chatterbox', 'kokoro': 'kokoro_onnx', 'whisper': 'faster_whisper'}
+# The delivery the researcher chose in the blind tests of 2026-10-17 (docs/plans/v0.9.6-voice-blind-1.md): a 60/40 voice blend, a little slower than
+# default, sentence by sentence with half a second of silence (0.3 s after a colon). Change a value and the narration key changes with it.
+KOKORO_DEFAULTS = {'blend': 'af_heart:0.6,af_sky:0.4', 'speed': 0.95, 'gap': 0.5, 'colon_gap': 0.3}
+KOKORO_MODEL_ID = 'kokoro-v1.0'
 
 # What each provider is. Licences of engines and voices are read from the installed packages and model cards when they are reported (bake-off report), not asserted here.
 PROVIDERS = {
@@ -39,6 +43,10 @@ PROVIDERS = {
               'note': 'CPU, fast. One Turkish voice (dfki) exists in the voice set. The engine package and each voice have their own licences: read them before a product ships either.'},
     'chatterbox': {'files': True, 'local': True, 'online': False, 'engine': 'chatterbox', 'voice': 'a language id; an optional reference recording clones a voice', 'cloning': True,
                    'note': 'Multilingual, including Turkish. Heavier: see the bake-off report for what it cost on this machine. Output carries an inaudible watermark (PerTh).'},
+    'kokoro': {'files': True, 'local': True, 'online': False, 'engine': 'kokoro', 'cloning': False, 'languages': 'English only',
+               'voice': 'model_dir=FOLDER holding kokoro-v1.0.onnx and voices-v1.0.bin; optional blend, speed, gap, colon_gap (defaults are the delivery chosen by blind test)',
+               'note': 'The default English voice (82M parameters, CPU, about half real time sentence by sentence). No Turkish. Weights are Apache-2.0 per the model listings; the '
+                       'phonemizer package it installs is GPL-3.0-or-later (its metadata) and kokoro-onnx and espeakng-loader state no licence in theirs: read them before an app ships it.'},
     'cloud': {'files': True, 'local': False, 'online': True, 'engine': None, 'implemented': False,
               'note': 'Declared, not built. A cloud voice would be opt-in and show the same "the text is sent to a speech service" notice the page already shows.'},
 }
@@ -178,11 +186,40 @@ def parse_voices(pairs: list[str] | None) -> dict:
     return voices
 
 
+def kokoro_settings(voices: dict, lang: str | None = None, device: str = 'cpu', rate: float = 1.0) -> dict:
+    """The validated Kokoro delivery. Refuses before any engine runs: another language, the GPU, a missing model folder, a number that is not one."""
+    if lang is not None and lang != 'en':
+        raise VoiceError(f'Kokoro speaks English only; the {lang} part of this script needs another provider (a {{{{{lang}: ...}}}} span cannot be read in an English voice)')
+    if device != 'cpu':
+        raise VoiceError('Kokoro runs on the CPU here (--device cpu)')
+    if rate != 1.0:
+        raise VoiceError('--rate does not apply to Kokoro; give --voice speed=0.9')
+    if not voices.get('model_dir'):
+        raise VoiceError('Kokoro needs --voice model_dir=FOLDER, the folder with kokoro-v1.0.onnx and voices-v1.0.bin')
+    settings = {'model_dir': voices['model_dir'], 'blend': voices.get('blend', KOKORO_DEFAULTS['blend'])}
+    for name in ('speed', 'gap', 'colon_gap'):
+        try:
+            settings[name] = float(voices.get(name, KOKORO_DEFAULTS[name]))
+        except ValueError:
+            raise VoiceError(f'{name} must be a number, not {voices[name]!r}') from None
+    if not 0.5 <= settings['speed'] <= 2.0 or not 0.0 <= settings['gap'] <= 5.0 or not 0.0 <= settings['colon_gap'] <= 5.0:
+        raise VoiceError('speed must be 0.5 to 2 and the gaps 0 to 5 seconds')
+    return settings
+
+
+def kokoro_voice_id(settings: dict) -> str:
+    """Everything that changes how it sounds, so a changed delivery never reuses an old recording."""
+    return f'{KOKORO_MODEL_ID}:{settings["blend"]}@{settings["speed"]}/g{settings["gap"]},{settings["colon_gap"]}'
+
+
 def synth_segment(entry: dict, provider: str, segment: dict, voices: dict, device: str, rate: float, out: Path, workdir: Path, index: int) -> dict:
     text_file = workdir / f'segment-{index}.txt'
     text_file.write_text(segment['text'], encoding='utf-8')
     args = ['synth', '--provider', provider, '--lang', segment['lang'], '--device', device, '--text-file', text_file, '--out', out]
-    if provider == 'piper':
+    if provider == 'kokoro':
+        s = kokoro_settings(voices, segment['lang'], device, rate)
+        args += ['--model-dir', s['model_dir'], '--voice-blend', s['blend'], '--speed', str(s['speed']), '--gap', str(s['gap']), '--colon-gap', str(s['colon_gap'])]
+    elif provider == 'piper':
         if segment['lang'] not in voices:
             raise VoiceError(f'no Piper voice for {segment["lang"]}: give --voice {segment["lang"]}=PATH')
         args += ['--model', voices[segment['lang']], '--length-scale', str(rate)]
@@ -198,7 +235,7 @@ def speak(root: Path, script: str, lang: str, provider: str, envs: list[str] | N
           device: str = 'cpu', rate: float = 1.0, directory: str = 'Narration', source: dict | None = None) -> dict:
     """Prepare a script, speak it with a local engine, and register the audio. Reuses an existing recording of the same text and voice."""
     if provider not in PROVIDERS or not PROVIDERS[provider]['files']:
-        raise VoiceError(f'{provider!r} makes no audio file here (use piper or chatterbox; the browser voice needs none)')
+        raise VoiceError(f'{provider!r} makes no audio file here (use kokoro, piper or chatterbox; the browser voice needs none)')
     if not PROVIDERS[provider].get('engine'):
         raise VoiceError(f'{provider} is declared, not built')
     if not directory or '\\' in directory or ':' in directory or any(p in {'', '.', '..'} for p in directory.split('/')):
@@ -209,9 +246,14 @@ def speak(root: Path, script: str, lang: str, provider: str, envs: list[str] | N
     if not prepared['segments']:
         raise VoiceError('the script has nothing to say')
     root, voices = Path(root).resolve(), voices or {}
+    if provider == 'kokoro':
+        for seg in prepared['segments']:
+            kokoro_settings(voices, seg['lang'], device, rate)
     entry = find_env(detect(envs), provider)
     version = entry['engines'].get(ENGINE_MODULE[PROVIDERS[provider]['engine']])
     voice_ids = {seg['lang']: (Path(voices[seg['lang']]).name if provider == 'piper' and seg['lang'] in voices else seg['lang']) for seg in prepared['segments']}
+    if provider == 'kokoro':
+        voice_ids = {lang: kokoro_voice_id(kokoro_settings(voices)) for lang in voice_ids}
     key = narration_key(provider, version, voice_ids, prepared['segments'], device, rate)
     folder = root / directory
     record_file, wav_file = folder / f'{key[:16]}.narration.json', folder / f'{key[:16]}.wav'
@@ -387,11 +429,12 @@ def main(argv=None) -> int:
     p = sub.add_parser('speak', help='speak a script and register the audio')
     common(p)
     p.add_argument('--root', type=Path, required=True)
-    p.add_argument('--provider', choices=('piper', 'chatterbox'), required=True)
+    p.add_argument('--provider', choices=('piper', 'chatterbox', 'kokoro'), required=True)
     p.add_argument('--lang', required=True)
     p.add_argument('--text')
     p.add_argument('--text-file', type=Path)
-    p.add_argument('--voice', action='append', default=[], help='lang=path (Piper voices) or prompt=path (Chatterbox reference recording)')
+    p.add_argument('--voice', action='append', default=[], help='lang=path (Piper voices), prompt=path (Chatterbox reference recording), or for Kokoro model_dir=FOLDER '
+                   'with optional blend=af_heart:0.6,af_sky:0.4 speed=0.95 gap=0.5 colon_gap=0.3')
     p.add_argument('--lexicon', type=Path)
     p.add_argument('--device', choices=('cpu', 'cuda'), default='cpu')
     p.add_argument('--rate', type=float, default=1.0)
@@ -411,6 +454,7 @@ def main(argv=None) -> int:
     p.add_argument('--out', type=Path, required=True)
     p.add_argument('--piper-voice', action='append', default=[], help='lang=path')
     p.add_argument('--chatterbox-device', choices=('cpu', 'cuda'))
+    p.add_argument('--kokoro-model-dir', type=Path, help='the folder holding kokoro-v1.0.onnx and voices-v1.0.bin (use with --providers kokoro)')
     p.add_argument('--providers', default='piper,chatterbox')
     p.add_argument('--whisper-model', default='small')
     p.add_argument('--only', action='append', default=[])
@@ -446,6 +490,8 @@ def main(argv=None) -> int:
                     providers[name] = {'voices': voices, 'device': 'cpu', 'languages': sorted(voices)}
                 elif name == 'chatterbox':
                     providers[name] = {'voices': {}, 'device': args.chatterbox_device or 'cpu', 'languages': ['en', 'tr']}
+                elif name == 'kokoro':
+                    providers[name] = {'voices': {'model_dir': str(args.kokoro_model_dir)} if args.kokoro_model_dir else {}, 'device': 'cpu', 'languages': ['en']}
                 else:
                     raise VoiceError(f'{name} is not a provider that can be compared')
             report = bakeoff(args.samples, args.out, providers, args.env, args.whisper_model, args.only, speech_text.load_lexicon(args.lexicon))

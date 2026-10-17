@@ -195,6 +195,94 @@ class Speaking(unittest.TestCase):
             self.assertEqual(vc.detect()[0]['engines']['piper'], '1.8.0')
 
 
+class Kokoro(unittest.TestCase):
+    """The provider chosen by blind test: English only, CPU, the rated delivery by default, and every setting that changes the sound changes the key."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        self.vault = self.dir / 'vault'
+        self.vault.mkdir()
+        self.env = make_env(self.dir)
+        self.models = self.dir / 'models'
+        self.engines = {'kokoro_onnx': '0.6.1', 'faster_whisper': '1.2.1'}
+
+    def speak(self, fake, script='Gradient descent slows near a minimum.', lang='en', voices=None, **kwargs):
+        voices = {'model_dir': str(self.models)} if voices is None else voices
+        with mock.patch.object(vc, 'run_command', fake):
+            return vc.speak(self.vault, script, lang, 'kokoro', [str(self.env)], voices, **kwargs)
+
+    def test_the_rated_delivery_is_what_the_adapter_is_asked_for(self):
+        fake = FakeAdapter(engines=self.engines)
+        result = self.speak(fake)
+        call = next(c for c in fake.calls if c[2] == 'synth')
+        option = lambda name: call[call.index(name) + 1]
+        self.assertEqual((option('--provider'), option('--lang'), option('--device')), ('kokoro', 'en', 'cpu'))
+        self.assertEqual((option('--voice-blend'), option('--speed'), option('--gap'), option('--colon-gap')), ('af_heart:0.6,af_sky:0.4', '0.95', '0.5', '0.3'))
+        self.assertEqual(option('--model-dir'), str(self.models))
+        record = json.loads(next((self.vault / 'Narration').glob('*.narration.json')).read_text(encoding='utf-8'))
+        self.assertEqual(record['voices'], {'en': 'kokoro-v1.0:af_heart:0.6,af_sky:0.4@0.95/g0.5,0.3'})
+        self.assertEqual(record['provider_version'], '0.6.1')
+        self.assertNotIn(str(self.dir), json.dumps(record), 'the local model folder is never kept in the record')
+        self.assertTrue((self.vault / result['audio']).is_file())
+
+    def test_the_whole_script_goes_to_the_engine_in_one_call_so_the_model_loads_once(self):
+        fake = FakeAdapter(engines=self.engines)
+        self.speak(fake, 'First sentence. Second sentence: then a third.')
+        self.assertEqual(len([c for c in fake.calls if c[2] == 'synth']), 1)
+
+    def test_any_change_to_the_delivery_makes_a_new_recording_and_the_folder_does_not(self):
+        fake = FakeAdapter(engines=self.engines)
+        base = self.speak(fake)['key']
+        self.assertEqual(self.speak(fake)['key'], base)
+        for change in ({'speed': '0.9'}, {'gap': '0.7'}, {'colon_gap': '0.45'}, {'blend': 'af_heart:0.6,af_sarah:0.4'}):
+            self.assertNotEqual(self.speak(fake, voices={'model_dir': str(self.models), **change})['key'], base, change)
+        moved = self.speak(fake, voices={'model_dir': str(self.dir / 'elsewhere')})
+        self.assertEqual((moved['key'], moved['reused']), (base, True))
+
+    def test_refusals_happen_before_any_engine_runs(self):
+        fake = FakeAdapter(engines=self.engines)
+        with self.assertRaisesRegex(vc.VoiceError, 'English only'):
+            self.speak(fake, 'Merhaba dünya', 'tr')
+        with self.assertRaisesRegex(vc.VoiceError, 'English only'):
+            self.speak(fake, 'Gradient {{tr: eğim}} descent')
+        with self.assertRaisesRegex(vc.VoiceError, 'CPU'):
+            self.speak(fake, device='cuda')
+        with self.assertRaisesRegex(vc.VoiceError, 'speed=0.9'):
+            self.speak(fake, rate=0.9)
+        with self.assertRaisesRegex(vc.VoiceError, 'model_dir'):
+            self.speak(fake, voices={})
+        with self.assertRaisesRegex(vc.VoiceError, 'must be a number'):
+            self.speak(fake, voices={'model_dir': 'x', 'speed': 'fast'})
+        with self.assertRaisesRegex(vc.VoiceError, 'speed must be'):
+            self.speak(fake, voices={'model_dir': 'x', 'speed': '9'})
+        self.assertEqual([c for c in fake.calls if len(c) > 2 and c[2] == 'synth'], [])
+        self.assertFalse((self.vault / 'Narration').exists())
+
+    def test_a_missing_engine_is_reported(self):
+        with self.assertRaisesRegex(vc.VoiceError, 'no environment with kokoro'):
+            self.speak(FakeAdapter(engines={'piper': '1'}))
+
+    def test_the_provider_is_listed_with_its_licence_caveat(self):
+        entry = vc.PROVIDERS['kokoro']
+        self.assertEqual((entry['files'], entry['local'], entry['online'], entry['languages']), (True, True, False, 'English only'))
+        self.assertIn('GPL', entry['note'])
+
+    def test_the_adapter_splits_sentences_and_reads_blends_as_the_blind_test_did(self):
+        import voice_adapter as va
+        self.assertEqual(va.split_sentences('One. Two! Three? Four: five.'), ['One.', 'Two!', 'Three?', 'Four:', 'five.'])
+        self.assertEqual(va.split_sentences('  no end  '), ['no end'])
+        self.assertEqual(va.parse_blend('af_heart:0.6,af_sky:0.4'), [('af_heart', 0.6), ('af_sky', 0.4)])
+        self.assertEqual(va.parse_blend('af_heart'), [('af_heart', 1.0)])
+        (_, a), (_, b) = va.parse_blend('x:3,y:1')
+        self.assertAlmostEqual(a + b, 1.0)
+        self.assertAlmostEqual(a, 0.75)
+        for bad in ('', ',', 'x:0', 'x:-1', 'x:abc', ':0.5'):
+            with self.assertRaises(ValueError, msg=bad):
+                va.parse_blend(bad)
+
+
 class Transcription(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -272,7 +360,7 @@ class CommandLine(unittest.TestCase):
         done = self.run_cli('providers')
         self.assertEqual(done.returncode, 0, done.stderr)
         data = json.loads(done.stdout)
-        self.assertEqual(sorted(data['providers']), ['browser', 'chatterbox', 'cloud', 'piper'])
+        self.assertEqual(sorted(data['providers']), ['browser', 'chatterbox', 'cloud', 'kokoro', 'piper'])
         self.assertEqual(data['installed'], [])
         self.assertFalse(data['providers']['cloud'].get('implemented', True))
 
