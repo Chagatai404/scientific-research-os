@@ -54,6 +54,9 @@ body.ros-staged .ros-side-panel,body.ros-staged .ros-panel-toggle,body.ros-stage
 .ros-stage-verdict[data-verdict="correct"]{color:var(--ros-success)}
 .ros-stage-verdict[data-verdict="wrong"],.ros-stage-verdict[data-verdict="problem"]{color:var(--ros-warning)}
 .ros-solution{margin:var(--ros-space-3) 0 0}
+.ros-agent-review{margin:var(--ros-space-3) 0 0;padding:var(--ros-space-2) var(--ros-space-3);border-left:4px solid var(--ros-border-strong)}
+.ros-agent-review p{margin:0}
+.ros-strip button[data-reviewed]::after{content:"\2713";font-size:.7em;margin-left:2px}
 .ros-voice-line{margin:var(--ros-space-2) 0 0;font-size:14px;color:var(--ros-text-muted);min-height:1.3em}
 .ros-voice-line.ros-voice-problem{color:var(--ros-warning)}
 

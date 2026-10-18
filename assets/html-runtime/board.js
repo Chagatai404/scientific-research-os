@@ -450,6 +450,15 @@
         Promise.resolve().then(() => effects.finishAll());
       },
       replay() { run++; timers.clear(); speaker.cancel(); effects.reset(); index = 0; status = 'idle'; onEvent('reset', {}); api.start(); },
+      // Resume: from idle, draw everything the steps before `id` put on the board at once (nothing is said) and wait to play from `id`. False when it cannot.
+      seek(id) {
+        const target = steps.findIndex(s => s.id === id);
+        if (status !== 'idle' || index !== 0 || target < 1) return false;
+        for (let i = 0; i < target; i++) for (const action of steps[i].do || []) { try { Promise.resolve(effects.apply(action, {instant: true, index: i})).catch(() => {}); } catch (_) { /* one bad action must not stop the rest */ } }
+        index = target;
+        onEvent('seek', {index: target});
+        return true;
+      },
       stop() { run++; timers.clear(); speaker.cancel(); effects.finishAll(); setStatus('idle'); },
       // A live update. Steps already started must be unchanged; new steps after them are played as they arrive.
       update(next) {
@@ -732,7 +741,7 @@
     function refresh() {
       const s = player.status;
       state.textContent = STATUS_TEXT[s] || s;
-      play.textContent = s === 'playing' ? 'Pause' : s === 'paused' ? 'Resume' : s === 'done' ? 'Play again' : s === 'waiting' ? 'Waiting…' : s === 'revised' ? 'Replay' : 'Start';
+      play.textContent = s === 'playing' ? 'Pause' : s === 'paused' ? 'Resume' : s === 'done' ? 'Play again' : s === 'waiting' ? 'Waiting…' : s === 'revised' ? 'Replay' : player.index > 0 ? 'Continue' : 'Start';
       play.disabled = s === 'waiting';
       skip.disabled = !(s === 'playing' || s === 'paused');
       figure.setAttribute('data-status', s);
@@ -742,10 +751,12 @@
       onEvent(type, data) {
         if (type === 'step') { hint.hidden = true; caption.textContent = data.step.say || ''; mark(data.index); }
         if (type === 'reset') { hint.hidden = false; caption.textContent = ''; mark(-1); }
-        if (type === 'status' || type === 'reset') refresh();
+        if (type === 'seek') { hint.hidden = true; caption.textContent = (script.steps[data.index - 1] || {}).say || ''; mark(data.index - 1); }
+        if (type === 'status' || type === 'reset' || type === 'seek') refresh();
         if (options.onEvent) options.onEvent(type, data);
       }
     });
+    if (options.startAt) player.seek(options.startAt);   // a resumed lecture waits at the step it had reached, with the board drawn as it was
     play.addEventListener('click', () => {
       const s = player.status;
       if (typeof speaker.unlock === 'function') speaker.unlock();   // the click is what lets live audio start

@@ -42,6 +42,35 @@
     return path.concat(tail);
   }
 
+  // The tutor's verdict on a written answer decides what that answer means for the lecture (mirrors html_sessions.py PLAN_REVIEW_RESULT and reviewed_results; pinned
+  // by the review_effects cases in tests/fixtures/supervision-cases.json). A partly correct answer leaves a gap, so it plays a repair and does not satisfy an
+  // extension; "reviewed" carries no judgement. Choice and numeric results are never touched. The latest review of a question wins.
+  const REVIEW_RESULT = {correct: 'correct', 'partially-correct': 'wrong', incorrect: 'wrong'};
+  function reviewedResults(results, reviews) {
+    const latest = new Map();
+    for (const review of reviews || []) latest.set(review.question_id, review);
+    const out = {};
+    for (const [id, verdict] of Object.entries(results)) out[id] = verdict === 'pending' && latest.has(id) && REVIEW_RESULT[latest.get(id).verdict] ? REVIEW_RESULT[latest.get(id).verdict] : verdict;
+    return out;
+  }
+  const checkpoints = (events, prefix) => events.filter(e => e.type === 'checkpoint' && typeof e.response === 'string' && e.response.startsWith(prefix)).map(e => e.response.slice(prefix.length));
+  // The segments the lecture was started with: the page freezes the path in a "lecture-path:" checkpoint at its first step, so a reload (or a review that arrives
+  // later) cannot turn the lecture being resumed into a different one. null before the lecture has started.
+  function recordedPath(events) {
+    const all = checkpoints(events, 'lecture-path:');
+    return all.length ? all[all.length - 1].split(',').filter(Boolean) : null;
+  }
+  // What the lecture plays now: the recorded path once started, otherwise the one the probe results (with the tutor's reviews) choose.
+  function lectureFor(plan, events, reviews) {
+    const results = reviewedResults(replay(plan, 'probe', events).results, reviews), recorded = recordedPath(events), known = new Set(plan.segments.map(s => s.id));
+    return {results, started: recorded !== null, path: recorded !== null ? recorded.filter(id => known.has(id)) : lecturePath(plan, results)};
+  }
+  // The step a reloaded lecture waits at: the last "lecture-step:" checkpoint whose step is in the script (a step added by an answered question is not).
+  function resumeStep(script, events) {
+    const ids = new Set(script.steps.map(s => s.id)), seen = checkpoints(events, 'lecture-step:').filter(id => ids.has(id));
+    return seen.length ? seen[seen.length - 1] : null;
+  }
+
   // One board plays the whole lecture: the chosen segments' steps in order. A segment that is only a video adds no steps here (the video pane is a later slice).
   function composeScript(plan, path) {
     const steps = [];
@@ -99,10 +128,16 @@
 
   // ----------------------------------------------------------------------------------------------------------------- the view
   /* ctx: {doc, events(): [event], emit(type, questionId, response): event, rich(tag, text): element, mountBoard(container, script, onEvent): controller,
-           footer(element): void, voice: null | {bind(binding), idle, holding}, liveVoice: null | {state(): string, ask(): void, onState(callback): void}} */
+           footer(element): void, voice: null | {bind(binding), idle, holding}, liveVoice: null | {state(): string, ask(): void, onState(callback): void},
+           reviews(): [plan review] (optional: the tutor's verdicts on written answers, latest last), mountBoard's 4th argument is the step to wait at on a resume} */
   function mount(container, plan, ctx) {
     const doc = ctx.doc;
     let current = plan;
+    const reviews = () => (ctx.reviews ? ctx.reviews() : []);
+    const reviewOf = id => { const all = reviews().filter(r => r.question_id === id); return all.length ? all[all.length - 1] : null; };
+    const REVIEW_LABEL = {correct: 'Correct', 'partially-correct': 'Partly correct', incorrect: 'Not quite', reviewed: 'Read'};
+    // Pending written answers become the tutor's verdict once there is one; everything else keeps the page's own result.
+    const effective = t => (t.verdict === 'pending' ? reviewedResults({[t.id]: 'pending'}, reviews())[t.id] : t.verdict);
     const el = (tag, attrs, ...children) => {
       const node = doc.createElement(tag);
       for (const [key, value] of Object.entries(attrs || {})) {
@@ -152,7 +187,7 @@
       const panel = panels[name];
       const view = views[name] = views[name] || {viewing: null, signature: ''};
       const r = replay(current, name, ctx.events());
-      const signature = JSON.stringify([r.trail.map(t => [t.id, t.answer]), r.current, view.viewing, derived, shown]);
+      const signature = JSON.stringify([r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, derived, shown]);
       if (signature === view.signature) return;
       view.signature = signature;
       panel.textContent = '';
@@ -162,7 +197,8 @@
       const strip = el('ol', {class: 'ros-strip', 'aria-label': name === 'probe' ? 'Probe questions' : 'Check questions'});
       r.trail.forEach((t, i) => {
         const mark = t.verdict === 'correct' ? 'answered correctly' : t.verdict === 'wrong' ? 'answered, not quite' : 'answered';
-        strip.append(el('li', null, button(String(i + 1), goTo(t.id), {'aria-label': `Question ${i + 1}, ${mark}`, 'data-verdict': t.verdict, 'aria-current': focusId === t.id ? 'step' : undefined})));
+        const read = t.verdict === 'pending' && reviewOf(t.id);
+        strip.append(el('li', null, button(String(i + 1), goTo(t.id), {'aria-label': `Question ${i + 1}, ${mark}${read ? ', the tutor has reviewed it' : ''}`, 'data-verdict': t.verdict, 'data-reviewed': read ? read.verdict : undefined, 'aria-current': focusId === t.id ? 'step' : undefined})));
       });
       if (r.current) {
         const n = r.trail.length + 1;
@@ -179,8 +215,16 @@
 
       if (answered) {
         card.append(review(question, answered));
+        const tutor = answered.verdict === 'pending' ? reviewOf(focusId) : null;
+        if (tutor) {
+          // The tutor's reading of a written answer, under the answer itself. The learner's own words stay exactly as they were.
+          const box = el('div', {class: 'ros-agent-review', 'data-verdict': tutor.verdict, role: 'status'});
+          box.append(el('p', {class: 'ros-stage-verdict', 'data-verdict': tutor.verdict === 'correct' ? 'correct' : tutor.verdict === 'reviewed' ? 'pending' : 'wrong', text: `The tutor’s review: ${REVIEW_LABEL[tutor.verdict] || tutor.verdict}`}));
+          if (tutor.feedback) box.append(ctx.rich('p', tutor.feedback));
+          card.append(box);
+        }
         const last = r.trail[r.trail.length - 1].id === focusId;
-        const verdictText = answered.verdict === 'correct' ? 'Correct.' : answered.verdict === 'wrong' ? 'Not quite.' : 'Saved. The tutor reads your answer in the background; you can go on.';
+        const verdictText = answered.verdict === 'correct' ? 'Correct.' : answered.verdict === 'wrong' ? 'Not quite.' : tutor ? 'Saved. The tutor has read your answer.' : 'Saved. The tutor reads your answer in the background; you can go on.';
         feedback.append(el('p', {class: 'ros-stage-verdict', 'data-verdict': answered.verdict, text: verdictText}));
         if (answered.feedback) feedback.append(ctx.rich('p', answered.feedback));
         if (question.solution && answered.verdict !== 'pending') feedback.append(el('details', {class: 'ros-solution', open: answered.verdict !== 'correct'}, el('summary', {text: 'Why'}), ctx.rich('p', question.solution)));
@@ -299,11 +343,39 @@
     }
 
     // ------------------------------------------------------------------------------------------------- lecture: the board, a way to ask, nothing else
-    const lecture = {host: null, controller: null, stepId: '', asked: new Set(), path: [], script: null};
+    const lecture = {host: null, controller: null, stepId: '', asked: new Set(), path: [], script: null, started: false, lastSent: '', sentAt: 0, timer: null};
+    // The lecture position is recorded as checkpoints so a reload resumes: "lecture-path:" (the segments, once, at the first step) and "lecture-step:" (the step
+    // reached, only when it is further than any recorded and at most one every few seconds; a pause, the end or leaving the page sends the latest at once).
+    const STEP_EVERY_MS = 6000;
+    function sendStep(force) {
+      const id = lecture.stepId, steps = lecture.script ? lecture.script.steps : [];
+      if (!lecture.started || !id || id === lecture.lastSent || steps.findIndex(s => s.id === id) <= steps.findIndex(s => s.id === lecture.lastSent)) return;
+      const win = doc.defaultView, wait = lecture.sentAt + STEP_EVERY_MS - Date.now();
+      if (!force && wait > 0 && win) { if (!lecture.timer) lecture.timer = win.setTimeout(() => { lecture.timer = null; sendStep(true); }, wait); return; }
+      if (lecture.timer && win) { win.clearTimeout(lecture.timer); lecture.timer = null; }
+      lecture.lastSent = id; lecture.sentAt = Date.now();
+      ctx.emit('checkpoint', null, 'lecture-step:' + id);
+    }
+    function onLectureEvent(type, data) {
+      if (type === 'step') {
+        lecture.stepId = data.step.id;
+        if (!lecture.started) {
+          lecture.started = true;
+          const path = lecture.path.join(',');
+          if (path.length <= 1500) ctx.emit('checkpoint', null, 'lecture-path:' + path);
+        }
+        sendStep(false);
+      }
+      if (type === 'status' && lecture.controller) {
+        lecture.next.hidden = lecture.controller.status !== 'done';
+        if (['paused', 'done'].includes(lecture.controller.status)) sendStep(true);
+      }
+    }
     function buildLecture() {
       if (lecture.host) return;
-      const probe = replay(current, 'probe', ctx.events());
-      lecture.path = lecturePath(current, probe.results);
+      const events = ctx.events(), plan_ = lectureFor(current, events, reviews());
+      lecture.path = plan_.path; lecture.started = plan_.started;
+      for (const label of checkpoints(events, 'asked:')) lecture.asked.add(label);        // a question already answered on the board is not offered again
       lecture.host = el('div', {class: 'ros-lecture-board'});
       const tools = el('div', {class: 'ros-lecture-tools'});
       lecture.chips = el('div', {class: 'ros-chips', role: 'group', 'aria-label': 'Questions the tutor expected'});
@@ -325,10 +397,9 @@
       tools.append(lecture.askButton, lecture.chips, lecture.composer, lecture.next);
       panels.lecture.append(lecture.host, tools);
       lecture.script = composeScript(current, lecture.path);
-      lecture.controller = ctx.mountBoard(lecture.host, lecture.script, (type, data) => {
-        if (type === 'step') lecture.stepId = data.step.id;
-        if (type === 'status' && lecture.controller) lecture.next.hidden = lecture.controller.status !== 'done';
-      });
+      const resumeAt = lecture.started ? resumeStep(lecture.script, events) : null;
+      if (resumeAt) lecture.lastSent = resumeAt;
+      lecture.controller = ctx.mountBoard(lecture.host, lecture.script, onLectureEvent, resumeAt || undefined);
       renderChips();
       // The caption, the voice note and the controls change as the lecture plays; the board gives back or takes height as they do.
       const win = doc.defaultView;
@@ -350,11 +421,12 @@
     function renderChips() {
       lecture.chips.textContent = '';
       for (const item of current.anticipated || []) {
-        if (lecture.path.includes(item.segment)) lecture.chips.append(button(item.label, () => playAnswer(item), {disabled: lecture.asked.has(item.label)}));
+        if (lecture.path.includes(item.segment)) lecture.chips.append(button(item.label, () => playAnswer(item), {disabled: wasAsked(item)}));
       }
     }
+    const wasAsked = item => lecture.asked.has(item.label) || lecture.asked.has(item.label.slice(0, 60));   // the checkpoint keeps the first 60 characters
     function playAnswer(item) {
-      if (!lecture.controller || !lecture.controller.update || lecture.asked.has(item.label)) return;
+      if (!lecture.controller || !lecture.controller.update || wasAsked(item)) return;
       const script = lecture.script, steps = script.steps.slice(), at = steps.findIndex(s => s.id === lecture.stepId);
       const fresh = item.steps.filter(s => !steps.some(t => t.id === s.id));
       if (!fresh.length) return;
@@ -393,7 +465,7 @@
     // ------------------------------------------------------------------------------------------------- done
     function renderDone() {
       const panel = panels.done;
-      const count = name => { const r = replay(current, name, ctx.events()); return {total: r.trail.length, right: r.trail.filter(t => t.verdict === 'correct').length, open: r.trail.filter(t => t.verdict === 'pending').length}; };
+      const count = name => { const r = replay(current, name, ctx.events()); return {total: r.trail.length, right: r.trail.filter(t => effective(t) === 'correct').length, open: r.trail.filter(t => effective(t) === 'pending').length}; };
       const signature = JSON.stringify([count('probe'), count('check'), shown]);
       if (panel.dataset.signature === signature) return;
       panel.dataset.signature = signature; panel.textContent = '';
@@ -416,7 +488,22 @@
       shell.dataset.stage = shown;
     }
     if (ctx.liveVoice) ctx.liveVoice.onState(() => { if (shown === 'handout') renderHandout(); });
+    // A revised plan or a new review reaches a lecture that has not played its first step: it is composed again from the latest plan, so the segments follow the
+    // tutor's reading of a written answer. From the first step the path is frozen (recorded in the session) and nothing in the lecture changes; a lecture that
+    // already took a question from the board is left as it is, since its added steps would be lost.
+    function adjustLecture() {
+      if (!lecture.host || lecture.started || lecture.asked.size || !lecture.controller || !lecture.controller.update) return;
+      const next = lectureFor(current, ctx.events(), reviews()), script = composeScript(current, next.path);
+      if (JSON.stringify(script) !== JSON.stringify(lecture.script)) {
+        const result = lecture.controller.update(script);
+        if (result && result.ok === false) return;
+        lecture.script = script;
+      }
+      lecture.path = next.path;
+      renderChips();
+    }
     if (doc.defaultView) {
+      doc.defaultView.addEventListener('pagehide', () => sendStep(true));
       doc.defaultView.addEventListener('resize', fitLecture);
       if (doc.defaultView.requestAnimationFrame) doc.defaultView.requestAnimationFrame(() => doc.defaultView.requestAnimationFrame(fitLecture));   // once fonts and the first layout have settled
     }
@@ -425,10 +512,10 @@
 
     return {
       get stage() { return shown; },
-      update(next) { current = next; title.textContent = next.title; render(); },
+      update(next) { current = next; title.textContent = next.title; adjustLecture(); render(); },
       destroy() { if (lecture.controller && lecture.controller.destroy) lecture.controller.destroy(); shell.remove(); }
     };
   }
 
-  return {END, STAGES, judge, lecturePath, composeScript, replay, stageOf, marks, parseNumber, mount};
+  return {END, STAGES, judge, lecturePath, composeScript, replay, stageOf, marks, parseNumber, mount, reviewedResults, recordedPath, lectureFor, resumeStep};
 });

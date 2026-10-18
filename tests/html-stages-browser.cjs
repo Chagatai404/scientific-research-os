@@ -16,22 +16,36 @@ const standalone = fs.readFileSync(built.standalone, 'utf8');
 const stateJson = /<script type="application\/json" id="ros-session-data">([\s\S]*?)<\/script>/.exec(standalone)[1];
 const baseState = JSON.parse(stateJson);
 const sessionId = baseState.session_id;
+// The tutor's verdict on a written answer means the same thing in Python (html_sessions.reviewed_results) and on the page; the pure parts of resume are pinned here too.
+{
+  const Stages = require('../assets/html-runtime/stages.js');
+  const shared = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'supervision-cases.json'), 'utf8'));
+  for (const c of shared.review_effects.cases) assert.deepEqual(Stages.reviewedResults(c.results, c.reviews), c.expect, c.id);
+  const mark = response => ({type: 'checkpoint', question_id: null, response});
+  assert.equal(Stages.recordedPath([mark('stage:lecture')]), null);
+  assert.deepEqual(Stages.recordedPath([mark('lecture-path:a,b'), mark('lecture-path:a,c')]), ['a', 'c']);
+  const script = {steps: [{id: 's1'}, {id: 's2'}, {id: 's3'}]};
+  assert.equal(Stages.resumeStep(script, [mark('lecture-step:s1'), mark('lecture-step:s2'), mark('lecture-step:aq1')]), 's2', 'a step added by an answered question is not in the script');
+  assert.equal(Stages.resumeStep(script, [mark('stage:lecture')]), null);
+}
 // The frame under test has no device speech engine, so every fallback voice is the timed captions (fast, and the same everywhere).
 const INSTRUMENT = `(() => { Object.defineProperty(window, 'speechSynthesis', {configurable: true, value: undefined}); })();`;
 
 const answer = (question, value, tree = 'probe') => ({event_id: 'seed-' + question, type: 'plan-answer', question_id: question, response: {answer: value, verdict: 'correct', tree}, created_at: new Date().toISOString(), status: 'pending-review'});
 
-function hostPage(size, seeded = []) {
-  const state = {...baseState, events: seeded};
+function hostPage(size, seeded = [], extra = {}) {
+  const state = {...baseState, ...extra, events: seeded};
   const hostInfo = JSON.stringify({token: 'tok', session_id: sessionId, state, voice: {speak: true, capable: true}}).replace(/</g, '\\u003c');
   const srcdoc = standalone.replace('<script type="application/json" id="ros-session-data">', '<script>' + INSTRUMENT + 'window.ROS_HOST=' + hostInfo + ';</script><script type="application/json" id="ros-session-data">');
   return {srcdoc, html: `<!doctype html><body style="margin:0"><iframe id="session" sandbox="allow-scripts" style="width:${size.width}px;height:${size.height}px;border:0"></iframe><script>
     window.__events = ${JSON.stringify(seeded)}; window.__log = []; window.__tts = 'warming'; window.__heard = 'because a square is never negative';
+    const send = payload => document.getElementById('session').contentWindow.postMessage(Object.assign({channel: 'research-os', token: 'tok', session_id: ${JSON.stringify(sessionId)}}, payload), '*');
+    // The tutor saved something (a review, a revised plan): the host pushes the new state the way the Obsidian view does when the file changes.
+    window.__push = extra => send({type: 'state', state: Object.assign({events: window.__events.map(e => Object.assign({status: 'pending-review'}, e))}, extra)});
     window.addEventListener('message', m => {
       const frame = document.getElementById('session'), d = m.data;
       if (m.source !== frame.contentWindow || !d || d.token !== 'tok') return;
-      window.__log.push({type: d.type, action: d.action, keys: Object.keys(d).sort().join(',')});
-      const send = payload => frame.contentWindow.postMessage(Object.assign({channel: 'research-os', token: 'tok', session_id: ${JSON.stringify(sessionId)}}, payload), '*');
+      window.__log.push({type: d.type, action: d.action, keys: Object.keys(d).sort().join(','), widget: d.widget, step: d.step, status: d.status});
       if (d.event) {
         window.__events.push(d.event);
         send({type: 'state', state: {events: window.__events.map(e => Object.assign({status: 'pending-review'}, e))}});
@@ -50,14 +64,14 @@ function hostPage(size, seeded = []) {
 (async () => {
   const browser = await chromium.launch({headless: true, executablePath: executable});
   const errors = [], requests = [];
-  async function open(size = {width: 1280, height: 800}, seeded = []) {
+  async function open(size = {width: 1280, height: 800}, seeded = [], extra = {}) {
     const context = await browser.newContext({viewport: size});
     const page = await context.newPage();
     page.on('pageerror', e => errors.push(e.message));
     page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('request', r => { if (!/^(about|data|blob):/.test(r.url())) requests.push(r.url()); });
     await page.route(/^https?:/, r => r.abort());
-    const {srcdoc, html} = hostPage(size, seeded);
+    const {srcdoc, html} = hostPage(size, seeded, extra);
     await page.setContent(html);
     await page.locator('#session').evaluate((frame, doc) => { frame.srcdoc = doc; }, srcdoc);
     const frame = page.frameLocator('#session');
@@ -212,7 +226,16 @@ function hostPage(size, seeded = []) {
     assert.deepEqual(await scrollbars(t), [], 'finished');
 
     // Every message to the host carried only what the protocol allows.
-    for (const m of await t.log()) assert(['ready', 'speak', 'voice', undefined].includes(m.type) || m.keys.includes('event'), 'unexpected message ' + JSON.stringify(m));
+    const log = await t.log();
+    for (const m of log) assert(['ready', 'speak', 'voice', 'board-position', undefined].includes(m.type) || m.keys.includes('event'), 'unexpected message ' + JSON.stringify(m));
+    // The staged lecture is not a declared widget: its position goes to the host under the reserved id, with only the fields the host validates.
+    const positions = log.filter(m => m.type === 'board-position');
+    assert(positions.length > 0 && positions.every(m => m.widget === 'plan-lecture' && /^[A-Za-z0-9_-]{1,64}$/.test(m.step) && m.keys === 'channel,count,index,session_id,status,step,token,type,widget'), 'the lecture position is reported as plan-lecture: ' + JSON.stringify(positions[0]));
+    // Where it got to is recorded as checkpoints a reload can use: the path once, the step reached at most every few seconds and when the lecture ends.
+    const marks = (await t.events()).filter(e => e.type === 'checkpoint').map(e => e.response);
+    assert.equal(marks.filter(r => r.startsWith('lecture-path:')).length, 1, 'the path is frozen once');
+    assert(marks.some(r => r.startsWith('lecture-step:')), 'the step reached is recorded');
+    assert(marks.filter(r => r.startsWith('lecture-step:')).length <= 12, 'the steps are throttled, not one event per step');
     await t.page.close();
   }
 
@@ -228,6 +251,96 @@ function hostPage(size, seeded = []) {
     assert.equal(await stage(half), 'probe');
     assert.equal(await half.frame.locator('.ros-qcard-count').textContent(), 'Question 2', 'the next unanswered question is shown');
     await half.page.close();
+  }
+
+  // ------------------------------------------------------------------------------------------------------------ the tutor's review, a revised plan, and a lecture that resumes
+  {
+    const written = {event_id: 'seed-why', type: 'plan-answer', question_id: 'why', response: {answer: 'squares', verdict: 'pending', tree: 'probe'}, created_at: new Date().toISOString(), status: 'pending-review'};
+    const stageMark = {event_id: 'seed-stage', type: 'checkpoint', question_id: null, response: 'stage:lecture', created_at: new Date().toISOString(), status: 'pending-review'};
+    const seeded = [answer('scale', 'b'), answer('twopoint', 1), written];
+    const review = (verdict, feedback) => ({question_id: 'why', response_event_id: 'seed-why', verdict, feedback, reviewed_at: new Date().toISOString()});
+    // The same plan with a repair that plays when the written answer was wrong.
+    const revised = JSON.parse(JSON.stringify(baseState.plan));
+    const repair = JSON.parse(JSON.stringify(revised.segments.find(s => s.id === 'scale-repair')).replace(/"rp/g, '"wr'));
+    Object.assign(repair, {id: 'why-repair', title: 'What a variance is made of', plays_if: {wrong: ['why']}});
+    revised.segments.push(repair);
+    const size = {width: 1280, height: 800};
+    const steps = t => t.frame.locator('.ros-board-transcript li').evaluateAll(items => items.map(i => i.dataset.step));
+    const current = t => t.frame.locator('.ros-board-transcript li[aria-current="step"]').getAttribute('data-step');
+    const until = async (fn, what) => { for (let i = 0; i < 400; i++) { if (await fn()) return; await new Promise(r => setTimeout(r, 40)); } throw new Error('timed out waiting for ' + what); };
+    const marks = async t => (await t.events()).filter(e => e.type === 'checkpoint').map(e => e.response);
+
+    // The written answer waits for the tutor and the learner has gone on; the tutor's review appears under the answer and in the strip, and the answer itself is untouched.
+    const t = await open(size, seeded);
+    assert.equal(await stage(t), 'handout');
+    await t.frame.locator('.ros-stagebar li button').nth(0).click();
+    assert((await t.frame.locator('.ros-stage-verdict').textContent()).includes('reads your answer in the background'));
+    assert.equal(await t.frame.locator('.ros-agent-review').count(), 0);
+    assert.match(await t.frame.locator('.ros-supervision').innerText(), /Your submission is saved and will be reviewed when the tutor reconnects/, 'the written answer counts as work waiting for the tutor');
+    await t.page.evaluate(r => window.__push({plan_reviews: [r]}), review('partially-correct', 'You have the square. Now say why an average of squares cannot be negative.'));
+    await t.frame.locator('.ros-agent-review').waitFor();
+    const reviewed = await t.frame.locator('.ros-qcard').textContent();
+    assert(reviewed.includes('Partly correct') && reviewed.includes('why an average of squares'), 'the review is under the answer');
+    assert(reviewed.includes('squares') && reviewed.includes('The tutor has read your answer'), 'the learner’s own answer stays, and the page says it was read');
+    assert.equal(await t.frame.locator('.ros-strip button').nth(2).getAttribute('data-reviewed'), 'partially-correct');
+    assert((await t.frame.locator('.ros-strip button').nth(2).getAttribute('aria-label')).includes('the tutor has reviewed it'));
+    assert.deepEqual(await t.frame.locator('.ros-strip button').evaluateAll(bs => bs.map(b => b.dataset.verdict)), ['correct', 'correct', 'pending'], 'the page’s own verdicts are unchanged');
+    assert.deepEqual(await scrollbars(t), [], 'a reviewed answer');
+    assert.equal((await t.events()).length, 3, 'a review sends nothing back');
+    assert.match(await t.frame.locator('.ros-supervision').innerText(), /Anything you submit is saved and waits for the tutor/, 'a reviewed answer is no longer waiting');
+
+    // A revised plan with the tutor's verdict reaches a lecture that has not started: the repair is in it, and the path is recorded when the first step plays.
+    await t.page.evaluate(p => window.__push(p), {plan: revised, plan_reviews: [review('incorrect', 'A variance is a mean of squares; start there.')]});
+    await t.frame.locator('.ros-stagebar li button').nth(1).click();
+    await t.page.evaluate(() => { window.__tts = 'ready'; });
+    await t.frame.locator('.ros-voice-state', {hasText: 'voice is ready'}).waitFor({timeout: 8000});
+    await primary(t, 'Start the lecture').click();
+    await t.frame.locator('.ros-board[data-status="playing"]').waitFor({timeout: 10000});
+    const order = await steps(t);
+    assert(order.indexOf('wr1') > order.indexOf('sp3') && order.indexOf('wr1') < order.indexOf('sc1'), 'the repair for the written answer plays before the core segment it names: ' + order.join(','));
+    assert(!order.includes('rp1'), 'the scale repair is not needed: that answer was right');
+    await until(async () => (await marks(t)).some(m => m.startsWith('lecture-path:')), 'the path checkpoint');
+    assert.equal((await marks(t)).find(m => m.startsWith('lecture-path:')), 'lecture-path:spread,why-repair,scale,see-it,moment-form');
+
+    // Skip ahead, pause: the step reached is recorded (throttled, and at once on a pause).
+    await until(async () => (await current(t)) === 'sp1', 'the first step');
+    for (const expected of ['sp2', 'sp3']) { await t.frame.getByRole('button', {name: 'Skip step'}).click(); await until(async () => (await current(t)) === expected, expected); }
+    await t.frame.locator('.ros-board-play').click();
+    await t.frame.locator('.ros-board[data-status="paused"]').waitFor();
+    const reached = await current(t);
+    await until(async () => (await marks(t)).includes('lecture-step:' + reached), 'the step checkpoint');
+    assert.equal((await marks(t)).filter(m => m.startsWith('lecture-path:')).length, 1, 'the path is recorded once');
+    assert((await t.log()).some(m => m.type === 'board-position' && m.widget === 'plan-lecture' && m.step === reached && m.status === 'paused'), 'the host was told where the lecture is');
+
+    // A review that changes its mind after the lecture started changes nothing in it. Reloading resumes at the step reached, with the same lecture.
+    const saved = await t.events();
+    await t.page.close();
+    const again = await open(size, saved, {plan: revised, plan_reviews: [review('correct', 'On a second look, this is right.')]});
+    assert.equal(await stage(again), 'lecture', 'the saved checkpoints put the learner back in the lecture');
+    await again.frame.locator('.ros-board').waitFor();
+    assert.equal(await again.frame.locator('.ros-board-play').textContent(), 'Continue');
+    assert.equal(await again.frame.locator('.ros-board').getAttribute('data-status'), 'idle');
+    const resumedOrder = await steps(again);
+    assert.deepEqual(resumedOrder, order, 'the lecture is the one that was started, though the review now says correct');
+    assert.equal(await current(again), resumedOrder[resumedOrder.indexOf(reached) - 1], 'the board waits just after the step before the one reached');
+    await again.frame.locator('.ros-board-play').click();
+    await until(async () => (await current(again)) === reached, 'the board to continue at the step reached');
+    assert.equal((await marks(again)).filter(m => m.startsWith('lecture-path:')).length, 1, 'resuming does not record a second path');
+    assert.deepEqual(await scrollbars(again), [], 'a resumed lecture');
+    await again.page.close();
+
+    // A lecture that is open but has not played its first step follows a revised plan and a new review; nothing is lost and nothing is recorded yet.
+    const waiting = await open(size, [...seeded, stageMark]);
+    assert.equal(await stage(waiting), 'lecture');
+    await waiting.frame.locator('.ros-board').waitFor();
+    assert(!(await steps(waiting)).includes('wr1'));
+    await waiting.page.evaluate(p => window.__push(p), {plan: revised, plan_reviews: [review('incorrect', 'Start from the definition.')]});
+    await until(async () => (await steps(waiting)).includes('wr1'), 'the revised lecture');
+    assert.equal(await waiting.frame.locator('.ros-board').getAttribute('data-status'), 'idle');
+    assert(!(await marks(waiting)).some(m => m.startsWith('lecture-path:')), 'nothing is recorded before the first step');
+    await waiting.frame.locator('.ros-board-play').click();
+    await until(async () => (await marks(waiting)).some(m => m === 'lecture-path:spread,why-repair,scale,see-it,moment-form'), 'the path of the revised lecture');
+    await waiting.page.close();
   }
 
   // ------------------------------------------------------------------------------------------------------------ tablet and phone: the same stages, no scrollbars, nothing off the side

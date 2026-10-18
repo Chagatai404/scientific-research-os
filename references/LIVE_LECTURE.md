@@ -43,3 +43,9 @@ A spoken question arrives exactly like a typed one: an open question the learner
 ## Honest limits
 
 The first sentence of a lecture takes about a second and a half to speak after it is asked for; later sentences are ready ahead of time. Your own turns, not the voice, are the slow part of an answer: keep a short buffer so a question does not wait behind long unplayed material. Nothing the board or the voice does is evidence of learning. Tested with scripted hosts and real browsers and workers, not yet in a real Obsidian window with a real microphone.
+
+## Staged sessions
+
+In a session with a plan the lecture reports its position as the widget `plan-lecture`; `board-position <session>` returns it with the `segment` the step belongs to. The page freezes the
+lecture path at its first step and resumes from `lecture-step:` checkpoints after a reload. Written probe answers reach you through `wait` as `plan-answer` items; review them with
+`plan-review` (see `HTML_SESSION_PROTOCOL.md`). Do not rewrite the plan under a lecture that has started unless `--allow-reroute` is truly what you mean.
