@@ -108,6 +108,10 @@ def gates(only=None):
 
 
 def main(argv=None):
+    # Failure details may include Unicode source text even on a legacy Windows
+    # console. Reporting must finish (and persist JSON) after a failing gate.
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--only', action='append', help='substring filter on gate names (repeatable)')
     parser.add_argument('--strict', action='store_true', help='treat SKIPPED gates as failures')
