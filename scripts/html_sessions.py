@@ -1247,6 +1247,33 @@ def edit_board(root, relative_md, widget_id, steps=None, after=None, open_=None)
     return update_session(root, relative_md, widgets=widgets)
 
 
+def add_board(root, relative_md, widget_id, script, title=None, after_heading=None):
+    """Put a blackboard into a session that has none (one started in prose, or before boards existed). The widget is declared and its marker is placed in the
+    lesson, after the first heading containing ``after_heading`` or else at the end, so the page shows it at once. The script is checked with the page's rules
+    first. An id already used by a widget is refused; extend an existing board with ``edit_board`` instead."""
+    import copy
+    import board_script
+    board_script.check(script)
+    state = load_session(root, relative_md)
+    widgets = copy.deepcopy(state.get("widgets", []))
+    if any(w.get("id") == widget_id for w in widgets):
+        raise ValueError(f"a widget named {widget_id!r} already exists in this session")
+    widgets.append({"id": widget_id, "kind": "board", "title": title or "The board", "script": script})
+    marker = f"<!-- ros-widget: {widget_id} -->"
+    lines = state["source_markdown"].replace("\r\n", "\n").split("\n")
+    at = len(lines)
+    if after_heading:
+        needle = after_heading.strip().lower()
+        for number, line in enumerate(lines):
+            if line.startswith("#") and needle in line.lower():
+                at = number + 1
+                break
+        else:
+            raise ValueError(f"no heading containing {after_heading!r} in this session")
+    lines[at:at] = ["", marker, ""]
+    return update_session(root, relative_md, "\n".join(lines), widgets=widgets)
+
+
 def board_position(root, relative_md, now=None):
     """Where the learner is in each lecture, as the Obsidian host last reported it (``<session>.board-position.json``), with its age. ``None`` when nothing has been
     reported (a standalone page, a view that was never opened). It is a hint for pacing and for where an answer belongs, never evidence of learning."""
@@ -1928,6 +1955,9 @@ def main():
     answer = sub.add_parser("answer"); answer.add_argument("session"); answer.add_argument("question_id"); answer.add_argument("--source", required=True, type=Path)
     question = sub.add_parser("add-question", help="Post one question (JSON); open views show it live")
     question.add_argument("session"); question.add_argument("--source", required=True, type=Path)
+    opened = sub.add_parser("board-open", help="Put a blackboard into a session that has none (JSON board script); the marker is placed in the lesson")
+    opened.add_argument("session"); opened.add_argument("widget"); opened.add_argument("--source", required=True, type=Path, help="JSON: a board script, {board_schema: 1, open: true, steps: [...]}")
+    opened.add_argument("--title"); opened.add_argument("--after-heading", help="place the board after the first heading containing this text (default: the end of the lesson)")
     board = sub.add_parser("board-append", help="Add steps to a lecture on a board while it plays (JSON list of steps); open views play them live")
     board.add_argument("session"); board.add_argument("widget"); board.add_argument("--source", required=True, type=Path, help="JSON: a list of steps, or {steps: [...]}")
     board.add_argument("--after", metavar="STEP_ID", help="insert right after this step instead of at the end (an answer goes after the step the learner has reached)")
@@ -2048,6 +2078,11 @@ def main():
         if not isinstance(new_steps, list):
             raise SystemExit("error: the source must be a list of steps or {\"steps\": [...]}")
         result = edit_board(root, args.session, args.widget, new_steps, args.after, None if args.board_open is None else args.board_open == "true")
+    elif args.command == "board-open":
+        loaded = json.loads(args.source.read_text(encoding="utf-8"))
+        if not isinstance(loaded, dict):
+            raise SystemExit("error: the source must be a board script object")
+        result = add_board(root, args.session, args.widget, loaded, args.title, args.after_heading)
     elif args.command == "board-position":
         result = board_position(root, args.session) or {"note": "nothing has been reported: no Obsidian view of this session has played a board yet"}
     elif args.command == "review":

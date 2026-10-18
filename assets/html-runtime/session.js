@@ -943,7 +943,7 @@
   }
 
   // The tutor's live voice. Nothing is recorded in advance: each sentence is turned into speech when it is wanted (the page asks for the next one or two while the
-  // current one plays, so the voice runs on without gaps), by whatever `live.request(id, text)` reaches (the Obsidian host and its Kokoro worker). The audio is
+  // current one plays, so the voice runs on without gaps), by whatever `live.request(id, text)` reaches (the Obsidian host and its voice worker). The audio is
   // played with Web Audio, so a page that may not fetch media can still speak and pausing is exact. If a sentence cannot be spoken live (no worker, an error,
   // too slow), `fallback` says it and the reason is reported once; the lecture never stops. live: {request(id, text) -> Promise<{wav}>, cancel(id), pause, audioContext?}.
   function liveSpeaker(win, live, fallback, clock) {
@@ -1321,12 +1321,12 @@
       if (recorded.supported) speakers.recorded = recorded; else recorded = null;
     }
     for (const [id, extra] of Object.entries(options.speakers || {})) if (extra && typeof extra.speak === 'function') speakers[id] = extra;
-    const labels = Object.assign({device: 'Device voice', captions: 'Captions only (timed)', recorded: 'Recorded voice', live: 'Live voice (Kokoro)'}, options.speakerLabels || {});
+    const labels = Object.assign({device: 'Device voice', captions: 'Captions only (timed)', recorded: 'Recorded voice', live: 'Live voice'}, options.speakerLabels || {});
     const spoken = s => s.steps.filter(step => typeof step.say === 'string' && step.say.trim());
     const coverage = s => { const all = spoken(s), have = all.filter(step => recorded.has(step.id)).length; return have === all.length ? 'Recorded voice' : `Recorded voice (${have} of ${all.length} sentences)`; };
     if (recorded) labels.recorded = coverage(script);
     const complete = !!recorded && spoken(script).every(step => recorded.has(step.id));
-    // The live voice (the host's Kokoro worker): sentences are spoken as they are wanted. What says a sentence it cannot is the best of the other voices.
+    // The live voice (the host's voice worker): sentences are spoken as they are wanted. What says a sentence it cannot is the best of the other voices.
     let liveVoice = null;
     if (options.live) {
       liveVoice = liveSpeaker(win, options.live, complete ? recorded : (speakers.device || speakers.captions), options.clock);
@@ -1532,7 +1532,7 @@
     const panels = new Map();
     const extensions = new Map();
     const boards = new Map();
-    // The tutor's live voice: the host (the Obsidian plugin, with a local Kokoro worker) speaks each sentence when it is asked for, by id, and answers with audio
+    // The tutor's live voice: the host (the Obsidian plugin, with a local voice worker) speaks each sentence when it is asked for, by id, and answers with audio
     // or an error. A standalone page has no host, so it has no live voice and its boards use the device voice, a recording, or captions.
     const speechPending = new Map();
     const liveVoice = host && host.voice && host.voice.speak ? {

@@ -108,7 +108,7 @@
     const panels = new Map();
     const extensions = new Map();
     const boards = new Map();
-    // The tutor's live voice: the host (the Obsidian plugin, with a local Kokoro worker) speaks each sentence when it is asked for, by id, and answers with audio
+    // The tutor's live voice: the host (the Obsidian plugin, with a local voice worker) speaks each sentence when it is asked for, by id, and answers with audio
     // or an error. A standalone page has no host, so it has no live voice and its boards use the device voice, a recording, or captions.
     const speechPending = new Map();
     const liveVoice = host && host.voice && host.voice.speak ? {

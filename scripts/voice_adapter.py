@@ -214,11 +214,25 @@ def add_cuda_dll_paths() -> list[str]:
     return found
 
 
-def write_json_atomic(path: Path, data: dict) -> None:
+def replace_retrying(source: Path, target: Path, attempts: int = 40, pause: float = 0.05) -> None:
+    """os.replace, but patient: on Windows the target can be open in another process (Obsidian reading a lease or an answer) for a moment,
+    which raises PermissionError. The last failure is raised."""
     import os
+    import time
+    for attempt in range(attempts):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(pause)
+
+
+def write_json_atomic(path: Path, data: dict) -> None:
     tmp = path.with_name(path.name + '.tmp')
     tmp.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
-    os.replace(tmp, path)
+    replace_retrying(tmp, path)
 
 
 def silent_wav(path: Path, seconds: float = 1.0, rate: int = 16000) -> None:
@@ -277,7 +291,10 @@ def serve_loop(directory: Path, transcribe_file, details: dict, *, now=time.time
 
     def publish(state: str) -> None:
         lease.update(state=state, heartbeat=now())
-        write_json_atomic(Path(directory) / LEASE_FILE, lease)
+        try:
+            write_json_atomic(Path(directory) / LEASE_FILE, lease)
+        except OSError:
+            pass                                   # a missed heartbeat is not worth stopping the worker; the next one will land
     publish('ready')
     last_beat, last_clean, loops = now(), now(), 0
     while not stop.exists() and (max_loops is None or loops < max_loops):
@@ -314,7 +331,7 @@ def serve_loop(directory: Path, transcribe_file, details: dict, *, now=time.time
             write_json_atomic(out / f'{path.stem}.json', result)
             if keep_audio:
                 (Path(directory) / 'kept').mkdir(exist_ok=True)   # out of the inbox, or it would be heard again on the next pass
-                os.replace(path, Path(directory) / 'kept' / path.name)
+                replace_retrying(path, Path(directory) / "kept" / path.name)
             else:
                 path.unlink(missing_ok=True)
         if waiting:
@@ -387,7 +404,10 @@ def tts_loop(directory: Path, synthesize, details: dict, *, now=time.time, sleep
 
     def publish(state: str) -> None:
         lease.update(state=state, heartbeat=now())
-        write_json_atomic(Path(directory) / TTS_LEASE_FILE, lease)
+        try:
+            write_json_atomic(Path(directory) / TTS_LEASE_FILE, lease)
+        except OSError:
+            pass                                   # a missed heartbeat is not worth stopping the worker; the next one will land
     publish('ready')
     last_beat, last_clean, loops = now(), now(), 0
     while not stop.exists() and (max_loops is None or loops < max_loops):
@@ -422,7 +442,7 @@ def tts_loop(directory: Path, synthesize, details: dict, *, now=time.time, sleep
                 wav = out / f'{path.stem}.wav'
                 tmp = out / f'{path.stem}.wav.tmp'
                 done = synthesize(text.strip(), tmp)
-                os.replace(tmp, wav)
+                replace_retrying(tmp, wav)
                 seconds, rate = wav_seconds(wav)
                 result.update(done, audio_seconds=round(seconds, 3), sample_rate=rate, chars=len(text))
                 lease['synthesized'] += 1

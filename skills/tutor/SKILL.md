@@ -231,9 +231,13 @@ Do not use multiple choice exclusively. Deeper nodes should eventually be checke
 When a vault is configured, the HTML session is the UI. Chat carries only control messages
 (start, pause, redirect, stop). Follow the live loop in `references/HTML_SESSION_PROTOCOL.md`.
 
-To lecture in real time (a blackboard that is written and spoken as the tutor goes, with the Kokoro voice, taking written or spoken questions at any moment), follow
-`references/LIVE_LECTURE.md`: an open board widget, steps kept two or three ahead of where `board-position` says the learner is, and answers inserted after that step
-with `board-append --after`.
+**Teaching is a live lecture on the blackboard by default.** When you teach a block in an HTML session (an explanation, a worked example, an answer to a question),
+you do not write it as a transcript for the page's Listen button to read with the device voice. You lecture it in real time: a blackboard that is written and spoken as
+you go, in the learner's Kokoro voice, taking written or spoken questions at any moment. Follow `references/LIVE_LECTURE.md`: an open board widget, steps kept two or
+three ahead of where `board-position` says the learner is, and answers inserted after that step with `board-append --after`. Prose in the lesson, a transcript read by
+the Listen control, or a device voice is the fallback, used only when the learner asks for it, the board is not available (a standalone export, an old runtime), or the
+block is a question or a check rather than teaching; say which, once. A session started before the board was installed has none: add a board widget to it rather than
+carrying on in prose. Do not ask the learner whether to use the board; it is the default (the researcher has said so).
 
 Setup:
 

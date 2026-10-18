@@ -6,7 +6,7 @@ How a tutor agent gives a lecture in real time on the blackboard, with the Kokor
 
 | Piece | Check | Start (ask the researcher first; installing or starting a process is theirs to approve) |
 |---|---|---|
-| The Obsidian view with the companion plugin and the current runtime | the session page shows a board with a "Voice" menu offering "Live voice (Kokoro)" | `python scripts/install.py --html-companion`, then reload Obsidian |
+| The Obsidian view with the companion plugin and the current runtime | the session page shows a board with a "Voice" menu offering "Live voice" | `python scripts/install.py --html-companion`, then reload Obsidian |
 | Live voice (the tutor speaks) | `python scripts/voice.py worker-status --dir <vault>/.research-os/voice --tts` exits 0 | `python scripts/voice.py tts-worker --env <kokoro env> --dir <vault>/.research-os/voice --voice model_dir=<Kokoro folder>` |
 | Spoken questions | `python scripts/voice.py worker-status --dir <vault>/.research-os/voice` exits 0 | `python scripts/voice.py worker --env <whisper env> --dir <vault>/.research-os/voice` |
 
@@ -16,6 +16,7 @@ If a worker is not running the lecture still plays (device voice or captions) an
 
 1. Read the resume brief (`html_sessions.py context`) and do the workflow's own session start, as for any session. Never lecture from chat memory.
 2. Create the session with a board widget **left open**: `{"id": "lecture", "kind": "board", "script": {"board_schema": 1, "open": true, "steps": [...]}}`, placed in the lesson with `<!-- ros-widget: lecture -->`. Write the first two or three steps. The page opens at "Press Start"; the learner presses it (the browser only lets audio start after a click).
+   A session that already exists without a board (started before this was installed, or in prose) gets one with `html_sessions.py update <session> --source change.json`, where the JSON holds `widgets` (the existing ones plus the board) and `text` with the `<!-- ros-widget: lecture -->` marker added where the lecture belongs. Do this instead of carrying on in prose.
 3. Renew your lease while you work (`wait --holder`), so the page can say a tutor is connected.
 
 ## The loop

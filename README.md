@@ -497,6 +497,11 @@ Git is the coordination layer for reproducible artifacts. Obsidian is the learni
 
 ## Status
 
+**v0.9.6 — Live Blackboard and Voice** (merged to `main` from the `v0.9.6-live-board` branch; not tagged).
+HTML sessions gain a dark chalkboard that any agent can lecture on in real time, with handwriting, formulas, drawings and animation, spoken sentence by sentence
+in a local Kokoro voice, and open questions asked in writing or aloud (push to talk, transcribed locally by Whisper) at any moment. The voice workers are optional
+and run in environments you create. Read [the upgrade guide](docs/MIGRATION_v0.9.6.md) and [the plan](docs/plans/v0.9.6-live-board-plan.md) for what was and was not verified.
+
 **v0.9.5 — Teaching Depth, Domain Breadth, Voice** (merged to `main` from the `v0.9.5-teaching-voice-bio-chem` branch; not tagged).
 Teaching Cards, a learner model, click-to-load resources, chemistry and biology checks and reviewers, diagrams drawn from checked coordinates, code
 walkthroughs, linked library indexes, FSRS review scheduling, notebook coverage and trace for research repos, optional animation and optional voice. The animation and voice engines are yours to install and are never installed

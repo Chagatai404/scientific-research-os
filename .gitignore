@@ -12,3 +12,6 @@ Thumbs.db
 graphify-out/
 .test-temp/
 baseline-*.log
+
+# Local listening-test and demo output
+voice-listening/

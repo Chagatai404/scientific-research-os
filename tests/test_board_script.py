@@ -171,6 +171,34 @@ class LiveLecture(unittest.TestCase):
             hs.edit_board(self.root, 'Sessions/Live.md', 'missing', [{'id': 'z', 'say': 'x'}])
         self.assertEqual(self.script(), before)
 
+    def test_a_session_started_in_prose_gets_a_board_where_the_lesson_wants_it(self):
+        hs.create_session(self.root, 'Sessions/Prose.md', '# Prose\n\n## Foundations\n\nSome text.\n\n## Next\n\nMore.\n', title='Prose')
+        opened = copy.deepcopy(LECTURE)
+        opened['open'] = True
+        hs.add_board(self.root, 'Sessions/Prose.md', 'lecture', opened, title='Lecture', after_heading='foundations')
+        state = hs.load_session(self.root, 'Sessions/Prose.md')
+        self.assertEqual([w['id'] for w in state['widgets']], ['lecture'])
+        text = state['source_markdown']
+        self.assertLess(text.index('## Foundations'), text.index('<!-- ros-widget: lecture -->'))
+        self.assertLess(text.index('<!-- ros-widget: lecture -->'), text.index('Some text.'), 'right after the heading it was asked to follow')
+        hs.edit_board(self.root, 'Sessions/Prose.md', 'lecture', [{'id': 'd', 'say': 'And more.'}])
+        with self.assertRaisesRegex(ValueError, 'already exists'):
+            hs.add_board(self.root, 'Sessions/Prose.md', 'lecture', opened)
+        with self.assertRaisesRegex(ValueError, 'no heading'):
+            hs.add_board(self.root, 'Sessions/Prose.md', 'other', opened, after_heading='nowhere')
+        with self.assertRaises(ValueError):
+            hs.add_board(self.root, 'Sessions/Prose.md', 'bad', {'board_schema': 1, 'steps': [{'id': 'z', 'say': 'x' * 700}]})
+        self.assertEqual([w['id'] for w in hs.load_session(self.root, 'Sessions/Prose.md')['widgets']], ['lecture'], 'a refused board changes nothing')
+
+    def test_the_command_line_opens_a_board(self):
+        hs.create_session(self.root, 'Sessions/Prose2.md', '# Prose\n\nText.\n', title='Prose')
+        source = self.root / 'board.json'
+        source.write_text(json.dumps(dict(copy.deepcopy(LECTURE), open=True)), encoding='utf-8')
+        done = subprocess.run([sys.executable, str(ROOT / 'scripts/html_sessions.py'), '--root', str(self.root), 'board-open', 'Sessions/Prose2.md', 'lecture', '--source', str(source)],
+                              capture_output=True, text=True, encoding='utf-8')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(hs.load_session(self.root, 'Sessions/Prose2.md')['widgets'][0]['kind'], 'board')
+
     def test_the_command_line_appends_inserts_and_reports_errors(self):
         source = self.root / 'steps.json'
         source.write_text(json.dumps({'steps': [{'id': 'q1', 'say': 'About your question.'}]}), encoding='utf-8')

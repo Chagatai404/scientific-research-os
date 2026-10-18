@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.9.6 - 2026-10-18 - Live Blackboard and Voice
+
+Developed on the `v0.9.6-live-board` branch and merged to `main`; not tagged. Release gates: the full run passed all but two checks (a stale expectation about the voice menu order, and the rule that the page code never names a voice provider); both were fixed and re-run, and the Python suite then passed (1,381 tests; one skipped browser gate needs an external reference page). The Obsidian companion label stays 0.3.0 (its code is new).
+Upgrade notes: [docs/MIGRATION_v0.9.6.md](docs/MIGRATION_v0.9.6.md). The plan and what was verified: [docs/plans/v0.9.6-live-board-plan.md](docs/plans/v0.9.6-live-board-plan.md).
+
+- **A live blackboard.** A `board` widget lectures on a dark chalkboard in Kalam handwriting with KaTeX formulas, drawings, arrows, axes, plots, highlights
+  and erasing, from a small validated script (`board_script.py`, `board_schema: 1`; Python and JavaScript validators share 57 fixture cases). Outside links stay supplementary.
+- **A live Kokoro voice.** The page asks the Obsidian host for each sentence; a local Kokoro worker (`voice.py tts-worker`, blend of `af_heart` and `af_sky`,
+  chosen by blind listening tests) synthesizes it and the page plays it with look-ahead. Failure falls back to the device voice or captions, said once.
+- **Spoken open questions.** Push to talk in the question box; the Obsidian host records, a persistent faster-whisper worker (`voice.py worker`, GPU with CPU fallback,
+  warmed up first) transcribes, and the transcript lands in the box for you to send. Recorded as an ordinary open question, never as learning evidence.
+  The sandboxed page never receives the microphone.
+- **Any agent can lecture.** `html_sessions.py board-append` extends a lecture while it plays and `board-position` reports where the learner is;
+  `references/LIVE_LECTURE.md` is the model-agnostic procedure.
+- **Live by default.** The tutor skill now teaches on the board by default; prose and the Listen reader are fallbacks. `html_sessions.py board-open` puts a board into a session that began in prose.
+- **Workers survive Windows file locks.** The voice workers retry a lease or answer file that Obsidian has open for a moment instead of exiting.
+- **Docs.** Voice and session protocols describe the Kokoro provider, the blind tests, the worker file protocol and the host-mediated microphone.
+- **Not verified.** A person speaking into a running Obsidian; live-voice speed while the machine is busy (about 10 s a sentence under the full gate, about half real time
+  idle); Turkish voice quality; Chatterbox on a GPU; fitted FSRS parameters.
+
 ## 0.9.5 - 2026-10-16 - Teaching Depth, Domain Breadth, Voice
 
 Developed on the `v0.9.5-teaching-voice-bio-chem` branch and merged to `main`; not tagged. Release gates on the final state: 19 pass, 0 fail, 1 skipped. The Obsidian companion is 0.3.0.

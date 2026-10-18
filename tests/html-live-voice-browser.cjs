@@ -73,7 +73,7 @@ function hostPage() {
   {
     const t = await open();
     const select = t.frame.locator('.ros-board select').nth(0);
-    assert.deepEqual(await select.locator('option').allTextContents(), ['Live voice (Kokoro)', 'Captions only (timed)']);
+    assert.deepEqual(await select.locator('option').allTextContents(), ['Live voice', 'Captions only (timed)']);
     assert.equal(await select.inputValue(), 'live');
     await t.page.waitForFunction(() => window.__log.filter(m => m.type === 'speak').length >= 2);
     const early = await t.speakLog();

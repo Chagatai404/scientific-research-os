@@ -163,6 +163,34 @@ class Loop(unittest.TestCase):
         self.assertEqual([p.name for p in (self.dir / 'out').iterdir() if p.name.endswith('.tmp')], [])
 
 
+class Patience(unittest.TestCase):
+    """On Windows another process (Obsidian reading a lease) can hold the file for a moment; the worker waits instead of dying."""
+
+    def test_a_replace_that_is_refused_a_few_times_still_lands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target, source = Path(tmp) / 'worker.json', Path(tmp) / 'worker.json.tmp'
+            source.write_text('{"ok": true}', encoding='utf-8')
+            real, calls = os.replace, []
+
+            def flaky(a, b):
+                calls.append(1)
+                if len(calls) < 4:
+                    raise PermissionError(13, 'Access is denied')
+                return real(a, b)
+            with mock.patch('os.replace', flaky):
+                va.replace_retrying(source, target, pause=0)
+            self.assertEqual(json.loads(target.read_text(encoding='utf-8')), {'ok': True})
+            self.assertEqual(len(calls), 4)
+
+    def test_a_replace_that_never_works_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / 'a.tmp'
+            source.write_text('x', encoding='utf-8')
+            with mock.patch('os.replace', side_effect=PermissionError(13, 'Access is denied')):
+                with self.assertRaises(PermissionError):
+                    va.replace_retrying(source, Path(tmp) / 'a', attempts=3, pause=0)
+
+
 class Lease(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()

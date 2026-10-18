@@ -180,7 +180,7 @@ const DARK = 'rgb(28, 36, 33)';
   {
     const page = await openRecorded(built.standalone_audio, {record: false});
     const options = await page.evaluate(() => [...document.querySelector('.ros-board-bar select').options].map(o => [o.value, o.textContent]));
-    assert.deepEqual(options, [['captions', 'Captions only (timed)'], ['recorded', 'Recorded voice (2 of 3 sentences)']], 'coverage is said in the label');
+    assert.deepEqual(options, [['recorded', 'Recorded voice (2 of 3 sentences)'], ['captions', 'Captions only (timed)']], 'coverage is said in the label');
     assert.equal(await page.locator('.ros-board-bar select').first().inputValue(), 'captions', 'a board with gaps in its recordings does not default to the recorded voice');
     await page.selectOption('.ros-board select >> nth=0', 'recorded');
 
