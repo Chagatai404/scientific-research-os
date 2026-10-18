@@ -139,6 +139,105 @@ const DARK = 'rgb(28, 36, 33)';
     await page.close();
   }
 
+  // The board lays itself out: every example lecture, at three widths, leaves nothing off the board and nothing on top of anything else, step by step (the check is
+  // made in the page from what Chrome drew, not from the script, so it also catches the HTML text layer and the SVG drawing drifting apart).
+  const geometry = () => {
+    const surface = document.querySelector('.ros-board-surface').getBoundingClientRect();
+    const rectOf = el => {
+      const root = el.querySelector('.katex-html') || el, rects = [];
+      const walker = document.createTreeWalker(root, 4);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (!/[^\s​]/.test(n.nodeValue)) continue;
+        const range = document.createRange();
+        range.selectNodeContents(n);
+        for (const q of range.getClientRects()) if (q.width > 0) rects.push(q);
+      }
+      for (const q of root.querySelectorAll('svg,.frac-line,.sqrt-line,.rule,.overline-line,.underline-line')) rects.push(q.getBoundingClientRect());
+      if (!rects.length) return null;
+      const own = el.getBoundingClientRect(), plain = !el.classList.contains('ros-board-math');   // a line of handwriting is as tall as its line box; Kalam's glyph box is taller than its ink
+      return [Math.min(...rects.map(q => q.left)), plain ? own.top : Math.min(...rects.map(q => q.top)), Math.max(...rects.map(q => q.right)), plain ? own.bottom : Math.max(...rects.map(q => q.bottom))];
+    };
+    const texts = [...document.querySelectorAll('.ros-board-item')].filter(el => getComputedStyle(el).visibility !== 'hidden').map(el => ({label: el.dataset.tex || el.textContent.slice(0, 30), box: rectOf(el)})).filter(t => t.box);
+    const strokes = [...document.querySelectorAll('.ros-board-stroke')].map((path, k) => {
+      const total = path.getTotalLength(), matrix = path.getScreenCTM(), points = [];
+      for (let i = 0; i <= 60; i++) { const p = path.getPointAtLength(total * i / 60); const q = new DOMPoint(p.x, p.y).matrixTransform(matrix); points.push([q.x, q.y]); }
+      return {label: 'stroke ' + k, points};
+    });
+    const ink = document.querySelector('.ros-board-ink').getBoundingClientRect();
+    return {surface: [surface.left, surface.top, surface.right, surface.bottom], width: surface.width, texts, strokes, drift: Math.max(Math.abs(ink.left - surface.left), Math.abs(ink.top - surface.top), Math.abs(ink.width - surface.width), Math.abs(ink.height - surface.height))};
+  };
+  const problemsOf = g => {
+    const found = [], slack = 1.5;
+    if (g.drift > 0.5) found.push(`the drawing is ${g.drift.toFixed(1)}px off the text layer`);
+    const inside = (x, y) => x >= g.surface[0] - slack && x <= g.surface[2] + slack && y >= g.surface[1] - slack && y <= g.surface[3] + slack;
+    const shrunk = b => { const h = b[3] - b[1], w = b[2] - b[0]; return [b[0] + w * 0.02, b[1] + h * 0.1, b[2] - w * 0.02, b[3] - h * 0.1]; };
+    for (const t of g.texts) if (!(inside(t.box[0], t.box[1]) && inside(t.box[2], t.box[3]))) found.push(`${t.label} is off the board`);
+    for (const s of g.strokes) if (!s.points.every(p => inside(p[0], p[1]))) found.push(`${s.label} is off the board`);
+    g.texts.forEach((a, i) => g.texts.slice(i + 1).forEach(b => {
+      const x = shrunk(a.box), y = shrunk(b.box);
+      if (x[0] < y[2] && y[0] < x[2] && x[1] < y[3] && y[1] < x[3]) found.push(`${a.label} overlaps ${b.label}`);
+    }));
+    for (const s of g.strokes) for (const t of g.texts) { const b = shrunk(t.box); if (s.points.some(p => p[0] > b[0] && p[0] < b[2] && p[1] > b[1] && p[1] < b[3])) found.push(`${s.label} crosses ${t.label}`); }
+    return found;
+  };
+  const lectures = fs.readdirSync(path.join(__dirname, '..', 'examples')).filter(f => /^board-lecture-.*\.json$/.test(f));
+  assert(lectures.length >= 2, 'the gradient and the variance lectures');
+  for (const file of lectures) {
+    const lecDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ros-lecture-'));
+    execFileSync(process.env.PYTHON || 'python', ['-c', [
+      'import json, sys', `sys.path.insert(0, ${JSON.stringify(path.join(__dirname, '..', 'scripts'))})`, 'import html_sessions as hs',
+      `d = ${JSON.stringify(lecDir)}`, 'hs.install_runtime(d)', `script = json.load(open(${JSON.stringify(path.join(__dirname, '..', 'examples', file))}, encoding="utf-8"))`,
+      "hs.create_session(d, 'Sessions/b.md', '# L\\n\\n<!-- ros-widget: lecture -->\\n', title='b', widgets=[{'id': 'lecture', 'kind': 'board', 'title': 'The board', 'script': script}])",
+      "hs.export_session(d, 'Sessions/b.md', d + '/standalone.html')"].join('\n')], {env: {...process.env, PYTHONUTF8: '1'}});
+    for (const width of [1280, 768, 375]) {
+      const page = await open({viewport: {width, height: 900}});
+      await page.goto('file:///' + path.join(lecDir, 'standalone.html').replace(/\\/g, '/'));
+      await page.locator('.ros-board').waitFor();
+      await page.selectOption('.ros-board select >> nth=0', 'captions');
+      await page.click('.ros-board-play');
+      let seen = 0;
+      for (let i = 0; i < 60; i++) {
+        await page.waitForTimeout(250);
+        const g = await page.evaluate(geometry);
+        seen = Math.max(seen, g.texts.length + g.strokes.length);
+        assert.deepEqual(problemsOf(g), [], `${file} at ${width}px, after skip ${i}`);
+        if ((await status(page)) === 'done') break;
+        await page.getByRole('button', {name: 'Skip step'}).click({timeout: 3000}).catch(() => {});
+      }
+      assert.equal(await status(page), 'done', `${file} at ${width}px finishes`);
+      assert(seen >= 3, `${file} put things on the board`);
+      assert(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth) <= 1, 'no sideways scrolling');
+      await page.close();
+    }
+  }
+
+  // A script written with raw coordinates that would put things on top of each other (the way a lecturer once did) is laid out anyway: the new text moves to a free
+  // slot and the move is reported; text too wide for the right edge wraps there.
+  {
+    const page = await open({reducedMotion: 'reduce'});
+    const result = await page.evaluate(async () => {
+      const host = document.createElement('div');
+      host.style.width = '700px';
+      document.body.append(host);
+      const board = ResearchOSBoard.mount(host, {board_schema: 1, steps: [{id: 'a', say: 'x', do: [
+        {op: 'write', text: 'variance is the average squared distance from the mean', at: [8, 20], id: 'one'},
+        {op: 'write', text: 'second note on top of it', at: [10, 21], id: 'two'},
+        {op: 'write', text: 'a long label running toward the right edge of the board', at: [120, 60], id: 'three'}]}]},
+        {doc: document, win: window, reducedMotion: true, speaker: 'captions'});
+      board.start();
+      await new Promise(r => setTimeout(r, 800));
+      const rects = id => [...host.querySelectorAll('.ros-board-item')].map(el => el.getBoundingClientRect());
+      const surface = host.querySelector('.ros-board-surface').getBoundingClientRect();
+      return {report: board.layout(), rects: rects().map(r => [r.left - surface.left, r.top - surface.top, r.right - surface.left, r.bottom - surface.top]), width: surface.width};
+    });
+    assert.equal(result.report.moved.length, 2, JSON.stringify(result.report.moved));
+    const [a, b, c] = result.rects;
+    assert(b[1] >= a[3] - 0.25 * (a[3] - a[1]), 'the second note was moved below the first: ' + JSON.stringify(result));
+    assert(c[2] <= result.width + 1, 'the long label wraps before the right edge');
+    assert.deepEqual(result.report.problems, [], 'what was moved leaves no problem behind');
+    await page.close();
+  }
+
   // Recorded sentences (stand-in tones, not speech): the board offers the recorded voice, is paced by the recording and its pause, pauses and skips with it, says the
   // step that has no recording with the fallback, and plays from an embedded copy (standalone) or from a path beside the page (vault page) under the page's own policy.
   const consoleErrors = [];

@@ -14,7 +14,8 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 import board_script as bs
 import html_sessions as hs
 
-CASES = json.loads((ROOT / 'tests/fixtures/board-cases.json').read_text(encoding='utf-8'))['cases']
+FIXTURE = json.loads((ROOT / 'tests/fixtures/board-cases.json').read_text(encoding='utf-8'))
+CASES = FIXTURE['cases']
 LECTURE = {'board_schema': 1, 'steps': [
     {'id': 'a', 'say': 'A loss function measures how wrong we are.', 'do': [{'op': 'write', 'text': 'Loss', 'at': [8, 10], 'id': 'title', 'size': 'huge'}]},
     {'id': 'b', 'say': '', 'do': [{'op': 'math', 'tex': 'L(w) = w^2 - 4w + 5', 'at': [8, 30]}]},
@@ -53,6 +54,48 @@ class Grammar(unittest.TestCase):
             self.assertIsNotNone(bs.path_problem(bad), bad)
 
 
+class Layout(unittest.TestCase):
+    def test_every_shared_layout_case_reports_the_problems_the_page_reports(self):
+        for case in FIXTURE['layout_cases']:
+            self.assertEqual(bs.layout_problems(case['script']), case['problems'], case['name'])
+
+    def test_every_example_lecture_fits_its_board(self):
+        lectures = sorted((ROOT / 'examples').glob('board-lecture-*.json'))
+        self.assertGreaterEqual(len(lectures), 2)
+        for path in lectures:
+            script = json.loads(path.read_text(encoding='utf-8'))
+            self.assertEqual(bs.validate(script), [], path.name)
+            self.assertEqual(bs.layout_problems(script), [], path.name)
+
+    def test_problems_name_the_step_and_the_item(self):
+        case = next(c for c in FIXTURE['layout_cases'] if 'leaves the board' in ' '.join(c['problems']) and 'at placed near' in c['name'])
+        with self.assertRaisesRegex(ValueError, r"step 'e'.*leaves the board"):
+            bs.check(case['script'], layout=True)
+        self.assertIs(bs.check(case['script']), case['script'], 'the grammar check alone still accepts it, so no script that was valid before stops being valid')
+
+    def test_a_script_with_no_zone_and_no_problem_is_unchanged_by_the_layout_check(self):
+        self.assertEqual(bs.layout_problems(LECTURE), [])
+
+    def test_text_wraps_and_a_zone_stacks_from_its_top(self):
+        script = {'board_schema': 1, 'steps': [{'id': 'a', 'say': 'x', 'do': [
+            {'op': 'write', 'text': 'first', 'zone': 'left'}, {'op': 'write', 'text': 'second', 'zone': 'left'}, {'op': 'write', 'text': 'right', 'zone': 'right'}]}]}
+        layout = bs.layout_script(script)
+        boxes = {e['label']: e['full'] for e in layout.alive}
+        first, second, right = boxes['text "first"'], boxes['text "second"'], boxes['text "right"']
+        self.assertEqual(first[:2], (bs.ZONES['left'][0], bs.ZONES['left'][1]))
+        self.assertGreater(second[1], first[3], 'the second line is pushed below the first')
+        self.assertEqual(right[:2], (bs.ZONES['right'][0], bs.ZONES['right'][1]))
+        self.assertEqual(layout.problems, [])
+
+    def test_a_zone_name_must_be_known_and_at_and_zone_are_exclusive(self):
+        base = {'board_schema': 1, 'steps': [{'id': 'a', 'say': 'x', 'do': [{'op': 'write', 'text': 'hi', 'zone': 'middle'}]}]}
+        self.assertTrue(any('zone must be one of' in p for p in bs.validate(base)))
+        base['steps'][0]['do'][0].update(zone='left', at=[10, 10])
+        self.assertTrue(any("'at' or 'zone', not both" in p for p in bs.validate(base)))
+        base['steps'][0]['do'][0].pop('at')
+        self.assertEqual(bs.validate(base), [])
+
+
 class Using(unittest.TestCase):
     def test_check_returns_the_script_or_raises_with_the_problems(self):
         self.assertIs(bs.check(LECTURE), LECTURE)
@@ -78,7 +121,10 @@ class Using(unittest.TestCase):
             good, bad = Path(tmp) / 'good.json', Path(tmp) / 'bad.json'
             good.write_text(json.dumps(LECTURE), encoding='utf-8')
             bad.write_text(json.dumps({'board_schema': 1, 'steps': []}), encoding='utf-8')
-            for argv, code, expect in ((['check', str(good)], 0, 'valid: 3 steps'), (['check', str(bad)], 1, 'steps must be a list'),
+            crowded = Path(tmp) / 'crowded.json'
+            crowded.write_text(json.dumps({'board_schema': 1, 'steps': [{'id': 'a', 'do': [{'op': 'write', 'text': 'first', 'at': [10, 20]}]},
+                                                                      {'id': 'b', 'do': [{'op': 'write', 'text': 'second', 'at': [12, 21]}]}]}), encoding='utf-8')
+            for argv, code, expect in ((['check', str(good)], 0, 'valid: 3 steps'), (['check', str(bad)], 1, 'steps must be a list'), (['check', str(crowded)], 1, "step 'b'"), (['check', '--no-layout', str(crowded)], 0, 'valid: 2 steps'),
                                        (['speech', str(good)], 0, 'A loss function'), (['check', str(Path(tmp) / 'missing.json')], 2, '')):
                 out, err = io.StringIO(), io.StringIO()
                 with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
