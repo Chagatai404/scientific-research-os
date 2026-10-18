@@ -67,6 +67,8 @@ SESSION_HELPERS = ("html_sessions.py", "common.py", "research.py", "knowledge.py
                    "board_script.py",
                    # A session plan (probe tree, lecture segments, handout) is checked with the same board rules.
                    "session_plan.py",
+                   # A planned session's study handout (LaTeX body to PDF in the library, vault note, plan status); its template travels in assets/handout.
+                   "handout.py",
                    # `voice.py board` records a board's sentences (the session protocol names it); it starts the engine through voice_adapter.py and says text with speech_text.py.
                    "voice.py", "voice_adapter.py", "speech_text.py",
                    # `html_sessions.py place` / `attach-visual` put registered figures into a lesson.
@@ -177,6 +179,7 @@ def install_skills(base: Path, dry: bool) -> None:
         for helper in SESSION_HELPERS:
             copy_file(ROOT / "scripts" / helper, destination / "scripts" / helper, dry)
         copy_dir(ROOT / "assets/html-runtime", destination / "assets/html-runtime", dry)
+        copy_dir(ROOT / "assets/handout", destination / "assets/handout", dry)      # the LaTeX template and style that handout.py builds with
         if skill.name in GRAPH_SKILLS:
             for helper in GRAPH_HELPERS:
                 copy_file(ROOT / "scripts" / helper, destination / "scripts" / helper, dry)
