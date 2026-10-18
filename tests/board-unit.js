@@ -13,6 +13,14 @@ for (const c of fixture.cases) {
   if (c.ok) assert.deepEqual(problems, [], c.name);
   else assert(problems.some(p => p.includes(c.error_contains)), `${c.name}: expected a problem containing "${c.error_contains}", got ${JSON.stringify(problems.slice(0, 3))}`);
 }
+// The layout check: the same scripts, the same problems, in both languages (the page shifts text to a free slot; the check only reports).
+for (const c of fixture.layout_cases) assert.deepEqual(B.layoutProblems(c.script), c.problems, c.name);
+assert.deepEqual(B.layoutProblems({board_schema: 2, steps: []}), [], 'a script that is not valid is the grammar check\'s business, not the layout check\'s');
+for (const file of fs.readdirSync(path.join(__dirname, '../examples')).filter(f => /^board-lecture-.*\.json$/.test(f))) {
+  const lecture = JSON.parse(fs.readFileSync(path.join(__dirname, '../examples', file), 'utf8'));
+  assert.deepEqual(B.validate(lecture), [], file);
+  assert.deepEqual(B.layoutProblems(lecture), [], file + ' must fit its board');
+}
 assert.equal(B.normalizePath('M 1,1  L 5 5 Z'), 'M 1 1 L 5 5 Z');
 assert.equal(B.normalizePath('M 1 1 L 5 5 <script>'), null);
 assert.equal(B.normalizePath('M 1 1 l 5 5'), null, 'relative commands are refused');
@@ -595,5 +603,5 @@ function rig(steps, extra, effectDuration) {
   const bundle = fs.readFileSync(path.join(__dirname, '../assets/html-runtime/session.js'), 'utf8').replace(/\r\n/g, '\n');
   assert(bundle.includes(fs.readFileSync(path.join(__dirname, '../assets/html-runtime/board.js'), 'utf8').replace(/\r\n/g, '\n')),
     'session.js is stale: run python assets/html-runtime/build.py --refresh');
-  console.log('board unit tests passed (' + fixture.cases.length + ' grammar cases)');
+  console.log('board unit tests passed (' + fixture.cases.length + ' grammar cases, ' + fixture.layout_cases.length + ' layout cases)');
 })().catch(error => { console.error(error); process.exit(1); });

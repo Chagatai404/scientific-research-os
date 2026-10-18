@@ -15279,5 +15279,579 @@
    "ok": false,
    "error_contains": "at most 1500 actions"
   }
+ ],
+ "layout_note": "Cases for the layout check (board_script.py check, and layoutProblems in board.js): the exact problems both must report for a grammatically valid script; an empty list means the script fits. Text extents are estimated from the Kalam metrics.",
+ "layout_cases": [
+  {
+   "name": "a title and two stacked columns fit",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "t",
+      "say": "x",
+      "do": [
+       {
+        "op": "write",
+        "text": "Variance",
+        "zone": "title",
+        "size": "huge"
+       }
+      ]
+     },
+     {
+      "id": "l",
+      "say": "x",
+      "do": [
+       {
+        "op": "math",
+        "tex": "s^2 = \\frac{1}{n-1}\\sum_{i=1}^{n}(x_i-\\bar{x})^2",
+        "zone": "left"
+       },
+       {
+        "op": "write",
+        "text": "the average squared distance from the mean, with n minus one",
+        "zone": "left"
+       }
+      ]
+     },
+     {
+      "id": "r",
+      "say": "x",
+      "do": [
+       {
+        "op": "axes",
+        "at": [
+         76,
+         76
+        ],
+        "w": 72,
+        "h": 42
+       },
+       {
+        "op": "plot",
+        "points": [
+         [
+          76,
+          75
+         ],
+         [
+          112,
+          40
+         ],
+         [
+          148,
+          75
+         ]
+        ]
+       },
+       {
+        "op": "write",
+        "text": "most of the data live here",
+        "zone": "right",
+        "color": "pink"
+       }
+      ]
+     }
+    ]
+   },
+   "problems": []
+  },
+  {
+   "name": "a long sentence in a zone wraps instead of running off",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "l",
+      "say": "x",
+      "do": [
+       {
+        "op": "write",
+        "text": "this sentence is far too long for one line of the left column but it simply wraps onto the next lines of the zone",
+        "zone": "left",
+        "size": "medium"
+       }
+      ]
+     }
+    ]
+   },
+   "problems": []
+  },
+  {
+   "name": "text with at placed near the right edge leaves the board",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "e",
+      "say": "x",
+      "do": [
+       {
+        "op": "write",
+        "text": "a label that is long",
+        "at": [
+         135,
+         10
+        ],
+        "size": "medium",
+        "id": "lab"
+       }
+      ]
+     }
+    ]
+   },
+   "problems": [
+    "layout steps[0] (step 'e') do[0]: text \"a label that is long\" leaves the board (it spans x 135 to 177.8, y 10 to 16.4)"
+   ]
+  },
+  {
+   "name": "text given a width wraps inside it",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "e",
+      "say": "x",
+      "do": [
+       {
+        "op": "write",
+        "text": "a label that is long enough to wrap",
+        "at": [
+         100,
+         10
+        ],
+        "w": 40,
+        "size": "medium"
+       }
+      ]
+     }
+    ]
+   },
+   "problems": []
+  },
+  {
+   "name": "two texts at nearly the same point collide",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "a",
+      "say": "x",
+      "do": [
+       {
+        "op": "write",
+        "text": "first note",
+        "at": [
+         10,
+         20
+        ],
+        "size": "medium"
+       }
+      ]
+     },
+     {
+      "id": "b",
+      "say": "x",
+      "do": [
+       {
+        "op": "write",
+        "text": "second note",
+        "at": [
+         12,
+         22
+        ],
+        "size": "medium"
+       }
+      ]
+     }
+    ]
+   },
+   "problems": [
+    "layout steps[1] (step 'b') do[0]: text \"second note\" collides with text \"first note\" (step 'a')"
+   ]
+  },
+  {
+   "name": "an arrow that crosses text",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "a",
+      "say": "x",
+      "do": [
+       {
+        "op": "write",
+        "text": "the mean",
+        "at": [
+         20,
+         20
+        ],
+        "size": "medium"
+       }
+      ]
+     },
+     {
+      "id": "b",
+      "say": "x",
+      "do": [
+       {
+        "op": "arrow",
+        "from": [
+         10,
+         10
+        ],
+        "to": [
+         60,
+         30
+        ],
+        "id": "ptr"
+       }
+      ]
+     }
+    ]
+   },
+   "problems": [
+    "layout steps[1] (step 'b') do[0]: the arrow 'ptr' collides with text \"the mean\" (step 'a')"
+   ]
+  },
+  {
+   "name": "a plot through a formula",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "a",
+      "say": "x",
+      "do": [
+       {
+        "op": "math",
+        "tex": "x^2+1",
+        "at": [
+         40,
+         30
+        ],
+        "size": "large",
+        "id": "f"
+       }
+      ]
+     },
+     {
+      "id": "b",
+      "say": "x",
+      "do": [
+       {
+        "op": "plot",
+        "points": [
+         [
+          10,
+          70
+         ],
+         [
+          80,
+          20
+         ],
+         [
+          150,
+          70
+         ]
+        ],
+        "id": "curve"
+       }
+      ]
+     }
+    ]
+   },
+   "problems": [
+    "layout steps[1] (step 'b') do[0]: the plot 'curve' collides with formula \"x^2+1\" (step 'a')"
+   ]
+  },
+  {
+   "name": "text drawn after a figure moves clear of it in a zone",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "a",
+      "say": "x",
+      "do": [
+       {
+        "op": "rect",
+        "at": [
+         5,
+         20
+        ],
+        "w": 50,
+        "h": 20
+       }
+      ]
+     },
+     {
+      "id": "b",
+      "say": "x",
+      "do": [
+       {
+        "op": "write",
+        "text": "caption under the box",
+        "zone": "left"
+       }
+      ]
+     }
+    ]
+   },
+   "problems": []
+  },
+  {
+   "name": "a zone that runs out of room",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "a",
+      "say": "x",
+      "do": [
+       {
+        "op": "write",
+        "text": "one",
+        "zone": "left",
+        "size": "huge"
+       },
+       {
+        "op": "write",
+        "text": "two",
+        "zone": "left",
+        "size": "huge"
+       },
+       {
+        "op": "write",
+        "text": "three",
+        "zone": "left",
+        "size": "huge"
+       },
+       {
+        "op": "write",
+        "text": "four",
+        "zone": "left",
+        "size": "huge"
+       },
+       {
+        "op": "write",
+        "text": "five",
+        "zone": "left",
+        "size": "huge"
+       },
+       {
+        "op": "write",
+        "text": "six",
+        "zone": "left",
+        "size": "huge"
+       }
+      ]
+     }
+    ]
+   },
+   "problems": [
+    "layout steps[0] (step 'a') do[4]: zone 'left' is full: no room for text \"five\" (13.6 units tall)",
+    "layout steps[0] (step 'a') do[5]: zone 'left' is full: no room for text \"six\" (13.6 units tall)"
+   ]
+  },
+  {
+   "name": "a single word wider than its zone",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "a",
+      "say": "x",
+      "do": [
+       {
+        "op": "write",
+        "text": "Pneumonoultramicroscopicsilicovolcanoconiosis",
+        "zone": "left",
+        "size": "huge"
+       }
+      ]
+     }
+    ]
+   },
+   "problems": [
+    "layout steps[0] (step 'a') do[0]: text \"Pneumonoultramicroscopics...\" is too wide for zone 'left' (225.6 units, the zone is 60)",
+    "layout steps[0] (step 'a') do[0]: text \"Pneumonoultramicroscopics...\" leaves the board (it spans x 5 to 230.6, y 18 to 31.6)"
+   ]
+  },
+  {
+   "name": "a formula too wide for its zone shrinks, a very wide one does not fit",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "a",
+      "say": "x",
+      "do": [
+       {
+        "op": "math",
+        "tex": "a_1 + a_2 + a_3 + a_4 + a_5 + a_6 + a_7 + a_8 + a_9 + a_{10} + a_{11} + a_{12} + a_{13} + a_{14} + a_{15} + a_{16}",
+        "zone": "left",
+        "size": "large"
+       }
+      ]
+     }
+    ]
+   },
+   "problems": [
+    "layout steps[0] (step 'a') do[0]: formula \"a_1 + a_2 + a_3 + a_4 + a...\" is too wide for zone 'left' (164.5 units, the zone is 60)",
+    "layout steps[0] (step 'a') do[0]: formula \"a_1 + a_2 + a_3 + a_4 + a...\" leaves the board (it spans x 5 to 169.5, y 18 to 24)"
+   ]
+  },
+  {
+   "name": "a circle that leaves the board",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "a",
+      "say": "x",
+      "do": [
+       {
+        "op": "circle",
+        "at": [
+         5,
+         5
+        ],
+        "r": 12,
+        "id": "ring"
+       }
+      ]
+     }
+    ]
+   },
+   "problems": [
+    "layout steps[0] (step 'a') do[0]: the circle 'ring' leaves the board"
+   ]
+  },
+  {
+   "name": "erasing frees the place for the next text",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "a",
+      "say": "x",
+      "do": [
+       {
+        "op": "write",
+        "text": "old note",
+        "at": [
+         10,
+         20
+        ],
+        "id": "old"
+       }
+      ]
+     },
+     {
+      "id": "b",
+      "say": "x",
+      "do": [
+       {
+        "op": "erase",
+        "target": "old"
+       }
+      ]
+     },
+     {
+      "id": "c",
+      "say": "x",
+      "do": [
+       {
+        "op": "write",
+        "text": "new note",
+        "at": [
+         10,
+         20
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "problems": []
+  },
+  {
+   "name": "a dot moved onto text",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "a",
+      "say": "x",
+      "do": [
+       {
+        "op": "write",
+        "text": "label",
+        "at": [
+         60,
+         40
+        ],
+        "size": "large"
+       }
+      ]
+     },
+     {
+      "id": "b",
+      "say": "x",
+      "do": [
+       {
+        "op": "dot",
+        "at": [
+         20,
+         70
+        ],
+        "id": "ball"
+       }
+      ]
+     },
+     {
+      "id": "c",
+      "say": "x",
+      "do": [
+       {
+        "op": "move",
+        "target": "ball",
+        "path": "M 20 70 L 66 44"
+       }
+      ]
+     }
+    ]
+   },
+   "problems": [
+    "layout steps[2] (step 'c') do[0]: the dot 'ball' collides with text \"label\" (step 'a')"
+   ]
+  },
+  {
+   "name": "the same zone used by two sides does not mix",
+   "script": {
+    "board_schema": 1,
+    "steps": [
+     {
+      "id": "a",
+      "say": "x",
+      "do": [
+       {
+        "op": "write",
+        "text": "left text",
+        "zone": "left"
+       },
+       {
+        "op": "write",
+        "text": "right text",
+        "zone": "right"
+       }
+      ]
+     }
+    ]
+   },
+   "problems": []
+  }
  ]
 }

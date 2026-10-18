@@ -135,6 +135,19 @@ script.json` validates a script and lists what would be spoken; `examples/board-
 its formula. A script is untrusted: text only becomes text, a path is parsed and rebuilt, colours and sizes are names from a fixed table, an unknown key
 is an error, and the page re-checks with the same rules (`tests/fixtures/board-cases.json` pins both).
 
+**Layout (v0.9.7).** Give text a place, not coordinates. `write` and `math` take either `at` (a point in board units, optionally with `w`, a width the text wraps to) or
+`zone`, one of `title` (the strip across the top), `left` (a text column), `right` (the figure side), `body` (the full width under the title) and `caption` (the strip
+along the bottom). Items in a zone stack from its top in the order the script gives them, wrap to the zone's width and push the next item down, so nothing needs a y.
+Drawings (`axes`, `plot`, `draw`, `arrow`, `circle`, `rect`, `dot`) keep their board coordinates; the usual plan is text in `title`/`left`/`caption` and the figure in
+the right 85 by 62 units (x 70 to 155, y 18 to 80). Text and drawing share one coordinate space, so they scale together at any width. A formula too wide for its zone
+shrinks to at most 60% of its size; a longer one is reported as too wide. `board_schema` stays 1 and every script written with `at` stays valid.
+The page measures each text box and drawn shape after it renders. In a live lecture a new text item that would land on something else moves to the next free slot, and a
+line placed with `at` that would cross the right edge wraps there; the board reports what it moved and what it could not fix. `python scripts/board_script.py check
+script.json` also estimates the extent of every text from the Kalam glyph widths and refuses a script whose items overlap or leave the board, naming the step and
+the item (`--no-layout` checks the grammar alone). The estimate is for Kalam, the default hand, and good to roughly a tenth for the formulas a lecture writes; the page's
+own measurement is the final word. `tests/html-board-browser.cjs` renders every `examples/board-lecture-*.json` in Chrome at 1280, 768 and 375 pixels, step by step, and
+fails on any overlap, anything off the board, or a drawing that has drifted from its text.
+
 **Live.** While `open` is true the page shows "Waiting for the tutor" at the end; adding steps to the widget (`html_sessions.update_session(root, session,
 widgets=[...])`) makes the open board play them in place. Steps already started must not change: a changed earlier step shows "The tutor revised the
 lecture" and waits for Replay. The learner can Pause, Skip a step, Replay, change speed and choose the voice. Open questions use the existing Send panel;
