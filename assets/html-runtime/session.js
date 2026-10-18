@@ -1249,33 +1249,88 @@
     };
   }
 
-  // The tutor's live voice. Nothing is recorded in advance: each sentence is turned into speech when it is wanted (the page asks for the next one or two while the
-  // current one plays, so the voice runs on without gaps), by whatever `live.request(id, text)` reaches (the Obsidian host and its voice worker). The audio is
-  // played with Web Audio, so a page that may not fetch media can still speak and pausing is exact. If a sentence cannot be spoken live (no worker, an error,
-  // too slow), `fallback` says it and the reason is reported once; the lecture never stops. live: {request(id, text) -> Promise<{wav}>, cancel(id), pause, audioContext?}.
+  // The pieces the live voice speaks a step in. The same function as voice.py's phrase_chunks (cases shared in tests/fixtures/plan-cases.json), because
+  // `voice.py prefetch` renders exactly these pieces ahead of time: sentences first, then a sentence over LONG_SENTENCE characters is cut after a comma or
+  // semicolon once the piece is CHUNK_MIN long (never inside brackets, never leaving a stub shorter than CHUNK_TAIL_MIN), so the first sound waits for a
+  // short piece instead of the whole sentence. Joining the pieces with spaces gives back the text with its whitespace made single.
+  const LONG_SENTENCE = 110, CHUNK_MIN = 40, CHUNK_TAIL_MIN = 25;
+  function speechChunks(text) {
+    const count = (s, c) => s.split(c).length - 1;
+    const chunks = [];
+    for (const sentence of String(text).split(/\s+/).filter(Boolean).join(' ').split(/(?<=[.!?:])\s+/)) {
+      if (!sentence) continue;
+      const pieces = sentence.length > LONG_SENTENCE ? sentence.split(/(?<=[,;])\s+/) : [sentence];
+      const cut = []; let current = '';
+      for (const piece of pieces) {
+        current = current ? current + ' ' + piece : piece;
+        if (current.length >= CHUNK_MIN && count(current, '(') <= count(current, ')') && count(current, '[') <= count(current, ']')) { cut.push(current); current = ''; }
+      }
+      if (current) { if (cut.length && current.length < CHUNK_TAIL_MIN) cut[cut.length - 1] += ' ' + current; else cut.push(current); }
+      chunks.push(...cut);
+    }
+    return chunks;
+  }
+
+  // The tutor's live voice. Nothing is recorded in advance: each piece of a sentence is turned into speech when it is wanted (the page asks for the next one or two
+  // steps while the current one plays, so the voice runs on without gaps), by whatever `live.request(id, text)` reaches (the Obsidian host and its voice worker,
+  // which keeps what it has rendered and renders the lecture ahead of time). A step is spoken as its pieces, one after the other: the first piece is short, so
+  // sound starts after one short piece rather than the whole sentence, and the rest are asked for at once. No more than MAX_ASKED requests are out at a time (the host
+  // refuses more), what is needed now goes before what is only asked ahead, and what is only asked ahead leaves the last place free. The audio is played with Web Audio, so a page that may not fetch media can still speak
+  // and pausing is exact. If a piece cannot be spoken live (no worker, an error, too slow), `fallback` says what was left of the step and the reason is reported once;
+  // the lecture never stops. live: {request(id, text) -> Promise<{wav}>, cancel(id), pause, colonPause, audioContext?}.
+  // Short acknowledgments ("Let me look at that.") are pre-loaded with preloadAcks and played the moment a question is sent with playAck, on a context of their own,
+  // so they sound while the lecture is paused; they are skippable and play only if the audio is already here (never a wait).
   function liveSpeaker(win, live, fallback, clock) {
     clock = clock || realClock;
     const Context = win && (win.AudioContext || win.webkitAudioContext);
     const supported = !!(live && typeof live.request === 'function' && (typeof live.audioContext === 'function' || typeof Context === 'function'));
-    const gap = live && num(live.pause, 0, 5) ? live.pause : 0.5;
+    const gap = live && num(live.pause, 0, 5) ? live.pause : 0.5, colonGap = live && num(live.colonPause, 0, 5) ? live.colonPause : 0.3, phraseGap = 0.15;
+    const MAX_ASKED = 3, KEEP = 16;
     const timers = createTimers(clock);
-    const cache = new Map();
-    let context = null, rate = 1, serial = 0, current = null, paused = false, failed = null, reported = false;
+    const cache = new Map(), queue = [], ackBuffers = new Map();
+    let context = null, ackContext = null, rate = 1, serial = 0, order = 0, asked = 0, ackTurn = 0, current = null, paused = false, failed = null, reported = false;
     const speaker = {kind: 'live', supported, fallback, onProblem: null, onWait: null};
     const audio = () => { if (!context) context = typeof live.audioContext === 'function' ? live.audioContext() : new Context(); return context; };
+    const ackAudio = () => { if (!ackContext) ackContext = typeof live.audioContext === 'function' ? live.audioContext() : new Context(); return ackContext; };
+    const reason = error => String(error && error.message || error).slice(0, 300);
+    const pauseAfter = (chunk, last) => last ? gap : chunk.endsWith(':') ? colonGap : /[.!?]$/.test(chunk) ? gap : phraseGap;
     function decode(bytes) {
       return new Promise((resolve, reject) => { const result = audio().decodeAudioData(bytes, resolve, reject); if (result && typeof result.then === 'function') result.then(resolve, reject); });
     }
-    function fetchBuffer(text) {
-      if (cache.has(text)) return cache.get(text).promise;
-      const entry = {id: 'u' + (++serial), done: false};
-      entry.promise = Promise.resolve().then(() => live.request(entry.id, text)).then(result => {
-        if (!result || !result.wav || !result.wav.byteLength) throw new Error('The live voice sent no audio.');
-        return decode(result.wav);
-      }).then(buffer => { entry.done = true; return buffer; }, error => { cache.delete(text); failed = failed || String(error && error.message || error).slice(0, 300); throw error; });   // one failure stops the asking
-      entry.promise.catch(() => {});   // a sentence fetched ahead that nobody wanted must not report an unhandled failure
-      cache.set(text, entry);
-      while (cache.size > 8) { const [oldText, old] = cache.entries().next().value; cache.delete(oldText); if (!old.done && typeof live.cancel === 'function') live.cancel(old.id); }
+    function pump() {
+      while (queue.length) {
+        let best = 0;
+        for (let i = 1; i < queue.length; i++) if (queue[i].priority < queue[best].priority) best = i;   // what is needed now first; first come first served among equals
+        if (asked >= (queue[best].priority === 0 ? MAX_ASKED : MAX_ASKED - 1)) break;   // what is only asked ahead never takes the last place, so a sentence wanted now is not left waiting for one
+        const entry = queue.splice(best, 1)[0];
+        if (failed) { cache.delete(entry.text); entry.reject(new Error(failed)); continue; }
+        entry.started = true; asked++;
+        Promise.resolve().then(() => live.request(entry.id, entry.text)).then(result => {
+          if (!result || !result.wav || !result.wav.byteLength) throw new Error('The live voice sent no audio.');
+          return decode(result.wav);
+        }).then(buffer => { entry.done = true; entry.resolve(buffer); },
+          error => { cache.delete(entry.text); failed = failed || reason(error); entry.reject(error); })   // one failure stops the asking
+          .then(() => { asked--; pump(); });
+      }
+    }
+    function forget(text, entry) {
+      cache.delete(text);
+      const waiting = queue.indexOf(entry);
+      if (waiting >= 0) queue.splice(waiting, 1);
+      else if (!entry.done && typeof live.cancel === 'function') live.cancel(entry.id);
+    }
+    function fetchBuffer(text, priority) {
+      const known = cache.get(text);
+      if (known) { if (priority < known.priority) known.priority = priority; return known.promise; }
+      const entry = {id: 'u' + (++serial), text, priority, order: ++order, started: false, done: false};
+      entry.promise = new Promise((resolve, reject) => { entry.resolve = resolve; entry.reject = reject; });
+      entry.promise.catch(() => {});   // a piece fetched ahead that nobody wanted must not report an unhandled failure
+      cache.set(text, entry); queue.push(entry);
+      for (const [oldText, old] of cache) {   // bounded: the oldest are forgotten, except what is wanted right now and has not arrived
+        if (cache.size <= KEEP) break;
+        if (old !== entry && !(old.priority === 0 && !old.done)) forget(oldText, old);
+      }
+      pump();
       return entry.promise;
     }
     Object.assign(speaker, {
@@ -1284,38 +1339,72 @@
       retry() { failed = null; reported = false; },
       prefetch(texts) {
         if (!supported || failed) return;
-        for (const text of (texts || []).slice(0, 3)) { const clean = typeof text === 'string' ? text.trim() : ''; if (clean) fetchBuffer(clean); }
+        for (const text of (texts || []).slice(0, 3)) { const clean = typeof text === 'string' ? text.trim() : ''; if (clean) for (const chunk of speechChunks(clean)) fetchBuffer(chunk, 1); }
+      },
+      preloadAcks(texts) {
+        if (!supported || failed) return;
+        for (const text of texts || []) {
+          const clean = typeof text === 'string' ? text.trim() : '';
+          if (clean && !ackBuffers.has(clean)) fetchBuffer(clean, 2).then(buffer => { ackBuffers.set(clean, buffer); }, () => {});
+        }
+      },
+      // Plays the next acknowledgment that is already here and calls onEnd(true) when it has ended or onEnd(false) when it was skipped. Returns null (and says
+      // nothing) when there is none ready, so a question is never made to wait for one. {skip()} stops it.
+      playAck(onEnd) {
+        if (!supported || failed) return null;
+        const ready = [...ackBuffers.keys()];
+        if (!ready.length) return null;
+        const text = ready[(ackTurn++) % ready.length];
+        let source;
+        try { const c = ackAudio(); source = c.createBufferSource(); source.buffer = ackBuffers.get(text); source.playbackRate.value = rate; source.connect(c.destination); } catch (_) { return null; }
+        let over = false;
+        const end = heard => { if (over) return; over = true; source.onended = null; if (!heard) { try { source.stop(); } catch (_) { /* not started */ } } if (onEnd) onEnd(heard); };
+        source.onended = () => end(true);
+        const go = () => { try { source.start(0); } catch (_) { end(false); } };
+        const c = ackAudio();
+        if (c.state === 'suspended' && typeof c.resume === 'function') { const r = c.resume(); if (r && r.then) r.then(go, go); else go(); } else go();
+        return {text, skip: () => end(false)};
       },
       speak(text, opts) {
         const clean = String(text || '').trim();
         if (!clean) return Promise.resolve();
         return new Promise(resolve => {
-          const entry = {done: false, source: null, delegate: false};
+          const chunks = speechChunks(clean);
+          const entry = {done: false, source: null, delegate: false, at: 0};
           current = entry;
           const finish = () => { if (entry.done) return; entry.done = true; clock.clearTimeout(entry.wait); if (current === entry) current = null; resolve(); };
           entry.finish = finish;
-          const delegate = (reason, quiet) => {
+          const delegate = (why, quiet) => {
             if (entry.done || entry.delegate) return;
             clock.clearTimeout(entry.wait); if (speaker.onWait) speaker.onWait(false);
-            failed = failed || reason;
+            failed = failed || why;
             if (!quiet && !reported) { reported = true; if (speaker.onProblem) speaker.onProblem(failed); }   // said once, whichever request failed first
             entry.delegate = true;
-            fallback.speak(clean, opts).then(finish, finish);
+            fallback.speak(chunks.slice(entry.at).join(' ') || clean, opts).then(finish, finish);   // what was not yet spoken
             if (paused) fallback.pause();
           };
           if (!supported) { delegate('this page cannot play live audio', true); return; }
           if (failed) { delegate(failed, false); return; }
-          entry.wait = clock.setTimeout(() => { if (!entry.done && speaker.onWait) speaker.onWait(true); }, 400);
-          fetchBuffer(clean).then(buffer => {
-            clock.clearTimeout(entry.wait); if (speaker.onWait) speaker.onWait(false);
-            if (entry.done) return;
-            const c = audio(), source = c.createBufferSource();
-            source.buffer = buffer; source.playbackRate.value = rate; source.connect(c.destination);
-            entry.source = source;
-            source.onended = () => { if (!entry.done && !entry.delegate) timers.sleep(gap / rate * 1000).then(finish); };
-            const go = () => { try { source.start(0); } catch (_) { delegate('the audio could not start'); } };
-            if (c.state === 'suspended' && !paused && typeof c.resume === 'function') { const r = c.resume(); if (r && r.then) r.then(go, go); else go(); } else go();
-          }).catch(error => delegate(String(error && error.message || error).slice(0, 300)));
+          const wanted = chunks.map(chunk => fetchBuffer(chunk, 0));
+          const play = i => {
+            entry.at = i;
+            clock.clearTimeout(entry.wait);
+            entry.wait = clock.setTimeout(() => { if (!entry.done && speaker.onWait) speaker.onWait(true); }, 400);
+            wanted[i].then(buffer => {
+              clock.clearTimeout(entry.wait); if (speaker.onWait) speaker.onWait(false);
+              if (entry.done || entry.delegate) return;
+              const c = audio(), source = c.createBufferSource(), last = i === chunks.length - 1;
+              source.buffer = buffer; source.playbackRate.value = rate; source.connect(c.destination);
+              entry.source = source;
+              source.onended = () => {
+                if (entry.done || entry.delegate) return;
+                timers.sleep(pauseAfter(chunks[i], last) / rate * 1000).then(() => { if (entry.done || entry.delegate) return; if (last) finish(); else play(i + 1); });
+              };
+              const go = () => { try { source.start(0); } catch (_) { delegate('the audio could not start'); } };
+              if (c.state === 'suspended' && !paused && typeof c.resume === 'function') { const r = c.resume(); if (r && r.then) r.then(go, go); else go(); } else go();
+            }).catch(error => delegate(reason(error)));
+          };
+          play(0);
         });
       },
       pause() {
@@ -1823,6 +1912,9 @@
       player, figure, layout: () => effects.layout(),
       get status() { return player.status; },
       start: () => player.start(), pause: () => player.pause(), resume: () => player.resume(), skip: () => player.skip(), replay: () => player.replay(),
+      // Short spoken acknowledgments for a question just sent: loaded ahead of time, played only when the live voice is the voice in use and the audio is already here.
+      preloadAcks(texts) { if (liveVoice) liveVoice.preloadAcks(texts); },
+      acknowledge(onEnd) { return liveVoice && speaker === liveVoice ? liveVoice.playAck(onEnd) : null; },
       update(next) {
         const result = player.update(next);
         if (result.ok) {
@@ -1839,7 +1931,7 @@
   }
 
   return {SCHEMA, WIDTH, HEIGHT, COLORS, SIZES, HANDS, MAX, ZONES, FONT, validate, pathProblem, normalizePath, estimate, layoutProblems, layoutScript, estimateItem, mathBox, wrapText, createLayout, inkOf, sampledPath,
-    createTimers, silentSpeaker, deviceSpeaker, audioSpeaker, liveSpeaker, createPlayer, mount};
+    createTimers, silentSpeaker, deviceSpeaker, audioSpeaker, liveSpeaker, speechChunks, createPlayer, mount};
 });
 
 /* Research OS staged session: runs a session plan (scripts/session_plan.py) as four stages, each in its own environment: Probe, Handout, Lecture, Check.
@@ -1914,6 +2006,30 @@
     const ids = new Set(script.steps.map(s => s.id)), seen = checkpoints(events, 'lecture-step:').filter(id => ids.has(id));
     return seen.length ? seen[seen.length - 1] : null;
   }
+  // Words of a question, for matching it against the plan's anticipated questions. One definition for both languages (session_plan.py tokens): letters and digits,
+  // an apostrophe kept inside a word, everything else a break ("n-1" is "n", "1"), lower case.
+  function tokens(text) {
+    return String(text).toLowerCase().replace(/[‘’]/g, "'").match(/[\p{L}\p{N}]+(?:'[\p{L}\p{N}]+)*/gu) || [];
+  }
+  // Which anticipated answers a question may be asking for, best first (most of the item's phrases found, then plan order). A phrase is found when its words
+  // appear in the question next to each other in that order. Only answers on the lecture's path that have not been played are considered. Indexes into plan.anticipated.
+  function matchAnticipated(plan, question, path, asked) {
+    const words = tokens(question), found = [];
+    (plan.anticipated || []).forEach((item, index) => {
+      if (path && !path.includes(item.segment)) return;
+      if (asked && asked.includes(item.label)) return;
+      let hits = 0;
+      for (const phrase of item.match || []) {
+        const p = tokens(phrase);
+        if (p.length && words.some((_, i) => i + p.length <= words.length && p.every((w, k) => words[i + k] === w))) hits++;
+      }
+      if (hits) found.push([-hits, index]);
+    });
+    return found.sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(f => f[1]);
+  }
+  // Said the moment a question is sent, to cover the tutor's turn (voice.py ACK_TEXTS; a test pins that they are the same). They never say the question was good
+  // or that an answer is known.
+  const ACKS = ['Okay, let me think about that for a moment.', 'Let me look at that.', 'One moment, I am working on that.', 'Let me work through that.'];
 
   // One board plays the whole lecture: the chosen segments' steps in order. A segment that is only a video adds no steps here (the video pane is a later slice).
   function composeScript(plan, path) {
@@ -2237,14 +2353,16 @@
         row.prepend(talk); lecture.composer.append(lecture.input, row, line);
       } else lecture.composer.append(lecture.input, row);
       lecture.askButton = button('Ask a question', openAsk, {class: 'ros-ask-button'});
+      lecture.offer = el('div', {class: 'ros-offer', role: 'status'});
       lecture.next = button(current.check ? 'Continue to the check' : 'Finish', endLecture, {class: 'ros-primary', hidden: true});
-      tools.append(lecture.askButton, lecture.chips, lecture.composer, lecture.next);
+      tools.append(lecture.askButton, lecture.chips, lecture.composer, lecture.offer, lecture.next);
       panels.lecture.append(lecture.host, tools);
       lecture.script = composeScript(current, lecture.path);
       const resumeAt = lecture.started ? resumeStep(lecture.script, events) : null;
       if (resumeAt) lecture.lastSent = resumeAt;
       lecture.controller = ctx.mountBoard(lecture.host, lecture.script, onLectureEvent, resumeAt || undefined);
       renderChips();
+      if (lecture.controller.preloadAcks) lecture.controller.preloadAcks(ACKS);   // short clips the live voice plays the moment a question is sent
       // The caption, the voice note and the controls change as the lecture plays; the board gives back or takes height as they do.
       const win = doc.defaultView;
       if (win && win.MutationObserver) new win.MutationObserver(() => win.requestAnimationFrame(fitLecture)).observe(shell, {childList: true, characterData: true, subtree: true});
@@ -2285,20 +2403,35 @@
     }
     let pausedForAsk = false;
     function openAsk() {
+      lecture.offer.textContent = '';
       lecture.composer.hidden = false; lecture.askButton.hidden = true;
       if (lecture.controller && lecture.controller.status === 'playing') { lecture.controller.pause(); pausedForAsk = true; }
       lecture.input.focus();
     }
-    function closeAsk() {
-      lecture.composer.hidden = true; lecture.askButton.hidden = false; lecture.input.value = ''; lecture.send.disabled = true;
+    function resumeAfterAsk() {
       if (pausedForAsk && lecture.controller && lecture.controller.status === 'paused') lecture.controller.resume();
-      pausedForAsk = false; lecture.askButton.focus();
+      pausedForAsk = false;
     }
+    function closeAsk(hold) {
+      lecture.composer.hidden = true; lecture.askButton.hidden = false; lecture.input.value = ''; lecture.send.disabled = true;
+      if (!hold) resumeAfterAsk();
+      lecture.askButton.focus();
+    }
+    // A question is recorded first, always. Then: any prepared answers it may be asking for are offered as buttons (never played unasked), and a short spoken
+    // acknowledgment covers the wait while the lecture stays paused (skippable; the lecture goes on when it ends). The question still needs the tutor's own answer.
     function sendQuestion() {
       const text = lecture.input.value.trim();
       if (!text) return;
       ctx.emit('open-question', null, text);
-      closeAsk();
+      lecture.offer.textContent = '';
+      for (const index of matchAnticipated(current, text, lecture.path, [...lecture.asked]).slice(0, 2)) {
+        const item = current.anticipated[index];
+        lecture.offer.append(button('The tutor prepared an answer: ' + item.label, () => { playAnswer(item); lecture.offer.textContent = ''; }, {class: 'ros-offer-answer'}));
+      }
+      let skip = null;
+      const ack = lecture.controller && lecture.controller.acknowledge ? lecture.controller.acknowledge(() => { if (skip) skip.remove(); resumeAfterAsk(); }) : null;
+      if (ack) { skip = button('Skip', () => ack.skip(), {class: 'ros-ack-skip'}); lecture.offer.append(skip); }
+      closeAsk(!!ack);
     }
     function endLecture() {
       ctx.emit('checkpoint', null, 'stage:check');
@@ -2361,7 +2494,7 @@
     };
   }
 
-  return {END, STAGES, judge, lecturePath, composeScript, replay, stageOf, marks, parseNumber, mount, reviewedResults, recordedPath, lectureFor, resumeStep};
+  return {END, STAGES, ACKS, judge, lecturePath, composeScript, replay, stageOf, marks, parseNumber, tokens, matchAnticipated, mount, reviewedResults, recordedPath, lectureFor, resumeStep};
 });
 
 /* Research OS runtime v1. No host privileges, network calls or authoritative browser storage. */

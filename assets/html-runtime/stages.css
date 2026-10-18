@@ -68,6 +68,8 @@ body.ros-staged .ros-side-panel,body.ros-staged .ros-panel-toggle,body.ros-stage
 .ros-stage-lecture .ros-board-bar{justify-content:center}
 .ros-lecture-tools{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:center;gap:var(--ros-space-3);margin-top:var(--ros-space-3)}
 .ros-chips{display:flex;flex-wrap:wrap;gap:var(--ros-space-2)}
+.ros-offer{display:flex;flex-wrap:wrap;justify-content:center;gap:var(--ros-space-2);flex:1 1 100%}
+.ros-offer:empty{display:none}
 .ros-ask{flex:1 1 100%;max-width:40rem}
 .ros-ask[hidden]{display:none}
 .ros-ask textarea{display:block;width:100%;padding:var(--ros-space-3);border:1.5px solid var(--ros-border-strong);border-radius:var(--ros-radius-md);resize:vertical}

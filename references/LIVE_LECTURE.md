@@ -41,6 +41,10 @@ A spoken question arrives exactly like a typed one: an open question the learner
 3. Record the answer in the Q&A history with `answer` (a short written version of what you said, with the formula and the key reason). The board is the explanation; the history is the record. As always, answering a question is not evidence that the learner understands it.
 4. Keep `open: true` while you are still lecturing. End with `--open false` on the last steps, so the board finishes instead of waiting.
 
+## Speed (v0.9.7)
+
+Do the slow work before it is asked for. Once the plan exists, run `voice.py prefetch --dir <voice folder> --plan <plan.json>` while the learner is in the probe and handout, so the lecture's sentences are already rendered. When a question is sent the page plays a short acknowledgment at once and offers a matching prepared answer as a button (never played unasked); your own answer still follows. Keep the sentences you write for a step as the page will ask for them (a long sentence is spoken as short pieces); do not edit a step's `say` after prefetching or its audio is rendered again. Numbers: `docs/plans/v0.9.7-s6-speed.md`.
+
 ## Honest limits
 
 The first sentence of a lecture takes about a second and a half to speak after it is asked for; later sentences are ready ahead of time. Your own turns, not the voice, are the slow part of an answer: keep a short buffer so a question does not wait behind long unplayed material. Nothing the board or the voice does is evidence of learning. Tested with scripted hosts and real browsers and workers, not yet in a real Obsidian window with a real microphone.

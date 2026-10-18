@@ -440,6 +440,33 @@ def lecture_path(plan: dict, results: dict) -> list[str]:
     return path + tail
 
 
+_TOKEN = re.compile(r"[^\W_]+(?:'[^\W_]+)*")
+
+
+def tokens(text) -> list[str]:
+    """Words of a question for matching it against anticipated questions: letters and digits, an apostrophe kept inside a word, anything else a break
+    ("n-1" is "n", "1"), lower case. The page has the same function (stages.js ``tokens``); tests/fixtures/plan-cases.json pins that they agree."""
+    return _TOKEN.findall(str(text).lower().replace('‘', "'").replace('’', "'"))
+
+
+def match_anticipated(plan: dict, question: str, path: list | None = None, asked=()) -> list[int]:
+    """Indexes into ``plan['anticipated']`` of the prepared answers a question may be asking for, best first: most of the item's phrases found, then plan order.
+    A phrase is found when its words appear in the question next to each other, in that order. Only answers whose segment is on ``path`` (when given) and whose
+    label is not in ``asked`` count. The page offers a match as a choice; it is never played unasked, and the question is still an open question for the tutor."""
+    words, found = tokens(question), []
+    for index, item in enumerate(plan.get('anticipated') or []):
+        if (path is not None and item.get('segment') not in path) or item.get('label') in asked:
+            continue
+        hits = 0
+        for phrase in item.get('match') or []:
+            p = tokens(phrase)
+            if p and any(words[i:i + len(p)] == p for i in range(len(words) - len(p) + 1)):
+                hits += 1
+        if hits:
+            found.append((-hits, index))
+    return [index for _, index in sorted(found)]
+
+
 def replay(plan: dict, name: str, events: list) -> dict:
     """Where the learner is in a question tree (``probe`` or ``check``), rebuilt from the saved ``plan-answer`` events alone: the questions answered in order
     with their verdicts, the question to answer now, and whether the tree is finished. The page does the same, so a reload shows the same place."""

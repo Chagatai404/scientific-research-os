@@ -4,7 +4,7 @@ Standard library only. The engines (Piper, Chatterbox, faster-whisper) live in t
 nothing here imports one or installs one. Audio is written once and named by a hash of provider, voice and text, so unchanged text reuses its file and
 changed text never overwrites an old recording. The browser's own voice (the baseline already in every session page) makes no file.
 
-Commands: providers | prepare | speak | board | list | transcribe | bakeoff
+Commands: providers | prepare | speak | board | list | transcribe | bakeoff | prefetch (and the workers: worker, tts-worker, up)
 A transcript is text the learner said, never evidence that they understand; it enters the normal submit-and-review path.
 """
 from __future__ import annotations
@@ -610,6 +610,120 @@ def ensure_workers(directory: Path, setup: dict, kinds=('tts', 'stt'), timeout: 
     return {'ready': all(report[k]['state'] in ('ready', 'busy') for k in kinds), 'workers': report}
 
 
+# ---------------------------------------------------------------- rendering the lecture ahead of time (v0.9.7)
+# The page speaks a step by asking the live voice for it in chunks (see `phrase_chunks`); the worker keeps every sentence it renders. `prefetch` asks the worker to
+# render the lecture's sentences ahead of time, in the order they will play, while the learner is in the probe and handout stages, so the lecture starts with no
+# synthesis wait. The texts must be exactly what the page will ask for: the page asks for `phrase_chunks(step.say.strip())` (shared cases:
+# tests/fixtures/plan-cases.json, run by Python and by the page's own code), otherwise every request misses the cache.
+
+SENTENCE_END = re.compile(r'(?<=[.!?:])\s+')
+CLAUSE_END = re.compile(r'(?<=[,;])\s+')
+LONG_SENTENCE = 110       # characters; a shorter sentence is rendered whole
+CHUNK_MIN = 40            # a clause chunk is cut once it is this long, so the first sound waits for a short piece, not for the whole sentence
+CHUNK_TAIL_MIN = 25       # a last piece shorter than this stays with the one before it
+PREFETCH_BATCH = 150      # texts per list file (the worker's limit)
+# Said when a question is sent, to cover the tutor's turn. Neutral on purpose: they never say the question was good or that an answer is known.
+ACK_TEXTS = ['Okay, let me think about that for a moment.', 'Let me look at that.', 'One moment, I am working on that.', 'Let me work through that.']
+
+
+def phrase_chunks(text: str) -> list[str]:
+    """The pieces the live voice speaks a step in: sentences first, then a sentence over ``LONG_SENTENCE`` characters is cut after a comma or semicolon once the
+    piece is ``CHUNK_MIN`` long (never inside brackets, never leaving a stub shorter than ``CHUNK_TAIL_MIN``). A sentence with nowhere to cut stays whole.
+    Joining the pieces with spaces gives back the text with its whitespace made single. The page has the same function."""
+    chunks = []
+    for sentence in SENTENCE_END.split(' '.join(str(text).split())):
+        if not sentence:
+            continue
+        pieces = CLAUSE_END.split(sentence) if len(sentence) > LONG_SENTENCE else [sentence]
+        cut, current = [], ''
+        for piece in pieces:
+            current = f'{current} {piece}' if current else piece
+            if len(current) >= CHUNK_MIN and current.count('(') <= current.count(')') and current.count('[') <= current.count(']'):
+                cut.append(current)
+                current = ''
+        if current:
+            if cut and len(current) < CHUNK_TAIL_MIN:
+                cut[-1] = f'{cut[-1]} {current}'
+            else:
+                cut.append(current)
+        chunks.extend(cut)
+    return chunks
+
+
+def board_sentences(script: dict) -> list[str]:
+    """What the page would ask the live voice for, in order, for a board script: the chunks of each step's sentence."""
+    out = []
+    for step in script.get('steps', []) if isinstance(script, dict) else []:
+        say = step.get('say') if isinstance(step, dict) else None
+        if isinstance(say, str) and say.strip():
+            out.extend(phrase_chunks(say.strip()))
+    return out
+
+
+def plan_sentences(plan: dict, acks: bool = True, head: int = 4) -> list[str]:
+    """Every sentence a session plan's lecture may speak, in the order it is most likely to be wanted: the first ``head`` pieces of the core lecture (it starts
+    first), the acknowledgments (the first question may come at any time), the rest of the core lecture, then repair and extension segments, then the prepared
+    answers to anticipated questions. Repeats are dropped, so a sentence is rendered once."""
+    core, other, answers = [], [], []
+    for seg in plan.get('segments', []) if isinstance(plan, dict) else []:
+        texts = board_sentences((seg or {}).get('script') or {})
+        (core if (seg or {}).get('role') == 'core' else other).extend(texts)
+    for item in plan.get('anticipated', []) if isinstance(plan, dict) else []:
+        answers.extend(board_sentences({'steps': (item or {}).get('steps') or []}))
+    ordered = core[:head] + (ACK_TEXTS if acks else []) + core[head:] + other + answers
+    seen, unique = set(), []
+    for text in ordered:
+        if text not in seen:
+            seen.add(text)
+            unique.append(text)
+    return unique
+
+
+def prefetch(directory: Path, texts: list[str], reset: bool = False) -> dict:
+    """Ask the live voice worker to render ``texts`` ahead of time. Writes list files into ``<directory>/tts/prefetch`` (the worker takes them in whenever it is
+    running, now or when it starts) and returns what was queued. Nothing is rendered here."""
+    texts = [t for t in texts if isinstance(t, str) and t.strip()]
+    too_long = [t for t in texts if len(t) > 600]
+    if too_long:
+        raise VoiceError(f'a sentence is longer than 600 characters and the live voice would refuse it: {too_long[0][:60]!r}…')
+    folder = Path(directory) / 'tts' / 'prefetch'
+    folder.mkdir(parents=True, exist_ok=True)
+    stamp = f'{time.time_ns():019d}'
+    files = []
+    for number, start in enumerate(range(0, max(len(texts), 1), PREFETCH_BATCH)):
+        batch = texts[start:start + PREFETCH_BATCH]
+        if not batch and not reset:
+            break
+        path = folder / f'p{stamp}-{number:03d}.json'
+        tmp = folder / f'{path.name}.tmp'
+        tmp.write_text(json.dumps({'texts': batch, 'reset': bool(reset and number == 0)}, ensure_ascii=False), encoding='utf-8')
+        os.replace(tmp, path)
+        files.append(path.name)
+    return {'queued': len(texts), 'files': files, 'worker': lease_state(directory, filename=TTS_LEASE_FILE)['state']}
+
+
+def wait_for_prefetch(directory: Path, timeout: float, *, now=time.time, sleep=time.sleep, poll: float = 1.0, report=None) -> dict:
+    """Wait until the worker has nothing left to render ahead (its lease says ``prefetch_pending`` is 0 and the list files are taken in), or the time is up."""
+    began, last = now(), None
+    while True:
+        lease = {}
+        try:
+            lease = json.loads((Path(directory) / TTS_LEASE_FILE).read_text(encoding='utf-8-sig'))
+        except (OSError, ValueError):
+            pass
+        waiting = len(list((Path(directory) / 'tts' / 'prefetch').glob('*.json')))
+        pending = lease.get('prefetch_pending', 0) if isinstance(lease, dict) else 0
+        progress = (pending, waiting, lease.get('prefetch_done'))
+        if report and progress != last:
+            report(f'{pending} sentences still to render, {waiting} lists not yet taken in, {lease.get("prefetch_done", 0)} rendered ahead so far')
+            last = progress
+        if not pending and not waiting:
+            return {'done': True, 'seconds': round(now() - began, 1), 'rendered': lease.get('prefetch_done'), 'failed': lease.get('prefetch_failed')}
+        if now() - began >= timeout:
+            return {'done': False, 'seconds': round(now() - began, 1), 'pending': pending, 'lists_waiting': waiting}
+        sleep(poll)
+
+
 # ---------------------------------------------------------------- speech to text and scoring
 
 def transcribe(audio: Path, envs: list[str] | None = None, lang: str | None = None, model: str = 'small', device: str = 'cpu', words: bool = False) -> dict:
@@ -786,6 +900,13 @@ def main(argv=None) -> int:
     p.add_argument('--timeout', type=float, default=WARM_TIMEOUT, help='seconds to wait for each worker to report ready')
     p.add_argument('--check', action='store_true', help='start nothing; report whether they are ready (exit 0 only if both are)')
     p.add_argument('--save', action='store_true', help='remember these environments and settings in <dir>/voice-setup.json so later runs need no arguments')
+    p = sub.add_parser('prefetch', help='ask the live voice worker to render a lecture ahead of time (the sentences of a session plan or board script, in play order)')
+    p.add_argument('--dir', type=Path, required=True, help='the voice folder, normally <vault>/.research-os/voice')
+    p.add_argument('--plan', type=Path, required=True, help='a session plan (plan_schema) or a board script (board_schema), as JSON')
+    p.add_argument('--no-acks', action='store_true', help='leave out the short acknowledgments played when a question is sent')
+    p.add_argument('--reset', action='store_true', help='drop whatever the worker still had queued to render ahead (another lecture)')
+    p.add_argument('--dry-run', action='store_true', help='print the sentences in order and send nothing')
+    p.add_argument('--wait', type=float, default=0.0, help='wait up to this many seconds for the worker to finish rendering them')
     p = sub.add_parser('list', help='recordings in the registry')
     p.add_argument('--root', type=Path, required=True)
     p = sub.add_parser('transcribe', help='text from a recording')
@@ -856,6 +977,22 @@ def main(argv=None) -> int:
             result = ensure_workers(args.dir, setup, (args.only,) if args.only else ('tts', 'stt'), args.timeout, start=not args.check)
             print(json.dumps(result, indent=2, ensure_ascii=False))
             return 0 if result['ready'] else 1
+        if args.command == 'prefetch':
+            data = json.loads(args.plan.read_text(encoding='utf-8-sig'))
+            if isinstance(data, dict) and 'plan_schema' in data:
+                texts = plan_sentences(data, acks=not args.no_acks)
+            elif isinstance(data, dict) and 'board_schema' in data:
+                texts = board_sentences(data) + ([] if args.no_acks else [a for a in ACK_TEXTS])
+            else:
+                raise VoiceError('--plan is a session plan (plan_schema) or a board script (board_schema)')
+            if args.dry_run:
+                print(json.dumps({'sentences': texts, 'count': len(texts)}, indent=2, ensure_ascii=False))
+                return 0
+            result = prefetch(args.dir, texts, args.reset)
+            if args.wait > 0:
+                result['wait'] = wait_for_prefetch(args.dir, args.wait, report=lambda line: print(line, file=sys.stderr))
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return 0 if result['worker'] in ('ready', 'busy', 'warming') else 1
         if args.command == 'worker-status':
             status = lease_state(args.dir, filename=TTS_LEASE_FILE if args.tts else LEASE_FILE)
             print(json.dumps(status, indent=2, ensure_ascii=False))
