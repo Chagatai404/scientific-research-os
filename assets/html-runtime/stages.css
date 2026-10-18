@@ -1,0 +1,76 @@
+/* Research OS staged session (stages.js). One thing at a time: the page scrolls if it must, nothing inside it does (no overflow:auto or scroll in this file). */
+body.ros-staged main.ros-document{max-width:none;margin:0;padding:0;background:transparent;box-shadow:none;border-radius:0}
+body.ros-staged main.ros-document > :not(.ros-stages){display:none}
+body.ros-staged .ros-side-panel,body.ros-staged .ros-panel-toggle,body.ros-staged .ros-arrival{display:none}
+.ros-stages{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh;max-width:64rem;margin:0 auto;padding:var(--ros-space-3) var(--ros-space-4) var(--ros-space-4);gap:var(--ros-space-4)}
+.ros-stages nav,.ros-stages ol,.ros-stages ul{margin:0}
+.ros-stages ol,.ros-stages ul{padding-left:0}
+.ros-stages li{margin:0;padding:0}
+.ros-stages[data-stage="lecture"]{min-height:0}
+.ros-stages-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--ros-space-2) var(--ros-space-4)}
+.ros-stages .ros-stages-title{font:600 22px/1.2 var(--ros-font-body);margin:0;letter-spacing:0}
+.ros-stagebar ol{display:flex;flex-wrap:wrap;gap:var(--ros-space-1);list-style:none;margin:0;padding:0}
+.ros-stagebar li{margin:0}
+.ros-stagebar button{min-height:40px;padding:0 var(--ros-space-4);border-radius:999px;border:1.5px solid var(--ros-border-strong)}
+.ros-stagebar li[data-state="done"] button{background:var(--ros-accent-bg);border-color:transparent}
+.ros-stagebar li[data-state="current"] button{background:var(--ros-accent);color:var(--ros-on-accent);border-color:var(--ros-accent)}
+.ros-stagebar li[data-state="todo"] button{opacity:.6}
+.ros-stagebar button[aria-current="step"]{box-shadow:0 0 0 3px var(--ros-focus,var(--ros-accent))}
+.ros-stage-body{flex:1;min-height:0}
+.ros-stage[hidden]{display:none}
+.ros-stages-footer{display:flex;flex-wrap:wrap;align-items:center;gap:var(--ros-space-1) var(--ros-space-4);font-size:14px;color:var(--ros-text-muted)}
+.ros-stages-footer p{margin:0}
+.ros-stages-footer .ros-supervision{padding:0 var(--ros-space-3);background:none}
+.ros-stages-footer .ros-supervision[hidden]{display:none}
+.ros-stages button.ros-primary{background:var(--ros-accent);color:var(--ros-on-accent);border-color:var(--ros-accent)}
+.ros-stages button.ros-primary:disabled{background:var(--ros-surface-subtle);color:var(--ros-text-muted);border-color:var(--ros-border)}
+.ros-stage-hint,.ros-label{color:var(--ros-text-muted);font-size:15px;margin:var(--ros-space-2) 0}
+
+/* Questions: a strip of numbered buttons to move between them, one card for the question in view. */
+.ros-strip{display:flex;flex-wrap:wrap;gap:var(--ros-space-2);list-style:none;margin:0 0 var(--ros-space-4);padding:0;justify-content:center}
+.ros-strip li{margin:0}
+.ros-strip button{min-width:44px;min-height:44px;padding:0;border-radius:50%;border:2px solid var(--ros-border-strong)}
+.ros-strip button[data-verdict="correct"]{border-color:var(--ros-success);background:var(--ros-success-bg)}
+.ros-strip button[data-verdict="wrong"]{border-color:var(--ros-warning);background:var(--ros-warning-bg)}
+.ros-strip button[data-verdict="open"]{border-color:var(--ros-accent)}
+.ros-strip button[aria-current="step"]{box-shadow:0 0 0 3px var(--ros-focus,var(--ros-accent))}
+.ros-qcard,.ros-handout{max-width:46rem;margin:0 auto;padding:var(--ros-space-5);border:1px solid var(--ros-border);border-radius:var(--ros-radius-lg);background:var(--ros-surface);box-shadow:var(--ros-shadow-sm)}
+.ros-qcard h2,.ros-handout h2{font:600 24px/1.35 var(--ros-font-body);margin:0 0 var(--ros-space-4)}
+.ros-qcard-count{margin:0 0 var(--ros-space-2);font-size:14px;color:var(--ros-text-muted)}
+.ros-qcard textarea,.ros-qcard input[type="text"]{display:block;width:100%;margin:0}
+.ros-qcard textarea{padding:var(--ros-space-3);border:1.5px solid var(--ros-border-strong);border-radius:var(--ros-radius-md);resize:vertical}
+.ros-picks{list-style:none;margin:0;padding:0}
+.ros-pick,.ros-picks li{display:flex;align-items:flex-start;gap:var(--ros-space-2);margin:0 0 var(--ros-space-2);padding:var(--ros-space-3);border:1.5px solid var(--ros-border);border-radius:var(--ros-radius-md)}
+.ros-pick label{flex:1;margin:0;padding:0;cursor:pointer;line-height:1.5}
+.ros-pick input{position:static;opacity:1;width:20px;height:20px;margin:2px 0 0;flex:none;cursor:pointer}
+.ros-picks li[data-correct="true"]{border-color:var(--ros-success);background:var(--ros-success-bg)}
+.ros-picks li[data-chosen="true"][data-correct="true"]{border-width:3px}
+.ros-picks li[data-chosen="true"]:not([data-correct="true"]){border-color:var(--ros-warning);background:var(--ros-warning-bg)}
+.ros-chosen{font-size:14px;color:var(--ros-text-muted);white-space:nowrap}
+.ros-qcard-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--ros-space-3);margin-top:var(--ros-space-4)}
+.ros-qcard-feedback{margin-top:var(--ros-space-3)}
+.ros-qcard-feedback p{margin:var(--ros-space-2) 0}
+.ros-stage-verdict{font-weight:700}
+.ros-stage-verdict[data-verdict="correct"]{color:var(--ros-success)}
+.ros-stage-verdict[data-verdict="wrong"],.ros-stage-verdict[data-verdict="problem"]{color:var(--ros-warning)}
+.ros-solution{margin:var(--ros-space-3) 0 0}
+.ros-voice-line{margin:var(--ros-space-2) 0 0;font-size:14px;color:var(--ros-text-muted);min-height:1.3em}
+.ros-voice-line.ros-voice-problem{color:var(--ros-warning)}
+
+/* The handout card and the lecture. The lecture holds the board, a way to ask, and nothing else; the board is sized to fit the window. */
+.ros-handout ul{margin:var(--ros-space-2) 0;padding-left:1.4rem}
+.ros-voice-state{min-height:1.3em;font-size:15px;color:var(--ros-text-muted)}
+.ros-lecture-board .ros-board{margin:0 auto}   /* stages.js sets its max-width so the whole stage fits the window */
+.ros-stage-lecture .ros-board-transcript,.ros-stage-lecture .ros-board-bar label{display:none}
+.ros-stage-lecture .ros-board-bar{justify-content:center}
+.ros-lecture-tools{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:center;gap:var(--ros-space-3);margin-top:var(--ros-space-3)}
+.ros-chips{display:flex;flex-wrap:wrap;gap:var(--ros-space-2)}
+.ros-ask{flex:1 1 100%;max-width:40rem}
+.ros-ask[hidden]{display:none}
+.ros-ask textarea{display:block;width:100%;padding:var(--ros-space-3);border:1.5px solid var(--ros-border-strong);border-radius:var(--ros-radius-md);resize:vertical}
+.ros-ask-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--ros-space-3);margin-top:var(--ros-space-2)}
+@media (max-width:640px){
+  .ros-stages{padding:var(--ros-space-2) var(--ros-space-4) var(--ros-space-4)}
+  .ros-qcard,.ros-handout{padding:var(--ros-space-4)}
+  .ros-qcard h2,.ros-handout h2{font-size:21px}
+}

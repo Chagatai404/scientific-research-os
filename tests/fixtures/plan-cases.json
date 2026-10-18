@@ -1,0 +1,38 @@
+{
+ "note": "Cases for running a session plan. scripts/session_plan.py and assets/html-runtime/stages.js must give the same answer to every one, against examples/session-plan-variance.json. Events are abbreviated: a plan-answer is [question, answer, tree]; a checkpoint is the text.",
+ "judge": [
+  {"name": "right option", "question": "scale", "answer": "b", "expect": {"verdict": "correct", "next": "twopoint"}},
+  {"name": "wrong option with its own feedback", "question": "scale", "answer": "c", "expect": {"verdict": "wrong", "next": "twopoint", "feedback_contains": "Adding 5 slides"}},
+  {"name": "number inside the tolerance", "question": "twopoint", "answer": 1.0004, "expect": {"verdict": "correct", "next": "why"}},
+  {"name": "number outside the tolerance", "question": "twopoint", "answer": 2, "expect": {"verdict": "wrong", "next": "why", "feedback_contains": "E[X^2]"}},
+  {"name": "free response waits for the tutor", "question": "why", "answer": "squares are never negative", "expect": {"verdict": "pending", "next": "end"}},
+  {"name": "no such option", "question": "scale", "answer": "z", "error": true},
+  {"name": "a number is not text", "question": "twopoint", "answer": "1", "error": true}
+ ],
+ "paths": [
+  {"name": "nothing asked yet", "results": {}, "expect": ["spread", "scale", "see-it"]},
+  {"name": "a gap on scaling", "results": {"scale": "wrong", "twopoint": "correct"}, "expect": ["spread", "scale-repair", "scale", "see-it"]},
+  {"name": "mastery adds the extension at the end", "results": {"scale": "correct", "twopoint": "correct"}, "expect": ["spread", "scale", "see-it", "moment-form"]},
+  {"name": "half of the extension condition", "results": {"scale": "correct", "twopoint": "wrong"}, "expect": ["spread", "scale", "see-it"]},
+  {"name": "pending triggers nothing", "results": {"scale": "pending", "twopoint": "pending"}, "expect": ["spread", "scale", "see-it"]}
+ ],
+ "replay": [
+  {"name": "no answers", "events": [], "tree": "probe", "expect": {"trail": [], "current": "scale", "done": false}},
+  {"name": "one answer", "events": [["scale", "b", "probe"]], "tree": "probe", "expect": {"trail": ["scale:correct"], "current": "twopoint", "done": false}},
+  {"name": "two answers, the second wrong", "events": [["scale", "b", "probe"], ["twopoint", 2, "probe"]], "tree": "probe", "expect": {"trail": ["scale:correct", "twopoint:wrong"], "current": "why", "done": false}},
+  {"name": "finished", "events": [["scale", "c", "probe"], ["twopoint", 1, "probe"], ["why", "squares", "probe"]], "tree": "probe", "expect": {"trail": ["scale:wrong", "twopoint:correct", "why:pending"], "current": null, "done": true}},
+  {"name": "a later answer to the same question wins", "events": [["scale", "a", "probe"], ["scale", "b", "probe"]], "tree": "probe", "expect": {"trail": ["scale:correct"], "current": "twopoint", "done": false}},
+  {"name": "an answer in the other tree is ignored", "events": [["scale", "b", "check"]], "tree": "probe", "expect": {"trail": [], "current": "scale", "done": false}},
+  {"name": "an answer that cannot be judged counts as not answered", "events": [["scale", "zzz", "probe"]], "tree": "probe", "expect": {"trail": [], "current": "scale", "done": false}},
+  {"name": "the check tree", "events": [["again", 36, "check"]], "tree": "check", "expect": {"trail": ["again:correct"], "current": null, "done": true}}
+ ],
+ "stages": [
+  {"name": "start", "events": [], "expect": "probe"},
+  {"name": "probe unfinished", "events": [["scale", "b", "probe"]], "expect": "probe"},
+  {"name": "probe finished, handout next", "events": [["scale", "b", "probe"], ["twopoint", 1, "probe"], ["why", "x", "probe"]], "expect": "handout"},
+  {"name": "lecture started", "events": [["scale", "b", "probe"], ["twopoint", 1, "probe"], ["why", "x", "probe"], "stage:lecture"], "expect": "lecture"},
+  {"name": "lecture finished, check next", "events": [["scale", "b", "probe"], ["twopoint", 1, "probe"], ["why", "x", "probe"], "stage:lecture", "stage:check"], "expect": "check"},
+  {"name": "everything done", "events": [["scale", "b", "probe"], ["twopoint", 1, "probe"], ["why", "x", "probe"], "stage:lecture", "stage:check", ["again", 36, "check"]], "expect": "done"},
+  {"name": "a stage mark before the probe is finished changes nothing", "events": ["stage:lecture"], "expect": "probe"}
+ ]
+}

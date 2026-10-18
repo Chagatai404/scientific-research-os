@@ -132,9 +132,19 @@ def _approved_module(root, path, resource):
         raise ValueError('Local module requires a matching independently approved SHA-256 trust entry')
 
 
-def validate_interaction(event, question_ids):
+PLAN_VERDICTS = ('correct', 'wrong', 'pending')
+
+
+def validate_interaction(event, question_ids, plan_ids=frozenset()):
     if not isinstance(event, dict) or set(event) - {'event_id','type','question_id','response','created_at','status','origin'}:
         raise ValueError('Unknown interaction event field')
+    if isinstance(event, dict) and event.get('type') == 'plan-answer':
+        # An answer to a question in the session plan, judged on the page against the plan's own key: a pacing decision, never evidence of learning.
+        response = event.get('response')
+        if (event.get('question_id') not in plan_ids or not isinstance(response, dict) or set(response) - {'answer', 'verdict', 'tree'}
+                or response.get('verdict') not in PLAN_VERDICTS or response.get('tree') not in ('probe', 'check')
+                or not isinstance(response.get('answer'), (str, int, float)) or isinstance(response.get('answer'), bool)):
+            raise ValueError('A plan answer names a plan question, an answer, a verdict and the tree it belongs to')
     if 'origin' in event:
         # Where in the lesson an open question was asked, so the learner can return there; a section anchor and its title.
         origin = event['origin']
@@ -156,6 +166,8 @@ def validate_interaction(event, question_ids):
     elif event.get('type') in {'open-question','checkpoint'}:
         if not isinstance(event.get('response'), str) or not event['response'].strip():
             raise ValueError('Question/checkpoint requires bounded nonempty text')
+    elif event.get('type') == 'plan-answer':
+        pass                                    # checked above against the plan's question ids
     else:
         if event.get('question_id') not in question_ids:
             raise ValueError('Unknown interaction question')
@@ -293,6 +305,11 @@ def validate_state(state):
             board_script.check(widget.get("script"))
             if "audio" in widget:
                 _validate_board_audio(widget["audio"], board_script.ID)
+    plan_ids = frozenset()
+    if "plan" in state:
+        import session_plan  # the plan an agent wrote before the session; the page runs it, so it is checked with the same rules
+        session_plan.check(state["plan"])
+        plan_ids = frozenset(q["id"] for tree in ("probe", "check") for q in (state["plan"].get(tree) or {}).get("questions", []))
     if "context" in state:
         _validate_context(state["context"])
     if state.get("placement") not in (None, "explicit"):
@@ -342,13 +359,13 @@ def validate_state(state):
         _validate_reviews(q.get("reviews", []))
     event_ids = set()
     for event in state["events"]:
-        validate_interaction(event, ids)
-        if not isinstance(event, dict) or event.get("type") not in {"response", "hint", "solution", "confidence", "checkpoint", "reset", "open-question", "explanation-request"}:
+        validate_interaction(event, ids, plan_ids)
+        if not isinstance(event, dict) or event.get("type") not in {"response", "hint", "solution", "confidence", "checkpoint", "reset", "open-question", "explanation-request", "plan-answer"}:
             raise ValueError("Unsupported interaction event")
         if not isinstance(event.get("event_id"), str) or event["event_id"] in event_ids:
             raise ValueError("Invalid or duplicate event identity")
         event_ids.add(event["event_id"])
-        if event.get("type") not in {"open-question", "checkpoint", "explanation-request"} and event.get("question_id") not in ids:
+        if event.get("type") not in {"open-question", "checkpoint", "explanation-request", "plan-answer"} and event.get("question_id") not in ids:
             raise ValueError("Unknown interaction question")
         if event.get("status") not in (None, "pending-review"):
             raise ValueError("Browser evidence must remain pending review")
@@ -1012,7 +1029,7 @@ def update_session(root, relative_md, text=None, **changes):
     md, _, _ = paths(root, relative_md)
     with Lock(md.with_suffix(".session.lock")):
         state = load_session(root, relative_md)
-        allowed = {"title", "metadata", "questions", "open_questions", "lifecycle", "widgets", "resources", "navigation", "teaching", "tutoring"}
+        allowed = {"title", "metadata", "questions", "open_questions", "lifecycle", "widgets", "resources", "navigation", "teaching", "tutoring", "plan"}
         if set(changes) - allowed:
             raise ValueError("Unsupported session update fields")
         source = state["source_markdown"] if text is None else text
@@ -1988,6 +2005,8 @@ def main():
     board.add_argument("session"); board.add_argument("widget"); board.add_argument("--source", required=True, type=Path, help="JSON: a list of steps, or {steps: [...]}")
     board.add_argument("--after", metavar="STEP_ID", help="insert right after this step instead of at the end (an answer goes after the step the learner has reached)")
     board.add_argument("--open", dest="board_open", choices=("true", "false"), help="true: more is coming (the board waits for it); false: this is the end of the lecture")
+    planning = sub.add_parser("plan", help="Set the session plan (JSON, checked by session_plan.py): the page then runs the staged session; answers already given must stay in the plan")
+    planning.add_argument("session"); planning.add_argument("--source", required=True, type=Path)
     starting = sub.add_parser("start", help="Bring the voices up (detached, warmed) and connect the tutor; ready only when every worker reports ready")
     starting.add_argument("session"); starting.add_argument("--holder", help="a name for this agent: renews the supervision lease so the page says a tutor is connected")
     starting.add_argument("--provider", default="generic"); starting.add_argument("--timeout", type=float, help="seconds to wait for each worker (default 180)")
@@ -2113,6 +2132,8 @@ def main():
         if not isinstance(loaded, dict):
             raise SystemExit("error: the source must be a board script object")
         result = add_board(root, args.session, args.widget, loaded, args.title, args.after_heading)
+    elif args.command == "plan":
+        result = update_session(root, args.session, plan=json.loads(args.source.read_text(encoding="utf-8-sig")))
     elif args.command == "start":
         result = start_session(root, args.session, args.holder, args.provider, args.timeout, voice=not args.no_voice)
         if hasattr(sys.stdout, "reconfigure"):

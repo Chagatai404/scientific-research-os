@@ -223,6 +223,110 @@ class AnticipatedAndHandout(unittest.TestCase):
         self.assertTrue(any('position 2' in w for w in sp.warnings(plan)), sp.warnings(plan))
 
 
+CASES = json.loads((ROOT / 'tests' / 'fixtures' / 'plan-cases.json').read_text(encoding='utf-8'))
+
+
+def events_of(items):
+    return [({'event_id': f'e{i}', 'type': 'checkpoint', 'question_id': None, 'response': item} if isinstance(item, str)
+             else {'event_id': f'e{i}', 'type': 'plan-answer', 'question_id': item[0], 'response': {'answer': item[1], 'verdict': 'pending', 'tree': item[2]}})
+            for i, item in enumerate(items)]
+
+
+class SharedWithThePage(unittest.TestCase):
+    """tests/stages-unit.js runs these same cases against assets/html-runtime/stages.js."""
+
+    def test_judging(self):
+        questions = {q['id']: q for tree in ('probe', 'check') for q in EXAMPLE[tree]['questions']}
+        for case in CASES['judge']:
+            with self.subTest(case['name']):
+                if case.get('error'):
+                    with self.assertRaises(ValueError):
+                        sp.judge(questions[case['question']], case['answer'])
+                    continue
+                got = sp.judge(questions[case['question']], case['answer'])
+                self.assertEqual((got['verdict'], got['next']), (case['expect']['verdict'], case['expect']['next']))
+                if 'feedback_contains' in case['expect']:
+                    self.assertIn(case['expect']['feedback_contains'], got['feedback'])
+
+    def test_the_lecture_path(self):
+        for case in CASES['paths']:
+            with self.subTest(case['name']):
+                self.assertEqual(sp.lecture_path(EXAMPLE, case['results']), case['expect'])
+
+    def test_where_the_learner_is(self):
+        for case in CASES['replay']:
+            with self.subTest(case['name']):
+                got = sp.replay(EXAMPLE, case['tree'], events_of(case['events']))
+                self.assertEqual([f"{t['id']}:{t['verdict']}" for t in got['trail']], case['expect']['trail'])
+                self.assertEqual((got['current'], got['done']), (case['expect']['current'], case['expect']['done']))
+
+    def test_which_stage(self):
+        for case in CASES['stages']:
+            with self.subTest(case['name']):
+                self.assertEqual(sp.stage_of(EXAMPLE, events_of(case['events'])), case['expect'])
+
+
+class InASession(unittest.TestCase):
+    """A plan lives in the session state; the page's answers are recorded as plan-answer events and nothing else about them is trusted."""
+
+    def setUp(self):
+        import html_sessions as hs
+        self.hs = hs
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        (self.root / 'Sessions').mkdir()
+        hs.install_runtime(self.root)
+        hs.create_session(self.root, 'Sessions/P.md', '# Variance\n\nText.\n', title='Variance')
+        hs.update_session(self.root, 'Sessions/P.md', plan=EXAMPLE)
+
+    def event(self, **fields):
+        base = {'type': 'plan-answer', 'question_id': 'scale', 'response': {'answer': 'b', 'verdict': 'correct', 'tree': 'probe'}}
+        return self.hs.append_event(self.root, 'Sessions/P.md', {**base, **fields})
+
+    def test_a_plan_answer_is_saved_and_is_not_pending_work_or_evidence(self):
+        state = self.event()
+        self.assertEqual(state['events'][-1]['status'], 'pending-review')
+        self.assertEqual(self.hs.pending_activity(self.hs.load_session(self.root, 'Sessions/P.md')), [])
+
+    def test_an_invalid_plan_is_refused_and_the_old_one_is_kept(self):
+        broken = copy.deepcopy(EXAMPLE)
+        broken['probe']['start'] = 'nowhere'
+        with self.assertRaises(ValueError):
+            self.hs.update_session(self.root, 'Sessions/P.md', plan=broken)
+        self.assertEqual(self.hs.load_session(self.root, 'Sessions/P.md')['plan']['probe']['start'], 'scale')
+
+    def test_plan_answers_must_name_a_plan_question_and_a_known_shape(self):
+        for bad in ({'question_id': 'nope'}, {'response': {'answer': 'b', 'verdict': 'great', 'tree': 'probe'}}, {'response': {'answer': 'b', 'verdict': 'correct', 'tree': 'elsewhere'}},
+                    {'response': {'answer': 'b', 'verdict': 'correct', 'tree': 'probe', 'mastery': True}}, {'response': 'b'}, {'response': {'answer': True, 'verdict': 'correct', 'tree': 'probe'}}):
+            with self.subTest(bad):
+                with self.assertRaises(ValueError):
+                    self.event(**bad)
+
+    def test_a_plan_answer_cannot_award_anything(self):
+        with self.assertRaises(ValueError):
+            self.event(mastery=True)
+
+    def test_a_plan_cannot_drop_a_question_that_already_has_an_answer(self):
+        self.event()
+        smaller = copy.deepcopy(EXAMPLE)
+        smaller['probe']['questions'] = [q for q in smaller['probe']['questions'] if q['id'] != 'scale']
+        smaller['probe']['start'] = 'twopoint'
+        for segment in smaller['segments']:
+            if segment.get('plays_if'):
+                segment['plays_if'] = {'wrong': ['twopoint']} if segment['role'] == 'repair' else {'correct': ['twopoint']}
+        with self.assertRaises(ValueError):
+            self.hs.update_session(self.root, 'Sessions/P.md', plan=smaller)
+
+    def test_the_plan_command_sets_the_plan(self):
+        import subprocess
+        source = self.root / 'plan.json'
+        source.write_text(json.dumps({**EXAMPLE, 'title': 'Variance, revised'}), encoding='utf-8')
+        done = subprocess.run([sys.executable, str(ROOT / 'scripts/html_sessions.py'), '--root', str(self.root), 'plan', 'Sessions/P.md', '--source', str(source)], capture_output=True, text=True, encoding='utf-8')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.hs.load_session(self.root, 'Sessions/P.md')['plan']['title'], 'Variance, revised')
+
+
 class Command(unittest.TestCase):
     def run_cli(self, *args):
         return subprocess.run([sys.executable, str(ROOT / 'scripts/session_plan.py'), *args], capture_output=True, text=True, encoding='utf-8')

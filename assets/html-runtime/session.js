@@ -1422,6 +1422,441 @@
   return {SCHEMA, WIDTH, HEIGHT, COLORS, SIZES, HANDS, MAX, validate, pathProblem, normalizePath, estimate, createTimers, silentSpeaker, deviceSpeaker, audioSpeaker, liveSpeaker, createPlayer, mount};
 });
 
+/* Research OS staged session: runs a session plan (scripts/session_plan.py) as four stages, each in its own environment: Probe, Handout, Lecture, Check.
+   The logic (judging an answer, choosing the next question, choosing the lecture segments) mirrors session_plan.py and is pinned by tests/fixtures/plan-cases.json;
+   the view shows one thing at a time, so nothing inside it scrolls and the questions never sink to the bottom of a page.
+   A branch taken is a pacing decision made on the page against the plan's own key. It is never evidence of learning. */
+(function (root, factory) {
+  'use strict';
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  root.ResearchOSStages = api;
+})(typeof window !== 'undefined' ? window : globalThis, function () {
+  'use strict';
+  const END = 'end';
+  const STAGES = [['probe', 'Probe'], ['handout', 'Handout'], ['lecture', 'Lecture'], ['check', 'Check']];
+  const indexOf = id => STAGES.findIndex(([s]) => s === id);
+
+  // ----------------------------------------------------------------------------------------------------------------- logic (mirrors scripts/session_plan.py)
+  function judge(question, answer) {
+    if (question.kind === 'short') return {verdict: 'pending', feedback: null, next: question.next};
+    if (question.kind === 'choice') {
+      const option = question.options.find(o => o.id === answer);
+      if (!option) throw new Error(`'${answer}' is not an option of question '${question.id}'`);
+      if (option.correct === true) return {verdict: 'correct', feedback: null, next: question.on_correct};
+      return {verdict: 'wrong', feedback: option.feedback, next: option.next !== undefined ? option.next : question.on_wrong};
+    }
+    if (typeof answer !== 'number' || !Number.isFinite(answer)) throw new Error('a numeric question is answered with a number');
+    const spec = question.answer;
+    if (Math.abs(answer - spec.value) <= (spec.tolerance || 0)) return {verdict: 'correct', feedback: null, next: question.on_correct};
+    return {verdict: 'wrong', feedback: question.feedback_wrong, next: question.on_wrong};
+  }
+
+  function lecturePath(plan, results) {
+    const before = new Map(), tail = [];
+    for (const seg of plan.segments) {
+      if (seg.role === 'core') continue;
+      const rule = seg.plays_if;
+      const plays = seg.role === 'repair' ? rule.wrong.some(q => results[q] === 'wrong') : rule.correct.every(q => results[q] === 'correct');
+      if (!plays) continue;
+      if (seg.before !== undefined) { if (!before.has(seg.before)) before.set(seg.before, []); before.get(seg.before).push(seg.id); } else tail.push(seg.id);
+    }
+    const path = [];
+    for (const seg of plan.segments) if (seg.role === 'core') path.push(...(before.get(seg.id) || []), seg.id);
+    return path.concat(tail);
+  }
+
+  // One board plays the whole lecture: the chosen segments' steps in order. A segment that is only a video adds no steps here (the video pane is a later slice).
+  function composeScript(plan, path) {
+    const steps = [];
+    let hand;
+    for (const id of path) {
+      const seg = plan.segments.find(s => s.id === id);
+      if (seg && seg.script) { steps.push(...seg.script.steps); if (!hand && seg.script.hand) hand = seg.script.hand; }
+    }
+    const script = {board_schema: 1, open: false, steps};
+    if (hand) script.hand = hand;
+    return script;
+  }
+
+  // Where the learner is in a question tree, rebuilt from the saved events alone (so a reload, or another window, shows the same place).
+  function replay(plan, name, events) {
+    const tree = plan[name];
+    if (!tree) return {trail: [], current: null, done: true, results: {}};
+    const questions = new Map(tree.questions.map(q => [q.id, q])), latest = new Map();
+    for (const e of events) if (e.type === 'plan-answer' && e.response && e.response.tree === name) latest.set(e.question_id, e);
+    const trail = [], results = {}, seen = new Set();
+    let id = tree.start;
+    while (id !== END) {
+      const question = questions.get(id);
+      if (!question || seen.has(id)) break;
+      seen.add(id);
+      const event = latest.get(id);
+      let judged = null;
+      if (event) { try { judged = judge(question, event.response.answer); } catch (_) { judged = null; } }
+      if (!judged) return {trail, current: id, done: false, results};
+      trail.push({id, answer: event.response.answer, verdict: judged.verdict, feedback: judged.feedback, next: judged.next});
+      results[id] = judged.verdict;
+      id = judged.next;
+    }
+    return {trail, current: null, done: true, results};
+  }
+
+  function marks(events) {
+    return new Set(events.filter(e => e.type === 'checkpoint' && typeof e.response === 'string' && e.response.startsWith('stage:')).map(e => e.response.slice(6)));
+  }
+
+  // The stage the session is in: derived from the saved events, never from a timer.
+  function stageOf(plan, events) {
+    if (!replay(plan, 'probe', events).done) return 'probe';
+    const reached = marks(events);
+    if (!reached.has('lecture')) return 'handout';
+    if (!reached.has('check')) return 'lecture';
+    if (plan.check && !replay(plan, 'check', events).done) return 'check';
+    return 'done';
+  }
+
+  function parseNumber(text) {
+    const cleaned = String(text).trim().replace(',', '.');
+    return cleaned !== '' && /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(cleaned) ? Number(cleaned) : NaN;
+  }
+
+  // ----------------------------------------------------------------------------------------------------------------- the view
+  /* ctx: {doc, events(): [event], emit(type, questionId, response): event, rich(tag, text): element, mountBoard(container, script, onEvent): controller,
+           footer(element): void, voice: null | {bind(binding), idle, holding}, liveVoice: null | {state(): string, ask(): void, onState(callback): void}} */
+  function mount(container, plan, ctx) {
+    const doc = ctx.doc;
+    let current = plan;
+    const el = (tag, attrs, ...children) => {
+      const node = doc.createElement(tag);
+      for (const [key, value] of Object.entries(attrs || {})) {
+        if (value === undefined || value === null || value === false) continue;
+        if (key === 'class') node.className = value; else if (key === 'text') node.textContent = value; else node.setAttribute(key, value === true ? '' : String(value));
+      }
+      for (const child of children) if (child !== undefined && child !== null) node.append(child);
+      return node;
+    };
+    const button = (text, onClick, attrs) => { const b = el('button', Object.assign({type: 'button', text}, attrs || {})); b.addEventListener('click', onClick); return b; };
+
+    const shell = el('div', {class: 'ros-stages'});
+    const barList = el('ol');
+    const bar = el('nav', {class: 'ros-stagebar', 'aria-label': 'Session stages'}, barList);
+    const title = el('h1', {class: 'ros-stages-title', text: plan.title});
+    const body = el('div', {class: 'ros-stage-body'});
+    const footer = el('div', {class: 'ros-stages-footer'});
+    shell.append(el('header', {class: 'ros-stages-head'}, title, bar), body, footer);
+    container.prepend(shell);
+    if (ctx.footer) ctx.footer(footer);
+
+    const panels = {};
+    for (const id of [...STAGES.map(([s]) => s), 'done']) { panels[id] = el('section', {class: 'ros-stage ros-stage-' + id, 'data-stage': id, hidden: true}); body.append(panels[id]); }
+
+    let derived = stageOf(plan, ctx.events()), shown = derived;
+    const views = {};                         // per tree: what is on screen, so a refresh that changes nothing does not redraw (and lose a half-typed answer)
+    const drafts = new Map();
+
+    // ------------------------------------------------------------------------------------------------- the stage bar
+    function renderBar() {
+      barList.textContent = '';
+      const reached = derived === 'done' ? STAGES.length : indexOf(derived);
+      STAGES.forEach(([id, label], index) => {
+        const state = index < reached ? 'done' : index === reached ? 'current' : 'todo';
+        const link = button(label, () => show(id), {'aria-current': shown === id ? 'step' : undefined, disabled: state === 'todo'});
+        barList.append(el('li', {'data-state': state}, link));
+      });
+    }
+    function show(id) {
+      if (id !== 'done' && derived !== 'done' && indexOf(id) > indexOf(derived)) return;
+      shown = id;
+      render();
+    }
+
+    // ------------------------------------------------------------------------------------------------- questions (probe and check)
+    function treeView(name) {
+      const panel = panels[name];
+      const view = views[name] = views[name] || {viewing: null, signature: ''};
+      const r = replay(current, name, ctx.events());
+      const signature = JSON.stringify([r.trail.map(t => [t.id, t.answer]), r.current, view.viewing, derived, shown]);
+      if (signature === view.signature) return;
+      view.signature = signature;
+      panel.textContent = '';
+      const tree = current[name], questions = new Map(tree.questions.map(q => [q.id, q]));
+      const focusId = view.viewing || r.current || (r.trail.length ? r.trail[r.trail.length - 1].id : null);
+      const goTo = id => () => { view.viewing = id; treeView(name); };
+      const strip = el('ol', {class: 'ros-strip', 'aria-label': name === 'probe' ? 'Probe questions' : 'Check questions'});
+      r.trail.forEach((t, i) => {
+        const mark = t.verdict === 'correct' ? 'answered correctly' : t.verdict === 'wrong' ? 'answered, not quite' : 'answered';
+        strip.append(el('li', null, button(String(i + 1), goTo(t.id), {'aria-label': `Question ${i + 1}, ${mark}`, 'data-verdict': t.verdict, 'aria-current': focusId === t.id ? 'step' : undefined})));
+      });
+      if (r.current) {
+        const n = r.trail.length + 1;
+        strip.append(el('li', null, button(String(n), goTo(null), {'aria-label': `Question ${n}, to answer`, 'data-verdict': 'open', 'aria-current': focusId === r.current ? 'step' : undefined})));
+      }
+      panel.append(strip);
+
+      if (!focusId) { panel.append(el('p', {text: 'There are no questions here.'})); return; }
+      const question = questions.get(focusId), answered = r.trail.find(t => t.id === focusId);
+      const card = el('article', {class: 'ros-qcard', 'data-kind': question.kind});
+      const number = answered ? r.trail.indexOf(answered) + 1 : r.trail.length + 1;
+      card.append(el('p', {class: 'ros-qcard-count', text: `Question ${number}`}), ctx.rich('h2', question.prompt));
+      const feedback = el('div', {class: 'ros-qcard-feedback', role: 'status', 'aria-live': 'polite'});
+
+      if (answered) {
+        card.append(review(question, answered));
+        const last = r.trail[r.trail.length - 1].id === focusId;
+        const verdictText = answered.verdict === 'correct' ? 'Correct.' : answered.verdict === 'wrong' ? 'Not quite.' : 'Saved. The tutor reads your answer in the background; you can go on.';
+        feedback.append(el('p', {class: 'ros-stage-verdict', 'data-verdict': answered.verdict, text: verdictText}));
+        if (answered.feedback) feedback.append(ctx.rich('p', answered.feedback));
+        if (question.solution && answered.verdict !== 'pending') feedback.append(el('details', {class: 'ros-solution', open: answered.verdict !== 'correct'}, el('summary', {text: 'Why'}), ctx.rich('p', question.solution)));
+        card.append(feedback);
+        const row = el('div', {class: 'ros-qcard-actions'});
+        if (last && r.current) row.append(button('Next question', goTo(null), {class: 'ros-primary'}));
+        else if (!last) row.append(button('Back to the latest question', goTo(null)));
+        if (last && r.done) row.append(button(name === 'probe' ? 'Continue to your handout' : 'Finish', () => finishTree(name), {class: 'ros-primary'}));
+        card.append(row);
+      } else {
+        card.append(inputFor(question, name, feedback), feedback);
+      }
+      panel.append(card);
+    }
+
+    function review(question, answered) {
+      const box = el('div', {class: 'ros-qcard-answer'});
+      if (question.kind === 'choice') {
+        const list = el('ul', {class: 'ros-picks', role: 'list'});
+        for (const option of question.options) {
+          const mine = option.id === answered.answer;
+          const item = el('li', {'data-chosen': mine ? 'true' : 'false', 'data-correct': option.correct === true ? 'true' : undefined});
+          item.append(ctx.rich('span', option.text));
+          if (mine) item.append(el('span', {class: 'ros-chosen', text: ' ← your answer'}));
+          list.append(item);
+        }
+        box.append(list);
+      } else box.append(el('p', {class: 'ros-your-answer'}, el('span', {class: 'ros-label', text: 'Your answer: '}), el('span', {text: String(answered.answer)})));
+      return box;
+    }
+
+    function submit(question, name, answer) {
+      const judged = judge(question, answer);
+      ctx.emit('plan-answer', question.id, {answer, verdict: judged.verdict, tree: name});
+      drafts.delete(question.id);
+      views[name].viewing = question.id;
+      render();
+    }
+
+    function inputFor(question, name, feedback) {
+      const form = el('form', {class: 'ros-qcard-form'});
+      form.addEventListener('submit', event => event.preventDefault());
+      let send;
+      if (question.kind === 'choice') {
+        const group = el('div', {class: 'ros-picks', role: 'radiogroup', 'aria-label': 'Choose one answer'});
+        for (const option of question.options) {
+          const id = `ros-${name}-${question.id}-${option.id}`;
+          const input = el('input', {type: 'radio', name: `ros-${name}-${question.id}`, value: option.id, id});
+          const label = el('label', {for: id}); label.append(ctx.rich('span', option.text));
+          if (drafts.get(question.id) === option.id) input.checked = true;
+          input.addEventListener('change', () => { drafts.set(question.id, option.id); send.disabled = false; });
+          group.append(el('div', {class: 'ros-pick'}, input, label));
+        }
+        send = button('Check my answer', () => { const chosen = form.querySelector('input:checked'); if (chosen) submit(question, name, chosen.value); }, {class: 'ros-primary', disabled: !drafts.has(question.id)});
+        form.append(group, el('div', {class: 'ros-qcard-actions'}, send));
+      } else {
+        const id = `ros-${name}-${question.id}-answer`, multi = question.kind === 'short';
+        const input = multi ? el('textarea', {id, rows: 4, maxlength: 4000, 'aria-label': 'Your answer'}) : el('input', {id, type: 'text', inputmode: 'decimal', autocomplete: 'off', 'aria-label': 'Your answer'});
+        input.value = drafts.get(question.id) || '';
+        const check = () => {
+          const text = input.value.trim();
+          if (multi) { if (text) submit(question, name, text); return; }
+          const value = parseNumber(text);
+          if (Number.isNaN(value)) { feedback.textContent = ''; feedback.append(el('p', {class: 'ros-stage-verdict', 'data-verdict': 'problem', text: 'Give the answer as a number, for example 0.5.'})); return; }
+          submit(question, name, value);
+        };
+        send = button(multi ? 'Send my answer' : 'Check my answer', check, {class: 'ros-primary', disabled: !input.value.trim()});
+        input.addEventListener('input', () => { drafts.set(question.id, input.value); send.disabled = !input.value.trim(); });
+        input.addEventListener('keydown', event => { if (event.key === 'Enter' && (!multi || event.ctrlKey || event.metaKey)) { event.preventDefault(); check(); } });
+        const actions = el('div', {class: 'ros-qcard-actions'}, send);
+        form.append(input);
+        if (ctx.voice) {
+          const line = el('p', {class: 'ros-voice-line', role: 'status'});
+          const talk = el('button', {type: 'button', class: 'ros-voice-talk', text: ctx.voice.idle, 'aria-pressed': 'false'});
+          ctx.voice.bind({talk, line, row: null, target: () => input, idle: ctx.voice.idle, holding: ctx.voice.holding, checkText: 'Check the words, correct anything wrong, then send. Nothing is sent until you do.',
+            after: () => { drafts.set(question.id, input.value); send.disabled = !input.value.trim(); }});
+          actions.prepend(talk); form.append(actions, line);
+        } else form.append(actions);
+        form.append(el('p', {class: 'ros-stage-hint', text: multi ? 'After you send it you go straight on; the tutor reads your answer in the background.' : 'Give a number.'}));
+      }
+      return form;
+    }
+
+    function finishTree(name) {
+      derived = stageOf(current, ctx.events());
+      show(name === 'probe' ? 'handout' : 'done');
+    }
+
+    // ------------------------------------------------------------------------------------------------- handout
+    function renderHandout() {
+      const panel = panels.handout;
+      const handout = current.handout, voiceState = ctx.liveVoice ? ctx.liveVoice.state() : 'none';
+      const signature = JSON.stringify([handout, voiceState, derived, shown]);
+      if (panel.dataset.signature === signature) return;
+      panel.dataset.signature = signature; panel.textContent = '';
+      const card = el('article', {class: 'ros-handout'});
+      if (handout) {
+        card.append(el('h2', {text: handout.title}));
+        card.append(el('p', {class: 'ros-handout-status', text: {planned: 'The tutor is preparing this document.', draft: 'A draft is ready; the tutor is finishing it.', built: 'Ready.'}[handout.status || 'planned']}));
+        card.append(el('p', {class: 'ros-label', text: 'It covers'}));
+        const list = el('ul'); for (const section of handout.sections) list.append(el('li', {text: section}));
+        card.append(list, el('p', {class: 'ros-stage-hint', text: 'You keep it in your library to study from during and after the session.'}));
+      } else card.append(el('h2', {text: 'No handout for this session'}));
+      const warming = voiceState === 'warming';
+      card.append(el('div', {class: 'ros-qcard-actions'}, button(derived === 'handout' ? 'Start the lecture' : 'Go to the lecture', startLecture, {class: 'ros-primary', disabled: warming})));
+      card.append(el('p', {class: 'ros-voice-state', role: 'status', text: voiceState === 'ready' || voiceState === 'busy' ? 'The tutor’s voice is ready.' : warming ? 'The tutor’s voice is warming up. You can start in a moment.'
+        : voiceState === 'none' ? '' : 'The tutor’s voice is not running, so the lecture will use your device voice or captions.'}));
+      panel.append(card);
+    }
+    function startLecture() {
+      if (!marks(ctx.events()).has('lecture')) ctx.emit('checkpoint', null, 'stage:lecture');
+      derived = stageOf(current, ctx.events());
+      show('lecture');
+      const play = lecture.host && lecture.host.querySelector('.ros-board-play');
+      if (play && lecture.controller && lecture.controller.status === 'idle') play.click();   // inside the learner's click, so the browser lets sound start
+    }
+
+    // ------------------------------------------------------------------------------------------------- lecture: the board, a way to ask, nothing else
+    const lecture = {host: null, controller: null, stepId: '', asked: new Set(), path: [], script: null};
+    function buildLecture() {
+      if (lecture.host) return;
+      const probe = replay(current, 'probe', ctx.events());
+      lecture.path = lecturePath(current, probe.results);
+      lecture.host = el('div', {class: 'ros-lecture-board'});
+      const tools = el('div', {class: 'ros-lecture-tools'});
+      lecture.chips = el('div', {class: 'ros-chips', role: 'group', 'aria-label': 'Questions the tutor expected'});
+      lecture.composer = el('form', {class: 'ros-ask', hidden: true});
+      lecture.input = el('textarea', {rows: 2, maxlength: 4000, 'aria-label': 'Your question'});
+      lecture.send = button('Send', sendQuestion, {class: 'ros-primary', disabled: true});
+      lecture.input.addEventListener('input', () => { lecture.send.disabled = !lecture.input.value.trim(); });
+      lecture.input.addEventListener('keydown', event => { if (event.key === 'Escape') closeAsk(); else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); sendQuestion(); } });
+      lecture.composer.addEventListener('submit', event => event.preventDefault());
+      const row = el('div', {class: 'ros-ask-row'}, lecture.send, button('Cancel', closeAsk));
+      if (ctx.voice) {
+        const line = el('p', {class: 'ros-voice-line', role: 'status'});
+        const talk = el('button', {type: 'button', class: 'ros-voice-talk', text: ctx.voice.idle, 'aria-pressed': 'false'});
+        ctx.voice.bind({talk, line, row: null, target: () => lecture.input, idle: ctx.voice.idle, holding: ctx.voice.holding, after: () => { lecture.send.disabled = !lecture.input.value.trim(); }});
+        row.prepend(talk); lecture.composer.append(lecture.input, row, line);
+      } else lecture.composer.append(lecture.input, row);
+      lecture.askButton = button('Ask a question', openAsk, {class: 'ros-ask-button'});
+      lecture.next = button(current.check ? 'Continue to the check' : 'Finish', endLecture, {class: 'ros-primary', hidden: true});
+      tools.append(lecture.askButton, lecture.chips, lecture.composer, lecture.next);
+      panels.lecture.append(lecture.host, tools);
+      lecture.script = composeScript(current, lecture.path);
+      lecture.controller = ctx.mountBoard(lecture.host, lecture.script, (type, data) => {
+        if (type === 'step') lecture.stepId = data.step.id;
+        if (type === 'status' && lecture.controller) lecture.next.hidden = lecture.controller.status !== 'done';
+      });
+      renderChips();
+      // The caption, the voice note and the controls change as the lecture plays; the board gives back or takes height as they do.
+      const win = doc.defaultView;
+      if (win && win.MutationObserver) new win.MutationObserver(() => win.requestAnimationFrame(fitLecture)).observe(shell, {childList: true, characterData: true, subtree: true});
+    }
+    // The board is as large as the window allows while everything else on the stage stays in view: its width follows from the height that is left once the
+    // header, the controls and the tools have their share.
+    function fitLecture() {
+      const board = lecture.host && lecture.host.querySelector('.ros-board'), surface = board && board.querySelector('.ros-board-surface'), frame = board && board.querySelector('.ros-board-frame');
+      const win = doc.defaultView;
+      if (!surface || !frame || !win || shown !== 'lecture') return;
+      for (let pass = 0; pass < 3; pass++) {
+        const surfaceBox = surface.getBoundingClientRect(), padding = frame.getBoundingClientRect().width - surfaceBox.width;
+        const overhead = shell.getBoundingClientRect().height - surfaceBox.height;
+        const available = Math.max(160, win.innerHeight - overhead);
+        board.style.maxWidth = Math.max(240, available * 16 / 9 + padding) + 'px';
+      }
+    }
+    function renderChips() {
+      lecture.chips.textContent = '';
+      for (const item of current.anticipated || []) {
+        if (lecture.path.includes(item.segment)) lecture.chips.append(button(item.label, () => playAnswer(item), {disabled: lecture.asked.has(item.label)}));
+      }
+    }
+    function playAnswer(item) {
+      if (!lecture.controller || !lecture.controller.update || lecture.asked.has(item.label)) return;
+      const script = lecture.script, steps = script.steps.slice(), at = steps.findIndex(s => s.id === lecture.stepId);
+      const fresh = item.steps.filter(s => !steps.some(t => t.id === s.id));
+      if (!fresh.length) return;
+      steps.splice(at < 0 ? 0 : at + 1, 0, ...fresh);
+      const next = Object.assign({}, script, {steps});
+      const result = lecture.controller.update(next);
+      if (result && result.ok === false) return;
+      lecture.script = next;
+      lecture.asked.add(item.label);
+      ctx.emit('checkpoint', null, 'asked:' + item.label.slice(0, 60));
+      renderChips();
+    }
+    let pausedForAsk = false;
+    function openAsk() {
+      lecture.composer.hidden = false; lecture.askButton.hidden = true;
+      if (lecture.controller && lecture.controller.status === 'playing') { lecture.controller.pause(); pausedForAsk = true; }
+      lecture.input.focus();
+    }
+    function closeAsk() {
+      lecture.composer.hidden = true; lecture.askButton.hidden = false; lecture.input.value = ''; lecture.send.disabled = true;
+      if (pausedForAsk && lecture.controller && lecture.controller.status === 'paused') lecture.controller.resume();
+      pausedForAsk = false; lecture.askButton.focus();
+    }
+    function sendQuestion() {
+      const text = lecture.input.value.trim();
+      if (!text) return;
+      ctx.emit('open-question', null, text);
+      closeAsk();
+    }
+    function endLecture() {
+      ctx.emit('checkpoint', null, 'stage:check');
+      derived = stageOf(current, ctx.events());
+      show(derived);
+    }
+
+    // ------------------------------------------------------------------------------------------------- done
+    function renderDone() {
+      const panel = panels.done;
+      const count = name => { const r = replay(current, name, ctx.events()); return {total: r.trail.length, right: r.trail.filter(t => t.verdict === 'correct').length, open: r.trail.filter(t => t.verdict === 'pending').length}; };
+      const signature = JSON.stringify([count('probe'), count('check'), shown]);
+      if (panel.dataset.signature === signature) return;
+      panel.dataset.signature = signature; panel.textContent = '';
+      const line = (label, c) => `${label}: ${c.right} of ${c.total - c.open} answered right${c.open ? `, ${c.open} written answer${c.open === 1 ? '' : 's'} for the tutor to read` : ''}.`;
+      panel.append(el('article', {class: 'ros-handout'}, el('h2', {text: 'This session is finished'}),
+        el('p', {text: line('Probe', count('probe'))}), current.check ? el('p', {text: line('Check', count('check'))}) : null,
+        el('p', {class: 'ros-stage-hint', text: 'These counts only pace the session. They are not a measure of what you have learned; the tutor reviews your written answers before anything is recorded.'})));
+    }
+
+    // ------------------------------------------------------------------------------------------------- one render
+    function render() {
+      derived = stageOf(current, ctx.events());
+      for (const id of Object.keys(panels)) panels[id].hidden = id !== shown;
+      renderBar();
+      if (shown === 'probe') treeView('probe');
+      else if (shown === 'handout') renderHandout();
+      else if (shown === 'lecture') { buildLecture(); fitLecture(); }
+      else if (shown === 'check') treeView('check');
+      else if (shown === 'done') renderDone();
+      shell.dataset.stage = shown;
+    }
+    if (ctx.liveVoice) ctx.liveVoice.onState(() => { if (shown === 'handout') renderHandout(); });
+    if (doc.defaultView) {
+      doc.defaultView.addEventListener('resize', fitLecture);
+      if (doc.defaultView.requestAnimationFrame) doc.defaultView.requestAnimationFrame(() => doc.defaultView.requestAnimationFrame(fitLecture));   // once fonts and the first layout have settled
+    }
+    render();
+    if (ctx.liveVoice) ctx.liveVoice.ask();
+
+    return {
+      get stage() { return shown; },
+      update(next) { current = next; title.textContent = next.title; render(); },
+      destroy() { if (lecture.controller && lecture.controller.destroy) lecture.controller.destroy(); shell.remove(); }
+    };
+  }
+
+  return {END, STAGES, judge, lecturePath, composeScript, replay, stageOf, marks, parseNumber, mount};
+});
+
 /* Research OS runtime v1. No host privileges, network calls or authoritative browser storage. */
 (function (root) {
   'use strict';
@@ -1532,9 +1967,11 @@
     const panels = new Map();
     const extensions = new Map();
     const boards = new Map();
+    let staged = null;      // the staged view (stages.js) when the session has a plan; the reading page below is then built but never shown
     // The tutor's live voice: the host (the Obsidian plugin, with a local voice worker) speaks each sentence when it is asked for, by id, and answers with audio
     // or an error. A standalone page has no host, so it has no live voice and its boards use the device voice, a recording, or captions.
     const speechPending = new Map();
+    const liveVoiceListeners = new Set();   // called with the live voice worker's state ("ready", "warming", "off"…) whenever the host reports it
     const liveVoice = host && host.voice && host.voice.speak ? {
       pause: 0.5,
       request(id, text) {
@@ -1611,6 +2048,8 @@
         resourceResult(data);
       } else if (data.type === 'voice') {
         voiceResult(data);
+      } else if (data.type === 'speech' && data.status === 'worker') {
+        for (const listener of liveVoiceListeners) listener(String(data.state || 'off'), data.reason ? String(data.reason).slice(0, 200) : null);
       } else if (data.type === 'speech') {
         const waiting = typeof data.id === 'string' ? speechPending.get(data.id) : null;
         if (!waiting) return;
@@ -1629,6 +2068,7 @@
     progressBar.setAttribute('aria-valuemin', '0');
     const progressFill = node('span'); progressBar.append(progressFill); progress.append(progressText, progressBar, status);
     function placeProgress() {
+      if (staged) return;      // the staged view keeps the save status and the tutor line in its own footer
       // Save status shares the progress row, so the header holds only the title and its context.
       const header = mount.querySelector(':scope > .ros-session-header');
       if (questions.size) { if (header) header.after(progress); else mount.prepend(progress); if (status.parentElement !== progress) progress.append(status); }
@@ -2195,12 +2635,15 @@
     const pausedByVoice = [];
     function toHost(type, extra) { root.parent.postMessage(Object.assign({channel: 'research-os', token: host.token, session_id: state.session_id, type}, extra), '*'); }
     function resumeBoards() { for (const board of pausedByVoice.splice(0)) if (board.status === 'paused') board.resume(); }
+    // The microphone has one owner at a time: the control the learner last pressed. The default is the open-question box; the staged view binds its own answer boxes.
+    let voiceActive = {talk, line: voiceLine, row: voiceRow, target: () => question, idle: 'Hold to ask aloud', holding: 'Listening… let go to ask', after: null};
     function voiceUi(next, line, problem) {
-      voiceState = next; talk.dataset.voice = next; voiceRow.dataset.voice = next;
-      talk.disabled = next === 'transcribing';
-      talk.setAttribute('aria-pressed', String(next === 'starting' || next === 'recording'));
-      talk.textContent = next === 'starting' || next === 'recording' ? (voiceToggle ? 'Listening… click to stop' : 'Listening… let go to ask') : next === 'transcribing' ? 'Transcribing…' : 'Hold to ask aloud';
-      if (line !== undefined) { voiceLine.textContent = line; voiceLine.classList.toggle('ros-voice-problem', !!problem); }
+      const {talk: button, line: note, row} = voiceActive;
+      voiceState = next; button.dataset.voice = next; if (row) row.dataset.voice = next;
+      button.disabled = next === 'transcribing';
+      button.setAttribute('aria-pressed', String(next === 'starting' || next === 'recording'));
+      button.textContent = next === 'starting' || next === 'recording' ? (voiceToggle ? 'Listening… click to stop' : voiceActive.holding) : next === 'transcribing' ? 'Transcribing…' : voiceActive.idle;
+      if (line !== undefined) { note.textContent = line; note.classList.toggle('ros-voice-problem', !!problem); }
     }
     function startTalking() {
       if (!voiceOn || voiceState !== 'idle') return;
@@ -2231,9 +2674,10 @@
       if (data.status === 'worker') {
         if (voiceState === 'idle') {
           const ok = data.state === 'ready' || data.state === 'busy' || data.state === 'warming';
-          voiceLine.textContent = (WORKER_LINE[data.state] || WORKER_LINE.off) + (ok && data.model ? ' (' + String(data.model).slice(0, 40) + (data.device ? ', ' + String(data.device).slice(0, 16) : '') + ')' : '');
-          voiceLine.classList.toggle('ros-voice-problem', !ok);
+          voiceActive.line.textContent = (WORKER_LINE[data.state] || WORKER_LINE.off) + (ok && data.model ? ' (' + String(data.model).slice(0, 40) + (data.device ? ', ' + String(data.device).slice(0, 16) : '') + ')' : '');
+          voiceActive.line.classList.toggle('ros-voice-problem', !ok);
         }
+        for (const listener of voiceListeners) listener(data.state);
       } else if (data.status === 'recording') {
         if (voiceState === 'starting') voiceUi('recording', 'Listening. ' + (data.max_seconds ? 'Up to ' + Number(data.max_seconds) + ' seconds.' : ''), false);
       } else if (data.status === 'transcribing') {
@@ -2242,10 +2686,12 @@
         const heard = typeof data.text === 'string' ? data.text.replace(/\s+/g, ' ').trim() : '';
         voiceToggle = false;
         if (!heard) { voiceUi('idle', 'Nothing was heard. Try again a little closer to the microphone.', true); resumeBoards(); return; }
-        const kept = question.value.trim();
-        question.value = ((kept ? kept + ' ' : '') + heard).slice(0, question.maxLength > 0 ? question.maxLength : 4000);
-        voiceUi('idle', 'Check the text, correct anything that is wrong, then press Send. Nothing is sent until you do.', false);
-        question.focus(); question.setSelectionRange(question.value.length, question.value.length);
+        const box = voiceActive.target(), kept = box.value.trim();
+        box.value = ((kept ? kept + ' ' : '') + heard).slice(0, box.maxLength > 0 ? box.maxLength : 4000);
+        voiceUi('idle', voiceActive.checkText || 'Check the text, correct anything that is wrong, then press Send. Nothing is sent until you do.', false);
+        box.focus(); box.setSelectionRange(box.value.length, box.value.length);
+        box.dispatchEvent(new root.Event('input', {bubbles: true}));
+        if (voiceActive.after) voiceActive.after();
       } else if (data.status === 'cancelled') {
         voiceToggle = false; if (voiceState !== 'idle') voiceUi('idle', '', false);   // the page already said "Cancelled." when the learner did it
         resumeBoards();
@@ -2253,27 +2699,33 @@
         voiceToggle = false; voiceUi('idle', String(data.message || 'Voice input failed.').slice(0, 400), true); resumeBoards();
       }
     }
-    if (voiceOn) {
-      // Hold to talk with the pointer; a quick tap leaves it listening until the next tap. The keyboard toggles (a key cannot be "held" reliably).
-      talk.addEventListener('pointerdown', event => {
-        if (event.button > 0) return;
+    const voiceListeners = new Set();
+    // Hold to talk with the pointer; a quick tap leaves it listening until the next tap. The keyboard toggles (a key cannot be "held" reliably).
+    // A binding is {talk, line, target(), idle, holding, checkText, after}: the button, the status line, the text box the words land in, and what to do afterwards.
+    function bindTalk(binding) {
+      const button = binding.talk, mine = () => voiceState === 'idle' ? (voiceActive = binding, true) : voiceActive === binding;
+      button.addEventListener('pointerdown', event => {
+        if (event.button > 0 || !mine()) return;
         event.preventDefault();
-        try { talk.setPointerCapture(event.pointerId); } catch (_) { /* the pointer is already gone */ }
+        try { button.setPointerCapture(event.pointerId); } catch (_) { /* the pointer is already gone */ }
         if (voiceState === 'recording' && voiceToggle) { voiceToggle = false; stopTalking(); return; }
         voiceHeldAt = Date.now(); voiceToggle = false; startTalking();
       });
-      talk.addEventListener('pointerup', event => {
-        if (event.button > 0 || voiceState === 'idle' || voiceState === 'transcribing') return;
+      button.addEventListener('pointerup', event => {
+        if (event.button > 0 || voiceActive !== binding || voiceState === 'idle' || voiceState === 'transcribing') return;
         if (Date.now() - voiceHeldAt < 350) { voiceToggle = true; voiceUi(voiceState, undefined); return; }
         stopTalking();
       });
-      talk.addEventListener('pointercancel', cancelTalking);
-      talk.addEventListener('click', event => {
-        if (event.detail !== 0) return;      // a pointer click was handled above; a keyboard activation has no click count
+      button.addEventListener('pointercancel', () => { if (voiceActive === binding) cancelTalking(); });
+      button.addEventListener('click', event => {
+        if (event.detail !== 0 || !mine()) return;      // a pointer click was handled above; a keyboard activation has no click count
         if (voiceState === 'idle') { voiceToggle = true; startTalking(); } else if (voiceState === 'starting' || voiceState === 'recording') stopTalking();
       });
-      talk.addEventListener('keydown', event => { if (event.key === 'Escape' && voiceState !== 'idle') { event.preventDefault(); cancelTalking(); } });
-      talk.addEventListener('pointerenter', refreshVoice); talk.addEventListener('focus', refreshVoice);
+      button.addEventListener('keydown', event => { if (event.key === 'Escape' && voiceActive === binding && voiceState !== 'idle') { event.preventDefault(); cancelTalking(); } });
+      button.addEventListener('pointerenter', refreshVoice); button.addEventListener('focus', refreshVoice);
+    }
+    if (voiceOn) {
+      bindTalk(voiceActive);
       root.addEventListener('pagehide', () => { if (voiceState !== 'idle') toHost('voice', {action: 'cancel'}); });
       refreshVoice();
     }
@@ -2402,6 +2854,7 @@
       waiting.append(list);
     }
     function refreshAll() {
+      if (staged && state.plan) staged.update(state.plan);
       for (const panel of panels.values()) refreshPanel(panel);
       updateProgress(); renderConversation(); renderWaiting(); updateSectionProgress(); renderRelated(); renderSupervision();
     }
@@ -2545,7 +2998,26 @@
       const target = link.getAttribute('data-ros-target');
       if (Rich && Rich.validNoteTarget(target)) openNote(target, link);
     });
-    for (const child of contentNodes) enhance(child);
+    // A session with a plan runs as stages: Probe, Handout, Lecture, Check, each in its own environment. The reading page is not built for it.
+    const Stages = root.ResearchOSStages;
+    if (state.plan && Stages) {
+      doc.body.classList.add('ros-staged');
+      let liveState = 'none';
+      const liveOn = !!(host && host.voice && host.voice.speak);
+      if (liveOn) liveState = 'unknown';
+      liveVoiceListeners.add(next => { liveState = next; });
+      staged = Stages.mount(mount, state.plan, {
+        doc, events: () => localEvents, emit, rich,
+        mountBoard: (container, script, onEvent) => root.ResearchOSBoard.mount(container, script, {doc, win: root, renderMath, live: liveVoice || undefined, onEvent}),
+        footer: element => element.append(status, supervisionLine),
+        voice: voiceOn ? {bind: bindTalk, idle: 'Hold to speak', holding: 'Listening… let go'} : null,
+        liveVoice: liveOn ? {
+          state: () => liveState,
+          ask: () => { toHost('speak', {action: 'status'}); root.setInterval(() => toHost('speak', {action: 'status'}), 3000); },
+          onState: callback => liveVoiceListeners.add(callback)
+        } : null
+      });
+    } else for (const child of contentNodes) enhance(child);
     placeProgress(); renumber(); refreshAll();
     if (host && host.position && typeof host.position.section === 'string') {
       const target = doc.getElementById(host.position.section);

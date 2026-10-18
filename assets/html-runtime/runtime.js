@@ -108,9 +108,11 @@
     const panels = new Map();
     const extensions = new Map();
     const boards = new Map();
+    let staged = null;      // the staged view (stages.js) when the session has a plan; the reading page below is then built but never shown
     // The tutor's live voice: the host (the Obsidian plugin, with a local voice worker) speaks each sentence when it is asked for, by id, and answers with audio
     // or an error. A standalone page has no host, so it has no live voice and its boards use the device voice, a recording, or captions.
     const speechPending = new Map();
+    const liveVoiceListeners = new Set();   // called with the live voice worker's state ("ready", "warming", "off"…) whenever the host reports it
     const liveVoice = host && host.voice && host.voice.speak ? {
       pause: 0.5,
       request(id, text) {
@@ -187,6 +189,8 @@
         resourceResult(data);
       } else if (data.type === 'voice') {
         voiceResult(data);
+      } else if (data.type === 'speech' && data.status === 'worker') {
+        for (const listener of liveVoiceListeners) listener(String(data.state || 'off'), data.reason ? String(data.reason).slice(0, 200) : null);
       } else if (data.type === 'speech') {
         const waiting = typeof data.id === 'string' ? speechPending.get(data.id) : null;
         if (!waiting) return;
@@ -205,6 +209,7 @@
     progressBar.setAttribute('aria-valuemin', '0');
     const progressFill = node('span'); progressBar.append(progressFill); progress.append(progressText, progressBar, status);
     function placeProgress() {
+      if (staged) return;      // the staged view keeps the save status and the tutor line in its own footer
       // Save status shares the progress row, so the header holds only the title and its context.
       const header = mount.querySelector(':scope > .ros-session-header');
       if (questions.size) { if (header) header.after(progress); else mount.prepend(progress); if (status.parentElement !== progress) progress.append(status); }
@@ -771,12 +776,15 @@
     const pausedByVoice = [];
     function toHost(type, extra) { root.parent.postMessage(Object.assign({channel: 'research-os', token: host.token, session_id: state.session_id, type}, extra), '*'); }
     function resumeBoards() { for (const board of pausedByVoice.splice(0)) if (board.status === 'paused') board.resume(); }
+    // The microphone has one owner at a time: the control the learner last pressed. The default is the open-question box; the staged view binds its own answer boxes.
+    let voiceActive = {talk, line: voiceLine, row: voiceRow, target: () => question, idle: 'Hold to ask aloud', holding: 'Listening… let go to ask', after: null};
     function voiceUi(next, line, problem) {
-      voiceState = next; talk.dataset.voice = next; voiceRow.dataset.voice = next;
-      talk.disabled = next === 'transcribing';
-      talk.setAttribute('aria-pressed', String(next === 'starting' || next === 'recording'));
-      talk.textContent = next === 'starting' || next === 'recording' ? (voiceToggle ? 'Listening… click to stop' : 'Listening… let go to ask') : next === 'transcribing' ? 'Transcribing…' : 'Hold to ask aloud';
-      if (line !== undefined) { voiceLine.textContent = line; voiceLine.classList.toggle('ros-voice-problem', !!problem); }
+      const {talk: button, line: note, row} = voiceActive;
+      voiceState = next; button.dataset.voice = next; if (row) row.dataset.voice = next;
+      button.disabled = next === 'transcribing';
+      button.setAttribute('aria-pressed', String(next === 'starting' || next === 'recording'));
+      button.textContent = next === 'starting' || next === 'recording' ? (voiceToggle ? 'Listening… click to stop' : voiceActive.holding) : next === 'transcribing' ? 'Transcribing…' : voiceActive.idle;
+      if (line !== undefined) { note.textContent = line; note.classList.toggle('ros-voice-problem', !!problem); }
     }
     function startTalking() {
       if (!voiceOn || voiceState !== 'idle') return;
@@ -807,9 +815,10 @@
       if (data.status === 'worker') {
         if (voiceState === 'idle') {
           const ok = data.state === 'ready' || data.state === 'busy' || data.state === 'warming';
-          voiceLine.textContent = (WORKER_LINE[data.state] || WORKER_LINE.off) + (ok && data.model ? ' (' + String(data.model).slice(0, 40) + (data.device ? ', ' + String(data.device).slice(0, 16) : '') + ')' : '');
-          voiceLine.classList.toggle('ros-voice-problem', !ok);
+          voiceActive.line.textContent = (WORKER_LINE[data.state] || WORKER_LINE.off) + (ok && data.model ? ' (' + String(data.model).slice(0, 40) + (data.device ? ', ' + String(data.device).slice(0, 16) : '') + ')' : '');
+          voiceActive.line.classList.toggle('ros-voice-problem', !ok);
         }
+        for (const listener of voiceListeners) listener(data.state);
       } else if (data.status === 'recording') {
         if (voiceState === 'starting') voiceUi('recording', 'Listening. ' + (data.max_seconds ? 'Up to ' + Number(data.max_seconds) + ' seconds.' : ''), false);
       } else if (data.status === 'transcribing') {
@@ -818,10 +827,12 @@
         const heard = typeof data.text === 'string' ? data.text.replace(/\s+/g, ' ').trim() : '';
         voiceToggle = false;
         if (!heard) { voiceUi('idle', 'Nothing was heard. Try again a little closer to the microphone.', true); resumeBoards(); return; }
-        const kept = question.value.trim();
-        question.value = ((kept ? kept + ' ' : '') + heard).slice(0, question.maxLength > 0 ? question.maxLength : 4000);
-        voiceUi('idle', 'Check the text, correct anything that is wrong, then press Send. Nothing is sent until you do.', false);
-        question.focus(); question.setSelectionRange(question.value.length, question.value.length);
+        const box = voiceActive.target(), kept = box.value.trim();
+        box.value = ((kept ? kept + ' ' : '') + heard).slice(0, box.maxLength > 0 ? box.maxLength : 4000);
+        voiceUi('idle', voiceActive.checkText || 'Check the text, correct anything that is wrong, then press Send. Nothing is sent until you do.', false);
+        box.focus(); box.setSelectionRange(box.value.length, box.value.length);
+        box.dispatchEvent(new root.Event('input', {bubbles: true}));
+        if (voiceActive.after) voiceActive.after();
       } else if (data.status === 'cancelled') {
         voiceToggle = false; if (voiceState !== 'idle') voiceUi('idle', '', false);   // the page already said "Cancelled." when the learner did it
         resumeBoards();
@@ -829,27 +840,33 @@
         voiceToggle = false; voiceUi('idle', String(data.message || 'Voice input failed.').slice(0, 400), true); resumeBoards();
       }
     }
-    if (voiceOn) {
-      // Hold to talk with the pointer; a quick tap leaves it listening until the next tap. The keyboard toggles (a key cannot be "held" reliably).
-      talk.addEventListener('pointerdown', event => {
-        if (event.button > 0) return;
+    const voiceListeners = new Set();
+    // Hold to talk with the pointer; a quick tap leaves it listening until the next tap. The keyboard toggles (a key cannot be "held" reliably).
+    // A binding is {talk, line, target(), idle, holding, checkText, after}: the button, the status line, the text box the words land in, and what to do afterwards.
+    function bindTalk(binding) {
+      const button = binding.talk, mine = () => voiceState === 'idle' ? (voiceActive = binding, true) : voiceActive === binding;
+      button.addEventListener('pointerdown', event => {
+        if (event.button > 0 || !mine()) return;
         event.preventDefault();
-        try { talk.setPointerCapture(event.pointerId); } catch (_) { /* the pointer is already gone */ }
+        try { button.setPointerCapture(event.pointerId); } catch (_) { /* the pointer is already gone */ }
         if (voiceState === 'recording' && voiceToggle) { voiceToggle = false; stopTalking(); return; }
         voiceHeldAt = Date.now(); voiceToggle = false; startTalking();
       });
-      talk.addEventListener('pointerup', event => {
-        if (event.button > 0 || voiceState === 'idle' || voiceState === 'transcribing') return;
+      button.addEventListener('pointerup', event => {
+        if (event.button > 0 || voiceActive !== binding || voiceState === 'idle' || voiceState === 'transcribing') return;
         if (Date.now() - voiceHeldAt < 350) { voiceToggle = true; voiceUi(voiceState, undefined); return; }
         stopTalking();
       });
-      talk.addEventListener('pointercancel', cancelTalking);
-      talk.addEventListener('click', event => {
-        if (event.detail !== 0) return;      // a pointer click was handled above; a keyboard activation has no click count
+      button.addEventListener('pointercancel', () => { if (voiceActive === binding) cancelTalking(); });
+      button.addEventListener('click', event => {
+        if (event.detail !== 0 || !mine()) return;      // a pointer click was handled above; a keyboard activation has no click count
         if (voiceState === 'idle') { voiceToggle = true; startTalking(); } else if (voiceState === 'starting' || voiceState === 'recording') stopTalking();
       });
-      talk.addEventListener('keydown', event => { if (event.key === 'Escape' && voiceState !== 'idle') { event.preventDefault(); cancelTalking(); } });
-      talk.addEventListener('pointerenter', refreshVoice); talk.addEventListener('focus', refreshVoice);
+      button.addEventListener('keydown', event => { if (event.key === 'Escape' && voiceActive === binding && voiceState !== 'idle') { event.preventDefault(); cancelTalking(); } });
+      button.addEventListener('pointerenter', refreshVoice); button.addEventListener('focus', refreshVoice);
+    }
+    if (voiceOn) {
+      bindTalk(voiceActive);
       root.addEventListener('pagehide', () => { if (voiceState !== 'idle') toHost('voice', {action: 'cancel'}); });
       refreshVoice();
     }
@@ -978,6 +995,7 @@
       waiting.append(list);
     }
     function refreshAll() {
+      if (staged && state.plan) staged.update(state.plan);
       for (const panel of panels.values()) refreshPanel(panel);
       updateProgress(); renderConversation(); renderWaiting(); updateSectionProgress(); renderRelated(); renderSupervision();
     }
@@ -1121,7 +1139,26 @@
       const target = link.getAttribute('data-ros-target');
       if (Rich && Rich.validNoteTarget(target)) openNote(target, link);
     });
-    for (const child of contentNodes) enhance(child);
+    // A session with a plan runs as stages: Probe, Handout, Lecture, Check, each in its own environment. The reading page is not built for it.
+    const Stages = root.ResearchOSStages;
+    if (state.plan && Stages) {
+      doc.body.classList.add('ros-staged');
+      let liveState = 'none';
+      const liveOn = !!(host && host.voice && host.voice.speak);
+      if (liveOn) liveState = 'unknown';
+      liveVoiceListeners.add(next => { liveState = next; });
+      staged = Stages.mount(mount, state.plan, {
+        doc, events: () => localEvents, emit, rich,
+        mountBoard: (container, script, onEvent) => root.ResearchOSBoard.mount(container, script, {doc, win: root, renderMath, live: liveVoice || undefined, onEvent}),
+        footer: element => element.append(status, supervisionLine),
+        voice: voiceOn ? {bind: bindTalk, idle: 'Hold to speak', holding: 'Listening… let go'} : null,
+        liveVoice: liveOn ? {
+          state: () => liveState,
+          ask: () => { toHost('speak', {action: 'status'}); root.setInterval(() => toHost('speak', {action: 'status'}), 3000); },
+          onState: callback => liveVoiceListeners.add(callback)
+        } : null
+      });
+    } else for (const child of contentNodes) enhance(child);
     placeProgress(); renumber(); refreshAll();
     if (host && host.position && typeof host.position.section === 'string') {
       const target = doc.getElementById(host.position.section);

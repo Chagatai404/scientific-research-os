@@ -440,6 +440,53 @@ def lecture_path(plan: dict, results: dict) -> list[str]:
     return path + tail
 
 
+def replay(plan: dict, name: str, events: list) -> dict:
+    """Where the learner is in a question tree (``probe`` or ``check``), rebuilt from the saved ``plan-answer`` events alone: the questions answered in order
+    with their verdicts, the question to answer now, and whether the tree is finished. The page does the same, so a reload shows the same place."""
+    tree = plan.get(name)
+    if not tree:
+        return {'trail': [], 'current': None, 'done': True, 'results': {}}
+    questions = {q['id']: q for q in tree['questions']}
+    latest = {}
+    for event in events:
+        response = event.get('response')
+        if event.get('type') == 'plan-answer' and isinstance(response, dict) and response.get('tree') == name:
+            latest[event['question_id']] = event
+    trail, results, seen, qid = [], {}, set(), tree['start']
+    while qid != END:
+        question = questions.get(qid)
+        if question is None or qid in seen:
+            break
+        seen.add(qid)
+        event = latest.get(qid)
+        judged = None
+        if event is not None:
+            try:
+                judged = judge(question, event['response']['answer'])
+            except (ValueError, KeyError, TypeError):
+                judged = None
+        if judged is None:
+            return {'trail': trail, 'current': qid, 'done': False, 'results': results}
+        trail.append({'id': qid, 'answer': event['response']['answer'], 'verdict': judged['verdict'], 'feedback': judged['feedback'], 'next': judged['next']})
+        results[qid] = judged['verdict']
+        qid = judged['next']
+    return {'trail': trail, 'current': None, 'done': True, 'results': results}
+
+
+def stage_of(plan: dict, events: list) -> str:
+    """The stage a session is in (``probe``, ``handout``, ``lecture``, ``check`` or ``done``), from the saved events, never from a timer."""
+    if not replay(plan, 'probe', events)['done']:
+        return 'probe'
+    reached = {e['response'][6:] for e in events if e.get('type') == 'checkpoint' and isinstance(e.get('response'), str) and e['response'].startswith('stage:')}
+    if 'lecture' not in reached:
+        return 'handout'
+    if 'check' not in reached:
+        return 'lecture'
+    if plan.get('check') and not replay(plan, 'check', events)['done']:
+        return 'check'
+    return 'done'
+
+
 def summary(plan: dict) -> dict:
     """Facts for the agent: how long the lecture is, what the probe can cost."""
     words = {s['id']: sum(len(str(step.get('say', '')).split()) for step in (s.get('script') or {}).get('steps', [])) for s in plan['segments']}

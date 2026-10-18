@@ -39,6 +39,19 @@ assert.throws(() => approveModule(moduleResource, code + 'changed', {[moduleReso
 assert.equal(approveModule(moduleResource, code, {[moduleResource.path]:hash}), code);
 assert.equal(validateResources([{path:'session.assets/image.png',kind:'image',alt:'Plot'}], 'project/session.html')[0].path, 'project/session.assets/image.png');
 assert.equal(validateEvent({event_id:'checkpoint-1',type:'checkpoint',question_id:null,response:'raw checkpoint'},state()).type,'checkpoint');
+// An answer to a question in the session plan: a plan question, a bounded shape, and nothing that awards anything.
+{
+  const planned = () => ({...state(), plan: {probe: {start: 'p1', questions: [{id: 'p1'}]}, check: {start: 'c1', questions: [{id: 'c1'}]}}});
+  const planEvent = (extra = {}) => ({event_id: 'plan-1', type: 'plan-answer', question_id: 'p1', response: {answer: 'b', verdict: 'correct', tree: 'probe'}, ...extra});
+  assert.equal(validateEvent(planEvent(), planned()).type, 'plan-answer');
+  assert.equal(validateEvent(planEvent({question_id: 'c1', response: {answer: 36, verdict: 'wrong', tree: 'check'}}), planned()).question_id, 'c1');
+  assert.throws(() => validateEvent(planEvent(), state()), /Unknown plan question/, 'a session with no plan has no plan questions');
+  assert.throws(() => validateEvent(planEvent({question_id: 'nope'}), planned()), /Unknown plan question/);
+  for (const response of [{answer: 'b', verdict: 'great', tree: 'probe'}, {answer: 'b', verdict: 'correct', tree: 'elsewhere'}, {answer: 'b', verdict: 'correct', tree: 'probe', mastery: true}, 'b', null, [], {answer: true, verdict: 'correct', tree: 'probe'}]) {
+    assert.throws(() => validateEvent(planEvent({response}), planned()), /Unknown plan question/, JSON.stringify(response));
+  }
+  assert.throws(() => validateEvent(planEvent({mastery: 1}), planned()), /Unknown event field/);
+}
 assert.throws(() => validateEvent({event_id:'checkpoint-1',type:'checkpoint',question_id:null,response:''},state()), /raw explanation/);
 for (const p of ['https://evil/a.js', 'session.assets/../secret.js', '.obsidian/secret.js', 'other.assets/a.js', 'session.assets\\a.js', 'session.assets/%2e%2e/a.js', 'session.assets/.hidden/a.js', 'session.assets/.research-os/a.js', '.research-os/runtime/session.js']) assert.throws(() => validateResources([{path:p,kind:'module'}], 'session.html'));
 assert.throws(() => validateResources([{path:'session.assets/a.gif',kind:'image'}], 'session.html'), /Unsupported/);

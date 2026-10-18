@@ -159,10 +159,17 @@ function validateEvent(event, state) {
       || typeof o.section !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(o.section) || typeof o.title !== 'string' || o.title.length > 200) throw new Error('Invalid question origin.');
   }
   if (typeof event.event_id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(event.event_id)) throw new Error('Invalid event ID.');
-  if (!['response', 'hint', 'solution', 'confidence', 'checkpoint', 'reset', 'open-question', 'explanation-request'].includes(event.type)) throw new Error('Unsupported event type.');
+  if (!['response', 'hint', 'solution', 'confidence', 'checkpoint', 'reset', 'open-question', 'explanation-request', 'plan-answer'].includes(event.type)) throw new Error('Unsupported event type.');
+    if (event.type === 'plan-answer') {
+      // An answer to a question in the session plan, judged on the page against the plan's own key: a pacing decision, never evidence of learning.
+      const plan = state && state.plan, r = event.response;
+      const planIds = plan ? ['probe', 'check'].flatMap(tree => ((plan[tree] || {}).questions || []).map(q => q.id)) : [];
+      if (!planIds.includes(event.question_id) || !r || typeof r !== 'object' || Array.isArray(r) || Object.keys(r).some(k => !['answer', 'verdict', 'tree'].includes(k))
+        || !['correct', 'wrong', 'pending'].includes(r.verdict) || !['probe', 'check'].includes(r.tree) || !['string', 'number'].includes(typeof r.answer)) throw new Error('Unknown plan question.');
+    }
     // A request for another explanation names one known mode and no question; it is never evidence of anything.
     if (event.type === 'explanation-request' && (!ADAPT_MODES.includes(event.response) || (event.question_id !== undefined && event.question_id !== null))) throw new Error('Unknown explanation mode.');
-    if (event.type !== 'open-question' && event.type !== 'explanation-request' && !(event.type === 'checkpoint' && event.question_id == null) && !state.questions.some(q => q.id === event.question_id)) throw new Error('Unknown question.');
+    if (event.type !== 'open-question' && event.type !== 'explanation-request' && event.type !== 'plan-answer' && !(event.type === 'checkpoint' && event.question_id == null) && !state.questions.some(q => q.id === event.question_id)) throw new Error('Unknown question.');
     if (event.type === 'open-question' && (typeof event.response !== 'string' || !event.response.trim())) throw new Error('Open question must have a prompt.');
     if (event.type === 'checkpoint' && (typeof event.response !== 'string' || !event.response.trim())) throw new Error('Checkpoint must include a raw explanation.');
   if (event.question_id !== undefined && !(['checkpoint', 'open-question', 'explanation-request'].includes(event.type) && event.question_id === null) && (typeof event.question_id !== 'string' || event.question_id.length > 128)) throw new Error('Invalid question ID.');

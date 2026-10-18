@@ -169,6 +169,25 @@ nobody has listened to the board speak, and legibility is the researcher's judge
 
 In the Obsidian view a **Hold to ask aloud** button sits under the open-question box. The sandboxed page never gets the microphone: it asks the host by action (`status`, `start`, `stop`, `cancel`) over the existing token-authenticated channel, the host records and hands the recording to a local voice worker (`VOICE_PROTOCOL.md`), and the transcript comes back as text in the question box. The learner reads and corrects it and presses Send; a spoken question is then an ordinary open question and `wait` / `answer` handle it unchanged. The lecture pauses while they ask and resumes when they send or cancel. The button is absent on a standalone page, where there is no host, and the host refuses to record when no worker has beaten recently, saying how to start one.
 
+## The staged session (v0.9.7)
+
+A session whose state carries a `plan` (`references/SESSION_PLAN.md`; set with `html_sessions.py plan <session> --source plan.json`, checked by `session_plan.py`) is
+shown as four stages instead of one long page: **Probe**, **Handout**, **Lecture**, **Check**. The reading page, contents list, questions drawer and progress bar are not
+built for it. Each stage is one environment: a probe question fills the view, with a strip of numbered buttons to move between answered questions and no page scrolling;
+the lecture is the board, a way to ask and the questions the tutor expected, and nothing else. No element inside a stage has a scrollbar; the board is sized so the whole
+stage fits the window, at desktop, tablet and phone widths.
+
+The page runs the plan itself. A choice or number is judged against the plan's own key at once, with the feedback written for that very option, and the next question
+appears with no agent turn; a written answer never blocks (the learner goes on, the agent reads it in the background). Answers can be typed, chosen, or spoken with the
+same hold-to-speak control as an open question (the words wait in the box to be read and sent). Answers are saved as `plan-answer` events (`question_id` is a plan
+question; the response is `{answer, verdict, tree}`) and stage changes as `checkpoint` events (`stage:lecture`, `stage:check`); the page rebuilds where the learner is from
+those events alone, so a reload resumes. These are pacing decisions: a `plan-answer` is never evidence of learning and is not pending work for the agent. The lecture
+plays the segments `lecture_path` chooses from the probe results. The Start button of the lecture waits while the live voice reports `warming` and says so when the voice is
+not running; asking during the lecture sends an ordinary open question.
+
+**Not built yet:** the agent picking up written answers for review in the background, the lecture position surviving a reload, opening the handout PDF, playing a video segment,
+and the board's own layout fixes (slices S3 to S8 and S2b of `docs/plans/v0.9.7-focused-session-plan.md`). Tested in real Chrome with a scripted host, not in Obsidian.
+
 ## Titles, navigation and the questions panel
 
 **Titles say what is being studied.** Keep stable internal IDs in state; never put workflow positions or identifiers in
