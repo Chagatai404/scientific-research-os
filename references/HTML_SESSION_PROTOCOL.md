@@ -194,12 +194,27 @@ The page runs the plan itself. A choice or number is judged against the plan's o
 appears with no agent turn; a written answer never blocks (the learner goes on, the agent reads it in the background). Answers can be typed, chosen, or spoken with the
 same hold-to-speak control as an open question (the words wait in the box to be read and sent). Answers are saved as `plan-answer` events (`question_id` is a plan
 question; the response is `{answer, verdict, tree}`) and stage changes as `checkpoint` events (`stage:lecture`, `stage:check`); the page rebuilds where the learner is from
-those events alone, so a reload resumes. These are pacing decisions: a `plan-answer` is never evidence of learning and is not pending work for the agent. The lecture
+those events alone, so a reload resumes. These are pacing decisions: a `plan-answer` is never evidence of learning. The lecture
 plays the segments `lecture_path` chooses from the probe results. The Start button of the lecture waits while the live voice reports `warming` and says so when the voice is
 not running; asking during the lecture sends an ordinary open question.
 
-**Not built yet:** the agent picking up written answers for review in the background, the lecture position surviving a reload, opening the handout PDF, playing a video segment,
-and the board's own layout fixes (slices S3 to S8 and S2b of `docs/plans/v0.9.7-focused-session-plan.md`). Tested in real Chrome with a scripted host, not in Obsidian.
+**The agent reads written answers in the background.** A written answer is recorded with verdict `pending` and the learner goes straight on. Until a plan review covers it, it is
+pending work: `pending_activity` (Python) and `pendingOf` (runtime.js) count it by the same rule, pinned by `tests/fixtures/supervision-cases.json`, and `html_sessions.py wait`
+returns it as `{kind: "plan-answer", question_id, tree, prompt, criteria, response, attempt, attempts}`. Judge it against the question's criteria, then record the verdict:
+
+`python scripts/html_sessions.py --root <vault> plan-review <session> <question_id> --verdict correct|partially-correct|incorrect|reviewed --feedback f.txt [--criteria-met true,false] [--reviewed-by NAME] [--revise-plan plan.json [--allow-reroute]]`
+
+The review is appended to `plan_reviews` (append-only, validated); it names the learner's answer event, never replaces it, and awards no mastery or evidence. A review stands
+for the answer it names and every earlier answer to that question. Only a `pending` answer can be reviewed (choices and numbers were judged on the page). The verdict is a
+pacing decision: `correct` counts as right, `partially-correct` and `incorrect` as wrong, `reviewed` changes nothing. It changes the lecture only at a stage boundary: before the
+lecture starts, the path is chosen from the probe results with reviews applied; once it starts, the page has frozen its path in a `lecture-path:` checkpoint and keeps it. A
+`--revise-plan` is refused, with the review, if it would send answered questions elsewhere or drop a segment the lecture started with, unless `--allow-reroute`.
+
+**The lecture position survives a reload.** The page records `lecture-path:` and `lecture-step:` checkpoints and resumes from them. It also reports its position to the host
+under the reserved widget id `plan-lecture`, so `board-position` returns the step and the segment it belongs to.
+
+**Not built yet:** opening the handout PDF, playing a video segment, and the board's own layout fixes (slices S4 to S8 and S2b of
+`docs/plans/v0.9.7-focused-session-plan.md`). Tested in real Chrome with a scripted host, not in Obsidian.
 
 ## Titles, navigation and the questions panel
 

@@ -232,6 +232,136 @@ def _validate_reviews(reviews):
             raise ValueError("Invalid review timestamp") from None
 
 
+PLAN_LECTURE_WIDGET = "plan-lecture"   # the id under which the staged lecture reports its position to the host (``board-position``); no declared widget may use it
+# What a tutor's verdict on a written answer means for choosing the lecture (a pacing decision, never a grade): a partly correct answer leaves a gap, so it
+# plays a repair segment and does not satisfy an extension; ``reviewed`` carries no judgement and changes nothing.
+PLAN_REVIEW_RESULT = {"correct": "correct", "partially-correct": "wrong", "incorrect": "wrong"}
+
+
+def _validate_plan_reviews(reviews, plan, events):
+    """The tutor's verdicts on written answers in a staged session. Each names the plan question and the learner's answer event it is about; it is pending
+    tutor feedback exactly like a question review, never evidence, and it never replaces the learner's answer (which stays an event)."""
+    if not isinstance(reviews, list) or len(reviews) > 200:
+        raise ValueError("Invalid plan reviews")
+    questions = {q["id"]: q for tree in ("probe", "check") for q in ((plan or {}).get(tree) or {}).get("questions", [])}
+    answers = {e["event_id"]: e for e in events if isinstance(e, dict) and e.get("type") == "plan-answer"}
+    for review in reviews:
+        if not isinstance(review, dict) or not isinstance(review.get("question_id"), str) or review["question_id"] not in questions:
+            raise ValueError("A plan review names a question of the session plan")
+        answer = answers.get(review.get("response_event_id"))
+        if answer is None or answer.get("question_id") != review["question_id"]:
+            raise ValueError("A plan review names the learner's answer to that question")
+        _validate_reviews([{k: v for k, v in review.items() if k != "question_id"}])
+        criteria = questions[review["question_id"]].get("criteria") or []
+        if "criteria_met" in review and len(review["criteria_met"]) != len(criteria):
+            raise ValueError("criteria_met has one true/false for each of the question's %d criteria" % len(criteria))
+
+
+def reviewed_results(results, reviews):
+    """The results the lecture is chosen from: the page's probe results (question id -> correct/wrong/pending) with each written answer's pending result
+    replaced by the tutor's latest verdict on it (see ``PLAN_REVIEW_RESULT``). Choice and numeric results are never touched. Mirrors Stages.reviewedResults."""
+    latest = {r["question_id"]: r for r in reviews}
+    return {q: (PLAN_REVIEW_RESULT.get(latest[q]["verdict"], v) if v == "pending" and q in latest else v) for q, v in results.items()}
+
+
+def _checkpoints(events, prefix):
+    return [e["response"][len(prefix):] for e in events if e.get("type") == "checkpoint" and isinstance(e.get("response"), str) and e["response"].startswith(prefix)]
+
+
+def recorded_lecture_path(events):
+    """The segments the lecture was started with (the page freezes the path in a ``lecture-path:`` checkpoint at its first step), or ``None`` before it starts."""
+    paths = _checkpoints(events, "lecture-path:")
+    return [s for s in paths[-1].split(",") if s] if paths else None
+
+
+def plan_lecture(state):
+    """What the staged lecture plays now: ``{results, path, started}``. Once the lecture has started the path is the one it started with; before that it
+    follows the probe results with the tutor's reviews applied, so a verdict on a written answer can still change a lecture that has not begun."""
+    import session_plan
+    plan, events = state["plan"], state["events"]
+    results = reviewed_results(session_plan.replay(plan, "probe", events)["results"], state.get("plan_reviews", []))
+    recorded = recorded_lecture_path(events)
+    known = {s["id"] for s in plan["segments"]}
+    return {"results": results, "started": recorded is not None,
+            "path": [s for s in recorded if s in known] if recorded is not None else session_plan.lecture_path(plan, results)}
+
+
+def plan_revision_problems(old, new, events):
+    """Why replacing the plan ``old`` by ``new`` would move a learner who has already answered: the questions answered must be judged the same and lead where
+    they led (which also keeps a finished tree finished, so the stage never moves backwards), and the segments the lecture was started with must still exist.
+    Empty when it is safe."""
+    import session_plan
+    problems = []
+    for tree in ("probe", "check"):
+        before, after = session_plan.replay(old, tree, events), session_plan.replay(new, tree, events)
+        route = lambda r: [(t["id"], t["verdict"], t["next"]) for t in r["trail"]]
+        if route(before) != route(after):
+            problems.append(f"{tree}: the revised plan would send the answers already given somewhere else (a changed kind, option or route on an answered question)")
+    gone = [s for s in recorded_lecture_path(events) or [] if s not in {seg["id"] for seg in new["segments"]}]
+    if gone:
+        problems.append("the lecture has started with segments the revised plan drops: " + ", ".join(gone))
+    return problems
+
+
+def review_plan_answer(root, relative_md, question_id, verdict, feedback="", reviewed_by=None, rationale=None, criteria_met=None,
+                       revised_plan=None, allow_reroute=False, response_event_id=None):
+    """Record the tutor's verdict on the learner's latest written answer to a plan question, and optionally replace the plan in the same save.
+
+    A written answer never blocked the learner; this is how the agent's reading of it comes back. It is pending tutor feedback, exactly like ``review_response``
+    for an ordinary question: the learner's answer stays as it was, nothing awards mastery or evidence, and the list is append-only (a later review of the same
+    answer supersedes the earlier one on the page). Only a ``pending`` answer is reviewed here; a choice or number was judged on the page against the plan's key.
+    The result says what the lecture would now play and whether it has started. A revised plan is refused (and the review with it) when it would move the
+    learner (``plan_revision_problems``) unless ``allow_reroute``."""
+    import session_plan
+    if verdict not in REVIEW_VERDICTS:
+        raise ValueError("Verdict must be one of: " + ", ".join(REVIEW_VERDICTS))
+    if not isinstance(feedback, str) or len(feedback) > 32000:
+        raise ValueError("Feedback must be bounded text")
+    md, _, _ = paths(root, relative_md)
+    with Lock(md.with_suffix(".session.lock")):
+        state = load_session(root, relative_md)
+        plan = state.get("plan")
+        if not plan:
+            raise ValueError("This session has no plan; ordinary questions are reviewed with `review`")
+        question = next((q for tree in ("probe", "check") for q in (plan.get(tree) or {}).get("questions", []) if q["id"] == question_id), None)
+        if question is None:
+            raise ValueError(f"Unknown plan question {question_id!r}")
+        answered = [e for e in state["events"] if e.get("type") == "plan-answer" and e.get("question_id") == question_id]
+        answer = next((e for e in reversed(answered) if response_event_id in (None, e["event_id"])), None)
+        if answer is None:
+            raise ValueError("No learner answer to review; never invent an answer" if response_event_id is None else "Unknown answer to review")
+        if answer["response"].get("verdict") != "pending":
+            raise ValueError("That answer was judged on the page against the plan's key; only a written answer awaits the tutor")
+        review = {"question_id": question_id, "response_event_id": answer["event_id"], "verdict": verdict, "feedback": feedback.strip(), "reviewed_at": _now()}
+        declared = question.get("criteria") or []
+        if criteria_met is not None:
+            if len(criteria_met) != len(declared):
+                raise ValueError("This question declares %d criteria; state for each whether it was met (criteria_met)" % len(declared))
+            review["criteria_met"] = criteria_met
+        if reviewed_by:
+            review["reviewed_by"] = reviewed_by
+        if rationale:
+            review["rationale"] = rationale
+        before = plan_lecture(state)
+        if revised_plan is not None:
+            session_plan.check(revised_plan)
+            problems = plan_revision_problems(plan, revised_plan, state["events"])
+            if problems and not allow_reroute:
+                raise ValueError("The revised plan would move the learner; nothing was saved: " + "; ".join(problems))
+            state["plan"] = revised_plan
+        reviews = state.setdefault("plan_reviews", [])
+        same = lambda r: {k: v for k, v in r.items() if k != "reviewed_at"}
+        if not reviews or same(reviews[-1]) != same(review):
+            reviews.append(review)
+        _validate_plan_reviews(reviews, state["plan"], state["events"])
+        state["updated_at"] = _now()
+        saved = _save(root, relative_md, state)
+    after = plan_lecture(saved)
+    return {"session": str(relative_md), "question_id": question_id, "verdict": verdict, "stage": session_plan.stage_of(saved["plan"], saved["events"]),
+            "lecture_started": after["started"], "lecture_path_before": before["path"], "lecture_path": after["path"], "plan_revised": revised_plan is not None,
+            "pending": pending_activity(saved)}
+
+
 def _validate_context(context):
     """Optional binding to a context receipt; absent in historical sessions, never required to read one."""
     if not isinstance(context, dict):
@@ -300,6 +430,8 @@ def validate_state(state):
     for widget in state.get("widgets", []):
         if not isinstance(widget, dict) or widget.get("kind") not in {"sampling", "vector", "board"} or not isinstance(widget.get("id"), str):
             raise ValueError("Unsupported session widget")
+        if widget["id"] == PLAN_LECTURE_WIDGET:
+            raise ValueError(f"The widget id {PLAN_LECTURE_WIDGET!r} is reserved for the lecture of a staged session")
         if widget["kind"] == "board":
             import board_script  # a lecture is untrusted data written by an agent; the page re-checks it with the same rules
             board_script.check(widget.get("script"))
@@ -373,6 +505,8 @@ def validate_state(state):
             raise ValueError("Browser event cannot award learning evidence")
         if len(json.dumps(event, ensure_ascii=False)) > 20000:
             raise ValueError("Interaction event exceeds limit")
+    if "plan_reviews" in state:
+        _validate_plan_reviews(state["plan_reviews"], state.get("plan"), state["events"])
     return state
 
 
@@ -1308,6 +1442,14 @@ def board_position(root, relative_md, now=None):
         if isinstance(record, dict) and isinstance(record.get("step"), str) and isinstance(record.get("status"), str):
             at = record.get("at")
             out[widget_id] = dict(record, age_seconds=round(stamp - at, 1) if isinstance(at, (int, float)) else None)
+    if PLAN_LECTURE_WIDGET in out:
+        # The lecture of a staged session is not a declared widget: the page reports it under a reserved id, and the segment it is in comes from the plan.
+        try:
+            plan = load_session(root, relative_md).get("plan") or {}
+        except (OSError, ValueError):
+            plan = {}
+        owner = {step["id"]: seg["id"] for seg in plan.get("segments", []) for step in (seg.get("script") or {}).get("steps", [])}
+        out[PLAN_LECTURE_WIDGET]["segment"] = owner.get(out[PLAN_LECTURE_WIDGET]["step"])
     return out or None
 
 
@@ -1400,6 +1542,27 @@ def pending_activity(state):
                           "hints_revealed": max([int(e["response"]) for e in events if e["type"] == "hint" and isinstance(e.get("response"), int)
                                                  and e.get("created_at", "") <= when] or [0]),
                           "solution_seen_before_response": any(e["type"] == "solution" and e.get("created_at", "") < when for e in events)})
+    # A written answer in a staged session never blocked the learner (verdict "pending"); it waits here until a plan review covers it. A review stands for the
+    # answer it names and every earlier answer to the same question, in event order (the same rule as above, mirrored by pendingOf in runtime.js).
+    plan_questions = {q.get("id"): q for tree in ("probe", "check") for q in ((state.get("plan") or {}).get(tree) or {}).get("questions", [])}
+    written = {}
+    for event in state["events"]:
+        if event.get("type") == "plan-answer":
+            written.setdefault(event.get("question_id"), []).append(event)
+    for question_id, answers in written.items():
+        order = [e["event_id"] for e in answers]
+        handled = set()
+        for review in state.get("plan_reviews", []):
+            if review.get("question_id") == question_id and review.get("response_event_id") in order:
+                handled.update(order[:order.index(review["response_event_id"]) + 1])
+        for number, event in enumerate(answers, 1):
+            response = event.get("response") if isinstance(event.get("response"), dict) else {}
+            if response.get("verdict") != "pending" or event["event_id"] in handled:
+                continue
+            question = plan_questions.get(question_id) or {}
+            items.append({"kind": "plan-answer", "question_id": question_id, "tree": response.get("tree"), "prompt": question.get("prompt", ""), "criteria": question.get("criteria", []),
+                          "tests": question.get("tests"), "solution": question.get("solution"), "event_id": event["event_id"], "response": response.get("answer"),
+                          "created_at": event.get("created_at"), "attempt": number, "attempts": len(answers)})
     for record in state.get("open_questions", []):
         if not (isinstance(record.get("answer"), str) and record["answer"].strip()):
             items.append({"kind": "open-question", "id": record.get("id"), "prompt": record.get("prompt"), "created_at": record.get("created_at")})
@@ -1464,7 +1627,7 @@ def wait_for_activity(root, relative_md, timeout=900.0, interval=1.0, holder=Non
         if items:
             if supervise:  # the agent now holds these: the page shows that it is reviewing them
                 supervise.heartbeat(root, relative_md, holder=holder, provider=provider, mode="reviewing", ttl=ttl,
-                                    reviewing=[i["event_id"] for i in items if i["kind"] == "response"])
+                                    reviewing=[i["event_id"] for i in items if i["kind"] in ("response", "plan-answer")])
             return {"session": str(relative_md), "pending": items, "timed_out": False}
         if time.monotonic() >= deadline:
             if failure is not None:
@@ -1609,6 +1772,9 @@ def render_context(brief):
     for item in brief["pending"]:
         if item["kind"] == "response":
             lines.append(f"- Review `{item['question_id']}` ({item['question_kind']}, submission {item['attempt']} of {item['attempts']}, confidence {item['confidence']}, hints {item['hints_revealed']}): {json.dumps(item['response'], ensure_ascii=False)[:400]}")
+        elif item["kind"] == "plan-answer":
+            lines.append(f"- Read the written answer to plan question `{item['question_id']}` ({item['tree']}, answer {item['attempt']} of {item['attempts']}): {json.dumps(item['response'], ensure_ascii=False)[:400]}"
+                         f"; judge it against its criteria, then `plan-review` (the learner has already gone on)")
         elif item["kind"] == "explanation-request":
             lines.append(f"- Explain differently (`{item['id']}`): {item.get('wants') or item.get('mode')}" + (f", asked in \"{item['origin']['title']}\"" if item.get("origin") else "") + "; answer in the lesson, then answer-explanation")
         else:
@@ -2007,6 +2173,14 @@ def main():
     board.add_argument("--open", dest="board_open", choices=("true", "false"), help="true: more is coming (the board waits for it); false: this is the end of the lecture")
     planning = sub.add_parser("plan", help="Set the session plan (JSON, checked by session_plan.py): the page then runs the staged session; answers already given must stay in the plan")
     planning.add_argument("session"); planning.add_argument("--source", required=True, type=Path)
+    reviewing = sub.add_parser("plan-review", help="Record the tutor verdict on a learner's written answer to a plan question (the learner has already gone on); optionally replace the plan in the same save")
+    reviewing.add_argument("session"); reviewing.add_argument("question_id")
+    reviewing.add_argument("--verdict", required=True, choices=REVIEW_VERDICTS)
+    reviewing.add_argument("--feedback", type=Path, help="UTF-8 text file with the feedback shown under the learner's answer")
+    reviewing.add_argument("--revise-plan", type=Path, help="JSON: the whole revised plan; refused if it would move a learner who has answered (see --allow-reroute)")
+    reviewing.add_argument("--allow-reroute", action="store_true", help="accept a revised plan that changes where answered questions lead, or drops a segment the lecture started with")
+    reviewing.add_argument("--criteria-met", help="comma-separated true/false, one per criterion the question declares")
+    reviewing.add_argument("--reviewed-by", help="who judged the answer"); reviewing.add_argument("--rationale", type=Path)
     starting = sub.add_parser("start", help="Bring the voices up (detached, warmed) and connect the tutor; ready only when every worker reports ready")
     starting.add_argument("session"); starting.add_argument("--holder", help="a name for this agent: renews the supervision lease so the page says a tutor is connected")
     starting.add_argument("--provider", default="generic"); starting.add_argument("--timeout", type=float, help="seconds to wait for each worker (default 180)")
@@ -2134,6 +2308,11 @@ def main():
         result = add_board(root, args.session, args.widget, loaded, args.title, args.after_heading)
     elif args.command == "plan":
         result = update_session(root, args.session, plan=json.loads(args.source.read_text(encoding="utf-8-sig")))
+    elif args.command == "plan-review":
+        result = review_plan_answer(root, args.session, args.question_id, args.verdict, args.feedback.read_text(encoding="utf-8") if args.feedback else "",
+                                    reviewed_by=args.reviewed_by, rationale=args.rationale.read_text(encoding="utf-8") if args.rationale else None,
+                                    criteria_met=[x.strip().lower() == "true" for x in args.criteria_met.split(",")] if args.criteria_met else None,
+                                    revised_plan=json.loads(args.revise_plan.read_text(encoding="utf-8-sig")) if args.revise_plan else None, allow_reroute=args.allow_reroute)
     elif args.command == "start":
         result = start_session(root, args.session, args.holder, args.provider, args.timeout, voice=not args.no_voice)
         if hasattr(sys.stdout, "reconfigure"):

@@ -41,6 +41,13 @@ If a good video already exists for the exact topic, play it instead of animating
 
 The researcher allows subagents and subprocesses where they save time: a subagent writes and compiles the handout and its figures while the probe runs, another produces a verified figure or animation, the voice worker renders the lecture's audio. The lecturer owns the plan and what the learner sees. A subagent returns files and a short report, its facts and figures are verified before they are shown, and it never edits the learner's session state.
 
+## Written answers and the agent
+
+A written answer is `pending`: the page records it, the learner goes on, and `html_sessions.py wait` hands it to the agent with the question's prompt, criteria and the answer. The agent
+records `plan-review` (verdict, feedback, optional `--criteria-met`, optional `--revise-plan`). The verdict only picks segments: `correct` is right, `partially-correct` and
+`incorrect` are wrong, `reviewed` changes nothing. A revision applies at a stage boundary: a lecture that has not started follows the reviewed results; a started lecture keeps its
+frozen path, and a revised plan may not change how answered questions were judged or routed, nor drop started segments, unless `--allow-reroute`. Nothing here awards mastery.
+
 ## Honest limits
 
 A plan makes the common path instant. A question it did not anticipate still waits for the agent. A plan that has not been run by a learner is untested teaching; the check below only proves the plan is well-formed.
