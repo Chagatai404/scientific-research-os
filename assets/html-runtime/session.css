@@ -636,6 +636,12 @@ body.ros-staged .ros-side-panel,body.ros-staged .ros-panel-toggle,body.ros-stage
 .ros-ask[hidden]{display:none}
 .ros-ask textarea{display:block;width:100%;padding:var(--ros-space-3);border:1.5px solid var(--ros-border-strong);border-radius:var(--ros-radius-md);resize:vertical}
 .ros-ask-row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--ros-space-3);margin-top:var(--ros-space-2)}
+.ros-video-card{flex:1 1 100%;max-width:46rem;padding:var(--ros-space-3) var(--ros-space-4);border:1px solid var(--ros-border);border-radius:var(--ros-radius-lg);background:var(--ros-surface)}
+.ros-video-card[hidden]{display:none}
+.ros-video-title{font-weight:600;margin:0 0 var(--ros-space-1)}
+.ros-video-notice{margin:0 0 var(--ros-space-2)}
+.ros-video-status,.ros-handout-note{min-height:1.3em;margin:var(--ros-space-2) 0;font-size:15px;color:var(--ros-text-muted)}
+.ros-video-status[data-problem="true"],.ros-handout-note[data-problem="true"]{color:var(--ros-danger)}
 @media (max-width:640px){
   .ros-stages{padding:var(--ros-space-2) var(--ros-space-4) var(--ros-space-4)}
   .ros-qcard,.ros-handout{padding:var(--ros-space-4)}
