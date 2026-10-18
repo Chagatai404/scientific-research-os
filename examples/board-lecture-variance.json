@@ -1,0 +1,65 @@
+{
+ "board_schema": 1,
+ "hand": "kalam",
+ "steps": [
+  {
+   "id": "title",
+   "say": "Today we ask how sure we can be about an average.",
+   "do": [
+    {"op": "write", "text": "Standard error", "zone": "title", "size": "huge", "color": "yellow", "id": "title"}
+   ]
+  },
+  {
+   "id": "spread",
+   "say": "First the sample variance: the average squared distance from the sample mean, with n minus one in the denominator.",
+   "do": [
+    {"op": "math", "tex": "s^2 = \\frac{1}{n-1}\\sum_{i=1}^{n}(x_i-\\bar{x})^2", "zone": "left", "size": "medium", "id": "var"},
+    {"op": "write", "text": "variance = average squared distance from the mean", "zone": "left", "size": "medium", "delay": 1.5, "id": "vartext"}
+   ]
+  },
+  {
+   "id": "bell",
+   "say": "Plotted, most observations pile up near the mean, and the width of that pile is the standard deviation.",
+   "do": [
+    {"op": "axes", "at": [76, 76], "w": 72, "h": 42, "id": "axes"},
+    {"op": "plot", "points": [[76.0, 75.6], [79.0, 75.18], [82.0, 74.42], [85.0, 73.14], [88.0, 71.13], [91.0, 68.21], [94.0, 64.31], [97.0, 59.52], [100.0, 54.16], [103.0, 48.83], [106.0, 44.23], [109.0, 41.11], [112.0, 40.0], [115.0, 41.11], [118.0, 44.23], [121.0, 48.83], [124.0, 54.16], [127.0, 59.52], [130.0, 64.31], [133.0, 68.21], [136.0, 71.13], [139.0, 73.14], [142.0, 74.42], [145.0, 75.18], [148.0, 75.6]],
+     "color": "blue", "width": 1.1, "id": "bell", "delay": 0.8, "duration": 3},
+    {"op": "write", "text": "x", "at": [150, 72], "size": "small", "delay": 1}
+   ]
+  },
+  {
+   "id": "centre",
+   "say": "The tall middle is where the data live.",
+   "do": [
+    {"op": "write", "text": "most of the data live here", "zone": "right", "size": "medium", "color": "pink", "id": "note"},
+    {"op": "arrow", "from": [108, 26], "to": [112, 37], "color": "pink", "delay": 0.8, "id": "pointer"}
+   ]
+  },
+  {
+   "id": "se",
+   "say": "Now the standard error of the mean: the standard deviation divided by the square root of n.",
+   "do": [
+    {"op": "erase", "target": "var"},
+    {"op": "erase", "target": "vartext"},
+    {"op": "math", "tex": "SE = \\frac{s}{\\sqrt{n}}", "zone": "left", "size": "large", "color": "green", "id": "se", "delay": 0.7},
+    {"op": "write", "text": "more data, a smaller error", "zone": "left", "size": "medium", "color": "yellow", "delay": 2.2}
+   ]
+  },
+  {
+   "id": "why",
+   "say": "That is because averaging n independent values shrinks the variance of the mean by a factor of n.",
+   "do": [
+    {"op": "math", "tex": "\\operatorname{Var}(\\bar{X}) = \\frac{\\sigma^2}{n}", "zone": "left", "size": "medium"},
+    {"op": "math", "tex": "\\sigma_{\\bar{X}} = \\frac{\\sigma}{\\sqrt{n}}", "zone": "left", "size": "medium", "delay": 1.5}
+   ]
+  },
+  {
+   "id": "four",
+   "say": "So to halve the standard error, we need four times as many observations.",
+   "do": [
+    {"op": "write", "text": "half the error needs four times the data", "zone": "caption", "size": "medium", "color": "orange"},
+    {"op": "highlight", "target": "se", "delay": 1}
+   ]
+  }
+ ]
+}

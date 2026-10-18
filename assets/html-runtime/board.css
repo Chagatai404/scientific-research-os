@@ -13,10 +13,15 @@
   repeating-linear-gradient(100deg,rgba(255,255,255,.012) 0 6px,transparent 6px 14px),#1c2421;box-shadow:inset 0 0 40px rgba(0,0,0,.55);color:#f4f0e6}
 .ros-board-ink{position:absolute;inset:0;width:100%;height:100%}
 .ros-board-text{position:absolute;inset:0;pointer-events:none}
-.ros-board-item{position:absolute;white-space:pre-wrap;line-height:1.12;color:var(--ink,#f4f0e6);font-family:var(--board-font);
+/* A text item is placed by board.js in board units: left and top are percentages of the board, its width (when it has one) too, and its font size follows the board's
+   width, so text and drawing scale together. 1.25 is the line height board.js lays out with (LINE in board.js and board_script.py). */
+.ros-board-item{position:absolute;white-space:pre;line-height:1.25;color:var(--ink,#f4f0e6);font-family:var(--board-font);text-align:left;
   font-size:calc(var(--fs,3.2) * var(--bw,800px) / 100);letter-spacing:.01em;text-shadow:0 0 .6px currentColor,0 0 7px rgba(244,240,230,.16)}
-.ros-board-math{font-family:"KaTeX_Main","Times New Roman",serif}
+.ros-board-item[data-wrap="1"]{white-space:pre-wrap;overflow-wrap:anywhere}
+.ros-board-math{font-family:"KaTeX_Main","Times New Roman",serif;white-space:nowrap}
 .ros-board-math .katex{font-size:1.05em;color:inherit}
+/* The page's .katex svg { display: inline } would push the radical sign of a square root off its place; KaTeX needs it as a block. */
+.ros-board-math .katex svg{display:block}
 .ros-board-math small{font-size:.5em}
 .ros-board-pen{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none}
 .ros-board-pen::after{content:"";position:absolute;left:-1px;top:-4px;width:18px;height:7px;border-radius:2px;background:#f2eee3;transform:rotate(-38deg);transform-origin:left center;box-shadow:0 0 8px rgba(255,255,255,.55)}
