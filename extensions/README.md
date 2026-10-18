@@ -52,6 +52,14 @@ are optional capabilities, not installer/validator dependencies. This includes
 Manim Community for explanatory animation; Research OS does not install it or
 maintain a rendering framework.
 
+### Obsidian HTML companion: panes the host owns
+
+`extensions/obsidian-html` shows a session in a sandboxed frame whose policy forbids frames and network. For a session with a plan it also does two things on the page's request,
+in Obsidian panes it owns (`references/RESOURCE_PROTOCOL.md`, "The video pane in Obsidian"): it plays a vetted YouTube video that a plan segment names (the page sends a record
+id and times; the host checks them against the plan and the vetted record and builds the address itself), and it opens the handout PDF from the plan's declared folder in a tab.
+No external browser is opened for either. Both are tested against a scripted workspace only; whether the player loads in Obsidian's Electron and whether Obsidian opens the
+PDF are unverified until tried there.
+
 ## External capabilities
 
 The skill instructions may ask for these if available:

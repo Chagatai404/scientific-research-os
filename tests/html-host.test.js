@@ -5,12 +5,12 @@ const vm = require('node:vm');
 const path = require('node:path');
 const os = require('node:os');
 class Component { registerDomEvent() {} registerEvent() {} }
-const obsidian = {Plugin: Component, Component, FileView: Component, normalizePath: p => p};
+const obsidian = {Plugin: Component, Component, FileView: Component, ItemView: Component, normalizePath: p => p};
 const file = path.join(__dirname, '../extensions/obsidian-html/main.js');
 const mod = {exports: {}};
 vm.runInNewContext(fs.readFileSync(file, 'utf8'), {require: name => name === 'obsidian' ? obsidian : require(name), module: mod, console, Date, Object, Set, Array, JSON, Number, Promise, Buffer, URL, process, setTimeout, clearTimeout, setInterval, clearInterval});
 const {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, resolveNote, acquireLock, buildDocument, SessionHost, sibling,
-  voiceWorkerState, parseVoiceResult, microphoneMessage, browserRecorder} = mod.exports._test;
+  voiceWorkerState, parseVoiceResult, microphoneMessage, browserRecorder, youtubeId, videoAddress, videoSpec, videoFrameAttributes, playerSignal, safeVaultPath, handoutSpec, pickHandout, VideoView, VIDEO_VIEW} = mod.exports._test;
 // The host decides note-reference syntax itself; it must agree with Python and the runtime on the shared fixture.
 const noteTargets = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/note-targets.json'), 'utf8'));
 for (const t of noteTargets.valid) assert(validNoteTarget(t), 'valid note target rejected by the host: ' + JSON.stringify(t));
@@ -464,6 +464,205 @@ assert(!html.includes('title":"</script>'));
   await new Promise(resolve => setTimeout(resolve, 40));
   assert(Object.keys(positionFile().boards).length <= 16, 'only a handful of boards are remembered');
   host.positions = {}; clearTimeout(host.positionTimer);
+  // ---- host-owned panes: a vetted video named by the plan, and the handout PDF. The page names; the host decides, builds every address, and opens the pane itself.
+  {
+    const today = new Date().toISOString().slice(0, 10), longAgo = new Date(Date.now() - 400 * 86400000).toISOString().slice(0, 10), later = new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
+    const record = (extra = {}) => ({id: 'RES-v', title: 'Spread explained', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', kind: 'video', lang: 'en', publisher: 'A channel', embed: 'youtube', video_id: 'dQw4w9WgXcQ', vetted_on: today, ...extra});
+    const handout = (extra = {}) => ({title: 'H', directory: 'Tutor Handouts/variance', status: 'built', sections: ['x'], ...extra});
+    const lesson = (extra = {}) => ({...base, video_records: {'RES-v': record()}, plan: {segments: [{id: 's', role: 'core', video: {resource: 'RES-v', start: 30, end: 210.4, notice: 'Watch.'}}], handout: handout()}, ...extra});
+    // 1. the pure rules (objects made inside the plugin's own context are compared as plain data)
+    const plain = value => JSON.parse(JSON.stringify(value));
+    assert.equal(youtubeId('https://www.youtube.com/watch?v=dQw4w9WgXcQ'), 'dQw4w9WgXcQ');
+    assert.equal(youtubeId('https://youtu.be/dQw4w9WgXcQ?t=5'), 'dQw4w9WgXcQ');
+    assert.equal(youtubeId('https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ'), 'dQw4w9WgXcQ');
+    for (const bad of ['https://evil.example/watch?v=dQw4w9WgXcQ', 'https://www.youtube.com/watch?v=short', 'https://www.youtube.com/playlist?list=PLabcdefghijk', 'https://notyoutube.com/watch?v=dQw4w9WgXcQ', 'not a url', 'https://youtube.com.evil.example/watch?v=dQw4w9WgXcQ']) assert.equal(youtubeId(bad), null, bad);
+    assert.equal(videoAddress('dQw4w9WgXcQ', 30, 211), 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=30&end=211&rel=0&autoplay=1&enablejsapi=1');
+    for (const bad of ['', 'short', 'dQw4w9WgXcQ/../x', 'dQw4w9WgXc?', null, undefined, 'a b c d e f g']) assert.throws(() => videoAddress(bad, 0, 1), /video id/, String(bad));
+    const frameAttributes = videoFrameAttributes(videoAddress('dQw4w9WgXcQ', 0, 5), 'Title');
+    assert.equal(frameAttributes.sandbox, 'allow-scripts allow-same-origin allow-presentation');
+    assert(!/popups|top-navigation|forms|modals/.test(frameAttributes.sandbox), 'the pane can open no window, navigate nothing and submit nothing');
+    assert.equal(frameAttributes.referrerpolicy, 'strict-origin-when-cross-origin');
+    assert(frameAttributes.src.startsWith('https://www.youtube-nocookie.com/embed/'));
+    assert.deepEqual(plain(playerSignal(JSON.stringify({event: 'onStateChange', info: 0}))), {kind: 'ended'});
+    assert.deepEqual(plain(playerSignal({event: 'infoDelivery', info: {playerState: 0}})), {kind: 'ended'});
+    assert.deepEqual(plain(playerSignal(JSON.stringify({event: 'onError', info: 153}))), {kind: 'error', code: 153});
+    assert.deepEqual(plain(playerSignal(JSON.stringify({event: 'onReady'}))), {kind: 'ready'});
+    for (const quiet of [JSON.stringify({event: 'onStateChange', info: 1}), JSON.stringify({event: 'onError', info: 'x'}), 'not json', null, 7, [], '{"event":"onStateChange","info":0', 'x'.repeat(30000)]) assert.equal(playerSignal(quiet), null, String(quiet).slice(0, 30));
+    for (const good of ['Tutor Handouts/a.pdf', 'a/b c/d.pdf']) assert(safeVaultPath(good), good);
+    for (const bad of ['', '/a.pdf', 'a/', 'a//b.pdf', 'a/../b.pdf', './a.pdf', '.hidden/a.pdf', 'a/.hidden/b.pdf', 'a\\b.pdf', 'C:/a.pdf', 'https://x/a.pdf', 'file:///a.pdf', 'a/b.pdf#page=2', 'a/%2e%2e/b.pdf', 'a/b?.pdf', null, 7, ['a']]) assert(!safeVaultPath(bad), String(bad));
+
+    // 2. a host with a scripted workspace
+    const panes = {leaves: [], files: new Map(), tabs: []};
+    const workspaceWith = () => ({getLeaf: (kind, dir) => {
+      const leaf = {kind, dir, detached: false, view: null,
+        async setViewState(next) { this.viewState = next; this.view = {getViewType: () => next.type, play: (spec, report) => { leaf.played = spec; leaf.report = report; }}; },
+        async openFile(file) { panes.tabs.push([kind, file.path]); },
+        detach() { this.detached = true; const report = this.report; this.view = null; if (report) report({kind: 'closed'}); }};   // a real pane reports its own closing
+      panes.leaves.push(leaf); return leaf;
+    }});
+    const pdf = (path, mtime) => ({path, name: path.split('/').pop(), basename: path.split('/').pop().replace(/\.pdf$/, ''), extension: 'pdf', stat: {mtime}});
+    const folder = {path: 'Tutor Handouts/variance', children: [pdf('Tutor Handouts/variance/a.pdf', 100), pdf('Tutor Handouts/variance/b.pdf', 500), {path: 'Tutor Handouts/variance/notes.md', extension: 'md', basename: 'notes', stat: {mtime: 900}}, {path: 'Tutor Handouts/variance/figs', children: []}, pdf('Tutor Handouts/variance/.hidden.pdf', 999)]};
+    for (const f of [folder, ...folder.children, {path: 'Tutor Handouts/variance-other/x.pdf', extension: 'pdf', basename: 'x'}, {path: 'Tutor Handouts/variance/missing-dir', children: []}]) panes.files.set(f.path, f);
+    const paneReplies = [];
+    const plugin = {app: {vault: {adapter: {getBasePath: () => vaultRoot}, getAbstractFileByPath: p => panes.files.get(p) || null}, workspace: workspaceWith()}};
+    const ph = new SessionHost(plugin, {}, 'Sessions/lesson.html');
+    ph.state = lesson(); ph.token = 'secret'; ph.frame = {contentWindow: {postMessage: value => paneReplies.push(value)}};
+    const video = async (extra = {}, token = 'secret') => { ph.videoAt = 0; const from = paneReplies.length; await ph.video('open', {resource: 'RES-v', start: 30, end: 210.4, ...extra}, token); return paneReplies.slice(from); };
+    const refused = async (extra, pattern, label) => {
+      const leaves = panes.leaves.length, played = ph.videoSession;
+      const out = await video(extra);
+      assert.equal(out.length, 1, label); assert.equal(out[0].type, 'video', label); assert.equal(out[0].status, 'error', label + ' ' + JSON.stringify(out[0])); assert.match(out[0].message, pattern, label);
+      assert.equal(panes.leaves.length, leaves, 'no pane for: ' + label); assert.equal(ph.videoSession, played, 'nothing began for: ' + label);
+    };
+
+    // a vetted part the plan names plays, in a pane beside the lesson, at an address the host built
+    let out = await video();
+    assert.deepEqual(out.map(r => [r.type, r.status, r.resource, r.title]), [['video', 'opened', 'RES-v', 'Spread explained']]);
+    assert.equal(out[0].channel, 'research-os'); assert.equal(out[0].token, 'secret'); assert.equal(out[0].session_id, 'session-1');
+    let pane = panes.leaves.at(-1);
+    assert.deepEqual([pane.kind, pane.dir, pane.viewState.type], ['split', 'vertical', 'research-os-video']);
+    assert.equal(pane.played.address, 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=30&end=211&rel=0&autoplay=1&enablejsapi=1', 'start rounded down, end rounded up');
+    assert.equal(pane.played.title, 'Spread explained');
+    // what the page tries to add is ignored: the address and the id come from the record, the numbers from the plan
+    pane.report({kind: 'ended'}); await Promise.resolve();
+    out = await video({url: 'https://evil.example/', address: 'https://evil.example/', video_id: 'AAAAAAAAAAA', src: 'https://evil.example/'});
+    assert.equal(out[0].status, 'opened'); pane = panes.leaves.at(-1);
+    assert.equal(pane.played.address, 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=30&end=211&rel=0&autoplay=1&enablejsapi=1');
+    // the pane reports ended: the pane goes away and the page is told once
+    let from = paneReplies.length; pane.report({kind: 'ended'}); pane.report({kind: 'ended'}); pane.report({kind: 'closed'});
+    assert.deepEqual(paneReplies.slice(from).map(r => [r.type, r.status, r.resource]), [['video', 'ended', 'RES-v']]); assert.equal(pane.detached, true); assert.equal(ph.videoSession, null);
+    // the learner closes the tab
+    await video(); pane = panes.leaves.at(-1); from = paneReplies.length;
+    pane.detach();
+    assert.deepEqual(paneReplies.slice(from).map(r => [r.status, r.resource]), [['closed', 'RES-v']]);
+    // the player refuses to play: a fixed message, never the player's own words
+    await video(); pane = panes.leaves.at(-1); from = paneReplies.length;
+    pane.report({kind: 'error', code: 153, message: 'evil <script>alert(1)</script>'});
+    assert.deepEqual(paneReplies.slice(from).map(r => r.status), ['error']); assert.match(paneReplies.at(-1).message, /player code 153/); assert(!/evil|script/.test(paneReplies.at(-1).message)); assert.equal(pane.detached, true);
+    // the page closes it
+    await video(); pane = panes.leaves.at(-1); from = paneReplies.length;
+    await ph.video('close', {}, 'secret');
+    assert.deepEqual(paneReplies.slice(from).map(r => [r.status, r.resource]), [['closed', 'RES-v']]); assert.equal(pane.detached, true); assert.equal(ph.videoSession, null);
+    await ph.video('close', {}, 'secret'); assert.equal(paneReplies.length, from + 1, 'closing nothing says nothing');
+    // a second video replaces the first: one video pane at a time, and the old one is not reported as closed to a page that asked for the new one
+    await video(); const first = panes.leaves.at(-1); from = paneReplies.length; await video(); const second = panes.leaves.at(-1);
+    assert.notEqual(first, second); assert.equal(first.detached, true); assert.equal(second.detached, false); assert.deepEqual(paneReplies.slice(from).map(r => r.status), ['opened']);
+    // a reload or unload closes the pane without telling a page that is gone
+    from = paneReplies.length; ph.closeVideo(null);
+    assert.equal(paneReplies.length, from); assert.equal(second.detached, true); assert.equal(ph.videoSession, null);
+
+    // every refusal: nothing opens, the page is told why
+    await refused({resource: 'RES-other'}, /does not play that part/, 'a resource the plan does not name');
+    await refused({start: 0}, /does not play that part/, 'a different start from the plan');
+    await refused({end: 99999}, /does not play that part/, 'a different end from the plan');
+    await refused({start: undefined, end: undefined}, /does not play that part/, 'no numbers');
+    await refused({start: '30', end: '210.4'}, /does not play that part/, 'numbers as text');
+    for (const id of [null, undefined, 7, ['RES-v'], {toString: () => 'RES-v'}, 'RES-', 'res-v', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'RES-v/../x', 'RES-v ', 'RES-' + 'x'.repeat(80), '__proto__', 'RES-v\u0000']) await refused({resource: id}, /not a resource id/, 'id ' + String(id).slice(0, 20));
+    const swap = (state, pattern, label) => async () => { const was = ph.state; ph.state = state; try { await refused({}, pattern, label); } finally { ph.state = was; } };
+    const withRecord = extra => lesson({video_records: {'RES-v': record(extra)}});
+    await swap(lesson({video_records: {}}), /not a vetted resource/, 'no record')();
+    await swap(lesson({video_records: undefined}), /not a vetted resource/, 'no records at all')();
+    await swap(lesson({video_records: {'RES-v': 'text'}}), /not a vetted resource/, 'record that is not an object')();
+    await swap(lesson({video_records: {'RES-other': record({id: 'RES-other'})}}), /not a vetted resource/, 'someone else\'s record')();
+    await swap(withRecord({vetted_on: undefined}), /has not been vetted/, 'a record with no vetting date')();
+    await swap(withRecord({vetted_on: 'yesterday'}), /has not been vetted/, 'a malformed date')();
+    await swap(withRecord({vetted_on: later}), /has not been vetted/, 'a vetting date in the future')();
+    await swap(withRecord({vetted_on: longAgo}), /more than a year/, 'stale vetting')();
+    await swap(withRecord({embed: undefined}), /Only a YouTube video/, 'not embeddable')();
+    await swap(withRecord({embed: 'vimeo'}), /Only a YouTube video/, 'another embed')();
+    await swap(withRecord({url: 'https://evil.example/watch?v=dQw4w9WgXcQ'}), /not a YouTube address/, 'a non-YouTube host')();
+    await swap(withRecord({url: 'http://www.youtube.com/watch?v=dQw4w9WgXcQ'}), /not a YouTube address/, 'plain http')();
+    await swap(withRecord({url: 'https://user:pw@www.youtube.com/watch?v=dQw4w9WgXcQ'}), /not a YouTube address/, 'credentials in the address')();
+    await swap(withRecord({url: 'not a url'}), /not a valid URL/, 'an address that is not one')();
+    await swap(withRecord({video_id: 'AAAAAAAAAAA'}), /not a YouTube address/, 'a video id that is not the address\'s')();
+    await swap(withRecord({video_id: 'short'}), /not a YouTube address/, 'a short video id')();
+    await swap(withRecord({video_id: 'dQw4w9WgXcQ&autoplay=0'}), /not a YouTube address/, 'a video id carrying a query')();
+    const planWith = video => lesson({plan: {segments: [{id: 's', role: 'core', video}], handout: handout()}});
+    { const was = ph.state; ph.state = planWith({resource: 'RES-v', start: 0, end: 1801, notice: 'n'}); await refused({start: 0, end: 1801}, /valid time range/, 'a part longer than 30 minutes'); ph.state = was; }
+    { const was = ph.state; ph.state = planWith({resource: 'RES-v', start: -5, end: 10, notice: 'n'}); await refused({start: -5, end: 10}, /valid time range/, 'a negative start'); ph.state = was; }
+    { const was = ph.state; ph.state = planWith({resource: 'RES-v', start: 30, end: 30, notice: 'n'}); await refused({start: 30, end: 30}, /valid time range/, 'an empty part'); ph.state = was; }
+    { const was = ph.state; ph.state = {...base}; await refused({}, /does not play that part/, 'a session with no plan'); ph.state = was; }
+    // a record that only a Teaching Card holds is the same kind of snapshot and is checked the same way
+    { const was = ph.state; ph.state = lesson({video_records: undefined, teaching: [{id: 'b', card: {resources: [record()]}}]});
+      out = await video(); assert.equal(out[0].status, 'opened'); panes.leaves.at(-1).report({kind: 'closed'}); ph.closeVideo(null);
+      ph.state = lesson({video_records: undefined, teaching: [{id: 'b', card: {resources: [record({embed: undefined})]}}]}); await refused({}, /Only a YouTube video/, 'a card resource that is not embeddable'); ph.state = was; }
+    // forged and malformed requests, throttling, and a vault without the API
+    from = paneReplies.length;
+    for (const extra of [{token: 'wrong'}, {session_id: 'other'}]) ph.receive({source: ph.frame.contentWindow, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'video', action: 'open', resource: 'RES-v', start: 30, end: 210.4, ...extra}});
+    ph.receive({source: {}, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'video', action: 'open', resource: 'RES-v', start: 30, end: 210.4}});
+    await new Promise(resolve => setTimeout(resolve, 30)); assert.equal(paneReplies.length, from, 'forged requests get no answer and open nothing');
+    ph.videoAt = 0; ph.receive({source: ph.frame.contentWindow, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'video', action: 'open', resource: 'RES-v', start: 30, end: 210.4}});
+    await new Promise(resolve => setTimeout(resolve, 30)); assert.equal(paneReplies.at(-1).status, 'opened', 'a genuine request through the bridge'); ph.closeVideo(null);
+    ph.videoAt = Date.now(); await ph.video('open', {resource: 'RES-v', start: 30, end: 210.4}, 'secret'); assert.match(paneReplies.at(-1).message, /wait a moment/);
+    ph.videoAt = 0; await ph.video('pause', {resource: 'RES-v'}, 'secret'); assert.match(paneReplies.at(-1).message, /Unknown video action/);
+    ph.videoAt = 0; await ph.video(undefined, undefined, 'secret'); assert.equal(paneReplies.at(-1).status, 'error');
+    const realWorkspace = plugin.app.workspace; plugin.app.workspace = {}; await refused({}, /not available/, 'a vault without the workspace API');
+    plugin.app.workspace = {getLeaf: () => ({async setViewState() { /* no view appears */ }, view: null, detach() { this.detached = true; }})};
+    await refused({}, /could not be created/, 'a pane that does not come up'); plugin.app.workspace = realWorkspace;
+    // a reload while the pane was being created leaves nothing behind
+    { const count2 = panes.leaves.length; ph.videoAt = 0; const pending = ph.video('open', {resource: 'RES-v', start: 30, end: 210.4}, 'secret'); ph.token = 'reloaded'; await pending; ph.token = 'secret';
+      assert.equal(panes.leaves.at(-1).detached, true); assert.equal(panes.leaves.length, count2 + 1); assert.equal(ph.videoSession, null); }
+
+    // 3. the handout
+    const open = async path => { ph.handoutAt = 0; const from2 = paneReplies.length; await ph.handout('open', path, 'secret'); return paneReplies.slice(from2); };
+    const noTab = async (path, pattern, label) => {
+      const tabs = panes.tabs.length, out2 = await open(path);
+      assert.equal(out2.length, 1, label); assert.equal(out2[0].type, 'handout', label); assert.equal(out2[0].status, 'error', label + ' ' + JSON.stringify(out2[0])); assert.match(out2[0].message, pattern, label);
+      assert.equal(panes.tabs.length, tabs, 'nothing opened for: ' + label);
+    };
+    out = await open(undefined);
+    assert.deepEqual(out.map(r => [r.type, r.status, r.title]), [['handout', 'opened', 'b']], 'the newest PDF in the declared folder'); assert.deepEqual(panes.tabs.at(-1), ['tab', 'Tutor Handouts/variance/b.pdf']);
+    out = await open('Tutor Handouts/variance/a.pdf'); assert.equal(out[0].status, 'opened'); assert.deepEqual(panes.tabs.at(-1), ['tab', 'Tutor Handouts/variance/a.pdf']);
+    out = await open(null); assert.equal(out[0].title, 'b');
+    for (const bad of ['Tutor Handouts/variance/../variance-other/x.pdf', 'Tutor Handouts/variance-other/x.pdf', 'Tutor Handouts/variancex.pdf', 'Tutor Handouts/variance', 'Tutor Handouts/variance/', '/Tutor Handouts/variance/a.pdf',
+      'https://evil.example/a.pdf', 'file:///C:/Users/x/a.pdf', 'C:/Users/x/a.pdf', 'Tutor Handouts\\variance\\a.pdf', '.obsidian/a.pdf', 'Tutor Handouts/variance/.hidden.pdf', 'Tutor Handouts/variance/.git/a.pdf',
+      'Tutor Handouts/variance/notes.md', 'Tutor Handouts/variance/a.pdf.exe', 'Tutor Handouts/variance/%2e%2e/a.pdf', 'Tutor Handouts/variance/a.pdf#page=2', 'Tutor Handouts/variance/figs', 'Tutor Handouts/variance/nothing.pdf', '', 'a.pdf', 'javascript:alert(1)'])
+      await noTab(bad, /not a PDF inside|not in the handout folder|safe place/, 'path ' + JSON.stringify(bad));
+    for (const bad of [7, true, ['Tutor Handouts/variance/a.pdf'], {path: 'Tutor Handouts/variance/a.pdf'}, {toString: () => 'Tutor Handouts/variance/a.pdf'}]) await noTab(bad, /not a PDF inside/, 'path of type ' + typeof bad);
+    const keep = ph.state;
+    for (const [state2, pattern, label] of [[lesson({plan: {segments: [], handout: handout({status: 'planned'})}}), /not ready/, 'planned'], [lesson({plan: {segments: [], handout: handout({status: 'draft'})}}), /not ready/, 'draft'],
+      [lesson({plan: {segments: []}}), /no handout/, 'no handout declared'], [{...base}, /no handout/, 'no plan'],
+      [lesson({plan: {segments: [], handout: handout({directory: '../outside'})}}), /safe place/, 'a directory with ..'], [lesson({plan: {segments: [], handout: handout({directory: '/abs/dir'})}}), /safe place/, 'an absolute directory'],
+      [lesson({plan: {segments: [], handout: handout({directory: '.hidden/h'})}}), /safe place/, 'a hidden directory'], [lesson({plan: {segments: [], handout: handout({directory: 'C:/Users/x'})}}), /safe place/, 'a drive'],
+      [lesson({plan: {segments: [], handout: handout({directory: 'Tutor Handouts/variance/missing-dir'})}}), /No PDF has been saved/, 'an empty folder'], [lesson({plan: {segments: [], handout: handout({directory: 'Tutor Handouts/never-made'})}}), /No PDF has been saved/, 'a folder that is not there']]) {
+      ph.state = state2; await noTab(undefined, pattern, label);
+    }
+    ph.state = keep;
+    { const tabs = panes.tabs.length; ph.handoutAt = Date.now(); await ph.handout('open', undefined, 'secret'); assert.match(paneReplies.at(-1).message, /wait a moment/); assert.equal(panes.tabs.length, tabs); }
+    ph.handoutAt = 0; await ph.handout('close', undefined, 'secret'); assert.match(paneReplies.at(-1).message, /Unknown handout action/);
+    from = paneReplies.length; ph.receive({source: ph.frame.contentWindow, data: {channel: 'research-os', token: 'wrong', session_id: 'session-1', type: 'handout', action: 'open'}}); assert.equal(paneReplies.length, from);
+    ph.handoutAt = 0; ph.receive({source: ph.frame.contentWindow, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'handout', action: 'open'}});
+    await new Promise(resolve => setTimeout(resolve, 30)); assert.equal(paneReplies.at(-1).status, 'opened', 'a genuine request through the bridge');
+    // an Obsidian that opens files by link only
+    { const links = []; plugin.app.workspace = {openLinkText: async (...args) => { links.push(args); }}; out = await open(undefined);
+      assert.equal(out[0].status, 'opened'); assert.deepEqual(links, [['Tutor Handouts/variance/b.pdf', 'Sessions/lesson.html', 'tab']]); plugin.app.workspace = {}; await noTab(undefined, /not available/, 'no workspace API'); plugin.app.workspace = realWorkspace; }
+    ph.invalidated = true; ph.closeVideo(null);
+
+    // 4. the pane itself, against a stand-in for the page it lives in
+    const posted = [], listeners = new Map();
+    const win = {addEventListener: (type, fn) => listeners.set(type, fn), removeEventListener: (type, fn) => { if (listeners.get(type) === fn) listeners.delete(type); }};
+    const element = tag => ({tag, attrs: {}, children: [], className: '', textContent: '', handlers: {}, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(type, fn) { this.handlers[type] = fn; }, contentWindow: {postMessage: (message, origin) => posted.push([message, origin])}});
+    const doc = {defaultView: win, createElement: element};
+    const content = {ownerDocument: doc, children: [], replaceChildren(...nodes) { this.children = nodes; }, classList: {add() {}}};
+    const reports = [], closed = [];
+    const view = new VideoView({detach: () => closed.push('detached')}, plugin); view.contentEl = content; view.leaf = {detach: () => closed.push('detached')};
+    assert.equal(view.getViewType(), VIDEO_VIEW);
+    view.play({title: 'Spread explained', address: videoAddress('dQw4w9WgXcQ', 30, 211)}, signal => reports.push(signal));
+    const iframe = content.children.find(c => c.tag === 'iframe');
+    assert.equal(iframe.attrs.src, 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=30&end=211&rel=0&autoplay=1&enablejsapi=1');
+    assert.equal(iframe.attrs.sandbox, 'allow-scripts allow-same-origin allow-presentation'); assert.equal(iframe.attrs.referrerpolicy, 'strict-origin-when-cross-origin');
+    assert.equal(view.getDisplayText(), 'Spread explained');
+    iframe.handlers.load(); assert(posted.length >= 2 && posted.every(([, origin]) => origin === 'https://www.youtube-nocookie.com'), 'the handshake goes to the player\'s origin only');
+    const hear = (data, origin = 'https://www.youtube-nocookie.com', source = iframe.contentWindow) => listeners.get('message')({data, origin, source});
+    hear(JSON.stringify({event: 'onReady'})); hear(JSON.stringify({event: 'onStateChange', info: 1}));
+    hear(JSON.stringify({event: 'onStateChange', info: 0}), 'https://evil.example'); hear(JSON.stringify({event: 'onStateChange', info: 0}), 'https://www.youtube-nocookie.com', {});
+    assert.deepEqual(plain(reports), [], 'ready, playing, and messages from any other origin or window, say nothing');
+    hear(JSON.stringify({event: 'onStateChange', info: 0})); assert.deepEqual(plain(reports), [{kind: 'ended'}]);
+    hear(JSON.stringify({event: 'onError', info: 101})); assert.deepEqual(plain(reports.at(-1)), {kind: 'error', code: 101});
+    const back = content.children.find(c => c.tag === 'button'); back.handlers.click(); assert.deepEqual(closed, ['detached'], '"Back to the lesson" closes the tab');
+    await view.onClose(); assert.deepEqual(plain(reports.at(-1)), {kind: 'closed'}); const n = reports.length;
+    await view.onClose(); assert.equal(reports.length, n, 'closed is reported once'); assert.equal(listeners.has('message'), false, 'nothing is listened to after the pane is gone');
+  }
   fs.rmdirSync(vaultRoot);
-  console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions, live voice, lecture position.');
+  console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions, live voice, lecture position, host-owned video and handout panes.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

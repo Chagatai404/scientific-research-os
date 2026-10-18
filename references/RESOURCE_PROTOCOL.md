@@ -44,10 +44,55 @@ publisher, licence, attribution and the host the link goes to. **Nothing loads u
   HTTPS URL without credentials, and opens it. The page never supplies an address.
 * **Play here** exists only for a vetted YouTube resource on a **standalone** page. The page's policy then allows exactly one frame origin,
   `https://www.youtube-nocookie.com`, the player is created on click inside a sandboxed frame, and the learner can close it. The Obsidian
-  companion's policy is `frame-src 'none'` and stays so: embedding there would widen the security model of the whole session view and is a
-  separate decision. Other embeds (including PhET simulations) are links only until their embed addresses are checked on the live site.
+  companion's session page keeps `frame-src 'none'`: nothing is framed inside the session view. A vetted video that a session **plan** names plays in a pane the
+  host owns instead (next section). Other embeds (including PhET simulations) are links only until their embed addresses are checked on the live site.
 * Attribution that a licence requires is shown with the resource (PhET simulations are CC BY 4.0 and ask for an attribution line; the PhET name and
   logo are trademarks).
+
+## The video pane in Obsidian (decided 2026-10-18)
+
+The researcher decided on 2026-10-18 to widen the Obsidian security model by exactly one thing: a **host-owned video pane** for a vetted YouTube record that the session's plan
+plays. Before this, embedding in the companion was left as a separate decision. The reason: a session must never open an external browser, and a good existing video is faster
+and better than a self-made animation (`SESSION_PLAN.md`, "Videos instead of drawing everything").
+
+**What it permits.** One pane at a time, owned by the plugin (an Obsidian view of type `research-os-video`, opened in a split beside the session). It holds one frame, and the
+host builds that frame's address itself: `https://www.youtube-nocookie.com/embed/<11-character id>?start=<s>&end=<e>&rel=0&autoplay=1&enablejsapi=1`. The frame is sandboxed
+(`allow-scripts allow-same-origin allow-presentation`: no popups, no navigation of the pane, no forms, no modals), its referrer policy is `strict-origin-when-cross-origin`
+(the player refuses to play with no referrer, error 153), and its permissions are encrypted media, picture-in-picture and fullscreen. `autoplay` follows the learner's own click on
+"Play the video"; `enablejsapi` lets the pane hear the player say that it ended (the YouTube iframe API's `postMessage` handshake), and only messages from that frame's window
+and the player's origin are heard. What the player says is reduced to ended, error code or ready; its words are never passed on.
+
+**What the page can ask.** Only `{type:'video', action:'open', resource, start, end}` or `{action:'close'}`. The host accepts a request only if all of these hold:
+
+1. `resource` looks like a registry id (`RES-…`), and a segment of **this session's own plan** has a `video` naming that id with exactly those `start` and `end` (the numbers
+   used are the plan's, rounded to whole seconds, at most 30 minutes);
+2. the session holds a snapshot of that record: `state.video_records[id]` (written by `html_sessions.py plan` from the vault registry, only for a record that is `vetted`,
+   not stale, and `embed: youtube`) or a Teaching Card's `resources` entry; the snapshot is a card snapshot (`resources.py card`), so it carries the address and `vetted_on`;
+3. the host checks the snapshot again: `embed` is `youtube`, the address is HTTPS without credentials on a YouTube host, `video_id` is 11 characters and equals the
+   address's own, `vetted_on` is a real date no more than a year old;
+4. requests are at most one per 0.4 s, and a new video replaces the old pane.
+
+The page can **not** supply an address, a video id, a host name, a frame attribute, a registry path, or different times; any such field is ignored. It cannot reach a record that
+the plan does not name, an unvetted or stale record, or anything that is not a YouTube video. The same pattern serves the handout: `{type:'handout', action:'open'}` opens a PDF
+from `plan.handout.directory` (once `status` is `built`) in an Obsidian tab; a `path` the page names must be a `.pdf` inside that folder (not a sibling whose name only starts the
+same, no `..`, scheme, drive, backslash, `%`, `#`, or hidden part), and with none the host takes the newest PDF there.
+
+**What it does not widen.** The session page's policy is unchanged (`default-src 'none'`, `frame-src 'none'`, `connect-src 'none'`): nothing is framed or fetched by the page.
+The pane is a separate Obsidian view, so a hostile page or module cannot script it, and the player's frame has another origin than Obsidian and no right to open windows or
+navigate the pane. The system browser is never opened for a lesson's video, and not for the handout either.
+
+**The remaining trust.** The agent that writes the plan, the registry and the session state is trusted as before; the worst a record that passes these checks can do is play a
+different YouTube video than the vetting covered, which is what the vetting rules (a finder never vets their own find, `consequential` use needs a reviewer) are for. YouTube's
+player is third-party code and contacts Google when it loads; that happens only after the learner presses "Play the video", through the `nocookie` host.
+
+**When it fails.** The player can refuse (embedding disabled, error 150/153), the machine can be offline, the pane may not report the end. The page then says so and the lecture
+goes on from the board and the handout; the video stays on offer ("Try the video again"). The learner can always say they have finished watching, and closing the tab counts as
+finishing. A host that never answers is given ten seconds.
+
+**Not verified.** Everything above is tested against a scripted Obsidian workspace (`tests/html-host.test.js`) and in headless Chrome against a scripted host
+(`tests/html-stages-browser.cjs`); none of it has run inside Obsidian. Unknown until it does: whether YouTube's player loads in Obsidian's Electron frame at all (its `app://`
+origin may be refused, error 153), whether autoplay is allowed, whether `getLeaf('split', 'vertical')` puts the pane where the lecture stays in view, whether the end-of-video
+messages arrive, and whether Obsidian opens the handout PDF in its viewer.
 
 ## What this does not verify
 

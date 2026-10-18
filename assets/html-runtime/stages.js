@@ -42,7 +42,8 @@
     return path.concat(tail);
   }
 
-  // One board plays the whole lecture: the chosen segments' steps in order. A segment that is only a video adds no steps here (the video pane is a later slice).
+  // One board plays the whole lecture: the chosen segments' steps in order. A video segment adds its own steps (its script) and nothing else here: the video itself is
+  // played in a host-owned pane at the point lectureChunks marks.
   function composeScript(plan, path) {
     const steps = [];
     let hand;
@@ -52,6 +53,32 @@
     }
     const script = {board_schema: 1, open: false, steps};
     if (hand) script.hand = hand;
+    return script;
+  }
+
+  // The lecture in pieces, each ending at a video. A segment's script plays first, then its video; a segment that is only a video gets one spoken sentence (its
+  // notice) so the board always introduces what is about to play. The board waits (an open script) at the end of a piece that ends in a video, and goes on when the
+  // video has ended, been closed, or could not be played: the lecture never depends on the video loading. chunk: {steps, video: null | {segment, resource, start, end, notice}}.
+  function lectureChunks(plan, path) {
+    const chunks = [];
+    let steps = [], hand;
+    for (const id of path) {
+      const seg = plan.segments.find(s => s.id === id);
+      if (!seg) continue;
+      if (seg.script) { steps.push(...seg.script.steps); if (!hand && seg.script.hand) hand = seg.script.hand; }
+      if (seg.video) {
+        if (!seg.script) steps.push({id: ('video-' + seg.id).slice(0, 64), say: seg.video.notice});
+        chunks.push({steps, video: Object.assign({segment: seg.id}, seg.video)});
+        steps = [];
+      }
+    }
+    if (steps.length) chunks.push({steps, video: null});
+    return {chunks, hand};
+  }
+  // The board's script once the first k+1 pieces are in: open (waiting) exactly when the last piece ends in a video.
+  function chunkScript(built, k) {
+    const script = {board_schema: 1, open: !!built.chunks[k].video, steps: built.chunks.slice(0, k + 1).flatMap(c => c.steps)};
+    if (built.hand) script.hand = built.hand;
     return script;
   }
 
@@ -99,7 +126,10 @@
 
   // ----------------------------------------------------------------------------------------------------------------- the view
   /* ctx: {doc, events(): [event], emit(type, questionId, response): event, rich(tag, text): element, mountBoard(container, script, onEvent): controller,
-           footer(element): void, voice: null | {bind(binding), idle, holding}, liveVoice: null | {state(): string, ask(): void, onState(callback): void}} */
+           footer(element): void, voice: null | {bind(binding), idle, holding}, liveVoice: null | {state(): string, ask(): void, onState(callback): void},
+           panes: null | {video: {open({resource, start, end}), close(), on(callback)}, handout: {open(), on(callback)}, openTimeoutMs?}, videoRecord(id): null | {title, publisher, license, attribution}}
+     The panes are the host's: the page names a video (a record id and the part a plan segment plays) or the handout; the host decides, opens it in an Obsidian pane, and reports
+     {status, resource, title, message} back. video: opened | ended | closed | error. handout: opened | error. */
   function mount(container, plan, ctx) {
     const doc = ctx.doc;
     let current = plan;
@@ -270,10 +300,12 @@
     }
 
     // ------------------------------------------------------------------------------------------------- handout
+    let handoutNote = {text: '', problem: false};      // what the host last said about opening the PDF
+    function openHandout() { handoutNote = {text: 'Opening the handout…', problem: false}; ctx.panes.handout.open(); renderHandout(); }
     function renderHandout() {
       const panel = panels.handout;
       const handout = current.handout, voiceState = ctx.liveVoice ? ctx.liveVoice.state() : 'none';
-      const signature = JSON.stringify([handout, voiceState, derived, shown]);
+      const signature = JSON.stringify([handout, voiceState, derived, shown, handoutNote]);
       if (panel.dataset.signature === signature) return;
       panel.dataset.signature = signature; panel.textContent = '';
       const card = el('article', {class: 'ros-handout'});
@@ -285,7 +317,10 @@
         card.append(list, el('p', {class: 'ros-stage-hint', text: 'You keep it in your library to study from during and after the session.'}));
       } else card.append(el('h2', {text: 'No handout for this session'}));
       const warming = voiceState === 'warming';
-      card.append(el('div', {class: 'ros-qcard-actions'}, button(derived === 'handout' ? 'Start the lecture' : 'Go to the lecture', startLecture, {class: 'ros-primary', disabled: warming})));
+      const actions = el('div', {class: 'ros-qcard-actions'});
+      if (handout && handout.status === 'built' && ctx.panes) actions.append(button('Open the handout', openHandout, {class: 'ros-handout-open'}));
+      actions.append(button(derived === 'handout' ? 'Start the lecture' : 'Go to the lecture', startLecture, {class: 'ros-primary', disabled: warming}));
+      card.append(actions, el('p', {class: 'ros-handout-note', role: 'status', 'data-problem': handoutNote.problem ? 'true' : undefined, text: handoutNote.text}));
       card.append(el('p', {class: 'ros-voice-state', role: 'status', text: voiceState === 'ready' || voiceState === 'busy' ? 'The tutor’s voice is ready.' : warming ? 'The tutor’s voice is warming up. You can start in a moment.'
         : voiceState === 'none' ? '' : 'The tutor’s voice is not running, so the lecture will use your device voice or captions.'}));
       panel.append(card);
@@ -299,7 +334,7 @@
     }
 
     // ------------------------------------------------------------------------------------------------- lecture: the board, a way to ask, nothing else
-    const lecture = {host: null, controller: null, stepId: '', asked: new Set(), path: [], script: null};
+    const lecture = {host: null, controller: null, stepId: '', asked: new Set(), path: [], script: null, built: null, k: 0, prompted: -1, video: null, videoBox: null};
     function buildLecture() {
       if (lecture.host) return;
       const probe = replay(current, 'probe', ctx.events());
@@ -322,12 +357,18 @@
       } else lecture.composer.append(lecture.input, row);
       lecture.askButton = button('Ask a question', openAsk, {class: 'ros-ask-button'});
       lecture.next = button(current.check ? 'Continue to the check' : 'Finish', endLecture, {class: 'ros-primary', hidden: true});
-      tools.append(lecture.askButton, lecture.chips, lecture.composer, lecture.next);
+      lecture.videoBox = el('section', {class: 'ros-video-card', hidden: true, 'aria-label': 'Video'});
+      tools.append(lecture.videoBox, lecture.askButton, lecture.chips, lecture.composer, lecture.next);
       panels.lecture.append(lecture.host, tools);
-      lecture.script = composeScript(current, lecture.path);
+      lecture.built = lectureChunks(current, lecture.path); lecture.k = 0;
+      lecture.script = lecture.built.chunks.length ? chunkScript(lecture.built, 0) : composeScript(current, lecture.path);
+      if (ctx.panes) ctx.panes.video.on(onVideoMessage);
       lecture.controller = ctx.mountBoard(lecture.host, lecture.script, (type, data) => {
         if (type === 'step') lecture.stepId = data.step.id;
-        if (type === 'status' && lecture.controller) lecture.next.hidden = lecture.controller.status !== 'done';
+        if (type === 'status') {
+          if (lecture.controller) lecture.next.hidden = lecture.controller.status !== 'done';
+          if (data.status === 'waiting') atVideo();
+        }
       });
       renderChips();
       // The caption, the voice note and the controls change as the lecture plays; the board gives back or takes height as they do.
@@ -346,6 +387,73 @@
         const available = Math.max(160, win.innerHeight - overhead);
         board.style.maxWidth = Math.max(240, available * 16 / 9 + padding) + 'px';
       }
+    }
+    // ---- a video inside the lecture. It plays in a pane the host owns, at the end of the piece of the lecture that introduces it, and only when the learner chooses
+    // to play it (nothing from outside loads before that). The lecture waits for it and goes on when it ends or is closed. If it cannot be played, the page says so,
+    // the lecture goes on from the board and the handout, and the video stays on offer as extra material.
+    function atVideo() {
+      const chunk = lecture.built && lecture.built.chunks[lecture.k];
+      if (!chunk || !chunk.video || lecture.prompted === lecture.k) return;
+      lecture.prompted = lecture.k;
+      if (lecture.video && (lecture.video.phase === 'opening' || lecture.video.phase === 'playing') && ctx.panes) ctx.panes.video.close();
+      lecture.video = {spec: chunk.video, record: ctx.videoRecord ? ctx.videoRecord(chunk.video.resource) : null, phase: 'prompt', blocking: true, message: '', timer: null};
+      if (!ctx.panes) { lecture.video.phase = 'failed'; lecture.video.message = 'This page cannot play videos, so the lecture goes on without it.'; paintVideo(); proceed(); return; }
+      paintVideo();
+    }
+    // Go on from the next piece of the lecture: the board has been waiting at the end of this one.
+    function proceed() {
+      const v = lecture.video;
+      if (!v || !v.blocking) return;
+      v.blocking = false;
+      const k = lecture.k + 1, next = lecture.built.chunks[k];
+      lecture.k = k;
+      const script = Object.assign({}, lecture.script, {open: !!(next && next.video), steps: lecture.script.steps.concat(next ? next.steps : [])});
+      const result = lecture.controller && lecture.controller.update ? lecture.controller.update(script) : null;
+      if (!result || result.ok !== false) lecture.script = script;
+    }
+    function startVideo() {
+      const v = lecture.video, win = doc.defaultView;
+      v.phase = 'opening'; paintVideo();
+      ctx.panes.video.open(v.spec);
+      if (win) { win.clearTimeout(v.timer); v.timer = win.setTimeout(() => videoFailed('The video tab did not open in time.'), ctx.panes.openTimeoutMs || 10000); }
+    }
+    function videoFailed(message) {
+      const v = lecture.video;
+      if (!v || (v.phase !== 'opening' && v.phase !== 'playing')) return;
+      if (doc.defaultView) doc.defaultView.clearTimeout(v.timer);
+      v.phase = 'failed'; v.message = 'The video could not be played here' + (message ? ': ' + message.replace(/[.\s]+$/, '') : '') + '. The lecture goes on without it.';
+      paintVideo(); proceed();
+    }
+    function endVideo() {
+      const v = lecture.video;
+      if (doc.defaultView) doc.defaultView.clearTimeout(v.timer);
+      v.phase = 'done'; paintVideo(); proceed();
+    }
+    function onVideoMessage(message) {
+      const v = lecture.video;
+      if (!v || (message.resource && message.resource !== v.spec.resource) || (v.phase !== 'opening' && v.phase !== 'playing')) return;
+      if (message.status === 'opened') { if (doc.defaultView) doc.defaultView.clearTimeout(v.timer); v.phase = 'playing'; paintVideo(); }
+      else if (message.status === 'ended' || message.status === 'closed') endVideo();
+      else if (message.status === 'error') videoFailed(message.message);
+    }
+    function paintVideo() {
+      const v = lecture.video, box = lecture.videoBox;
+      box.textContent = '';
+      if (!v || v.phase === 'done') { box.hidden = true; return; }
+      box.hidden = false;
+      const record = v.record;
+      box.append(el('p', {class: 'ros-video-title', text: 'Video: ' + (record ? record.title : 'the planned video')}));
+      const notice = ctx.rich('p', v.spec.notice); notice.classList.add('ros-video-notice'); box.append(notice);
+      const say = {prompt: 'It plays in its own tab beside the lesson, and the lecture waits for it.', opening: 'Opening the video…',
+        playing: v.blocking ? 'The video is playing in its own tab. The lecture goes on when it ends.' : 'The video is open in its own tab.', failed: v.message}[v.phase];
+      box.append(el('p', {class: 'ros-video-status', role: 'status', 'data-problem': v.phase === 'failed' ? 'true' : undefined, text: say}));
+      const row = el('div', {class: 'ros-qcard-actions'});
+      if (v.phase === 'prompt') row.append(button('Play the video', startVideo, {class: 'ros-primary'}), button('Skip the video', () => { v.phase = 'done'; paintVideo(); proceed(); }));
+      if (v.phase === 'playing') row.append(button(v.blocking ? 'I have finished watching' : 'Close the video', () => { ctx.panes.video.close(); endVideo(); }, {class: 'ros-primary'}));
+      if (v.phase === 'failed') row.append(button('Try the video again', startVideo));
+      if (row.childNodes.length) box.append(row);
+      const credit = record && [record.publisher, record.license, record.attribution].filter(Boolean).join(' · ');
+      if (credit) box.append(el('p', {class: 'ros-stage-hint', text: credit}));
     }
     function renderChips() {
       lecture.chips.textContent = '';
@@ -416,6 +524,11 @@
       shell.dataset.stage = shown;
     }
     if (ctx.liveVoice) ctx.liveVoice.onState(() => { if (shown === 'handout') renderHandout(); });
+    if (ctx.panes) ctx.panes.handout.on(message => {
+      handoutNote = message.status === 'opened' ? {text: 'The handout is open in its own tab.', problem: false}
+        : {text: 'The handout could not be opened' + (message.message ? ': ' + message.message : '.') + ' It is in your library.', problem: true};
+      if (shown === 'handout') renderHandout();
+    });
     if (doc.defaultView) {
       doc.defaultView.addEventListener('resize', fitLecture);
       if (doc.defaultView.requestAnimationFrame) doc.defaultView.requestAnimationFrame(() => doc.defaultView.requestAnimationFrame(fitLecture));   // once fonts and the first layout have settled
@@ -426,9 +539,13 @@
     return {
       get stage() { return shown; },
       update(next) { current = next; title.textContent = next.title; render(); },
-      destroy() { if (lecture.controller && lecture.controller.destroy) lecture.controller.destroy(); shell.remove(); }
+      destroy() {
+        if (lecture.video && (lecture.video.phase === 'opening' || lecture.video.phase === 'playing') && ctx.panes) ctx.panes.video.close();
+        if (lecture.controller && lecture.controller.destroy) lecture.controller.destroy();
+        shell.remove();
+      }
     };
   }
 
-  return {END, STAGES, judge, lecturePath, composeScript, replay, stageOf, marks, parseNumber, mount};
+  return {END, STAGES, judge, lecturePath, composeScript, lectureChunks, chunkScript, replay, stageOf, marks, parseNumber, mount};
 });

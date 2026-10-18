@@ -310,6 +310,8 @@ def validate_state(state):
         import session_plan  # the plan an agent wrote before the session; the page runs it, so it is checked with the same rules
         session_plan.check(state["plan"])
         plan_ids = frozenset(q["id"] for tree in ("probe", "check") for q in (state["plan"].get(tree) or {}).get("questions", []))
+    if "video_records" in state:
+        _validate_video_records(state["video_records"])
     if "context" in state:
         _validate_context(state["context"])
     if state.get("placement") not in (None, "explicit"):
@@ -1040,12 +1042,51 @@ def update_session(root, relative_md, text=None, **changes):
         if 'lifecycle' in changes and front.get('status', changes['lifecycle']) != changes['lifecycle']:
             raise ValueError('Lifecycle contradicts source status; update the source explicitly')
         state.update(changes)
+        if "plan" in changes:
+            records = _video_records(root, changes["plan"])
+            if records:
+                state["video_records"] = records
+            else:
+                state.pop("video_records", None)
         state["source_markdown"] = source
         state['metadata'].update(front)
         state['type'] = front.get('type', state['type'])
         state['lifecycle'] = front.get('status', state['lifecycle'])
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
+
+
+def _video_records(root, plan):
+    """The vetted registry records that a plan's video segments name, as the snapshots a Teaching Card carries (``resources.card_resource``). The page never
+    holds an address of its own: the Obsidian host plays a part of one of these snapshots, and only one that a segment of this plan names (RESOURCE_PROTOCOL.md).
+    A record that is missing, not vetted, out of date or not an embeddable YouTube video is left out, so the host refuses it and the lecture goes on without it."""
+    import resources
+    segments = plan.get("segments") if isinstance(plan, dict) else None
+    wanted = {seg["video"]["resource"] for seg in segments or [] if isinstance(seg, dict) and isinstance(seg.get("video"), dict)
+              and isinstance(seg["video"].get("resource"), str)}
+    if not wanted:
+        return {}
+    known, _ = resources.load_all(resources.registry_dir(root))
+    return {rid: resources.card_resource(known[rid]) for rid in sorted(wanted)
+            if rid in known and known[rid]["status"] == "vetted" and not resources.is_stale(known[rid]) and known[rid].get("embed") == "youtube"}
+
+
+def _validate_video_records(records):
+    """The shape of ``video_records``; the Obsidian host checks the same things again before it plays anything."""
+    import resources
+    if not isinstance(records, dict) or len(records) > 32:
+        raise ValueError("Invalid video records")
+    for rid, record in records.items():
+        if (not isinstance(rid, str) or not resources.ID.fullmatch(rid) or not isinstance(record, dict) or record.get("id") != rid or record.get("embed") != "youtube"
+                or not isinstance(record.get("title"), str) or len(record["title"]) > 200 or not isinstance(record.get("url"), str)):
+            raise ValueError("Invalid video record")
+        try:
+            resources.https_url(record["url"])
+            date = dt.date.fromisoformat(str(record.get("vetted_on")))
+        except (resources.ResourceError, ValueError):
+            raise ValueError("Invalid video record") from None
+        if resources.youtube_id(record["url"]) != record.get("video_id") or not resources.YOUTUBE.fullmatch(str(record.get("video_id"))) or date.isoformat() != record["vetted_on"]:
+            raise ValueError("Invalid video record")
 
 
 def bind_context(receipt, request=None):
