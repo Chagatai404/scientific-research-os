@@ -425,7 +425,7 @@ a.ros-note-link:hover { text-decoration-style: solid; }
 .ros-side-panel-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ros-space-3); }
 .ros-side-panel-title { margin: 0; font: 700 18px/1.3 var(--ros-font-ui); }
 .ros-side-panel .ros-open-question { margin: var(--ros-space-4) 0; padding: var(--ros-space-4); }
-.ros-side-panel .ros-question-composer textarea { min-height: 6rem; }
+.ros-side-panel .ros-question-composer textarea { min-height: 10rem; }   /* a spoken question runs several lines, and Send sits over the bottom right corner */
 .ros-side-panel .ros-question-history { margin: var(--ros-space-4) 0 0; }
 .ros-side-panel .ros-question-history > h2 { font-size: 16px; margin-top: 0; }
 .ros-question-entry { padding: var(--ros-space-3) 0; border-top: 1px solid var(--ros-border); }
@@ -471,6 +471,17 @@ span[data-ros=equation] { padding: 0; }
 .ros-question-composer { position: relative; }
 .ros-question-composer textarea { min-height: 8rem; padding-bottom: 4rem; }
 .ros-question-send { position: absolute; right: var(--ros-space-3); bottom: var(--ros-space-3); margin: 0; }
+/* Asking aloud: only present where the host can record. The transcript fills the box above; Send stays the learner's act. */
+.ros-voice-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ros-space-3); margin-top: var(--ros-space-3); }
+.ros-voice-row[hidden] { display: none; }
+.ros-voice-talk { touch-action: none; user-select: none; cursor: pointer; }
+.ros-voice-talk[data-voice=starting], .ros-voice-talk[data-voice=recording] { border-color: var(--ros-warning); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ros-warning) 35%, transparent); }
+.ros-voice-talk[data-voice=recording]::before { content: ""; display: inline-block; width: .6em; height: .6em; margin-right: .5em; border-radius: 50%; background: var(--ros-warning); animation: ros-voice-pulse 1s ease-in-out infinite; }
+.ros-voice-talk:disabled { cursor: progress; }
+.ros-voice-line { margin: 0; font: 14px/1.5 var(--ros-font-ui); color: var(--ros-text-muted); flex: 1 1 14rem; }
+.ros-voice-line.ros-voice-problem { color: var(--ros-warning); }
+@keyframes ros-voice-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .ros-voice-talk[data-voice=recording]::before { animation: none; } }
 form[data-ros=open-question]:not(.ros-open-question) { border-top: 1px solid var(--ros-border); padding-top: var(--ros-space-5); margin-top: var(--ros-space-7); }
 .ros-question-entry { border-top: 1px solid var(--ros-border); padding: var(--ros-space-4) 0; }
 .ros-question-entry p { white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -540,3 +551,5 @@ form[data-ros=open-question]:not(.ros-open-question) { border-top: 1px solid var
 .ros-board-transcript{margin-top:.4rem}
 .ros-board-transcript li[aria-current="step"]{font-weight:600}
 .ros-board-written{opacity:.75}
+.ros-board-voice-note{margin:.4rem 0 0;min-height:1.3em;font-size:.9rem;opacity:.85}
+.ros-board-voice-note[data-problem="true"]{color:#b45309}

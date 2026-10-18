@@ -304,6 +304,101 @@
     };
   }
 
+  // The tutor's live voice. Nothing is recorded in advance: each sentence is turned into speech when it is wanted (the page asks for the next one or two while the
+  // current one plays, so the voice runs on without gaps), by whatever `live.request(id, text)` reaches (the Obsidian host and its Kokoro worker). The audio is
+  // played with Web Audio, so a page that may not fetch media can still speak and pausing is exact. If a sentence cannot be spoken live (no worker, an error,
+  // too slow), `fallback` says it and the reason is reported once; the lecture never stops. live: {request(id, text) -> Promise<{wav}>, cancel(id), pause, audioContext?}.
+  function liveSpeaker(win, live, fallback, clock) {
+    clock = clock || realClock;
+    const Context = win && (win.AudioContext || win.webkitAudioContext);
+    const supported = !!(live && typeof live.request === 'function' && (typeof live.audioContext === 'function' || typeof Context === 'function'));
+    const gap = live && num(live.pause, 0, 5) ? live.pause : 0.5;
+    const timers = createTimers(clock);
+    const cache = new Map();
+    let context = null, rate = 1, serial = 0, current = null, paused = false, failed = null, reported = false;
+    const speaker = {kind: 'live', supported, fallback, onProblem: null, onWait: null};
+    const audio = () => { if (!context) context = typeof live.audioContext === 'function' ? live.audioContext() : new Context(); return context; };
+    function decode(bytes) {
+      return new Promise((resolve, reject) => { const result = audio().decodeAudioData(bytes, resolve, reject); if (result && typeof result.then === 'function') result.then(resolve, reject); });
+    }
+    function fetchBuffer(text) {
+      if (cache.has(text)) return cache.get(text).promise;
+      const entry = {id: 'u' + (++serial), done: false};
+      entry.promise = Promise.resolve().then(() => live.request(entry.id, text)).then(result => {
+        if (!result || !result.wav || !result.wav.byteLength) throw new Error('The live voice sent no audio.');
+        return decode(result.wav);
+      }).then(buffer => { entry.done = true; return buffer; }, error => { cache.delete(text); failed = failed || String(error && error.message || error).slice(0, 300); throw error; });   // one failure stops the asking
+      entry.promise.catch(() => {});   // a sentence fetched ahead that nobody wanted must not report an unhandled failure
+      cache.set(text, entry);
+      while (cache.size > 8) { const [oldText, old] = cache.entries().next().value; cache.delete(oldText); if (!old.done && typeof live.cancel === 'function') live.cancel(old.id); }
+      return entry.promise;
+    }
+    Object.assign(speaker, {
+      // Called from a click, so the browser lets the audio start later without a fresh gesture.
+      unlock() { if (!supported) return; const c = audio(); if (c.state === 'suspended' && typeof c.resume === 'function') { const r = c.resume(); if (r && r.catch) r.catch(() => {}); } },
+      retry() { failed = null; reported = false; },
+      prefetch(texts) {
+        if (!supported || failed) return;
+        for (const text of (texts || []).slice(0, 3)) { const clean = typeof text === 'string' ? text.trim() : ''; if (clean) fetchBuffer(clean); }
+      },
+      speak(text, opts) {
+        const clean = String(text || '').trim();
+        if (!clean) return Promise.resolve();
+        return new Promise(resolve => {
+          const entry = {done: false, source: null, delegate: false};
+          current = entry;
+          const finish = () => { if (entry.done) return; entry.done = true; clock.clearTimeout(entry.wait); if (current === entry) current = null; resolve(); };
+          entry.finish = finish;
+          const delegate = (reason, quiet) => {
+            if (entry.done || entry.delegate) return;
+            clock.clearTimeout(entry.wait); if (speaker.onWait) speaker.onWait(false);
+            failed = failed || reason;
+            if (!quiet && !reported) { reported = true; if (speaker.onProblem) speaker.onProblem(failed); }   // said once, whichever request failed first
+            entry.delegate = true;
+            fallback.speak(clean, opts).then(finish, finish);
+            if (paused) fallback.pause();
+          };
+          if (!supported) { delegate('this page cannot play live audio', true); return; }
+          if (failed) { delegate(failed, false); return; }
+          entry.wait = clock.setTimeout(() => { if (!entry.done && speaker.onWait) speaker.onWait(true); }, 400);
+          fetchBuffer(clean).then(buffer => {
+            clock.clearTimeout(entry.wait); if (speaker.onWait) speaker.onWait(false);
+            if (entry.done) return;
+            const c = audio(), source = c.createBufferSource();
+            source.buffer = buffer; source.playbackRate.value = rate; source.connect(c.destination);
+            entry.source = source;
+            source.onended = () => { if (!entry.done && !entry.delegate) timers.sleep(gap / rate * 1000).then(finish); };
+            const go = () => { try { source.start(0); } catch (_) { delegate('the audio could not start'); } };
+            if (c.state === 'suspended' && !paused && typeof c.resume === 'function') { const r = c.resume(); if (r && r.then) r.then(go, go); else go(); } else go();
+          }).catch(error => delegate(String(error && error.message || error).slice(0, 300)));
+        });
+      },
+      pause() {
+        paused = true; timers.pause();
+        if (current && current.delegate) fallback.pause();
+        else if (context && typeof context.suspend === 'function') { const r = context.suspend(); if (r && r.catch) r.catch(() => {}); }
+      },
+      resume() {
+        paused = false; timers.resume();
+        if (current && current.delegate) fallback.resume();
+        else if (context && typeof context.resume === 'function') { const r = context.resume(); if (r && r.catch) r.catch(() => {}); }
+      },
+      cancel() {
+        const entry = current; paused = false;
+        if (entry) {
+          if (entry.source) { entry.source.onended = null; try { entry.source.stop(); } catch (_) { /* not started */ } }
+          if (entry.delegate) fallback.cancel();
+        }
+        timers.resume(); timers.flush();
+        if (context && context.state === 'suspended' && typeof context.resume === 'function') { const r = context.resume(); if (r && r.catch) r.catch(() => {}); }
+        if (entry) entry.finish();
+      },
+      setRate(r) { rate = r > 0 ? r : 1; if (current && current.source) { try { current.source.playbackRate.value = rate; } catch (_) { /* ended */ } } fallback.setRate(rate); },
+      setVoice() {}
+    });
+    return speaker;
+  }
+
   // ----------------------------------------------------------------------------------------------------------------- the player
   // Runs a script step by step: the sentence is spoken while the step's actions fire at their delays; the step ends when both are done.
   // effects: {apply(action, {instant, index}) -> promise, pause(), resume(), finishAll(), reset()}.
@@ -319,6 +414,8 @@
         const i = index, step = steps[i];
         skipping = false;
         onEvent('step', {index: i, step});
+        // A live voice stays a sentence or two ahead, so the next one is ready when this one ends.
+        if (typeof speaker.prefetch === 'function') speaker.prefetch(steps.slice(i, i + 3).map(s => s.say));
         const jobs = [];
         if (typeof step.say === 'string' && step.say.trim()) jobs.push(Promise.resolve().then(() => speaker.speak(step.say.trim(), {index: i, id: step.id})).catch(() => {}));
         for (const action of step.do || []) {
@@ -567,11 +664,12 @@
     const state = node('span', undefined, 'ros-board-state'); state.setAttribute('role', 'status');
     bar.append(play, skip, replay, voiceLabel, rateLabel, state);
     const caption = node('p', '', 'ros-board-caption');
+    const voiceNote = node('p', '', 'ros-board-voice-note'); voiceNote.setAttribute('role', 'status');
     const transcript = node('details', undefined, 'ros-board-transcript');
     transcript.append(node('summary', 'Transcript and what is written on the board'));
     const list = node('ol');
     transcript.append(list);
-    figure.append(frame, bar, caption, transcript);
+    figure.append(frame, bar, voiceNote, caption, transcript);
     container.append(figure);
 
     const speakers = {};
@@ -585,19 +683,33 @@
       if (recorded.supported) speakers.recorded = recorded; else recorded = null;
     }
     for (const [id, extra] of Object.entries(options.speakers || {})) if (extra && typeof extra.speak === 'function') speakers[id] = extra;
-    const labels = Object.assign({device: 'Device voice', captions: 'Captions only (timed)', recorded: 'Recorded voice'}, options.speakerLabels || {});
+    const labels = Object.assign({device: 'Device voice', captions: 'Captions only (timed)', recorded: 'Recorded voice', live: 'Live voice (Kokoro)'}, options.speakerLabels || {});
     const spoken = s => s.steps.filter(step => typeof step.say === 'string' && step.say.trim());
     const coverage = s => { const all = spoken(s), have = all.filter(step => recorded.has(step.id)).length; return have === all.length ? 'Recorded voice' : `Recorded voice (${have} of ${all.length} sentences)`; };
     if (recorded) labels.recorded = coverage(script);
-    for (const id of Object.keys(speakers)) { const o = node('option', labels[id] || id); o.value = id; voice.append(o); }
     const complete = !!recorded && spoken(script).every(step => recorded.has(step.id));
-    const initial = options.speaker && speakers[options.speaker] ? options.speaker : (complete ? 'recorded' : speakers.device ? 'device' : 'captions');
+    // The live voice (the host's Kokoro worker): sentences are spoken as they are wanted. What says a sentence it cannot is the best of the other voices.
+    let liveVoice = null;
+    if (options.live) {
+      liveVoice = liveSpeaker(win, options.live, complete ? recorded : (speakers.device || speakers.captions), options.clock);
+      if (liveVoice.supported) speakers.live = liveVoice; else liveVoice = null;
+    }
+    if (liveVoice) {
+      liveVoice.onProblem = reason => { voiceNote.textContent = 'The live voice is not available (' + reason + '), so this uses the ' + (complete ? 'recorded' : speakers.device ? 'device' : 'caption') + ' voice instead.'; voiceNote.dataset.problem = 'true'; };
+      liveVoice.onWait = waiting => { if (voiceNote.dataset.problem !== 'true') voiceNote.textContent = waiting ? 'Preparing the voice…' : ''; };
+    }
+    const order = ['live', 'recorded', 'device', 'captions'];   // the best voice first; anything a host adds follows
+    for (const id of [...order.filter(k => speakers[k]), ...Object.keys(speakers).filter(k => !order.includes(k))]) { const o = node('option', labels[id] || id); o.value = id; voice.append(o); }
+    const initial = options.speaker && speakers[options.speaker] ? options.speaker : (liveVoice ? 'live' : complete ? 'recorded' : speakers.device ? 'device' : 'captions');
     let speaker = speakers[initial];
     voice.value = initial;
+    const warmUp = () => { if (speaker === liveVoice && liveVoice) liveVoice.prefetch(spoken(script).slice(0, 2).map(step => step.say)); };
+    warmUp();
 
     const reduced = options.reducedMotion !== undefined ? !!options.reducedMotion : !!(win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches);
     const effects = createEffects({doc, surface, ink, layer, pen, renderMath: options.renderMath});
-    const speakerProxy = {speak: (t, o) => speaker.speak(t, o), pause: () => speaker.pause(), resume: () => speaker.resume(), cancel: () => speaker.cancel()};
+    const speakerProxy = {speak: (t, o) => speaker.speak(t, o), pause: () => speaker.pause(), resume: () => speaker.resume(), cancel: () => speaker.cancel(),
+      prefetch: texts => { if (typeof speaker.prefetch === 'function') speaker.prefetch(texts); }};
     // Text is sized from the board's own width in pixels, so it scales with the board without container-query units.
     function fitText() { surface.style.setProperty('--bw', (surface.clientWidth || 800) + 'px'); }
     fitText();
@@ -634,13 +746,18 @@
         if (options.onEvent) options.onEvent(type, data);
       }
     });
-    play.addEventListener('click', () => { const s = player.status; if (s === 'playing') player.pause(); else if (s === 'paused') player.resume(); else player.start(); });
+    play.addEventListener('click', () => {
+      const s = player.status;
+      if (typeof speaker.unlock === 'function') speaker.unlock();   // the click is what lets live audio start
+      if (s === 'playing') player.pause(); else if (s === 'paused') player.resume(); else player.start();
+    });
     skip.addEventListener('click', () => player.skip());
     replay.addEventListener('click', () => player.replay());
     voice.addEventListener('change', () => {
       if (player.status === 'playing' || player.status === 'paused') speaker.cancel();
       speaker = speakers[voice.value];
       speaker.setRate(Number(rate.value));
+      if (speaker === liveVoice) { liveVoice.retry(); voiceNote.textContent = ''; delete voiceNote.dataset.problem; warmUp(); }
     });
     rate.addEventListener('change', () => { for (const s of Object.values(speakers)) s.setRate(Number(rate.value)); });
     refresh();
@@ -664,5 +781,5 @@
     };
   }
 
-  return {SCHEMA, WIDTH, HEIGHT, COLORS, SIZES, HANDS, MAX, validate, pathProblem, normalizePath, estimate, createTimers, silentSpeaker, deviceSpeaker, audioSpeaker, createPlayer, mount};
+  return {SCHEMA, WIDTH, HEIGHT, COLORS, SIZES, HANDS, MAX, validate, pathProblem, normalizePath, estimate, createTimers, silentSpeaker, deviceSpeaker, audioSpeaker, liveSpeaker, createPlayer, mount};
 });

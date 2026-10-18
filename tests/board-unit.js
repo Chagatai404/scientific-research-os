@@ -45,7 +45,7 @@ function fakeSpeaker() {
   return {
     log, waiting,
     speak(text) { log.push(['speak', text]); return new Promise(resolve => waiting.push({text, resolve})); },
-    pause() { log.push(['pause']); }, resume() { log.push(['resume']); },
+    pause() { log.push(['pause']); }, resume() { log.push(['resume']); }, setRate() {}, setVoice() {},
     cancel() { log.push(['cancel']); while (waiting.length) waiting.shift().resolve(); },
     finish() { const w = waiting.shift(); if (w) w.resolve(); return !!w; }
   };
@@ -457,6 +457,138 @@ function rig(steps, extra, effectDuration) {
     assert.equal(Audio.made[before].pauses > 0, true, 'skipping stops the clip');
     assert.equal(Audio.made.length, before + 2);
     assert.equal(Audio.made[before + 1].url, 'Narration/s2.wav', 'and the second step starts');
+  }
+
+  // The live voice: sentences are asked for when wanted (and one or two ahead), played with Web Audio, paused exactly, and any failure is said by the fallback voice.
+  {
+    const wav = n => new Uint8Array([82, 73, 70, 70, n]).buffer;
+    const makeContext = () => {
+      const c = {state: 'running', sources: [], decoded: [], suspends: 0, resumes: 0, destination: {}};
+      c.decodeAudioData = bytes => { c.decoded.push(new Uint8Array(bytes)[4]); return Promise.resolve({duration: 2, tag: new Uint8Array(bytes)[4]}); };
+      c.createBufferSource = () => { const s = {buffer: null, playbackRate: {value: 1}, started: 0, stopped: 0, connect() {}, start() { this.started++; }, stop() { this.stopped++; }, onended: null}; c.sources.push(s); return s; };
+      c.suspend = () => { c.suspends++; c.state = 'suspended'; return Promise.resolve(); };
+      c.resume = () => { c.resumes++; c.state = 'running'; return Promise.resolve(); };
+      return c;
+    };
+    const rig2 = (extra = {}) => {
+      const clock = fakeClock(), context = makeContext(), asked = [], cancelled = [], fallback = fakeSpeaker(), problems = [], waits = [];
+      const live = Object.assign({pause: 0.5, audioContext: () => context, request: (id, text) => { asked.push([id, text]); return asked.respond ? asked.respond(id, text) : Promise.resolve({wav: wav(asked.length)}); }, cancel: id => cancelled.push(id)}, extra);
+      const speaker = B.liveSpeaker({}, live, fallback, clock);
+      speaker.onProblem = r => problems.push(r); speaker.onWait = w => waits.push(w);
+      return {clock, context, asked, cancelled, fallback, problems, waits, speaker};
+    };
+    // A sentence is asked for, decoded, played once, and ends after the audio and the pause the delivery puts after a sentence.
+    {
+      const r = rig2(); let done = false;
+      r.speaker.speak('Hello there.').then(() => { done = true; });
+      await tick(); await tick(); await tick();
+      assert.deepEqual(r.asked.map(a => a[1]), ['Hello there.']);
+      assert.equal(r.context.sources.length, 1); assert.equal(r.context.sources[0].started, 1);
+      assert.equal(r.context.sources[0].buffer.tag, 1);
+      r.context.sources[0].onended();
+      await settle(r.clock, 499); assert.equal(done, false, 'the half second after a sentence is waited out');
+      await settle(r.clock, 2); assert.equal(done, true);
+      assert.deepEqual(r.fallback.log, [], 'the fallback voice was not used');
+    }
+    // Asking ahead: the next sentences are requested while the first plays, never twice, and a sentence already fetched is used rather than asked for again.
+    {
+      const r = rig2();
+      r.speaker.prefetch(['One.', 'Two.', 'Three.', 'Four.', ' ', 7]);
+      r.speaker.prefetch(['One.']);
+      await tick(); await tick();
+      assert.deepEqual(r.asked.map(a => a[1]), ['One.', 'Two.', 'Three.'], 'at most three ahead, blanks and non-text skipped, no duplicates');
+      let done = false; r.speaker.speak('Two.').then(() => { done = true; });
+      await tick(); await tick();
+      assert.equal(r.asked.length, 3, 'a sentence fetched ahead is not asked for again');
+      assert.equal(r.context.sources[0].buffer.tag, 2, 'it plays the audio fetched for it');
+      r.context.sources[0].onended(); await settle(r.clock, 600); assert.equal(done, true);
+    }
+    // Pause stops the audio exactly (the context is suspended) and the pause after the sentence; resume carries on; cancel stops the source and ends the sentence.
+    {
+      const r = rig2(); let done = false;
+      r.speaker.speak('Hello.').then(() => { done = true; });
+      await tick(); await tick(); await tick();
+      r.speaker.pause(); assert.equal(r.context.state, 'suspended');
+      r.context.sources[0].onended();
+      await settle(r.clock, 5000); assert.equal(done, false, 'nothing finishes while paused');
+      r.speaker.resume(); assert.equal(r.context.state, 'running');
+      await settle(r.clock, 600); assert.equal(done, true);
+      const again = rig2(); let cut = false;
+      again.speaker.speak('Cut me off.').then(() => { cut = true; });
+      await tick(); await tick(); await tick();
+      again.speaker.pause(); again.speaker.cancel(); await tick();
+      assert.equal(cut, true); assert.equal(again.context.sources[0].stopped, 1); assert.equal(again.context.state, 'running', 'the context is left running for the next sentence');
+    }
+    // Rate changes the speed of what is playing and of the next sentence.
+    {
+      const r = rig2(); r.speaker.setRate(1.25);
+      r.speaker.speak('Fast.'); await tick(); await tick(); await tick();
+      assert.equal(r.context.sources[0].playbackRate.value, 1.25);
+      r.speaker.setRate(0.8); assert.equal(r.context.sources[0].playbackRate.value, 0.8);
+    }
+    // No worker, an error, no audio, or a sentence that cannot start: the fallback voice says it, the reason is reported once, and later sentences go straight to it.
+    {
+      const r = rig2(); r.asked.respond = () => Promise.reject(new Error('The live voice is not running (no live voice worker has run here).'));
+      r.speaker.speak('First.'); await tick(); await tick(); await tick();
+      assert.deepEqual(r.fallback.log, [['speak', 'First.']]); assert.equal(r.problems.length, 1); assert.match(r.problems[0], /not running/);
+      r.fallback.finish(); await tick();
+      r.speaker.speak('Second.'); await tick(); await tick();
+      assert.deepEqual(r.fallback.log.map(l => l[1]), ['First.', 'Second.']); assert.equal(r.asked.length, 1, 'a worker that failed is not asked again');
+      assert.equal(r.problems.length, 1, 'said once, not for every sentence');
+      r.speaker.retry(); r.asked.respond = null;
+      r.fallback.finish(); await tick();
+      r.speaker.speak('Third.'); await tick(); await tick(); await tick();
+      assert.equal(r.context.sources.length, 1, 'after retry the live voice is tried again');
+      const empty = rig2(); empty.asked.respond = () => Promise.resolve({wav: new ArrayBuffer(0)});
+      empty.speaker.speak('Silence.'); await tick(); await tick(); await tick();
+      assert.match(empty.problems[0], /no audio/);
+      const broken = rig2(); broken.context.decodeAudioData = () => Promise.reject(new Error('not audio'));
+      broken.speaker.speak('Garbage.'); await tick(); await tick(); await tick();
+      assert.match(broken.problems[0], /not audio/);
+      const refusing = rig2(); refusing.context.createBufferSource = () => ({buffer: null, playbackRate: {value: 1}, connect() {}, start() { throw new Error('blocked'); }, stop() {}});
+      refusing.speaker.speak('Blocked.'); await tick(); await tick(); await tick();
+      assert.match(refusing.problems[0], /could not start/);
+      assert.deepEqual(refusing.fallback.log, [['speak', 'Blocked.']]);
+    }
+    // A failure found while asking ahead stops the asking, and is still reported once when the sentence it was for is spoken.
+    {
+      const r = rig2(); r.asked.respond = () => Promise.reject(new Error('worker is off'));
+      r.speaker.prefetch(['One.', 'Two.']); await tick(); await tick();
+      assert.equal(r.problems.length, 0, 'nothing is reported until a sentence needs the voice');
+      r.speaker.prefetch(['Three.']); await tick();
+      assert.equal(r.asked.length, 2, 'no more is asked of a worker that has failed');
+      r.speaker.speak('One.'); await tick(); await tick();
+      assert.deepEqual(r.problems, ['worker is off']); assert.deepEqual(r.fallback.log, [['speak', 'One.']]);
+      r.fallback.finish(); await tick(); r.speaker.speak('Two.'); await tick(); await tick();
+      assert.equal(r.problems.length, 1); assert.deepEqual(r.fallback.log.map(l => l[1]), ['One.', 'Two.']);
+    }
+    // Waiting for the first sentence is shown (after a moment), and a page that cannot play audio at all says so quietly and uses the fallback.
+    {
+      const r = rig2(); let release; r.asked.respond = () => new Promise(resolve => { release = () => resolve({wav: wav(1)}); });
+      r.speaker.speak('Slow.'); await settle(r.clock, 500); assert.deepEqual(r.waits, [true]);
+      release(); await tick(); await tick(); await tick(); assert.deepEqual(r.waits, [true, false]);
+      const none = B.liveSpeaker({}, {request: () => Promise.resolve({wav: wav(1)})}, fakeSpeaker(), fakeClock());
+      assert.equal(none.supported, false);
+      none.speak('x'); assert.equal(none.onProblem, null);
+      assert.equal(B.liveSpeaker({}, null, fakeSpeaker()).supported, false);
+    }
+    // The cache is bounded: sentences nobody used are withdrawn from the worker.
+    {
+      const r = rig2(); r.asked.respond = () => new Promise(() => {});
+      for (let i = 0; i < 12; i++) { r.speaker.prefetch(['Sentence ' + i]); }
+      await tick();
+      assert.equal(r.cancelled.length, 4, 'the oldest four of twelve were withdrawn');
+    }
+    // The player asks the voice to stay ahead of the lecture.
+    {
+      const asked = [], clock = fakeClock(), speaker = fakeSpeaker(); speaker.prefetch = texts => asked.push(texts);
+      const effects = fakeEffects(clock);
+      const player = B.createPlayer({script: script([{id: 'a', say: 'One.'}, {id: 'b', say: 'Two.'}, {id: 'c', say: 'Three.'}, {id: 'd', say: 'Four.'}]), speaker, effects, clock});
+      player.start(); await tick();
+      assert.deepEqual(asked[0], ['One.', 'Two.', 'Three.']);
+      speaker.finish(); await tick(); await tick();
+      assert.deepEqual(asked[1], ['Two.', 'Three.', 'Four.']);
+    }
   }
 
   // The shipped bundle contains exactly this module.

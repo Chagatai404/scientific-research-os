@@ -108,6 +108,20 @@
     const panels = new Map();
     const extensions = new Map();
     const boards = new Map();
+    // The tutor's live voice: the host (the Obsidian plugin, with a local Kokoro worker) speaks each sentence when it is asked for, by id, and answers with audio
+    // or an error. A standalone page has no host, so it has no live voice and its boards use the device voice, a recording, or captions.
+    const speechPending = new Map();
+    const liveVoice = host && host.voice && host.voice.speak ? {
+      pause: 0.5,
+      request(id, text) {
+        return new Promise((resolve, reject) => {
+          const timer = root.setTimeout(() => { if (speechPending.delete(id)) reject(new Error('the live voice took too long')); }, 30000);
+          speechPending.set(id, {resolve: value => { root.clearTimeout(timer); resolve(value); }, reject: error => { root.clearTimeout(timer); reject(error); }});
+          toHost('speak', {action: 'synth', id, text});
+        });
+      },
+      cancel(id) { const waiting = speechPending.get(id); speechPending.delete(id); toHost('speak', {action: 'cancel', id}); if (waiting) waiting.reject(new Error('cancelled')); }
+    } : null;
     let counter = 0, uid = 0;
     // Top-level content nodes keyed by their sanitized source, so live updates reuse unchanged enhanced nodes.
     const keys = new WeakMap();
@@ -171,6 +185,14 @@
         noteResult(data);
       } else if (data.type === 'resource-opened' || data.type === 'resource-error') {
         resourceResult(data);
+      } else if (data.type === 'voice') {
+        voiceResult(data);
+      } else if (data.type === 'speech') {
+        const waiting = typeof data.id === 'string' ? speechPending.get(data.id) : null;
+        if (!waiting) return;
+        speechPending.delete(data.id);
+        if (data.status === 'audio' && data.wav && typeof data.wav.byteLength === 'number') waiting.resolve({wav: data.wav, seconds: data.seconds});
+        else waiting.reject(new Error(String(data.status === 'error' && data.message || 'The live voice sent no audio.').slice(0, 300)));
       } else if (data.type === 'error') {
         for (const id of pending.keys()) failed.add(id);
         pending.clear(); refreshAll();
@@ -637,7 +659,7 @@
       if (!Board || !declared || !declared.script) { widget.append(node('p', 'This board has no lecture to show.')); return; }
       // Recorded sentences come with the page (state.board_audio, built beside the page and only for sentences that still match their recording). A page
       // inside Obsidian's sandbox is given the host's state without them, and its board speaks with the device voice or timed captions instead.
-      boards.set(widget.id, Board.mount(widget, declared.script, {doc, win: root, renderMath, clips: (state.board_audio || {})[widget.id]}));
+      boards.set(widget.id, Board.mount(widget, declared.script, {doc, win: root, renderMath, clips: (state.board_audio || {})[widget.id], live: liveVoice || undefined}));
     }
     function buildWidget(widget) {
       const type = widget.getAttribute('data-widget');
@@ -725,6 +747,100 @@
     const capture = node('button', 'Send'); capture.type = 'button'; capture.className = 'ros-question-send';
     composer.append(question, capture); questionForm.append(label, composer);
     const questionStatus = node('p'); questionStatus.setAttribute('role', 'status'); questionForm.append(questionStatus);
+    // Spoken questions. The page never touches the microphone: it asks the host (the Obsidian plugin), which records, has the local voice worker
+    // transcribe, and returns text. The text lands in the box above to be read and corrected; nothing is sent until the learner presses Send.
+    const voiceOn = !!(host && host.voice && host.voice.capable);
+    const voiceRow = node('div'); voiceRow.className = 'ros-voice-row'; voiceRow.hidden = !voiceOn; voiceRow.dataset.rosOwned = '';
+    const talk = node('button', 'Hold to ask aloud'); talk.type = 'button'; talk.className = 'ros-voice-talk'; talk.setAttribute('aria-pressed', 'false');
+    talk.setAttribute('aria-describedby', 'ros-voice-line');
+    const voiceLine = node('p'); voiceLine.className = 'ros-voice-line'; voiceLine.id = 'ros-voice-line'; voiceLine.setAttribute('role', 'status');
+    voiceRow.append(talk, voiceLine); questionForm.append(voiceRow);
+    let voiceState = 'idle', voiceHeldAt = 0, voiceToggle = false, voiceAsked = 0;
+    const pausedByVoice = [];
+    function toHost(type, extra) { root.parent.postMessage(Object.assign({channel: 'research-os', token: host.token, session_id: state.session_id, type}, extra), '*'); }
+    function resumeBoards() { for (const board of pausedByVoice.splice(0)) if (board.status === 'paused') board.resume(); }
+    function voiceUi(next, line, problem) {
+      voiceState = next; talk.dataset.voice = next; voiceRow.dataset.voice = next;
+      talk.disabled = next === 'transcribing';
+      talk.setAttribute('aria-pressed', String(next === 'starting' || next === 'recording'));
+      talk.textContent = next === 'starting' || next === 'recording' ? (voiceToggle ? 'Listening… click to stop' : 'Listening… let go to ask') : next === 'transcribing' ? 'Transcribing…' : 'Hold to ask aloud';
+      if (line !== undefined) { voiceLine.textContent = line; voiceLine.classList.toggle('ros-voice-problem', !!problem); }
+    }
+    function startTalking() {
+      if (!voiceOn || voiceState !== 'idle') return;
+      for (const board of boards.values()) if (board && board.status === 'playing') { board.pause(); pausedByVoice.push(board); }   // the lecture waits while you ask
+      voiceUi('starting', 'Opening the microphone…', false);
+      toHost('voice', {action: 'start'});
+    }
+    function stopTalking() {
+      if (voiceState !== 'starting' && voiceState !== 'recording') return;
+      voiceUi('transcribing', 'Transcribing…', false);
+      toHost('voice', {action: 'stop'});
+    }
+    function cancelTalking() {
+      if (voiceState === 'idle') return;
+      toHost('voice', {action: 'cancel'});
+      voiceToggle = false; voiceUi('idle', 'Cancelled.', false); resumeBoards();
+    }
+    function refreshVoice() {
+      if (!voiceOn) return;
+      const now = Date.now(); if (now - voiceAsked < 3000) return; voiceAsked = now;
+      toHost('voice', {action: 'status'});
+    }
+    const WORKER_LINE = {ready: 'Voice ready.', busy: 'Voice ready.', warming: 'The voice worker is warming up; it will be ready in a moment.',
+      off: 'No voice worker is running. Start it with: python scripts/voice.py worker --dir .research-os/voice', stopped: 'The voice worker has stopped. Start it again to ask aloud.',
+      error: 'The voice worker could not start.'};
+    function voiceResult(data) {
+      if (!voiceOn) return;
+      if (data.status === 'worker') {
+        if (voiceState === 'idle') {
+          const ok = data.state === 'ready' || data.state === 'busy' || data.state === 'warming';
+          voiceLine.textContent = (WORKER_LINE[data.state] || WORKER_LINE.off) + (ok && data.model ? ' (' + String(data.model).slice(0, 40) + (data.device ? ', ' + String(data.device).slice(0, 16) : '') + ')' : '');
+          voiceLine.classList.toggle('ros-voice-problem', !ok);
+        }
+      } else if (data.status === 'recording') {
+        if (voiceState === 'starting') voiceUi('recording', 'Listening. ' + (data.max_seconds ? 'Up to ' + Number(data.max_seconds) + ' seconds.' : ''), false);
+      } else if (data.status === 'transcribing') {
+        if (voiceState !== 'transcribing') voiceUi('transcribing', 'Transcribing…', false);
+      } else if (data.status === 'transcript') {
+        const heard = typeof data.text === 'string' ? data.text.replace(/\s+/g, ' ').trim() : '';
+        voiceToggle = false;
+        if (!heard) { voiceUi('idle', 'Nothing was heard. Try again a little closer to the microphone.', true); resumeBoards(); return; }
+        const kept = question.value.trim();
+        question.value = ((kept ? kept + ' ' : '') + heard).slice(0, question.maxLength > 0 ? question.maxLength : 4000);
+        voiceUi('idle', 'Check the text, correct anything that is wrong, then press Send. Nothing is sent until you do.', false);
+        question.focus(); question.setSelectionRange(question.value.length, question.value.length);
+      } else if (data.status === 'cancelled') {
+        voiceToggle = false; if (voiceState !== 'idle') voiceUi('idle', '', false);   // the page already said "Cancelled." when the learner did it
+        resumeBoards();
+      } else if (data.status === 'error') {
+        voiceToggle = false; voiceUi('idle', String(data.message || 'Voice input failed.').slice(0, 400), true); resumeBoards();
+      }
+    }
+    if (voiceOn) {
+      // Hold to talk with the pointer; a quick tap leaves it listening until the next tap. The keyboard toggles (a key cannot be "held" reliably).
+      talk.addEventListener('pointerdown', event => {
+        if (event.button > 0) return;
+        event.preventDefault();
+        try { talk.setPointerCapture(event.pointerId); } catch (_) { /* the pointer is already gone */ }
+        if (voiceState === 'recording' && voiceToggle) { voiceToggle = false; stopTalking(); return; }
+        voiceHeldAt = Date.now(); voiceToggle = false; startTalking();
+      });
+      talk.addEventListener('pointerup', event => {
+        if (event.button > 0 || voiceState === 'idle' || voiceState === 'transcribing') return;
+        if (Date.now() - voiceHeldAt < 350) { voiceToggle = true; voiceUi(voiceState, undefined); return; }
+        stopTalking();
+      });
+      talk.addEventListener('pointercancel', cancelTalking);
+      talk.addEventListener('click', event => {
+        if (event.detail !== 0) return;      // a pointer click was handled above; a keyboard activation has no click count
+        if (voiceState === 'idle') { voiceToggle = true; startTalking(); } else if (voiceState === 'starting' || voiceState === 'recording') stopTalking();
+      });
+      talk.addEventListener('keydown', event => { if (event.key === 'Escape' && voiceState !== 'idle') { event.preventDefault(); cancelTalking(); } });
+      talk.addEventListener('pointerenter', refreshVoice); talk.addEventListener('focus', refreshVoice);
+      root.addEventListener('pagehide', () => { if (voiceState !== 'idle') toHost('voice', {action: 'cancel'}); });
+      refreshVoice();
+    }
     const history = node('section'); history.className = 'ros-question-history'; history.setAttribute('aria-label', 'Questions and answers'); history.dataset.rosOwned = '';
     // Questions live in a side panel that stays reachable while the lesson scrolls: always visible on a wide window,
     // an accessible drawer opened from a button on a narrow one.
@@ -885,6 +1001,7 @@
       emit('open-question', null, text, currentOrigin());
       questionStatus.textContent = host ? 'Question sent. You can send another.' : 'Question recorded in this page. Download progress to keep it.';
       question.value = ''; question.focus();
+      if (voiceState === 'idle') { voiceLine.textContent = ''; resumeBoards(); }   // the lecture goes on once the question is on its way
     });
     // Links to other notes are requests to the host, which validates the target and opens it in a new tab so this lesson stays put.
     let lastLink = null, hintTimer = 0;

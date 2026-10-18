@@ -161,6 +161,10 @@ delays are seconds from the start of a sentence, not aligned to words. Tested in
 recording path through the real engine was run once on the example lecture. Not tested inside Obsidian or Safari, with a real device voice, or by a learner:
 nobody has listened to the board speak, and legibility is the researcher's judgement (Kalam was chosen over Patrick Hand, which read as too casual).
 
+## Asking aloud (v0.9.6)
+
+In the Obsidian view a **Hold to ask aloud** button sits under the open-question box. The sandboxed page never gets the microphone: it asks the host by action (`status`, `start`, `stop`, `cancel`) over the existing token-authenticated channel, the host records and hands the recording to a local voice worker (`VOICE_PROTOCOL.md`), and the transcript comes back as text in the question box. The learner reads and corrects it and presses Send; a spoken question is then an ordinary open question and `wait` / `answer` handle it unchanged. The lecture pauses while they ask and resumes when they send or cancel. The button is absent on a standalone page, where there is no host, and the host refuses to record when no worker has beaten recently, saying how to start one.
+
 ## Titles, navigation and the questions panel
 
 **Titles say what is being studied.** Keep stable internal IDs in state; never put workflow positions or identifiers in

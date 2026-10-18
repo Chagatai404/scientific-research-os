@@ -31,3 +31,5 @@
 .ros-board-transcript{margin-top:.4rem}
 .ros-board-transcript li[aria-current="step"]{font-weight:600}
 .ros-board-written{opacity:.75}
+.ros-board-voice-note{margin:.4rem 0 0;min-height:1.3em;font-size:.9rem;opacity:.85}
+.ros-board-voice-note[data-problem="true"]{color:#b45309}
