@@ -42,6 +42,31 @@
     return path.concat(tail);
   }
 
+  // Words of a question, for matching it against the plan's anticipated questions. One definition for both languages (session_plan.py tokens): letters and digits,
+  // an apostrophe kept inside a word, everything else a break ("n-1" is "n", "1"), lower case.
+  function tokens(text) {
+    return String(text).toLowerCase().replace(/[‘’]/g, "'").match(/[\p{L}\p{N}]+(?:'[\p{L}\p{N}]+)*/gu) || [];
+  }
+  // Which anticipated answers a question may be asking for, best first (most of the item's phrases found, then plan order). A phrase is found when its words
+  // appear in the question next to each other in that order. Only answers on the lecture's path that have not been played are considered. Indexes into plan.anticipated.
+  function matchAnticipated(plan, question, path, asked) {
+    const words = tokens(question), found = [];
+    (plan.anticipated || []).forEach((item, index) => {
+      if (path && !path.includes(item.segment)) return;
+      if (asked && asked.includes(item.label)) return;
+      let hits = 0;
+      for (const phrase of item.match || []) {
+        const p = tokens(phrase);
+        if (p.length && words.some((_, i) => i + p.length <= words.length && p.every((w, k) => words[i + k] === w))) hits++;
+      }
+      if (hits) found.push([-hits, index]);
+    });
+    return found.sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(f => f[1]);
+  }
+  // Said the moment a question is sent, to cover the tutor's turn (voice.py ACK_TEXTS; a test pins that they are the same). They never say the question was good
+  // or that an answer is known.
+  const ACKS = ['Okay, let me think about that for a moment.', 'Let me look at that.', 'One moment, I am working on that.', 'Let me work through that.'];
+
   // One board plays the whole lecture: the chosen segments' steps in order. A segment that is only a video adds no steps here (the video pane is a later slice).
   function composeScript(plan, path) {
     const steps = [];
@@ -321,8 +346,9 @@
         row.prepend(talk); lecture.composer.append(lecture.input, row, line);
       } else lecture.composer.append(lecture.input, row);
       lecture.askButton = button('Ask a question', openAsk, {class: 'ros-ask-button'});
+      lecture.offer = el('div', {class: 'ros-offer', role: 'status'});
       lecture.next = button(current.check ? 'Continue to the check' : 'Finish', endLecture, {class: 'ros-primary', hidden: true});
-      tools.append(lecture.askButton, lecture.chips, lecture.composer, lecture.next);
+      tools.append(lecture.askButton, lecture.chips, lecture.composer, lecture.offer, lecture.next);
       panels.lecture.append(lecture.host, tools);
       lecture.script = composeScript(current, lecture.path);
       lecture.controller = ctx.mountBoard(lecture.host, lecture.script, (type, data) => {
@@ -330,6 +356,7 @@
         if (type === 'status' && lecture.controller) lecture.next.hidden = lecture.controller.status !== 'done';
       });
       renderChips();
+      if (lecture.controller.preloadAcks) lecture.controller.preloadAcks(ACKS);   // short clips the live voice plays the moment a question is sent
       // The caption, the voice note and the controls change as the lecture plays; the board gives back or takes height as they do.
       const win = doc.defaultView;
       if (win && win.MutationObserver) new win.MutationObserver(() => win.requestAnimationFrame(fitLecture)).observe(shell, {childList: true, characterData: true, subtree: true});
@@ -369,20 +396,35 @@
     }
     let pausedForAsk = false;
     function openAsk() {
+      lecture.offer.textContent = '';
       lecture.composer.hidden = false; lecture.askButton.hidden = true;
       if (lecture.controller && lecture.controller.status === 'playing') { lecture.controller.pause(); pausedForAsk = true; }
       lecture.input.focus();
     }
-    function closeAsk() {
-      lecture.composer.hidden = true; lecture.askButton.hidden = false; lecture.input.value = ''; lecture.send.disabled = true;
+    function resumeAfterAsk() {
       if (pausedForAsk && lecture.controller && lecture.controller.status === 'paused') lecture.controller.resume();
-      pausedForAsk = false; lecture.askButton.focus();
+      pausedForAsk = false;
     }
+    function closeAsk(hold) {
+      lecture.composer.hidden = true; lecture.askButton.hidden = false; lecture.input.value = ''; lecture.send.disabled = true;
+      if (!hold) resumeAfterAsk();
+      lecture.askButton.focus();
+    }
+    // A question is recorded first, always. Then: any prepared answers it may be asking for are offered as buttons (never played unasked), and a short spoken
+    // acknowledgment covers the wait while the lecture stays paused (skippable; the lecture goes on when it ends). The question still needs the tutor's own answer.
     function sendQuestion() {
       const text = lecture.input.value.trim();
       if (!text) return;
       ctx.emit('open-question', null, text);
-      closeAsk();
+      lecture.offer.textContent = '';
+      for (const index of matchAnticipated(current, text, lecture.path, [...lecture.asked]).slice(0, 2)) {
+        const item = current.anticipated[index];
+        lecture.offer.append(button('The tutor prepared an answer: ' + item.label, () => { playAnswer(item); lecture.offer.textContent = ''; }, {class: 'ros-offer-answer'}));
+      }
+      let skip = null;
+      const ack = lecture.controller && lecture.controller.acknowledge ? lecture.controller.acknowledge(() => { if (skip) skip.remove(); resumeAfterAsk(); }) : null;
+      if (ack) { skip = button('Skip', () => ack.skip(), {class: 'ros-ack-skip'}); lecture.offer.append(skip); }
+      closeAsk(!!ack);
     }
     function endLecture() {
       ctx.emit('checkpoint', null, 'stage:check');
@@ -430,5 +472,5 @@
     };
   }
 
-  return {END, STAGES, judge, lecturePath, composeScript, replay, stageOf, marks, parseNumber, mount};
+  return {END, STAGES, ACKS, judge, lecturePath, composeScript, replay, stageOf, marks, parseNumber, tokens, matchAnticipated, mount};
 });
