@@ -70,6 +70,18 @@
       }
       for (const event of responses) if (!handled.has(event.event_id)) count++;
     }
+    // A written answer in a staged session (verdict "pending") waits until a plan review covers it: the review names an answer and stands for it and every earlier
+    // answer to the same question, in event order.
+    const answers = new Map();
+    for (const event of events || state.events || []) if (event.type === 'plan-answer') { if (!answers.has(event.question_id)) answers.set(event.question_id, []); answers.get(event.question_id).push(event); }
+    for (const [questionId, list] of answers) {
+      const order = list.map(event => event.event_id), handled = new Set();
+      for (const review of state.plan_reviews || []) {
+        const at = review.question_id === questionId ? order.indexOf(review.response_event_id) : -1;
+        if (at >= 0) for (const id of order.slice(0, at + 1)) handled.add(id);
+      }
+      for (const event of list) if (event.response && event.response.verdict === 'pending' && !handled.has(event.event_id)) count++;
+    }
     for (const record of state.open_questions || []) if (!(typeof record.answer === 'string' && record.answer.trim())) count++;
     for (const record of state.explanation_requests || []) if (record.status === 'open') count++;
     return count;
@@ -1149,7 +1161,22 @@
       liveVoiceListeners.add(next => { liveState = next; });
       staged = Stages.mount(mount, state.plan, {
         doc, events: () => localEvents, emit, rich,
-        mountBoard: (container, script, onEvent) => root.ResearchOSBoard.mount(container, script, {doc, win: root, renderMath, live: liveVoice || undefined, onEvent}),
+        reviews: () => state.plan_reviews || [],     // the tutor's verdicts on written answers (a getter: the state is replaced as saves arrive)
+        // The staged lecture is not a declared widget: it reports where the learner is under the reserved id "plan-lecture" (html_sessions.py board-position).
+        mountBoard: (container, script, onEvent, startAt) => {
+          let mounted = null, at = {step: '', index: 0};
+          const report = () => {
+            if (!host || !mounted || !at.step) return;
+            toHost('board-position', {widget: 'plan-lecture', step: at.step, index: at.index, count: mounted.player && mounted.player.steps ? mounted.player.steps.length : 0, status: mounted.status});
+          };
+          mounted = root.ResearchOSBoard.mount(container, script, {doc, win: root, renderMath, live: liveVoice || undefined, startAt,
+            onEvent(type, data) {
+              if (type === 'step') at = {step: data.step.id, index: data.index};
+              if (type === 'step' || type === 'status' || type === 'steps') root.queueMicrotask(report);
+              onEvent(type, data);
+            }});
+          return mounted;
+        },
         footer: element => element.append(status, supervisionLine),
         voice: voiceOn ? {bind: bindTalk, idle: 'Hold to speak', holding: 'Listening… let go'} : null,
         liveVoice: liveOn ? {

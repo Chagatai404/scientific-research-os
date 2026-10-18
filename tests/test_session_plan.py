@@ -347,5 +347,232 @@ class Command(unittest.TestCase):
             self.assertEqual(self.run_cli('check', str(Path(tmp) / 'missing.json')).returncode, 2)
 
 
+def with_why_repair(plan):
+    """The worked example plus a repair that plays when the written answer ('why') was wrong, so a tutor's verdict on it can change the lecture."""
+    repair = json.loads(json.dumps(segment(plan, 'scale-repair')).replace('"rp', '"wr'))
+    repair.update(id='why-repair', title='What a variance is made of', plays_if={'wrong': ['why']})
+    plan['segments'].append(repair)
+    segment(plan, 'moment-form')['plays_if']['correct'] = ['scale', 'twopoint', 'why']      # the extension now needs the written answer to be right too
+    return plan
+
+
+class WrittenAnswers(unittest.TestCase):
+    """A written answer never blocks the learner, but the agent must see it: it is pending work until a plan review covers it, the review is pending tutor
+    feedback (never evidence), and it can still change a lecture that has not started."""
+
+    def setUp(self):
+        import html_sessions as hs
+        self.hs = hs
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        (self.root / 'Sessions').mkdir()
+        hs.install_runtime(self.root)
+        hs.create_session(self.root, 'Sessions/P.md', '# Variance\n\nText.\n', title='Variance')
+        hs.update_session(self.root, 'Sessions/P.md', plan=mutated(with_why_repair))
+
+    def load(self):
+        return self.hs.load_session(self.root, 'Sessions/P.md')
+
+    def answer(self, question_id, answer, verdict, tree='probe'):
+        return self.hs.append_event(self.root, 'Sessions/P.md', {'type': 'plan-answer', 'question_id': question_id, 'response': {'answer': answer, 'verdict': verdict, 'tree': tree}})
+
+    def mark(self, text):
+        return self.hs.append_event(self.root, 'Sessions/P.md', {'type': 'checkpoint', 'question_id': None, 'response': text})
+
+    def written(self, text='because a square is never negative'):
+        self.answer('scale', 'b', 'correct')
+        self.answer('twopoint', 1, 'correct')
+        return self.answer('why', text, 'pending')['events'][-1]['event_id']
+
+    def review(self, verdict='correct', feedback='Good.', **options):
+        return self.hs.review_plan_answer(self.root, 'Sessions/P.md', 'why', verdict, feedback, **options)
+
+    def test_a_written_answer_is_pending_work_the_agent_is_handed_with_its_prompt_and_criteria(self):
+        event_id = self.written()
+        items = self.hs.pending_activity(self.load())
+        self.assertEqual([i['kind'] for i in items], ['plan-answer'])
+        self.assertEqual((items[0]['question_id'], items[0]['event_id'], items[0]['response'], items[0]['tree']), ('why', event_id, 'because a square is never negative', 'probe'))
+        self.assertIn('never be negative', items[0]['prompt'])
+        self.assertEqual(len(items[0]['criteria']), 2)
+        waited = self.hs.wait_for_activity(self.root, 'Sessions/P.md', timeout=0)
+        self.assertEqual([i['event_id'] for i in waited['pending']], [event_id])
+        import supervision
+        self.assertEqual(supervision.view(self.load(), None)['pending'], 1)
+        with self.assertRaisesRegex(supervision.SupervisionError, 'await the tutor'):
+            supervision.record_status(self.root, 'Sessions/P.md', 'completed')
+
+    def test_answers_judged_on_the_page_are_not_pending_work(self):
+        self.answer('scale', 'b', 'correct')
+        self.answer('twopoint', 7, 'wrong')
+        self.assertEqual(self.hs.pending_activity(self.load()), [])
+
+    def test_the_wait_lease_names_the_written_answer_it_is_reviewing(self):
+        import supervision
+        event_id = self.written()
+        self.hs.wait_for_activity(self.root, 'Sessions/P.md', timeout=0, holder='tutor-a')
+        lease, _ = supervision.read_lease(self.root, 'Sessions/P.md')
+        self.assertEqual((lease['mode'], lease['reviewing']), ('reviewing', [event_id]))
+
+    def test_the_resume_brief_asks_for_a_plan_review(self):
+        self.written()
+        text = self.hs.render_context({'title': 'T', 'session': 'S', 'type': 'tutor-session', 'lifecycle': 'active', 'updated_at': 'x', 'receipt': None,
+                                       'pending': self.hs.pending_activity(self.load()), 'questions': [], 'project': None, 'research': None, 'knowledge': None, 'notes': []})
+        self.assertIn('plan-review', text)
+        self.assertIn('plan question `why`', text)
+
+    def test_a_plan_review_covers_the_answer_and_never_touches_it_or_awards_anything(self):
+        event_id = self.written()
+        before = copy.deepcopy(self.load()['events'])
+        done = self.review('partially-correct', 'You have the square; say why an average of squares cannot be negative.', reviewed_by='tutor-a', criteria_met=[False, True])
+        state = self.load()
+        self.assertEqual(state['events'], before)                              # the learner's answer is exactly as it was
+        review = state['plan_reviews'][0]
+        self.assertEqual((review['question_id'], review['response_event_id'], review['verdict'], review['reviewed_by'], review['criteria_met']), ('why', event_id, 'partially-correct', 'tutor-a', [False, True]))
+        self.assertFalse({'mastery', 'credit', 'retained', 'evidence'} & set(review))
+        self.assertEqual(self.hs.pending_activity(state), [])
+        self.assertEqual(done['pending'], [])
+        self.assertEqual(done['stage'], 'handout')
+
+    def test_a_review_is_only_for_a_written_answer_that_exists(self):
+        with self.assertRaisesRegex(ValueError, 'No learner answer'):
+            self.review()
+        self.answer('scale', 'b', 'correct')
+        with self.assertRaisesRegex(ValueError, 'judged on the page'):
+            self.hs.review_plan_answer(self.root, 'Sessions/P.md', 'scale', 'correct')
+        with self.assertRaisesRegex(ValueError, 'Unknown plan question'):
+            self.hs.review_plan_answer(self.root, 'Sessions/P.md', 'nowhere', 'correct')
+        self.written()
+        with self.assertRaisesRegex(ValueError, 'declares 2 criteria'):
+            self.review(criteria_met=[True])
+        with self.assertRaisesRegex(ValueError, 'Verdict must be'):
+            self.review('great')
+
+    def test_reviews_are_append_only_and_cannot_be_set_directly(self):
+        self.written()
+        self.review('incorrect', 'First reading.')
+        self.review('correct', 'On a second look this is right.')
+        self.assertEqual([r['verdict'] for r in self.load()['plan_reviews']], ['incorrect', 'correct'])
+        self.review('correct', 'On a second look this is right.')            # the same review again adds nothing
+        self.assertEqual(len(self.load()['plan_reviews']), 2)
+        with self.assertRaisesRegex(ValueError, 'Unsupported session update fields'):
+            self.hs.update_session(self.root, 'Sessions/P.md', plan_reviews=[])
+
+    def test_a_forged_review_is_refused_by_the_state_check(self):
+        event_id = self.written()
+        good = {'question_id': 'why', 'response_event_id': event_id, 'verdict': 'correct', 'feedback': 'ok', 'reviewed_at': '2026-10-18T10:00:00+00:00'}
+        state = self.load()
+        self.hs.validate_state(dict(state, plan_reviews=[good]))
+        for bad in ({'response_event_id': 'nope'}, {'question_id': 'scale'}, {'question_id': 'nowhere'}, {'verdict': 'mastered'}, {'mastery': 1}, {'credit': True},
+                    {'criteria_met': [True]}, {'reviewed_at': 'yesterday'}):
+            with self.subTest(bad), self.assertRaises(ValueError):
+                self.hs.validate_state(dict(state, plan_reviews=[dict(good, **bad)]))
+
+    def test_a_verdict_changes_a_lecture_that_has_not_started_and_cannot_change_one_that_has(self):
+        self.written()
+        before = self.hs.plan_lecture(self.load())
+        self.assertNotIn('why-repair', before['path'])
+        self.assertNotIn('moment-form', before['path'])                       # a written answer awaiting review satisfies no extension
+        done = self.review('incorrect', 'A variance is a mean of squares; start there.')
+        self.assertEqual(done['lecture_path_before'], before['path'])
+        self.assertIn('why-repair', done['lecture_path'])
+        self.assertLess(done['lecture_path'].index('why-repair'), done['lecture_path'].index('scale'))     # the repair plays before the core segment it names
+        self.assertFalse(done['lecture_started'])
+        self.review('correct', 'Yes, on a second look.')
+        path = self.hs.plan_lecture(self.load())['path']
+        self.assertNotIn('why-repair', path)
+        self.assertIn('moment-form', path)                                     # every question is now right, so the extension plays
+        # once the lecture has started its path is the one it started with
+        self.mark('stage:lecture')
+        self.mark('lecture-path:spread,scale,see-it')
+        self.mark('lecture-step:sp2')
+        later = self.review('incorrect', 'Actually, no.')
+        self.assertTrue(later['lecture_started'])
+        self.assertEqual(later['lecture_path'], ['spread', 'scale', 'see-it'])
+        self.assertEqual(later['stage'], 'lecture')
+
+    def test_a_revised_plan_replaces_the_plan_in_the_same_save(self):
+        self.written()
+        revised = mutated(with_why_repair)
+        question(revised, 'twopoint')['prompt'] = 'Reworded: what is the variance of two values 1 and 3?'
+        revised['title'] = 'Variance, second try'
+        done = self.review('partially-correct', 'Half of it.', revised_plan=revised)
+        state = self.load()
+        self.assertEqual((state['plan']['title'], len(state['plan_reviews']), done['plan_revised']), ('Variance, second try', 1, True))
+        self.assertIn('Reworded', question(state['plan'], 'twopoint')['prompt'])
+
+    def test_a_revision_that_would_move_the_learner_is_refused_and_the_review_with_it(self):
+        self.written()
+        moved = mutated(with_why_repair)
+        scale = question(moved, 'scale')
+        right = next(o for o in scale['options'] if o.get('correct'))
+        wrong = next(o for o in scale['options'] if not o.get('correct'))
+        right.pop('correct'); right['feedback'] = 'No.'
+        wrong['correct'] = True; wrong.pop('feedback', None)
+        self.assertEqual(sp.validate(moved), [])                               # a valid plan, only one that would re-judge an answer already given
+        with self.assertRaisesRegex(ValueError, 'would move the learner; nothing was saved'):
+            self.review('incorrect', 'x', revised_plan=moved)
+        self.assertNotIn('plan_reviews', self.load())                          # nothing was saved
+        self.assertEqual(question(self.load()['plan'], 'scale')['options'], question(mutated(with_why_repair), 'scale')['options'])
+        done = self.review('incorrect', 'x', revised_plan=moved, allow_reroute=True)       # a deliberate decision
+        self.assertTrue(done['plan_revised'])
+
+    def test_a_revision_may_not_drop_a_segment_the_lecture_started_with(self):
+        self.written()
+        self.mark('stage:lecture')
+        self.mark('lecture-path:spread,scale,moment-form,see-it')
+        smaller = mutated(with_why_repair)
+        smaller['segments'] = [s for s in smaller['segments'] if s['id'] != 'moment-form']
+        self.assertEqual(sp.validate(smaller), [])
+        problems = self.hs.plan_revision_problems(self.load()['plan'], smaller, self.load()['events'])
+        self.assertEqual(len(problems), 1)
+        self.assertIn('moment-form', problems[0])
+        with self.assertRaisesRegex(ValueError, 'moment-form'):
+            self.review('correct', 'x', revised_plan=smaller)
+
+    def test_a_revision_may_not_send_a_finished_tree_on_to_new_questions(self):
+        self.written()
+        longer = mutated(with_why_repair)
+        question(longer, 'why')['next'] = 'extra'
+        longer['probe']['questions'].append(dict(question(longer, 'twopoint'), id='extra', on_correct='end', on_wrong='end', prompt='One more number: the variance of 2 and 4?'))
+        self.assertEqual(sp.validate(longer), [])
+        problems = self.hs.plan_revision_problems(self.load()['plan'], longer, self.load()['events'])
+        self.assertTrue(any('somewhere else' in p for p in problems), problems)
+
+    def test_the_lecture_checkpoints_are_ordinary_checkpoints(self):
+        self.mark('lecture-path:spread,scale')
+        self.mark('lecture-step:sc1')
+        events = self.load()['events']
+        self.assertEqual(self.hs.recorded_lecture_path(events), ['spread', 'scale'])
+        self.assertIsNone(self.hs.recorded_lecture_path([]))
+
+    def test_the_review_effects_are_the_ones_the_page_applies(self):
+        cases = json.loads((ROOT / 'tests' / 'fixtures' / 'supervision-cases.json').read_text(encoding='utf-8'))['review_effects']['cases']
+        for case in cases:
+            with self.subTest(case['id']):
+                self.assertEqual(self.hs.reviewed_results(case['results'], case['reviews']), case['expect'])
+
+    def test_the_staged_lecture_reports_its_position_under_a_reserved_id(self):
+        position = self.root / 'Sessions' / 'P.board-position.json'
+        position.write_text(json.dumps({'schema': 1, 'boards': {'plan-lecture': {'step': 'sc2', 'index': 4, 'count': 9, 'status': 'playing', 'at': 1.0}}}), encoding='utf-8')
+        reported = self.hs.board_position(self.root, 'Sessions/P.md', now=11.0)['plan-lecture']
+        self.assertEqual((reported['step'], reported['segment'], reported['status'], reported['age_seconds']), ('sc2', 'scale', 'playing', 10.0))
+        state = self.load()
+        with self.assertRaisesRegex(ValueError, 'reserved'):
+            self.hs.validate_state(dict(state, widgets=[{'id': 'plan-lecture', 'kind': 'board', 'script': {'board_schema': 1, 'steps': [{'id': 'a', 'say': 'Hello there.'}]}}]))
+
+    def test_the_command_records_a_review_and_prints_what_the_lecture_does_now(self):
+        self.written()
+        feedback = self.root / 'feedback.txt'
+        feedback.write_text('A variance is a mean of squares; start there.', encoding='utf-8')
+        done = subprocess.run([sys.executable, str(ROOT / 'scripts/html_sessions.py'), '--root', str(self.root), 'plan-review', 'Sessions/P.md', 'why', '--verdict', 'incorrect',
+                               '--feedback', str(feedback), '--reviewed-by', 'tutor-a'], capture_output=True, text=True, encoding='utf-8')
+        self.assertEqual(done.returncode, 0, done.stderr)
+        printed = json.loads(done.stdout)
+        self.assertEqual((printed['verdict'], printed['pending'], printed['lecture_started']), ('incorrect', [], False))
+        self.assertIn('why-repair', printed['lecture_path'])
+        self.assertEqual(self.load()['plan_reviews'][0]['feedback'], 'A variance is a mean of squares; start there.')
+
+
 if __name__ == '__main__':
     unittest.main()
