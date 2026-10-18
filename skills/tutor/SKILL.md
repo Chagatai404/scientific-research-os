@@ -247,6 +247,9 @@ anticipate. **If a good video exists for the exact topic, plan a video segment i
 part that teaches; `SESSION_PLAN.md` says how). You may use subagents and subprocesses to write the handout, make figures and animations, and pre-render audio while
 the learner is in the probe.
 
+**The handout is a LaTeX PDF, not page text.** Write the body to a `.tex` file and run `python scripts/handout.py build --root <vault> --session <note> --body body.tex`: it
+lints, compiles, saves the PDF in the course or project library and records the status in the plan; `references/HANDOUT_PROTOCOL.md` says how to write it and what it may use.
+
 **The session lives in Obsidian. Never open a browser** (Chrome, Edge, the built-in browser pane, a `file://` page or a local server) to show, check or "verify"
 a session unless the researcher asks for it in that message. The learner already has the note open; `vault.py open` hands the address to Obsidian, never to a
 browser, and is only needed when they ask you to open something. Check your own work with `html_sessions.py` commands and the session state, not by looking at a page.

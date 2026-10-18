@@ -1,0 +1,273 @@
+% Body of the study handout for examples/session-plan-variance.json (build: python scripts/handout.py build ...; see references/HANDOUT_PROTOCOL.md).
+% Only the body: the template adds the title block, header, fonts and packages. Numbers here are chosen for this handout; none of the plan's probe or check
+% questions is answered in it.
+
+This handout is written so that you can study from it alone: read ahead of the lecture, look back while it runs, and work the exercises afterwards.
+Every formula is derived, every example is worked out, and every exercise has a full solution at the end.
+Shaded boxes carry the definitions, the rules to remember and the slips to avoid.
+
+\section{What variance measures}
+
+The mean of a random variable tells you where its values are centred. It does not tell you how widely they are spread around that centre. Let $X=1$ with
+certainty, and let $Y$ take the values $-99$ and $101$ with probability $\tfrac12$ each. Then $\E[X]=1$ and $\E[Y]=\tfrac12(-99)+\tfrac12(101)=1$: the same
+mean, yet $Y$ is almost never near $1$. We need a number for the spread.
+
+\begin{definition}[Variance and standard deviation]
+Let $X$ be a random variable with mean $\mu=\E[X]$ and $\E[X^2]<\infty$. The \emph{variance} of $X$ is the mean squared distance from the mean,
+\[
+  \Var(X)=\E\bigl[(X-\mu)^2\bigr],
+\]
+and the \emph{standard deviation} is $\SD(X)=\sigma=\sqrt{\Var(X)}$.
+\end{definition}
+
+For $X$ and $Y$ above, every value of $X$ is at distance $0$ from the mean, so $\Var(X)=0$; every value of $Y$ is at distance $100$, so
+$\Var(Y)=\tfrac12\cdot100^2+\tfrac12\cdot100^2=10\,000$ and $\SD(Y)=100$. The variance has told the two apart.
+
+\subsection{Why distances are squared}
+
+Look at the signed deviations $X-\mu$ first. By linearity of expectation, $\E[X-\mu]=\E[X]-\mu=0$, so deviations above the mean always cancel deviations below it.
+Squaring removes the signs, so nothing cancels, and it makes large deviations count much more than small ones. Taking absolute values would also remove signs,
+but the square is smooth, and it leads to the clean rules of the next sections.
+
+\margin{Read $\Var(X)$ as ``the variance of $X$''. Some books write $\sigma^2$ or $\sigma_X^2$.}
+
+\begin{keyidea}[Variance in one sentence]
+The variance is an \emph{average of squares}, so it can never be negative: $\Var(X)\ge 0$. It equals $0$ only when $X$ does not move away from its mean,
+that is, $\Pr(X=\mu)=1$.
+\end{keyidea}
+
+\begin{remark}[Units]
+If $X$ is measured in metres, $\Var(X)$ is in square metres and $\SD(X)$ is in metres again. This is why the standard deviation is the number to quote when you
+want a spread in the units of the data, and the variance is the number that is easiest to compute with.
+\end{remark}
+
+\subsection{Notation at a glance}
+
+\begin{notationtable}
+$X$, $Y$ & random variables \\
+$\mu=\E[X]$ & the mean (expected value) of $X$ \\
+$\Var(X)$, $\sigma^2$ & the variance of $X$, the mean squared distance from $\mu$ \\
+$\SD(X)$, $\sigma$ & the standard deviation, $\sqrt{\Var(X)}$ \\
+$a,\ b$ & constants: $a$ stretches (scale), $b$ slides (shift) \\
+$Y=aX+b$ & a rescaled variable: scale by $a$, then shift by $b$ \\
+$Z=(X-\mu)/\sigma$ & the standardised version of $X$ \\
+\end{notationtable}
+
+\section{Shifting and scaling a random variable}
+
+Rescaling is everyday arithmetic: converting kilometres to metres, Celsius to Fahrenheit, a raw exam mark to a percentage. In each case the new variable is
+$Y=aX+b$, with $a$ the scale and $b$ the shift. We want the mean and variance of $Y$ in terms of those of $X$.
+
+The mean follows from linearity: $\E[Y]=\E[aX+b]=a\mu+b$. For the variance, compare each value of $Y$ with its mean:
+\[
+  Y-\E[Y]=(aX+b)-(a\mu+b)=a\,(X-\mu).
+\]
+The shift $b$ cancels completely, and the distance to the mean is multiplied by $a$. Squaring and averaging gives the rule.
+
+\begin{rulebox}[Variance of a rescaled variable]
+For constants $a$ and $b$,
+\[
+  \Var(aX+b)=a^{2}\,\Var(X),\qquad \SD(aX+b)=|a|\,\SD(X).
+\]
+\end{rulebox}
+
+\begin{proof}
+With $Y=aX+b$ we found $Y-\E[Y]=a(X-\mu)$. Hence
+$\Var(Y)=\E\bigl[(a(X-\mu))^2\bigr]=\E\bigl[a^2(X-\mu)^2\bigr]=a^2\,\E\bigl[(X-\mu)^2\bigr]=a^2\Var(X)$,
+where the constant $a^2$ left the expectation by linearity. Taking square roots gives $\SD(Y)=\sqrt{a^2}\,\SD(X)=|a|\SD(X)$.
+\end{proof}
+
+\begin{keyidea}[Shift and stretch]
+A \emph{shift} slides every value by the same amount, so the gaps between values, and hence the spread, do not change: $b$ never appears. A \emph{stretch} by
+$a$ multiplies every gap by $|a|$; variance averages squared gaps, so it is multiplied by $a^2$.
+\end{keyidea}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[x=0.8cm,>=Stealth,every node/.style={font=\small}]
+  % X takes the values 0 and 2 with probability 1/2 each (mean 1, variance 1); X+3 and 3X are drawn on the same scale.
+  \foreach \row/\lo/\hi/\mean/\name/\var in {0/0/2/1/{$X$}/{$\Var=1$},-1.7/3/5/4/{$X+3$}/{$\Var=1$},-3.4/0/6/3/{$3X$}/{$\Var=9$}} {
+    \draw[gray!60] (-1,\row) -- (7,\row);
+    \fill[roshblue] (\lo,\row) circle (2.2pt);
+    \fill[roshblue] (\hi,\row) circle (2.2pt);
+    \draw[roshred,thick] (\mean,\row-0.17) -- (\mean,\row+0.17);
+    \draw[<->,roshgreen,thick] (\lo+0.08,\row+0.32) -- (\mean-0.04,\row+0.32);
+    \draw[<->,roshgreen,thick] (\mean+0.04,\row+0.32) -- (\hi-0.08,\row+0.32);
+    \node[anchor=east] at (-1.1,\row) {\name};
+    \node[anchor=west] at (7.2,\row) {\var};
+  }
+  \node[roshred,anchor=north] at (1,-0.22) {mean};
+\end{tikzpicture}
+\caption{The same two-point variable, shifted and stretched. Blue dots are the values (each with probability $\tfrac12$), the red tick is the mean, the green
+arrows are the distances to the mean. Shifting by $3$ moves everything and keeps the arrows; stretching by $3$ makes the arrows three times longer, so the
+variance is $3^2=9$ times larger.}
+\end{figure}
+
+\begin{commonmistake}[Treating variance like the mean]
+The mean moves with the shift and scales by $a$: $\E[3X+5]=3\E[X]+5$. The variance ignores the shift and scales by $a^2$:
+$\Var(3X+5)=9\Var(X)$, \emph{not} $3\Var(X)+5$. The same rule shows that $\Var(-X)=(-1)^2\Var(X)=\Var(X)$: a variance is never made negative by a minus sign.
+\end{commonmistake}
+
+\subsection{Standardising}
+
+Choose $a=1/\sigma$ and $b=-\mu/\sigma$, that is, $Z=(X-\mu)/\sigma$. Then $\E[Z]=(\mu-\mu)/\sigma=0$ and $\Var(Z)=\sigma^2/\sigma^2=1$. Every random variable with a
+finite, positive variance can be turned into one of mean $0$ and variance $1$ by a shift and a stretch, and the other way round,
+$X=\mu+\sigma Z$. This is the idea behind location--scale families: a parameter that only shifts is a location parameter, one that only stretches is a scale
+parameter, and the rule above says exactly what each does to the variance.
+
+\subsection{Scaling one variable is not adding two copies}
+
+One more slip is worth ruling out now. For two random variables $X$ and $W$ the general rule is
+\[
+  \Var(X+W)=\Var(X)+\Var(W)+2\,\Cov(X,W).
+\]
+If $W$ is a copy of $X$ itself, then $\Cov(X,X)=\Var(X)$ and the formula gives $\Var(X+X)=4\Var(X)$, which is the same as $\Var(2X)=2^2\Var(X)$: correct.
+If $W$ is an \emph{independent} copy, the covariance is $0$ and the variances simply add, $\Var(X+W)=2\Var(X)$, only half as much. Doubling one measurement
+and adding two independent measurements are different things.
+
+\section{Computing a variance}
+
+The definition is a sum or an integral of squared distances:
+\begin{align*}
+  \Var(X)&=\sum_{x}(x-\mu)^2\,p_X(x) &&\text{(discrete)},\\
+  \Var(X)&=\int_{-\infty}^{\infty}(x-\mu)^2 f_X(x)\dd x &&\text{(continuous)}.
+\end{align*}
+Usually it is quicker to compute two simpler expectations.
+
+\begin{rulebox}[Computational formula]
+\[
+  \Var(X)=\E[X^2]-(\E[X])^2 .
+\]
+\end{rulebox}
+
+\begin{proof}
+Expand the square and use linearity, remembering that $\mu=\E[X]$ is a constant:
+\begin{align*}
+  \E[(X-\mu)^2]&=\E[X^2-2\mu X+\mu^2]\\
+  &=\E[X^2]-2\mu\,\E[X]+\mu^2\\
+  &=\E[X^2]-2\mu^2+\mu^2=\E[X^2]-\mu^2 .\qedhere
+\end{align*}
+\end{proof}
+
+Because $\Var(X)\ge0$, the formula also shows that $\E[X^2]\ge(\E[X])^2$ always: the mean of the squares is at least the square of the mean.
+
+\begin{commonmistake}[Forgetting to subtract]
+$\E[X^2]$ alone is \emph{not} the variance. Computing $\E[X^2]$ and stopping there is the most common slip; the square of the mean must be subtracted.
+\end{commonmistake}
+
+\subsection{A standard family: scaling in action}
+
+Let $U$ be uniform on $(0,1)$. Then $\E[U]=\int_0^1 x\dd x=\tfrac12$ and $\E[U^2]=\int_0^1 x^2\dd x=\tfrac13$, so $\Var(U)=\tfrac13-\tfrac14=\tfrac1{12}$.
+A uniform variable on $(a,b)$ is a stretched and shifted copy, $X=a+(b-a)U$, so the rule of Section~2 gives $\Var(X)=(b-a)^2\cdot\tfrac1{12}$. Nothing had to be
+integrated again.
+
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Distribution & Mean & Variance\\
+\midrule
+Bernoulli$(p)$ & $p$ & $p(1-p)$\\
+Binomial$(n,p)$ & $np$ & $np(1-p)$\\
+Poisson$(\lambda)$ & $\lambda$ & $\lambda$\\
+Uniform$(a,b)$ & $(a+b)/2$ & $(b-a)^2/12$\\
+Exponential, mean $\theta$ & $\theta$ & $\theta^2$\\
+Normal$(\mu,\sigma^2)$ & $\mu$ & $\sigma^2$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Worked examples}
+
+\begin{workedexample}[A rescaled variance]
+$X$ has variance $16$. Find the variance and the standard deviation of $Y=10-2X$.
+\solution Here $a=-2$ and $b=10$. The shift $10$ is irrelevant and the scale enters squared:
+$\Var(Y)=(-2)^2\cdot16=64$. Since $\SD(X)=\sqrt{16}=4$, $\SD(Y)=|-2|\cdot4=8$, which agrees with $\sqrt{64}=8$. The minus sign flips the picture but does not
+change the spread.
+\end{workedexample}
+
+\begin{workedexample}[Changing units]
+Daily temperatures in a city have mean $20\,^\circ$C and standard deviation $5\,^\circ$C. What are the mean and the standard deviation in degrees Fahrenheit,
+using $F=1.8\,C+32$?
+\solution The mean uses both constants: $1.8\cdot20+32=68\,^\circ$F. The standard deviation uses only the scale: $1.8\cdot5=9\,^\circ$F; the $32$ does not appear.
+The variance is $9^2=81$ in $^\circ\mathrm{F}^2$, which is $1.8^2\cdot25=3.24\cdot25=81$, the same number.
+\end{workedexample}
+
+\begin{workedexample}[Two ways to the same variance]
+$X$ equals $1$ or $5$, each with probability $\tfrac12$. Compute $\Var(X)$ directly and by rescaling.
+\solution \emph{Directly.} $\mu=\tfrac12\cdot1+\tfrac12\cdot5=3$, so $\Var(X)=\tfrac12(1-3)^2+\tfrac12(5-3)^2=\tfrac12\cdot4+\tfrac12\cdot4=4$.
+\emph{By rescaling.} $X=1+4B$ where $B$ is $0$ or $1$ with probability $\tfrac12$ each. For $B$: $\E[B]=\tfrac12$, $\E[B^2]=\tfrac12$, so
+$\Var(B)=\tfrac12-\tfrac14=\tfrac14$. Then $\Var(X)=4^2\cdot\tfrac14=4$. The two answers agree, as they must.
+\end{workedexample}
+
+\begin{workedexample}[Standardised scores]
+Marks in an exam have mean $70$ and standard deviation $12$. How far from the mean, in standard deviations, are the marks $94$ and $58$?
+\solution The standardised score is $z=(x-70)/12$. For $94$: $z=24/12=2$, two standard deviations above the mean. For $58$: $z=-12/12=-1$, one standard
+deviation below. The standardised scores have mean $0$ and variance $1$, by Section~2.
+\end{workedexample}
+
+\begin{workedexample}[Looking ahead: the variance of a sample mean]
+Let $X_1,\dots,X_n$ be independent, each with variance $\sigma^2$. Find the variance of $\bar X=\tfrac1n(X_1+\cdots+X_n)$, and evaluate it for $\sigma^2=36$ and
+$n=9$.
+\solution Variances of independent variables add, so $\Var(X_1+\cdots+X_n)=n\sigma^2$. The factor $\tfrac1n$ is a scale, so
+$\Var(\bar X)=\bigl(\tfrac1n\bigr)^2 n\sigma^2=\sigma^2/n$. For $\sigma^2=36$, $n=9$: $\Var(\bar X)=36/9=4$ and $\SD(\bar X)=2$, three times smaller than $\sigma=6$.
+Averaging $n$ independent measurements shrinks the standard deviation by $\sqrt n$.
+\end{workedexample}
+
+\section{Exercises with solutions}
+
+Try each exercise before reading its solution. The solutions are collected below, after the last exercise.
+
+\exercise[scaling]{$X$ has variance $36$. Find $\Var\bigl(5-\tfrac13X\bigr)$ and $\SD\bigl(5-\tfrac13X\bigr)$.}{
+Here $a=-\tfrac13$ and $b=5$, so $\Var=a^2\cdot36=\tfrac19\cdot36=4$, and $\SD=\sqrt4=2$ (also $|a|\cdot\SD(X)=\tfrac13\cdot6=2$).}
+
+\exercise[a variance from a table]{$X$ takes the values $-1$, $0$, $3$ with probabilities $\tfrac14$, $\tfrac12$, $\tfrac14$.
+\begin{parts}
+\item Find $\E[X]$.
+\item Find $\Var(X)$ twice: from the definition and from the computational formula.
+\item Find $\Var(2X+3)$.
+\end{parts}}{
+\begin{parts}
+\item $\E[X]=-\tfrac14+0+\tfrac34=\tfrac12$.
+\item From the definition: $\Var(X)=\tfrac14\bigl(-1-\tfrac12\bigr)^2+\tfrac12\bigl(0-\tfrac12\bigr)^2+\tfrac14\bigl(3-\tfrac12\bigr)^2
+  =\tfrac14\cdot\tfrac94+\tfrac12\cdot\tfrac14+\tfrac14\cdot\tfrac{25}4=\tfrac{9+2+25}{16}=\tfrac94$.
+  From the formula: $\E[X^2]=\tfrac14\cdot1+\tfrac12\cdot0+\tfrac14\cdot9=\tfrac52$, so $\Var(X)=\tfrac52-\bigl(\tfrac12\bigr)^2=\tfrac52-\tfrac14=\tfrac94$. Both agree.
+\item $\Var(2X+3)=2^2\cdot\tfrac94=9$.
+\end{parts}}
+
+\exercise[a second proof]{Prove $\Var(aX+b)=a^2\Var(X)$ again, this time using the computational formula $\Var(Y)=\E[Y^2]-(\E[Y])^2$ with $Y=aX+b$.}{
+$\E[Y^2]=\E[a^2X^2+2abX+b^2]=a^2\E[X^2]+2ab\,\E[X]+b^2$ and $(\E[Y])^2=(a\E[X]+b)^2=a^2(\E[X])^2+2ab\,\E[X]+b^2$.
+Subtracting, the terms $2ab\,\E[X]$ and $b^2$ cancel and what is left is $a^2\bigl(\E[X^2]-(\E[X])^2\bigr)=a^2\Var(X)$.}
+
+\exercise[standardising]{$X$ has mean $3$ and variance $25$. Find constants $a>0$ and $b$ such that $Y=aX+b$ has mean $0$ and variance $1$.}{
+We need $a^2\cdot25=1$, so $a=\tfrac15$ (taking $a>0$), and $\E[Y]=a\cdot3+b=0$, so $b=-\tfrac35$. Check: $\E[Y]=\tfrac35-\tfrac35=0$ and $\Var(Y)=\tfrac1{25}\cdot25=1$. This is
+$Y=(X-3)/5=(X-\mu)/\sigma$. (With $a=-\tfrac15$ and $b=\tfrac35$ the same two requirements hold as well.)}
+
+\exercise[a uniform variable]{$X$ is uniform on $(2,8)$. Write $X=2+6U$ with $U$ uniform on $(0,1)$ and find $\Var(X)$ and $\SD(X)$.}{
+$\Var(U)=\tfrac1{12}$, so $\Var(X)=6^2\cdot\tfrac1{12}=3$, and $\SD(X)=\sqrt3\approx1.73$. This agrees with the formula $(b-a)^2/12=36/12=3$.}
+
+\exercise[true or false]{Decide whether each statement is true for every random variable with a finite variance, and say why.
+\begin{parts}
+\item $\Var(-X)=-\Var(X)$.
+\item $\Var(X+7)=\Var(X)+7$.
+\item If $\Var(X)=0$, then $X$ is constant with probability one.
+\item If $X_1$ and $X_2$ are independent with the same variance $\sigma^2>0$, then $\Var(X_1+X_2)=\Var(2X_1)$.
+\end{parts}}{
+\begin{parts}
+\item False. $\Var(-X)=(-1)^2\Var(X)=\Var(X)$; a variance is never negative.
+\item False. A shift does not change the variance: $\Var(X+7)=\Var(X)$.
+\item True. $\Var(X)=\E[(X-\mu)^2]$ is an average of non-negative numbers; it is $0$ only if $(X-\mu)^2=0$ with probability one, that is, $X=\mu$ with probability one.
+\item False. $\Var(X_1+X_2)=2\sigma^2$ by independence, but $\Var(2X_1)=4\sigma^2$, and $2\sigma^2\ne4\sigma^2$ because $\sigma^2>0$.
+\end{parts}}
+
+\subsection*{Solutions}
+
+\printsolutions
+
+\begin{sources}
+\bibitem{plan} \emph{STAT 303 Mathematical Statistics I, 14-week detailed course plan}, Week~1: the formula $\Var(X)=\E(X^2)-[\E(X)]^2$ and the variance of linear combinations.
+\bibitem{rec1} \emph{STAT 303, Recitation 1: distribution families, moments and sampling distributions}, Sections~1--3: location--scale form $X=\eta+\theta Z$, variance, and
+  $\Var(aX+bY)=a^2\Var(X)+b^2\Var(Y)+2ab\Cov(X,Y)$.
+\bibitem{ls} \emph{STAT 303, lecture slides on location, scale and location--scale families} (standardising a normal variable).
+\bibitem{cb} G.~Casella and R.~L.~Berger, \emph{Statistical Inference}, 2nd ed., 2002, Section~2.3: the definition of the variance and the variance of $aX+b$
+  (Chapters~1--2 are recommended reading in the course plan).
+\end{sources}
