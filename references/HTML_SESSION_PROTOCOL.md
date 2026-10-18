@@ -185,8 +185,24 @@ those events alone, so a reload resumes. These are pacing decisions: a `plan-ans
 plays the segments `lecture_path` chooses from the probe results. The Start button of the lecture waits while the live voice reports `warming` and says so when the voice is
 not running; asking during the lecture sends an ordinary open question.
 
-**Not built yet:** the agent picking up written answers for review in the background, the lecture position surviving a reload, opening the handout PDF, playing a video segment,
+**Not built yet:** the agent picking up written answers for review in the background, the lecture position surviving a reload,
 and the board's own layout fixes (slices S3 to S8 and S2b of `docs/plans/v0.9.7-focused-session-plan.md`). Tested in real Chrome with a scripted host, not in Obsidian.
+
+### Host-owned panes: the handout and a video (S8)
+
+Two things the sandboxed page cannot do itself are done by the Obsidian companion on request, in panes the plugin owns. The page names them; the host decides, builds every
+address, and answers. The session page's own policy stays `frame-src 'none'` and no external browser is ever opened (`RESOURCE_PROTOCOL.md`, "The video pane", has the
+reasoning and what is not verified).
+
+| Page sends | Host answers |
+|---|---|
+| `{type:'handout', action:'open'}` (an optional `path` must be a `.pdf` inside the plan's `handout.directory`) | `{type:'handout', status:'opened', title}` or `{status:'error', message}`; the PDF opens in an Obsidian tab. Only when `plan.handout.status` is `built` |
+| `{type:'video', action:'open', resource:'RES-…', start, end}` | `{type:'video', status:'opened'\|'ended'\|'closed'\|'error', resource, title?, message?}`; a pane beside the lesson plays that part of a vetted YouTube record |
+| `{type:'video', action:'close'}` | `closed` (nothing is said if no video was open) |
+
+The lecture asks for a video when its introduction has been said (the board waits there), and only when the learner presses "Play the video"; it goes on when the host says
+`ended` or `closed`, when the learner says they have finished, or when the video cannot be played (`error`, or no answer within ten seconds). In that last case the page says so and
+offers "Try the video again"; the lecture has not waited for it. A page with no host cannot play videos and says so.
 
 ## Titles, navigation and the questions panel
 

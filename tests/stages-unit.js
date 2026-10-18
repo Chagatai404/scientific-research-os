@@ -28,11 +28,36 @@ for (const c of cases.replay) {
 }
 for (const c of cases.stages) assert.equal(S.stageOf(plan, events(c.events)), c.expect, c.name);
 
-// The lecture is the chosen segments' steps in order; a video-only segment adds none (the video pane comes later).
+// The lecture is the chosen segments' steps in order; a segment's video is not a board step (it plays in the host's video pane, see lectureChunks).
 const script = S.composeScript(plan, ['spread', 'scale-repair', 'scale', 'see-it']);
 assert.deepEqual(script.steps.map(s => s.id), ['sp1', 'sp2', 'sp3', 'rp1', 'rp2', 'rp3', 'sc1', 'sc2']);
 assert.equal(script.open, false);
 assert.equal(script.board_schema, 1);
+
+// The lecture in pieces that each end at a video: the board waits at the end of a piece (an open script) and goes on when the video has ended.
+{
+  const built = S.lectureChunks(plan, ['spread', 'scale-repair', 'scale', 'see-it']);
+  assert.equal(built.chunks.length, 1);
+  assert.deepEqual(built.chunks[0].steps.map(s => s.id), ['sp1', 'sp2', 'sp3', 'rp1', 'rp2', 'rp3', 'sc1', 'sc2', 'video-see-it'], 'a video-only segment is introduced by one spoken sentence, its notice');
+  assert.equal(built.chunks[0].steps.at(-1).say, plan.segments.find(s => s.id === 'see-it').video.notice);
+  assert.deepEqual([built.chunks[0].video.segment, built.chunks[0].video.resource, built.chunks[0].video.start, built.chunks[0].video.end], ['see-it', 'RES-example-variance-video', 30, 210]);
+  assert.equal(S.chunkScript(built, 0).open, true, 'the board waits for the video');
+  assert.deepEqual(S.chunkScript(built, 0).steps.slice(0, -1), script.steps, 'the same steps as the plain lecture, then the introduction');
+  const plain = S.lectureChunks(plan, ['spread', 'scale']);                   // no video on this path: one piece, exactly the old script
+  assert.equal(plain.chunks.length, 1); assert.equal(plain.chunks[0].video, null);
+  assert.deepEqual(S.chunkScript(plain, 0), S.composeScript(plan, ['spread', 'scale']));
+  const made = {segments: [
+    {id: 'a', role: 'core', script: {steps: [{id: 'a1', say: 'First.'}]}, video: {resource: 'RES-x', start: 0, end: 60, notice: 'Watch the first part.'}},
+    {id: 'b', role: 'core', video: {resource: 'RES-y', start: 5, end: 50, notice: 'Now this one.'}},
+    {id: 'c', role: 'core', script: {hand: 'chalk', steps: [{id: 'c1', say: 'Last.'}]}}]};
+  const several = S.lectureChunks(made, ['a', 'b', 'c']);
+  assert.deepEqual(several.chunks.map(c => [c.steps.map(s => s.id).join(','), c.video && c.video.resource]), [['a1', 'RES-x'], ['video-b', 'RES-y'], ['c1', null]]);
+  assert.equal(several.chunks[1].steps[0].say, 'Now this one.', 'a video-only segment is introduced by its notice');
+  assert.deepEqual([0, 1, 2].map(k => S.chunkScript(several, k).open), [true, true, false]);
+  assert.deepEqual(S.chunkScript(several, 2).steps.map(s => s.id), ['a1', 'video-b', 'c1']);
+  assert.equal(S.chunkScript(several, 0).hand, 'chalk', 'the hand chosen by any segment applies to the whole lecture');
+  assert.equal(S.lectureChunks(made, []).chunks.length, 0);
+}
 
 // Numbers typed by a learner.
 assert.equal(S.parseNumber('0.5'), 0.5);

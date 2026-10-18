@@ -112,6 +112,7 @@
     // The tutor's live voice: the host (the Obsidian plugin, with a local voice worker) speaks each sentence when it is asked for, by id, and answers with audio
     // or an error. A standalone page has no host, so it has no live voice and its boards use the device voice, a recording, or captions.
     const speechPending = new Map();
+    const paneListeners = {video: new Set(), handout: new Set()};   // the staged view hears what the host's video and handout panes report
     const liveVoiceListeners = new Set();   // called with the live voice worker's state ("ready", "warming", "off"…) whenever the host reports it
     const liveVoice = host && host.voice && host.voice.speak ? {
       pause: 0.5,
@@ -187,6 +188,8 @@
         noteResult(data);
       } else if (data.type === 'resource-opened' || data.type === 'resource-error') {
         resourceResult(data);
+      } else if (data.type === 'video' || data.type === 'handout') {
+        for (const listener of paneListeners[data.type]) listener({status: String(data.status || ''), resource: typeof data.resource === 'string' ? data.resource : '', title: typeof data.title === 'string' ? data.title.slice(0, 200) : '', message: typeof data.message === 'string' ? data.message.slice(0, 300) : ''});
       } else if (data.type === 'voice') {
         voiceResult(data);
       } else if (data.type === 'speech' && data.status === 'worker') {
@@ -1151,6 +1154,13 @@
         doc, events: () => localEvents, emit, rich,
         mountBoard: (container, script, onEvent) => root.ResearchOSBoard.mount(container, script, {doc, win: root, renderMath, live: liveVoice || undefined, onEvent}),
         footer: element => element.append(status, supervisionLine),
+        // Panes the host owns (a vetted video, the handout PDF). The page names them; the host decides and opens them. A page with no host has none.
+        panes: host ? {
+          video: {open: video => toHost('video', {action: 'open', resource: video.resource, start: video.start, end: video.end}), close: () => toHost('video', {action: 'close'}), on: callback => paneListeners.video.add(callback)},
+          handout: {open: () => toHost('handout', {action: 'open'}), on: callback => paneListeners.handout.add(callback)},
+          openTimeoutMs: Number.isFinite(host.video_timeout_ms) ? host.video_timeout_ms : undefined
+        } : null,
+        videoRecord: id => { const records = state.video_records; return records && typeof records === 'object' && records[id] && typeof records[id].title === 'string' ? {title: records[id].title, publisher: records[id].publisher || '', license: records[id].license || '', attribution: records[id].attribution || ''} : null; },
         voice: voiceOn ? {bind: bindTalk, idle: 'Hold to speak', holding: 'Listening… let go'} : null,
         liveVoice: liveOn ? {
           state: () => liveState,

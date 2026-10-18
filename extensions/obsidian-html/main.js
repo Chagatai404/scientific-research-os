@@ -1,5 +1,5 @@
 'use strict';
-const {Plugin, FileView, Component, normalizePath} = require('obsidian');
+const {Plugin, FileView, ItemView, Component, normalizePath} = require('obsidian');
 const crypto = require('crypto');
 const fs = require('fs');
 const nodePath = require('path');
@@ -244,6 +244,92 @@ function declaredResource(state, id) {
   }
   return null;
 }
+// ---- host-owned panes (references/RESOURCE_PROTOCOL.md, "The video pane"; decided by the researcher on 2026-10-18).
+// The sandboxed page can only NAME things: a resource id with the part a plan segment plays, or "the handout". The host decides whether that is allowed, builds
+// every address itself, and opens it in a pane it owns. The session page's own policy stays frame-src 'none'; no address ever comes from the page.
+const VIDEO_VIEW = 'research-os-video';
+const VIDEO_ORIGIN = 'https://www.youtube-nocookie.com';
+const VIDEO_MAX_SECONDS = 1800, VIDEO_MAX_END = 4 * 3600 + 1800, VIDEO_STALE_MS = 365 * 86400000, PANE_GAP_MS = 400;
+const RESOURCE_ID = /^RES-[A-Za-z0-9][A-Za-z0-9._-]{0,59}$/;
+const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
+// The 11-character id of a YouTube watch, short or embed address, else null (the same rule as resources.py youtube_id).
+function youtubeId(address) {
+  let url; try { url = new URL(address); } catch (_) { return null; }
+  const host = url.hostname.toLowerCase().replace(/^www\./, '');
+  let candidate;
+  if (host === 'youtube.com' || host === 'youtube-nocookie.com' || host === 'm.youtube.com') {
+    if (url.pathname === '/watch') candidate = url.searchParams.get('v') || '';
+    else if (url.pathname.startsWith('/embed/')) candidate = url.pathname.split('/')[2] || '';
+    else return null;
+  } else if (host === 'youtu.be') candidate = url.pathname.replace(/^\//, '').split('/')[0];
+  else return null;
+  return YOUTUBE_ID.test(candidate) ? candidate : null;
+}
+// The one address a video pane ever loads. Built here from an id this host has checked; autoplay follows the learner's own click on "Play the video", and
+// enablejsapi lets the pane hear the player report that it ended (best effort: the learner can always say so).
+function videoAddress(videoId, start, end) {
+  if (!YOUTUBE_ID.test(String(videoId))) throw new Error('That is not a video id.');
+  return VIDEO_ORIGIN + '/embed/' + videoId + '?start=' + start + '&end=' + end + '&rel=0&autoplay=1&enablejsapi=1';
+}
+// What may be asked for: a part of a vetted video that this session's own plan plays. The numbers come from the plan, never from the page; the record is the
+// snapshot the session was given of a vetted registry record (state.video_records, or a Teaching Card's resources), checked again here.
+function videoSpec(state, id, start, end, now = Date.now()) {
+  if (typeof id !== 'string' || !RESOURCE_ID.test(id)) throw new Error('That is not a resource id.');
+  const segments = state && state.plan && Array.isArray(state.plan.segments) ? state.plan.segments : [];
+  const planned = segments.map(s => s && s.video).find(v => v && typeof v === 'object' && v.resource === id && v.start === start && v.end === end);
+  if (!planned) throw new Error('This session does not play that part of that video.');
+  const own = state.video_records && typeof state.video_records === 'object' && Object.prototype.hasOwnProperty.call(state.video_records, id) ? state.video_records[id] : null;
+  const record = own || declaredResource(state, id);
+  if (!record || typeof record !== 'object') throw new Error('That video is not a vetted resource of this session.');
+  if (record.embed !== 'youtube') throw new Error('Only a YouTube video that was vetted for embedding can play here.');
+  let url; try { url = new URL(record.url); } catch (_) { throw new Error('The video link is not a valid URL.'); }
+  if (url.protocol !== 'https:' || url.username || url.password || typeof record.video_id !== 'string' || !YOUTUBE_ID.test(record.video_id) || youtubeId(record.url) !== record.video_id) throw new Error('The video record is not a YouTube address with its video id.');
+  const vetted = typeof record.vetted_on === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(record.vetted_on) ? Date.parse(record.vetted_on + 'T00:00:00Z') : NaN;
+  if (!Number.isFinite(vetted) || vetted > now + 86400000) throw new Error('That video has not been vetted.');
+  if (now - vetted > VIDEO_STALE_MS) throw new Error('The vetting of that video is more than a year old; it needs re-checking first.');
+  if (!Number.isFinite(planned.start) || !Number.isFinite(planned.end) || planned.start < 0 || planned.start >= planned.end || planned.end > VIDEO_MAX_END || planned.end - planned.start > VIDEO_MAX_SECONDS) throw new Error('The planned part of the video is not a valid time range.');
+  const from = Math.floor(planned.start), to = Math.ceil(planned.end);
+  return {id, title: String(record.title || id).slice(0, 200), videoId: record.video_id, start: from, end: to, address: videoAddress(record.video_id, from, to)};
+}
+// The pane's frame: scripts and the player's own origin only. No popups (so the player's "watch on YouTube" link cannot open a browser), no navigation of the
+// pane, no forms; the referrer is the origin alone (YouTube refuses to play with none, error 153).
+function videoFrameAttributes(address, title) {
+  return {src: address, title: String(title || 'Session video').slice(0, 200), sandbox: 'allow-scripts allow-same-origin allow-presentation', referrerpolicy: 'strict-origin-when-cross-origin',
+    allow: 'encrypted-media; picture-in-picture; fullscreen', allowfullscreen: ''};
+}
+// What the player says (the YouTube iframe API's widget messages), reduced to what the lecture needs. Anything else is ignored; its text is never passed on.
+function playerSignal(raw) {
+  let message = raw;
+  if (typeof raw === 'string') { if (raw.length > 20000) return null; try { message = JSON.parse(raw); } catch (_) { return null; } }
+  if (!message || typeof message !== 'object' || Array.isArray(message)) return null;
+  if (message.event === 'onStateChange' && message.info === 0) return {kind: 'ended'};
+  if (message.event === 'infoDelivery' && message.info && typeof message.info === 'object' && message.info.playerState === 0) return {kind: 'ended'};
+  if (message.event === 'onError' && Number.isInteger(message.info)) return {kind: 'error', code: message.info};
+  if (message.event === 'onReady' || message.event === 'initialDelivery' || message.event === 'infoDelivery') return {kind: 'ready'};
+  return null;
+}
+// A place in the vault the page may ask about: relative, no scheme, drive, backslash, traversal or hidden folder.
+function safeVaultPath(value) {
+  if (typeof value !== 'string' || value.length < 1 || value.length > 512 || NOTE_PATH_BAD.test(value) || /[#%]/.test(value) || value.startsWith('/') || value.endsWith('/')) return false;
+  return value.split('/').every(part => part !== '' && part !== '.' && part !== '..' && !part.startsWith('.'));
+}
+// The handout is the PDF in the folder the plan declares, once the plan says it is built. A path from the page must lie inside that folder (a sibling folder whose
+// name merely starts the same does not count); with no path the host takes the PDF that is there.
+function handoutSpec(state, path) {
+  const handout = state && state.plan && state.plan.handout;
+  if (!handout || typeof handout !== 'object') throw new Error('This session has no handout.');
+  if (handout.status !== 'built') throw new Error('The handout is not ready yet.');
+  if (!safeVaultPath(handout.directory)) throw new Error('The handout folder named by this session is not a safe place.');
+  if (path === undefined || path === null) return {directory: handout.directory, path: null};
+  if (!safeVaultPath(path) || !path.startsWith(handout.directory + '/') || !/\.pdf$/i.test(path)) throw new Error('That is not a PDF inside this session\'s handout folder.');
+  return {directory: handout.directory, path};
+}
+function pickHandout(folder, directory) {
+  const pdfs = folder && Array.isArray(folder.children) ? folder.children.filter(f => f && !f.children && String(f.extension || '').toLowerCase() === 'pdf' && typeof f.path === 'string' && f.path.startsWith(directory + '/') && safeVaultPath(f.path)) : [];
+  if (!pdfs.length) return null;
+  const when = f => (f.stat && Number.isFinite(f.stat.mtime) ? f.stat.mtime : 0);
+  return pdfs.sort((a, b) => when(b) - when(a) || (a.path < b.path ? 1 : -1))[0];
+}
 // The context binding is for agents (it holds local paths); the sandboxed page never needs it.
 // The agent's liveness lease (scripts/supervision.py): same shape and bounds as the writer. Anything else reads as "no live agent".
 function parseLease(text) {
@@ -372,7 +458,7 @@ class SessionHost extends Component {
     this.lease = lease;
     this.reply(this.token, {type: 'supervision', live: lease, host_now: Date.now()});
   }
-  fail(message) { this.generation++; this.token = null; if (this.frame) { this.frame.remove(); this.frame = null; } this.status.textContent = message; this.status.classList.add('ros-error'); }
+  fail(message) { this.generation++; this.token = null; this.closeVideo(null); if (this.frame) { this.frame.remove(); this.frame = null; } this.status.textContent = message; this.status.classList.add('ros-error'); }
   async read(path, required = true) {
     if ([RUNTIME + 'session.js', RUNTIME + 'session.css', TRUST_REGISTRY].includes(path)) {
       // Obsidian excludes dot directories from its indexed TFile inventory.
@@ -413,7 +499,7 @@ class SessionHost extends Component {
   async reload() {
     if (this.invalidated) return;
     this.ready = false; clearTimeout(this.refreshTimer);
-    const generation = ++this.generation; this.token = null;
+    const generation = ++this.generation; this.token = null; this.closeVideo(null);
     try {
       const [html, raw, runtime, css] = await Promise.all([this.read(this.path), this.read(sibling(this.path)), this.read(RUNTIME + 'session.js', false), this.read(RUNTIME + 'session.css', false)]);
       if (generation !== this.generation) return;
@@ -466,6 +552,8 @@ class SessionHost extends Component {
     if (data.type === 'board-position') { this.boardPosition(data); return; }
     if (data.type === 'navigate') { this.navigate(data.target, this.token); return; }
     if (data.type === 'open-resource') { this.openResource(data.id, this.token); return; }
+    if (data.type === 'video') { this.video(data.action, data, this.token); return; }
+    if (data.type === 'handout') { this.handout(data.action, data.path, this.token); return; }
     if (this.pending >= 32) { this.reply(this.token, {type: 'error', message: 'Too many pending events.'}); return; }
     this.pending++;
     const token = this.token; const generation = this.generation;
@@ -688,8 +776,80 @@ class SessionHost extends Component {
       this.reply(token, {type: 'resource-opened', id, title: String(spec.title || id).slice(0, 200)});
     } catch (error) { this.reply(token, {type: 'resource-error', id: typeof id === 'string' ? id.slice(0, 80) : '', message: error.message}); }
   }
+  // ---- the video pane. The page asks {type:'video', action:'open', resource, start, end} or {action:'close'}; the host answers {type:'video', status, resource,
+  // title?, message?} with status opened | closed | ended | error. It plays only a vetted YouTube part this session's plan names (videoSpec), in a pane the plugin owns.
+  async video(action, data, token) {
+    const label = data && typeof data.resource === 'string' ? data.resource.slice(0, 80) : '';
+    const say = payload => this.reply(token, Object.assign({type: 'video', resource: label}, payload));
+    try {
+      if (action === 'close') { this.closeVideo('closed'); return; }
+      if (action !== 'open') throw new Error('Unknown video action.');
+      const now = Date.now();
+      if (this.videoAt && now - this.videoAt < PANE_GAP_MS) throw new Error('Please wait a moment before opening another video.');
+      this.videoAt = now;
+      const spec = videoSpec(this.state, data.resource, data.start, data.end, now);
+      const workspace = this.plugin.app.workspace;
+      if (!workspace || typeof workspace.getLeaf !== 'function') throw new Error('Opening a video pane is not available in this Obsidian.');
+      this.closeVideo(null);
+      const leaf = workspace.getLeaf('split', 'vertical');       // beside the lesson, so the lecture stays in view
+      await leaf.setViewState({type: VIDEO_VIEW, active: true});
+      const view = leaf.view;
+      if (!view || typeof view.play !== 'function') { try { leaf.detach(); } catch (_) { /* nothing to detach */ } throw new Error('The video pane could not be created.'); }
+      if (token !== this.token || this.invalidated) { try { leaf.detach(); } catch (_) { /* gone already */ } return; }
+      const session = {id: spec.id, title: spec.title, token, leaf, finished: false};
+      this.videoSession = session;
+      view.play(spec, signal => this.videoSignal(session, signal));
+      say({status: 'opened', title: spec.title});
+    } catch (error) { say({status: 'error', message: String(error && error.message || error).slice(0, 300)}); }
+  }
+  // What the pane reports. Its words never reach the page: each outcome has a fixed message here.
+  videoSignal(session, signal) {
+    if (!session || session.finished || !signal) return;
+    if (signal.kind === 'ended') this.finishVideo(session, 'ended');
+    else if (signal.kind === 'closed') this.finishVideo(session, 'closed');
+    else if (signal.kind === 'error') this.finishVideo(session, 'error', Number.isInteger(signal.code) ? 'The player would not play this video here (player code ' + signal.code + ').' : 'The player would not play this video here.');
+  }
+  finishVideo(session, status, message) {
+    if (session.finished) return;
+    session.finished = true;
+    if (this.videoSession === session) this.videoSession = null;
+    if (status !== 'closed') { try { session.leaf.detach(); } catch (_) { /* already gone */ } }
+    const payload = {type: 'video', resource: session.id, status, title: session.title};
+    if (message) payload.message = message;
+    this.reply(session.token, payload);
+  }
+  // Close the pane: for the page's own request ("closed" is reported) or because this view is going away (null: nothing to report).
+  closeVideo(status) {
+    const session = this.videoSession;
+    if (!session) return;
+    if (status) { this.finishVideo(session, status); try { session.leaf.detach(); } catch (_) { /* already gone */ } return; }
+    session.finished = true; this.videoSession = null;
+    try { session.leaf.detach(); } catch (_) { /* already gone */ }
+  }
+  // ---- the handout: {type:'handout', action:'open', path?} -> {type:'handout', status: 'opened' | 'error', title?, message?}. The PDF opens in an Obsidian tab.
+  async handout(action, path, token) {
+    const say = payload => this.reply(token, Object.assign({type: 'handout'}, payload));
+    try {
+      if (action !== 'open') throw new Error('Unknown handout action.');
+      const now = Date.now();
+      if (this.handoutAt && now - this.handoutAt < PANE_GAP_MS) throw new Error('Please wait a moment before opening the handout again.');
+      this.handoutAt = now;
+      const spec = handoutSpec(this.state, path);
+      const vault = this.plugin.app.vault, workspace = this.plugin.app.workspace;
+      let file = spec.path ? vault.getAbstractFileByPath(spec.path) : pickHandout(vault.getAbstractFileByPath(spec.directory), spec.directory);
+      if (!file && !spec.path) throw new Error('No PDF has been saved in the handout folder yet.');
+      if (!file || file.children || String(file.extension || '').toLowerCase() !== 'pdf' || !String(file.path).startsWith(spec.directory + '/') || !safeVaultPath(file.path)) throw new Error('That PDF is not in the handout folder.');
+      if (workspace && typeof workspace.getLeaf === 'function') {
+        const leaf = workspace.getLeaf('tab');
+        if (!leaf || typeof leaf.openFile !== 'function') throw new Error('Opening files is not available in this Obsidian.');
+        await leaf.openFile(file);
+      } else if (workspace && typeof workspace.openLinkText === 'function') await workspace.openLinkText(file.path, this.path, 'tab');
+      else throw new Error('Opening files is not available in this Obsidian.');
+      say({status: 'opened', title: String(file.basename || file.name || file.path).slice(0, 200)});
+    } catch (error) { say({status: 'error', message: String(error && error.message || error).slice(0, 300)}); }
+  }
   reply(token, payload, transfer) { if (this.frame && token === this.token) this.frame.contentWindow.postMessage(Object.assign({channel: 'research-os', token, session_id: this.state.session_id}, payload), '*', transfer || []); }
-  onunload() { this.voiceCancel(); clearTimeout(this.positionTimer); clearTimeout(this.refreshTimer); clearInterval(this.leaseTimer); if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
+  onunload() { this.voiceCancel(); this.closeVideo(null); clearTimeout(this.positionTimer); clearTimeout(this.refreshTimer); clearInterval(this.leaseTimer); if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
 }
 class SessionView extends FileView {
   constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }
@@ -697,6 +857,47 @@ class SessionView extends FileView {
   getDisplayText() { return this.file ? this.file.basename : 'Research OS HTML'; }
   async onLoadFile(file) { if (this.host) this.removeChild(this.host); this.contentEl.replaceChildren(); this.host = new SessionHost(this.plugin, this.contentEl, file.path); this.addChild(this.host); }
   async onUnloadFile() { if (this.host) { this.removeChild(this.host); this.host = null; } }
+}
+// The pane a vetted video plays in. It is built and owned here, never by the session page: one sandboxed frame on the address the host built, and nothing else
+// from outside. It reports ended / error (from the player) or closed (the tab went away) to the host that opened it, and stays quiet otherwise.
+const PaneBase = ItemView || Component;
+class VideoView extends PaneBase {
+  constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }
+  getViewType() { return VIDEO_VIEW; }
+  getDisplayText() { return this.heading || 'Session video'; }
+  getIcon() { return 'play-circle'; }
+  async onOpen() { if (this.contentEl && this.contentEl.classList) this.contentEl.classList.add('ros-video-pane'); }
+  stop() {
+    if (this.listener && this.window) this.window.removeEventListener('message', this.listener);
+    this.listener = null; this.window = null; this.report = null;
+    if (this.contentEl && typeof this.contentEl.replaceChildren === 'function') this.contentEl.replaceChildren();
+  }
+  play(spec, report) {
+    this.stop();
+    const doc = this.contentEl.ownerDocument, win = doc.defaultView || window;
+    const make = (tag, text, className) => { const node = doc.createElement(tag); if (text) node.textContent = text; if (className) node.className = className; return node; };
+    this.heading = spec.title; this.report = report; this.window = win;
+    const frame = make('iframe', '', 'ros-video-frame');
+    for (const [key, value] of Object.entries(videoFrameAttributes(spec.address, spec.title))) frame.setAttribute(key, value);
+    const note = make('p', 'If the player says it cannot play this video here, close this tab: the lecture goes on without it. Closing this tab also ends the video.', 'ros-video-note');
+    const close = make('button', 'Back to the lesson', 'ros-video-close'); close.setAttribute('type', 'button');
+    close.addEventListener('click', () => { if (this.leaf && typeof this.leaf.detach === 'function') this.leaf.detach(); });
+    this.listener = event => {
+      if (event.source !== frame.contentWindow || event.origin !== VIDEO_ORIGIN) return;
+      const signal = playerSignal(event.data);
+      if (signal && signal.kind !== 'ready' && this.report) this.report(signal);
+    };
+    win.addEventListener('message', this.listener);
+    // Ask the player to report what it is doing (the iframe API's handshake); without it the learner says when they have finished.
+    frame.addEventListener('load', () => {
+      try {
+        for (const message of [{event: 'listening', id: 1, channel: 'widget'}, {event: 'command', func: 'addEventListener', args: ['onStateChange'], id: 1, channel: 'widget'}, {event: 'command', func: 'addEventListener', args: ['onError'], id: 1, channel: 'widget'}]) frame.contentWindow.postMessage(JSON.stringify(message), VIDEO_ORIGIN);
+      } catch (_) { /* the learner can still say they are done */ }
+    });
+    this.contentEl.replaceChildren(make('h3', spec.title, 'ros-video-title'), frame, note, close);
+    if (this.leaf && typeof this.leaf.updateHeader === 'function') this.leaf.updateHeader();
+  }
+  async onClose() { const report = this.report; this.stop(); if (report) report({kind: 'closed'}); }
 }
 class ResearchOSHTML extends Plugin {
   async loadTrust() {
@@ -738,13 +939,17 @@ class ResearchOSHTML extends Plugin {
       this.register(() => watcher.close());
     } catch (_) { /* Missing runtime/watcher: explicit reload command remains available. */ }
     this.registerView(VIEW, leaf => new SessionView(leaf, this)); this.registerExtensions(['html'], VIEW);
+    this.registerView(VIDEO_VIEW, leaf => new VideoView(leaf, this));
+    // A video tab left over from an earlier run has no lecture to belong to.
+    if (this.app.workspace && typeof this.app.workspace.onLayoutReady === 'function') this.app.workspace.onLayoutReady(() => this.app.workspace.detachLeavesOfType(VIDEO_VIEW));
     this.registerMarkdownCodeBlockProcessor('ros-session', (source, element, context) => {
       const value = source.trim();
       if (!value || /[\\\r\n]|(^|\/)\.\.(\/|$)|:|^\//.test(value) || !value.endsWith('.html')) { element.textContent = 'Invalid Research OS session embed path.'; return; }
       context.addChild(new SessionHost(this, element, normalizePath(value)));
     });
   }
-  onunload() { this.app.workspace.detachLeavesOfType(VIEW); }
+  onunload() { this.app.workspace.detachLeavesOfType(VIEW); this.app.workspace.detachLeavesOfType(VIDEO_VIEW); }
 }
 module.exports = ResearchOSHTML;
-module.exports._test = {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, declaredResource, resolveNote, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling, voiceWorkerState, parseVoiceResult, microphoneMessage, browserRecorder};
+module.exports._test = {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, declaredResource, resolveNote, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling, voiceWorkerState, parseVoiceResult, microphoneMessage, browserRecorder,
+  youtubeId, videoAddress, videoSpec, videoFrameAttributes, playerSignal, safeVaultPath, handoutSpec, pickHandout, VideoView, VIDEO_VIEW};
