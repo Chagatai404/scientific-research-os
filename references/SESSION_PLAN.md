@@ -1,5 +1,22 @@
 # Session plan (v0.9.7)
 
+## Adaptive core update (unreleased)
+
+Quiz / Handout / Lecture / Video / Check retain their order and presentation.
+Prepared stages are freely accessible, including Check before Quiz. The current
+recommendation is independent of permission and completion. Navigation saves a
+`view-stage:` checkpoint; it never supplies learning evidence. Leaving a playing
+lecture pauses it and saves its existing step checkpoint. Unprepared stages say
+so; no compulsory wizard is imposed. Draft answers survive stage switches (draft
+reload persistence remains a tracked follow-up).
+
+`html_sessions.py start` connects the tutor without launching speech workers.
+`--voice` explicitly requests optional workers under the existing process consent;
+`--no-voice` remains accepted. `ready` reports core readiness; `voice_ready`
+separately reports optional voice availability. Warming, failed or unavailable
+speech never disables stage navigation or lecture entry. The existing PDF
+readiness check is being replaced in the next native-handout slice.
+
 What a tutor decides before the learner sees anything, so the session moves without waiting for the agent between steps. It works with any agent that can write a JSON file and run a command. `TUTOR_PLANNING.md` still decides what is taught and in what order, `TUTORING_GATES.md` when a probe is due, `LIVE_LECTURE.md` how a lecture is given, and `RESOURCE_PROTOCOL.md` which outside material may be used. This file is the plan that ties them together.
 
 ## Why a plan

@@ -1982,7 +1982,6 @@
   'use strict';
   const END = 'end';
   const STAGES = [['probe', 'Quiz'], ['handout', 'Handout'], ['lecture', 'Lecture'], ['video', 'Video'], ['check', 'Check']];
-  const indexOf = id => STAGES.findIndex(([s]) => s === id);
 
   // ----------------------------------------------------------------------------------------------------------------- logic (mirrors scripts/session_plan.py)
   function judge(question, answer) {
@@ -2143,6 +2142,23 @@
     return 'done';
   }
 
+  // Recommended progress and the learner's selected view are separate. Visiting
+  // a stage neither completes it nor creates assessment evidence.
+  function selectedStage(plan, events) {
+    const visits = checkpoints(events, 'view-stage:');
+    const last = visits[visits.length - 1];
+    return STAGES.some(([id]) => id === last) || last === 'done' ? last : stageOf(plan, events);
+  }
+
+  function stageStatus(plan, events, id) {
+    if (id === 'video') return plan.segments.some(s => s.video) ? 'ready' : 'unavailable';
+    if (id === 'handout' && (!plan.handout || plan.handout.status !== 'built' && !plan.handout.readable)) return 'unprepared';
+    if (id === 'check' && !plan.check) return 'unprepared';
+    if ((id === 'probe' || id === 'check') && replay(plan, id, events).done) return 'completed';
+    if (id === 'lecture' && marks(events).has('check')) return 'completed';
+    return stageOf(plan, events) === id ? 'suggested' : 'ready';
+  }
+
   function parseNumber(text) {
     const cleaned = String(text).trim().replace(',', '.');
     return cleaned !== '' && /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(cleaned) ? Number(cleaned) : NaN;
@@ -2187,32 +2203,37 @@
     const panels = {};
     for (const id of [...STAGES.map(([s]) => s), 'done']) { panels[id] = el('section', {class: 'ros-stage ros-stage-' + id, 'data-stage': id, hidden: true}); body.append(panels[id]); }
 
-    let derived = stageOf(plan, ctx.events()), shown = derived, videoReturn = derived;
+    let derived = stageOf(plan, ctx.events()), shown = selectedStage(plan, ctx.events()), videoReturn = shown;
     const views = {};                         // per tree: what is on screen, so a refresh that changes nothing does not redraw (and lose a half-typed answer)
     const drafts = new Map();
 
     // ------------------------------------------------------------------------------------------------- the stage bar
     function renderBar() {
       barList.textContent = '';
-      const reached = derived === 'done' ? STAGES.length : indexOf(derived);
-      STAGES.forEach(([id, label], index) => {
-        const state = id === shown ? 'current' : id === 'video' ? 'available' : index <= reached ? 'done' : 'todo';
-        const link = button(label, () => show(id), {'aria-current': shown === id ? 'step' : undefined, disabled: state === 'todo'});
-        barList.append(el('li', {'data-state': state}, link));
+      STAGES.forEach(([id, label]) => {
+        const availability = stageStatus(current, ctx.events(), id);
+        const state = id === shown ? 'current' : availability === 'completed' ? 'done' : availability;
+        const link = button(label, () => show(id), {'aria-current': shown === id ? 'step' : undefined,
+          'aria-description': availability, title: availability});
+        barList.append(el('li', {'data-state': state, 'data-availability': availability}, link));
       });
     }
     function show(id) {
-      if (id !== 'video' && id !== 'done' && derived !== 'done' && indexOf(id) > indexOf(derived)) return;
+      if (!panels[id]) return;
+      if (shown === 'lecture' && id !== 'lecture' && lecture.controller && lecture.controller.status === 'playing') { lecture.controller.pause(); sendStep(true); }
       if (shown === 'video' && id !== 'video' && ctx.panes) { if (selectedVideo) ctx.panes.video.close(); selectedVideo = null; }
       if (id === 'video' && shown !== 'video') videoReturn = shown;
-      if (id === 'video' && lecture.controller && lecture.controller.status === 'playing') lecture.controller.pause();
       shown = id;
+      if (selectedStage(current, ctx.events()) !== id) ctx.emit('checkpoint', null, 'view-stage:' + id);
       render();
+      const destination = panels[id].querySelector('h2') || panels[id].querySelector('[role="status"], button, textarea, input');
+      if (destination) { if (!destination.matches('button, textarea, input')) destination.tabIndex = -1; destination.focus({preventScroll: true}); }
     }
 
     // ------------------------------------------------------------------------------------------------- questions (probe and check)
     function treeView(name) {
       const panel = panels[name];
+      if (!current[name]) { panel.textContent = ''; panel.append(el('p', {role: 'status', text: 'This check has not been prepared yet. You can study in another stage.'})); return; }
       const view = views[name] = views[name] || {viewing: null, signature: ''};
       const r = replay(current, name, ctx.events());
       const signature = JSON.stringify([r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, derived, shown]);
@@ -2394,9 +2415,9 @@
       const warming = voiceState === 'warming';
       const actions = el('div', {class: 'ros-qcard-actions'});
       if (handout && handout.status === 'built' && ctx.panes) actions.append(button('Open the handout', openHandout, {class: 'ros-handout-open'}));
-      actions.append(button(derived === 'handout' ? 'Start the lecture' : 'Go to the lecture', startLecture, {class: 'ros-primary', disabled: warming}));
+      actions.append(button(derived === 'handout' ? 'Start the lecture' : 'Go to the lecture', startLecture, {class: 'ros-primary'}));
       card.append(actions, el('p', {class: 'ros-handout-note', role: 'status', 'data-problem': handoutNote.problem ? 'true' : undefined, text: handoutNote.text}));
-      card.append(el('p', {class: 'ros-voice-state', role: 'status', text: voiceState === 'ready' || voiceState === 'busy' ? 'The tutor’s voice is ready.' : warming ? 'The tutor’s voice is warming up. You can start in a moment.'
+      card.append(el('p', {class: 'ros-voice-state', role: 'status', text: voiceState === 'ready' || voiceState === 'busy' ? 'The tutor’s voice is ready.' : warming ? 'The tutor’s voice is warming up. You can start with text or captions now.'
         : voiceState === 'none' ? '' : 'The tutor’s voice is not running, so the lecture will use your device voice or captions.'}));
       panel.append(card);
     }
@@ -2762,7 +2783,7 @@
     };
   }
 
-  return {END, STAGES, ACKS, judge, lecturePath, composeScript, lectureChunks, chunkScript, replay, stageOf, marks, parseNumber, tokens, matchAnticipated, mount, reviewedResults, recordedPath, lectureFor, resumeStep};
+  return {END, STAGES, ACKS, judge, lecturePath, composeScript, lectureChunks, chunkScript, replay, stageOf, selectedStage, stageStatus, marks, parseNumber, tokens, matchAnticipated, mount, reviewedResults, recordedPath, lectureFor, resumeStep};
 });
 
 /* Research OS runtime v1. No host privileges, network calls or authoritative browser storage. */

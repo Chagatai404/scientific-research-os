@@ -74,7 +74,10 @@ unknown mastery does not erase actual saved answers.
 
 Run `html_sessions.py --root <vault> start <session> --holder <agent-id>` before
 calling it ready. Startup checks the plan, handout, deployed runtime and companion,
-then warms the voices and connects a tutor lease. A failed check is preparation
+then connects a tutor lease in text mode. Voice is optional: use `--voice` only
+when requested and process startup is approved; inspect `voice_ready` separately
+from core `ready`. Never block Handout, Quiz, Lecture or Check on voice warming
+or failure. A failed core check is preparation
 work for the agent, not an instruction for the learner to debug. Back up files
 before an explicitly authorized rollout; never bypass a conflict by substituting
 an unrelated runtime. The preflight reports `desktop_verified: false`: validate

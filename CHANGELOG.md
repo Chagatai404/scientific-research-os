@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — adaptive learning core
+
+- Prepared session stages can be visited in any order; navigation records the
+  selected view independently of diagnostic progress and pauses a playing lecture.
+- Session startup defaults to text. Optional `--voice` readiness is reported
+  separately, and warming or failed speech no longer blocks lecture entry.
+- Existing evidence, stage identities, board styling and review gates are preserved.
+
 ## 0.9.7 - 2026-10-18 - Planned Sessions and Reliable Startup
 
 - Prepared probe trees, lecture segments, anticipated answers, PDF handouts and

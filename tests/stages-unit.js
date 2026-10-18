@@ -28,6 +28,16 @@ for (const c of cases.replay) {
 }
 for (const c of cases.stages) assert.equal(S.stageOf(plan, events(c.events)), c.expect, c.name);
 
+// A recommendation never locks prepared material or creates evidence of completion.
+assert.equal(S.stageStatus(plan, [], 'check'), 'ready');
+assert.equal(S.stageStatus(plan, [], 'probe'), 'suggested');
+assert.equal(S.stageStatus(plan, [], 'handout'), 'unprepared');
+assert.equal(S.selectedStage(plan, events(['view-stage:check'])), 'check');
+assert.equal(S.stageOf(plan, events(['view-stage:check'])), 'probe');
+assert.equal(S.selectedStage(plan, events(['view-stage:untrusted'])), 'probe');
+assert.equal(S.stageStatus({...plan, check: undefined}, [], 'check'), 'unprepared');
+assert.equal(S.stageStatus({...plan, segments: []}, [], 'video'), 'unavailable');
+
 // The lecture is the chosen segments' steps in order; a segment's video is not a board step (it plays in the host's video pane, see lectureChunks).
 const script = S.composeScript(plan, ['spread', 'scale-repair', 'scale', 'see-it']);
 assert.deepEqual(script.steps.map(s => s.id), ['sp1', 'sp2', 'sp3', 'rp1', 'rp2', 'rp3', 'sc1', 'sc2']);

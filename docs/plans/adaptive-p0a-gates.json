@@ -1,0 +1,87 @@
+{
+  "results": [
+    {
+      "gate": "node:html-host.test.js",
+      "status": "PASS",
+      "seconds": 7.0,
+      "tail": [
+        "HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions, live voice, lecture position, host-owned video and handout panes."
+      ]
+    },
+    {
+      "gate": "node:html-runtime-unit.js",
+      "status": "PASS",
+      "seconds": 0.5,
+      "tail": [
+        "HTML runtime unit and bundled KaTeX checks passed"
+      ]
+    },
+    {
+      "gate": "node:richtext-conformance.js",
+      "status": "PASS",
+      "seconds": 1.0,
+      "tail": [
+        "Rich text conformance passed: 68 corpus cases, spec, atomic math, DOM safety, pathological and random input, bundle freshness."
+      ]
+    },
+    {
+      "gate": "node:narration-unit.js",
+      "status": "PASS",
+      "seconds": 0.2,
+      "tail": [
+        "narration unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:board-unit.js",
+      "status": "PASS",
+      "seconds": 0.3,
+      "tail": [
+        "board unit tests passed (57 grammar cases, 15 layout cases)"
+      ]
+    },
+    {
+      "gate": "node:stages-unit.js",
+      "status": "PASS",
+      "seconds": 0.2,
+      "tail": [
+        "stages unit tests passed"
+      ]
+    },
+    {
+      "gate": "browser:html-supervision-browser.cjs",
+      "status": "PASS",
+      "seconds": 21.6,
+      "tail": [
+        "PASS real Chromium: the page tells waiting from disconnected from a lease that expires on its own, shows reviewing and awaiting review, never says \"Checking\" without a live tutor, keeps a submission made while disconnected, shows paused / failed / completed from the saved session, and says nothing on a standalone page."
+      ]
+    },
+    {
+      "gate": "browser:html-board-browser.cjs",
+      "status": "PASS",
+      "seconds": 67.9,
+      "tail": [
+        "board browser tests passed"
+      ]
+    },
+    {
+      "gate": "browser:html-stages-browser.cjs",
+      "status": "PASS",
+      "seconds": 340.4,
+      "tail": [
+        "staged session browser tests passed"
+      ]
+    }
+  ],
+  "counts": {
+    "PASS": 9,
+    "FAIL": 0,
+    "SKIPPED": 0
+  },
+  "scope": "P0a targeted Node and real Chromium gates. Python startup: 16 tests passed separately. Full Python/repository gate still running.",
+  "resolved_regressions": [
+    "Updated stage-status assertions: visiting handout is not completion.",
+    "Only pause when leaving Lecture; returning automatically from video must continue.",
+    "Focus the destination heading before question-strip controls."
+  ]
+}

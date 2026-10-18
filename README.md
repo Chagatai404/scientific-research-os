@@ -1,5 +1,10 @@
 # Scientific Research OS
 
+Unreleased adaptive-learning work is tracked in the
+[incremental implementation plan](docs/plans/v0.9.8-adaptive-learn-core-and-ink.md).
+See [migration and local acceptance notes](docs/MIGRATION_v0.9.8.md) for completed
+slices and remaining gates; this does not change the current release or live vault.
+
 A model-independent research and learning workflow for human-led scientific work with AI assistance.
 
 The system separates two loops:

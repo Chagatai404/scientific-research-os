@@ -1,4 +1,4 @@
-"""`html_sessions.py start`: a session is ready only when the voices report ready, and the tutor is connected when a holder is named."""
+"""`html_sessions.py start`: core readiness is independent of optional voice readiness, and the tutor is connected when a holder is named."""
 from pathlib import Path
 import json
 import os
@@ -31,22 +31,24 @@ class Start(unittest.TestCase):
         hs.install_runtime(self.root)
         hs.create_session(self.root, SESSION, '# S\n\nText.\n', title='S')
 
-    def test_ready_only_when_every_voice_is_ready(self):
-        result = hs.start_session(self.root, SESSION, ensure=voices(tts='ready', stt='ready'))
+    def test_voice_readiness_is_separate_from_core_readiness(self):
+        result = hs.start_session(self.root, SESSION, voice=True, ensure=voices(tts='ready', stt='ready'))
         self.assertTrue(result['ready'])
-        result = hs.start_session(self.root, SESSION, ensure=voices(tts='ready', stt='timeout'))
-        self.assertFalse(result['ready'])
+        result = hs.start_session(self.root, SESSION, voice=True, ensure=voices(tts='ready', stt='timeout'))
+        self.assertTrue(result['ready'])
+        self.assertFalse(result['voice_ready'])
         self.assertEqual(result['voice']['workers']['stt']['state'], 'timeout')
 
     def test_the_voice_folder_is_inside_the_vault_and_the_timeout_is_passed_on(self):
-        result = hs.start_session(self.root, SESSION, timeout=45, ensure=voices(tts='ready'))
+        result = hs.start_session(self.root, SESSION, timeout=45, voice=True, ensure=voices(tts='ready'))
         asked_dir, options = result['voice']['asked']
         self.assertEqual(Path(asked_dir), self.root / '.research-os' / 'voice')
         self.assertEqual(options, {'timeout': 45.0})
 
     def test_naming_a_holder_connects_the_tutor_even_when_a_voice_is_not_ready(self):
-        result = hs.start_session(self.root, SESSION, holder='agent-a', ensure=voices(tts='error'))
-        self.assertFalse(result['ready'])
+        result = hs.start_session(self.root, SESSION, holder='agent-a', voice=True, ensure=voices(tts='error'))
+        self.assertTrue(result['ready'])
+        self.assertFalse(result['voice_ready'])
         self.assertEqual(result['lease']['holder'], 'agent-a')
         lease, _ = supervision.read_lease(self.root, SESSION)
         self.assertTrue(supervision.alive(lease))
@@ -55,6 +57,20 @@ class Start(unittest.TestCase):
         result = hs.start_session(self.root, SESSION, holder='agent-a', voice=False)
         self.assertTrue(result['ready'])
         self.assertIsNone(result['voice'])
+
+    def test_default_never_invokes_optional_workers(self):
+        ensure = Mock(side_effect=AssertionError('text mode must not launch a worker'))
+        result = hs.start_session(self.root, SESSION, ensure=ensure)
+        self.assertTrue(result['ready'])
+        ensure.assert_not_called()
+
+    def test_voice_launcher_exception_preserves_core_and_tutor_connection(self):
+        ensure = Mock(side_effect=OSError('optional worker missing'))
+        result = hs.start_session(self.root, SESSION, voice=True, ensure=ensure)
+        self.assertTrue(result['ready'])
+        self.assertFalse(result['voice_ready'])
+        self.assertIn('optional worker missing', result['voice']['error'])
+        self.assertIsNotNone(result['lease'])
 
     def test_a_missing_session_is_refused(self):
         with self.assertRaises(SystemExit):
@@ -145,14 +161,15 @@ class Start(unittest.TestCase):
             hs.start_session(self.root, SESSION, holder='agent-a', ensure=ensure)
         ensure.assert_not_called()
 
-    def test_the_command_exits_one_and_says_which_voice_is_not_ready(self):
+    def test_command_defaults_to_text_without_starting_workers(self):
         command = [sys.executable, str(ROOT / 'scripts/html_sessions.py'), '--root', str(self.root), 'start', SESSION, '--timeout', '1']
         env = {k: v for k, v in os.environ.items() if k != 'RESEARCH_OS_VOICE_ENVS'}      # never start a real worker from a test
         done = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', env=env)
-        self.assertEqual(done.returncode, 1, done.stderr)
+        self.assertEqual(done.returncode, 0, done.stderr)
         report = json.loads(done.stdout)
-        self.assertFalse(report['ready'])
-        self.assertIn(report['voice']['workers']['tts']['state'], ('unavailable', 'off', 'error', 'timeout'))
+        self.assertTrue(report['ready'])
+        self.assertIsNone(report['voice'])
+        self.assertFalse(report['voice_ready'])
 
 
 if __name__ == '__main__':

@@ -248,8 +248,8 @@ part that teaches; `SESSION_PLAN.md` says how). You may use subagents and subpro
 the learner is in the probe.
 
 A request to start or continue tutoring authorizes this preparation automatically.
-Do not make the learner request the plan, handout, board, voice startup or live
-connection separately. On resume, inspect and preserve actual saved responses and
+Prepare the plan, handout and live tutor connection automatically. Voice and
+other optional services remain learner-selected enhancements under existing consent. On resume, inspect and preserve actual saved responses and
 reviews before choosing another diagnostic; a request to continue teaching is not
 permission to restart the assessment. `html_sessions.py start` refuses readiness
 when the plan, built handout or deployed renderer is missing or stale. Its
@@ -263,9 +263,7 @@ lints, compiles, saves the PDF in the course or project library and records the 
 a session unless the researcher asks for it in that message. The learner already has the note open; `vault.py open` hands the address to Obsidian, never to a
 browser, and is only needed when they ask you to open something. Check your own work with `html_sessions.py` commands and the session state, not by looking at a page.
 
-Before the learner presses Start, bring the voices up and wait for them: `python scripts/html_sessions.py --root <vault> start <session> --holder <name>`
-(it runs `voice.py up`, which starts the live voice and the spoken-question worker detached so they outlive your shell, and returns only when both are ready or says
-which one is not and why). Do not tell the learner the session is ready before it reports `ready: true`.
+Start the core in text mode: `python scripts/html_sessions.py --root <vault> start <session> --holder <name>`. It connects the tutor without launching speech workers. Use `--voice` for explicitly requested narration only under the existing process approval. Inspect `voice_ready` separately from core `ready`; warming or failed voice must never block study. Learners may freely visit Quiz, Handout, Lecture, Video and Check; recommendations never lock navigation. Preserve unresolved evidence when the learner skips a stage.
 
 Setup:
 

@@ -1683,15 +1683,16 @@ def session_readiness(root, relative_md):
     return {'ready': not issues, 'issues': issues, 'desktop_verified': False}
 
 
-def start_session(root, relative_md, holder=None, provider="generic", timeout=None, voice=True, ensure=None):
-    """Get a session ready for the learner: the live voice and the speech worker running and warm, and the tutor connected.
+def start_session(root, relative_md, holder=None, provider="generic", timeout=None, voice=False, ensure=None):
+    """Start the prepared core and connect a tutor. Voice is an explicit enhancement.
 
-    ``ready`` is true only when every worker reports ready, so the agent never tells the learner a session is ready while a voice is still loading. A worker that
-    cannot start is reported with the end of its log; nothing is installed and nothing falls back silently. ``ensure`` replaces the worker launcher in tests."""
+    ``ready`` describes the core; ``voice_ready`` describes optional workers.
+    ``ensure`` replaces the worker launcher in tests. Voice failures retain text.
+    """
     _, _, data = paths(root, relative_md)
     if not data.exists():
         raise SystemExit(f"The session does not exist yet: {relative_md}")
-    result = {"session": str(relative_md), "voice": None, "lease": None,
+    result = {"session": str(relative_md), "voice": None, "voice_ready": False, "lease": None,
               "preflight": session_readiness(root, relative_md)}
     if not result['preflight']['ready']:
         result['ready'] = False
@@ -1710,15 +1711,22 @@ def start_session(root, relative_md, holder=None, provider="generic", timeout=No
         directory = Path(root) / VOICE_FOLDER
         run = ensure or voice_module.ensure_workers
         options = {} if timeout is None else {"timeout": float(timeout)}
-        result["voice"] = run(directory, voice_module.load_setup(directory), **options)
+        try:
+            result["voice"] = run(directory, voice_module.load_setup(directory), **options)
+        except (OSError, ValueError, RuntimeError) as exc:
+            result["voice"] = {"ready": False, "error": str(exc)}
         state = load_session(root, relative_md)
         if result['voice'].get('ready') and state.get('plan'):
             # Preparation belongs to startup, not to another learner request.
-            result['audio_prefetch'] = voice_module.prefetch(directory, voice_module.plan_sentences(state['plan']))
+            try:
+                result['audio_prefetch'] = voice_module.prefetch(directory, voice_module.plan_sentences(state['plan']))
+            except (OSError, ValueError, RuntimeError) as exc:
+                result['audio_prefetch'] = {"error": str(exc)}
     if holder:
         lease = supervision.heartbeat(root, relative_md, holder=holder, provider=provider, mode="working")
         result["lease"] = {"holder": lease["holder"], "expires_at": lease["expires_at"]}
-    result["ready"] = bool(result["voice"]["ready"]) if result["voice"] else True
+    result["voice_ready"] = bool(result["voice"] and result["voice"].get("ready"))
+    result["ready"] = True
     return result
 
 
@@ -2306,10 +2314,11 @@ def main():
     reviewing.add_argument("--allow-reroute", action="store_true", help="accept a revised plan that changes where answered questions lead, or drops a segment the lecture started with")
     reviewing.add_argument("--criteria-met", help="comma-separated true/false, one per criterion the question declares")
     reviewing.add_argument("--reviewed-by", help="who judged the answer"); reviewing.add_argument("--rationale", type=Path)
-    starting = sub.add_parser("start", help="Bring the voices up (detached, warmed) and connect the tutor; ready only when every worker reports ready")
+    starting = sub.add_parser("start", help="Connect the tutor and start the prepared text core; voice is optional")
     starting.add_argument("session"); starting.add_argument("--holder", help="a name for this agent: renews the supervision lease so the page says a tutor is connected")
     starting.add_argument("--provider", default="generic"); starting.add_argument("--timeout", type=float, help="seconds to wait for each worker (default 180)")
     starting.add_argument("--no-voice", action="store_true", help="only connect the tutor; start no voice worker")
+    starting.add_argument("--voice", action="store_true", help="also prepare optional voice workers (requires prior process approval)")
     position = sub.add_parser("board-position", help="Where the learner is in each lecture, as the Obsidian view last reported it")
     position.add_argument("session")
     review = sub.add_parser("review", help="Record the tutor verdict on the latest response; shown in place of 'Checking...'")
@@ -2439,7 +2448,7 @@ def main():
                                     criteria_met=[x.strip().lower() == "true" for x in args.criteria_met.split(",")] if args.criteria_met else None,
                                     revised_plan=json.loads(args.revise_plan.read_text(encoding="utf-8-sig")) if args.revise_plan else None, allow_reroute=args.allow_reroute)
     elif args.command == "start":
-        result = start_session(root, args.session, args.holder, args.provider, args.timeout, voice=not args.no_voice)
+        result = start_session(root, args.session, args.holder, args.provider, args.timeout, voice=args.voice and not args.no_voice)
         if hasattr(sys.stdout, "reconfigure"):
             sys.stdout.reconfigure(encoding="utf-8")
         print(json.dumps(result, ensure_ascii=False, indent=2))
