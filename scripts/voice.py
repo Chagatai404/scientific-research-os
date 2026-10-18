@@ -421,12 +421,15 @@ LEASE_FILE = 'worker.json'
 LEASE_MAX_AGE = 10.0          # seconds; a worker beats every two, so a lease older than this means nobody is listening
 
 
-def lease_state(directory: Path, now: float | None = None) -> dict:
+TTS_LEASE_FILE = 'tts-worker.json'
+
+
+def lease_state(directory: Path, now: float | None = None, filename: str = LEASE_FILE) -> dict:
     """What the page may say about the voice worker: ``ready``, ``busy``, ``warming``, ``error``, ``stopped`` or ``off`` (no worker, or one that stopped beating).
     Never claims a worker is listening unless its lease is recent."""
     now = time.time() if now is None else now
     try:
-        lease = json.loads((Path(directory) / LEASE_FILE).read_text(encoding='utf-8-sig'))
+        lease = json.loads((Path(directory) / filename).read_text(encoding='utf-8-sig'))
     except (OSError, ValueError):
         return {'state': 'off', 'reason': 'no worker has run here'}
     if not isinstance(lease, dict) or not isinstance(lease.get('heartbeat'), (int, float)):
@@ -444,6 +447,24 @@ def worker_args(directory: Path, model: str = 'small', device: str = 'cuda', lan
     compute = 'float16' if device == 'cuda' else 'int8'
     args = ['serve', '--dir', str(directory), '--model', model, '--device', device, '--compute-type', compute, '--language', language]
     return args + (['--keep-audio'] if keep_audio else [])
+
+
+def tts_worker_args(directory: Path, voices: dict) -> list[str]:
+    """Arguments for ``voice_adapter.py serve-tts``: the delivery the researcher chose by blind test, unless a setting is given."""
+    s = kokoro_settings(voices)
+    return ['serve-tts', '--dir', str(directory), '--model-dir', s['model_dir'], '--voice-blend', s['blend'], '--speed', str(s['speed']), '--gap', str(s['gap']),
+            '--colon-gap', str(s['colon_gap'])]
+
+
+def run_tts_worker(envs: list[str] | None, directory: Path, voices: dict) -> int:
+    """Run the live voice worker in the foreground until it is stopped (Ctrl+C, or create ``<directory>/tts-stop``). Kokoro loads once and stays loaded."""
+    entry = find_env(detect(envs), 'kokoro')
+    python = python_of(Path(entry['env']))
+    if python is None:
+        raise VoiceError(f'no Python found in {entry["env"]}')
+    command = [str(python), str(ADAPTER), *tts_worker_args(Path(directory), voices)]
+    env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', TOKENIZERS_PARALLELISM='false')
+    return subprocess.call(command, env=env)
 
 
 def run_worker(envs: list[str] | None, directory: Path, model: str = 'small', device: str = 'cuda', language: str = 'en', keep_audio: bool = False) -> int:
@@ -617,6 +638,11 @@ def main(argv=None) -> int:
     p.add_argument('--keep-audio', action='store_true')
     p = sub.add_parser('worker-status', help='whether a voice worker is listening (reads its lease; starts nothing)')
     p.add_argument('--dir', type=Path, required=True)
+    p.add_argument('--tts', action='store_true', help='check the live voice worker (tts-worker) instead of the speech-to-text worker')
+    p = sub.add_parser('tts-worker', help='keep Kokoro loaded so the tutor speaks each sentence as the lecture plays (runs until stopped; create <dir>/tts-stop to stop it)')
+    common(p)
+    p.add_argument('--dir', type=Path, required=True, help='the voice folder, normally <vault>/.research-os/voice')
+    p.add_argument('--voice', action='append', default=[], help='model_dir=FOLDER (required) and optionally blend= speed= gap= colon_gap=, as for speak')
     p = sub.add_parser('list', help='recordings in the registry')
     p.add_argument('--root', type=Path, required=True)
     p = sub.add_parser('transcribe', help='text from a recording')
@@ -668,8 +694,10 @@ def main(argv=None) -> int:
             return 0
         if args.command == 'worker':
             return run_worker(args.env, args.dir, args.model, args.device, args.language, args.keep_audio)
+        if args.command == 'tts-worker':
+            return run_tts_worker(args.env, args.dir, parse_voices(args.voice))
         if args.command == 'worker-status':
-            status = lease_state(args.dir)
+            status = lease_state(args.dir, filename=TTS_LEASE_FILE if args.tts else LEASE_FILE)
             print(json.dumps(status, indent=2, ensure_ascii=False))
             return 0 if status['state'] in ('ready', 'busy', 'warming') else 1
         if args.command == 'list':

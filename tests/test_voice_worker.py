@@ -238,6 +238,138 @@ class Starting(unittest.TestCase):
         self.assertEqual(command[2], 'serve')
 
 
+TTS_DETAILS = {'engine': 'kokoro', 'voice': 'af_heart:0.6,af_sky:0.4', 'speed': 0.95, 'gap': 0.5, 'colon_gap': 0.3, 'load_seconds': 3.1, 'warm_seconds': 5.0}
+
+
+def fake_synthesizer(seconds=1.0, fail_on=None):
+    import wave
+    heard = []
+
+    def synthesize(text, out):
+        heard.append(text)
+        if fail_on and fail_on in text:
+            raise RuntimeError('synthesis failed')
+        with wave.open(str(out), 'wb') as handle:
+            handle.setnchannels(1)
+            handle.setsampwidth(2)
+            handle.setframerate(24000)
+            handle.writeframes(bytes(2 * int(24000 * seconds)))
+        return {'synth_seconds': 0.4, 'sentences': 1, 'first_sentence_seconds': 0.4}
+    synthesize.heard = heard
+    return synthesize
+
+
+class LiveVoice(unittest.TestCase):
+    """The worker that speaks each sentence of a lecture when the page asks for it, not from recordings made in advance."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        (self.dir / 'tts' / 'inbox').mkdir(parents=True)
+        self.clock = Clock()
+
+    def ask(self, name, body, age=0.0):
+        path = self.dir / 'tts' / 'inbox' / name
+        path.write_text(body if isinstance(body, str) else json.dumps(body), encoding='utf-8')
+        os.utime(path, (self.clock() - age, self.clock() - age))
+        return path
+
+    def serve(self, synthesize, loops=3, **kwargs):
+        return va.tts_loop(self.dir, synthesize, TTS_DETAILS, now=self.clock, sleep=self.clock.sleep, max_loops=loops, **kwargs)
+
+    def answer(self, name):
+        return json.loads((self.dir / 'tts' / 'out' / f'{name}.json').read_text(encoding='utf-8'))
+
+    def test_a_sentence_becomes_audio_and_an_answer_written_after_the_audio(self):
+        self.ask('s1.json', {'text': 'Suppose the loss is L of w.'})
+        fake = fake_synthesizer(seconds=2.5)
+        counts = self.serve(fake)
+        self.assertEqual((counts, fake.heard), ({'synthesized': 1, 'failed': 0}, ['Suppose the loss is L of w.']))
+        out = self.answer('s1')
+        self.assertEqual((out['id'], out['audio_seconds'], out['sample_rate'], out['chars']), ('s1', 2.5, 24000, 27))
+        self.assertTrue((self.dir / 'tts' / 'out' / 's1.wav').is_file())
+        self.assertFalse((self.dir / 'tts' / 'inbox' / 's1.json').exists(), 'the request is consumed')
+        self.assertEqual([p.name for p in (self.dir / 'tts' / 'out').iterdir() if p.name.endswith('.tmp')], [])
+
+    def test_oldest_request_first(self):
+        self.ask('b.json', {'text': 'second'}, age=3.0)
+        self.ask('a.json', {'text': 'first'}, age=9.0)
+        fake = fake_synthesizer()
+        self.serve(fake, loops=1)
+        self.assertEqual(fake.heard, ['first', 'second'])
+
+    def test_bad_requests_get_a_reason_and_never_stop_the_worker(self):
+        self.ask('empty.json', {'text': '  '}, age=2.0)
+        self.ask('long.json', {'text': 'x' * (va.MAX_TTS_CHARS + 1)}, age=2.0)
+        self.ask('ctrl.json', {'text': 'a\x00b'}, age=2.0)
+        self.ask('shape.json', ['text'], age=2.0)
+        self.ask('broken.json', '{not json', age=5.0)
+        self.ask('boom.json', {'text': 'explode'}, age=2.0)
+        self.ask('fine.json', {'text': 'a good sentence'}, age=1.0)
+        fake = fake_synthesizer(fail_on='explode')
+        counts = self.serve(fake)
+        self.assertEqual(counts, {'synthesized': 1, 'failed': 5})
+        for name in ('empty', 'long', 'ctrl', 'shape'):
+            self.assertIn('1 to 600 characters', self.answer(name)['error'], name)
+        self.assertIn('could not be read', self.answer('broken')['error'])
+        self.assertIn('synthesis failed', self.answer('boom')['error'])
+        self.assertEqual(self.answer('fine')['audio_seconds'], 1.0)
+        self.assertEqual(fake.heard, ['explode', 'a good sentence'])
+
+    def test_a_request_still_being_written_waits_a_moment(self):
+        self.ask('slow.json', '{"text": "half', age=0.1)
+        fake = fake_synthesizer()
+        self.serve(fake, loops=1)
+        self.assertFalse((self.dir / 'tts' / 'out' / 'slow.json').exists())
+        self.assertTrue((self.dir / 'tts' / 'inbox' / 'slow.json').exists())
+
+    def test_only_safe_names_are_answered_and_the_queue_is_capped(self):
+        for name in ('bad name.json', 'x.txt', '..evil.json'):
+            self.ask(name, {'text': 'nope'})
+        for number in range(va.MAX_PENDING + 2):
+            self.ask(f'q{number:02d}.json', {'text': f'sentence {number}'}, age=100 - number)
+        fake = fake_synthesizer()
+        self.serve(fake, loops=1)
+        self.assertEqual(len(fake.heard), va.MAX_PENDING)
+        self.assertIn('queue is full', self.answer(f'q{va.MAX_PENDING:02d}')['error'])
+        self.assertEqual([p.name for p in (self.dir / 'tts' / 'inbox').iterdir()], [], 'unsafe names are removed unread')
+
+    def test_the_lease_describes_the_voice_and_stays_separate_from_the_listening_worker(self):
+        self.serve(fake_synthesizer(), loops=1)
+        lease = json.loads((self.dir / 'tts-worker.json').read_text(encoding='utf-8'))
+        self.assertEqual((lease['state'], lease['engine'], lease['voice'], lease['warm_seconds']), ('stopped', 'kokoro', 'af_heart:0.6,af_sky:0.4', 5.0))
+        self.assertFalse((self.dir / 'worker.json').exists())
+        (self.dir / 'tts-worker.json').write_text(json.dumps(dict(lease, state='ready', heartbeat=1000.0)), encoding='utf-8')
+        self.assertEqual(vc.lease_state(self.dir, now=1003.0, filename=vc.TTS_LEASE_FILE)['state'], 'ready')
+        self.assertEqual(vc.lease_state(self.dir, now=1003.0)['state'], 'off', 'the speech-to-text lease is a different file')
+        self.assertEqual(vc.lease_state(self.dir, now=1100.0, filename=vc.TTS_LEASE_FILE)['state'], 'off')
+
+    def test_a_stop_file_ends_it_and_old_audio_is_cleaned_up(self):
+        (self.dir / 'tts' / 'out').mkdir()
+        old = self.dir / 'tts' / 'out' / 'old.wav'
+        old.write_bytes(b'x')
+        os.utime(old, (self.clock() - 5000, self.clock() - 5000))
+        self.serve(fake_synthesizer(), loops=700, poll=0.05)   # 35 seconds of waiting reaches the housekeeping
+        self.assertFalse(old.exists())
+        (self.dir / 'tts-stop').write_text('', encoding='utf-8')
+        self.assertEqual(self.serve(fake_synthesizer(), loops=5), {'synthesized': 0, 'failed': 0})
+        self.assertFalse((self.dir / 'tts-stop').exists())
+
+    def test_the_command_starts_the_adapter_with_the_chosen_delivery(self):
+        args = vc.tts_worker_args(Path('v'), {'model_dir': 'models'})
+        self.assertEqual(args, ['serve-tts', '--dir', 'v', '--model-dir', 'models', '--voice-blend', 'af_heart:0.6,af_sky:0.4', '--speed', '0.95', '--gap', '0.5', '--colon-gap', '0.3'])
+        with self.assertRaisesRegex(vc.VoiceError, 'model_dir'):
+            vc.tts_worker_args(Path('v'), {})
+        with mock.patch.object(vc, 'detect', return_value=[]), self.assertRaisesRegex(vc.VoiceError, 'no environment with kokoro'):
+            vc.run_tts_worker([], Path('v'), {'model_dir': 'm'})
+        entry = {'env': Path('E'), 'engines': {'kokoro_onnx': '0.6.1'}}
+        with mock.patch.object(vc, 'detect', return_value=[entry]), mock.patch.object(vc, 'python_of', return_value=Path('E/py.exe')), \
+                mock.patch.object(vc.subprocess, 'call', return_value=0) as call:
+            self.assertEqual(vc.run_tts_worker(['E'], Path('v'), {'model_dir': 'm'}), 0)
+        self.assertEqual(call.call_args[0][0][2], 'serve-tts')
+
+
 class Names(unittest.TestCase):
     def test_the_recording_name_rule(self):
         for good in ('a.webm', 'A-1_b.ogg', 'x' * 64 + '.wav'):

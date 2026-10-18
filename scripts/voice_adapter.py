@@ -349,6 +349,121 @@ def serve(args) -> int:
     return emit({'ok': True, 'stopped': True, **counts})
 
 
+# ---------------------------------------------------------------- the live voice worker (the tutor speaks as the lecture plays)
+# Not recordings made in advance: a worker keeps Kokoro loaded and turns each sentence into audio when the page asks for it (the page asks a sentence or two
+# ahead of the one being spoken). Requests are small JSON files in `<dir>/tts/inbox`, answers are `<dir>/tts/out/<id>.wav` plus `<id>.json`, and a lease
+# (`<dir>/tts-worker.json`) says whether anyone is listening. As with the speech-to-text worker, the loop takes a function and is tested with a fake.
+TTS_NAME = re.compile(r'[A-Za-z0-9_-]{1,64}\.json\Z')
+MAX_TTS_CHARS = 600
+TTS_OUTPUT_KEEP_SECONDS = 600
+TTS_LEASE_FILE = 'tts-worker.json'
+
+
+def make_synthesizer(args):
+    """Load Kokoro once and warm it up (the first call is the slowest). Returns (synthesize(text, out_path) -> dict, details)."""
+    import tempfile
+    started = time.perf_counter()
+    model, style, load_seconds = load_kokoro(args)
+    with tempfile.TemporaryDirectory(prefix='tts-warm-') as tmp:
+        render_kokoro(model, style, 'Ready.', args, Path(tmp) / 'warm.wav')
+
+    def synthesize(text: str, out: Path) -> dict:
+        return render_kokoro(model, style, text, args, out)
+    details = {'engine': 'kokoro', 'voice': args.voice_blend, 'speed': args.speed, 'gap': args.gap, 'colon_gap': args.colon_gap, 'load_seconds': load_seconds,
+               'warm_seconds': round(time.perf_counter() - started, 2)}
+    return synthesize, details
+
+
+def tts_loop(directory: Path, synthesize, details: dict, *, now=time.time, sleep=time.sleep, poll: float = 0.05, beat: float = 2.0, max_loops: int | None = None) -> dict:
+    """Answer sentence requests in ``<directory>/tts/inbox`` until ``<directory>/tts-stop`` appears. A bad request becomes an error result, never a crash."""
+    import os
+    inbox, out = Path(directory) / 'tts' / 'inbox', Path(directory) / 'tts' / 'out'
+    inbox.mkdir(parents=True, exist_ok=True)
+    out.mkdir(parents=True, exist_ok=True)
+    stop = Path(directory) / 'tts-stop'
+    if stop.exists():
+        stop.unlink()
+    lease = {'schema': 1, 'pid': os.getpid(), 'started_at': now(), 'synthesized': 0, 'failed': 0, 'last_error': None, **details}
+
+    def publish(state: str) -> None:
+        lease.update(state=state, heartbeat=now())
+        write_json_atomic(Path(directory) / TTS_LEASE_FILE, lease)
+    publish('ready')
+    last_beat, last_clean, loops = now(), now(), 0
+    while not stop.exists() and (max_loops is None or loops < max_loops):
+        loops += 1
+        waiting = []
+        for path in inbox.iterdir():
+            if not path.is_file():
+                continue
+            if not TTS_NAME.match(path.name):
+                path.unlink(missing_ok=True)
+                continue
+            waiting.append(path)
+        waiting.sort(key=lambda p: (p.stat().st_mtime, p.name))
+        for path in waiting[MAX_PENDING:]:
+            write_json_atomic(out / f'{path.stem}.json', {'id': path.stem, 'error': 'The voice queue is full; try again in a moment.'})
+            path.unlink(missing_ok=True)
+        for path in waiting[:MAX_PENDING]:
+            try:
+                request = json.loads(path.read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                if now() - path.stat().st_mtime < 1.0:
+                    continue                       # perhaps still being written
+                write_json_atomic(out / f'{path.stem}.json', {'id': path.stem, 'error': 'The request could not be read.'})
+                path.unlink(missing_ok=True)
+                continue
+            publish('busy')
+            result = {'id': path.stem}
+            try:
+                text = request.get('text') if isinstance(request, dict) else None
+                if not isinstance(text, str) or not text.strip() or len(text) > MAX_TTS_CHARS or re.search(r'[\x00-\x08\x0b-\x1f\x7f]', text):
+                    raise ValueError(f'a request is one sentence of text, 1 to {MAX_TTS_CHARS} characters')
+                wav = out / f'{path.stem}.wav'
+                tmp = out / f'{path.stem}.wav.tmp'
+                done = synthesize(text.strip(), tmp)
+                os.replace(tmp, wav)
+                seconds, rate = wav_seconds(wav)
+                result.update(done, audio_seconds=round(seconds, 3), sample_rate=rate, chars=len(text))
+                lease['synthesized'] += 1
+            except Exception as exc:  # noqa: BLE001 - the page falls back and says why; the worker goes on
+                result['error'] = f'{type(exc).__name__}: {exc}'[:300]
+                lease['failed'] += 1
+                lease['last_error'] = result['error']
+            write_json_atomic(out / f'{path.stem}.json', result)   # the answer file appears last, after the audio is whole
+            path.unlink(missing_ok=True)
+        if waiting:
+            publish('ready')
+            last_beat = now()
+        elif now() - last_beat >= beat:
+            publish('ready')
+            last_beat = now()
+        if now() - last_clean >= 30:
+            for old in list(out.glob('*')):
+                if now() - old.stat().st_mtime > TTS_OUTPUT_KEEP_SECONDS:
+                    old.unlink(missing_ok=True)
+            last_clean = now()
+        sleep(poll)
+    publish('stopped')
+    return {'synthesized': lease['synthesized'], 'failed': lease['failed']}
+
+
+def serve_tts(args) -> int:
+    import os
+    directory = Path(args.dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    stub = {'schema': 1, 'state': 'warming', 'pid': os.getpid(), 'heartbeat': time.time(), 'engine': 'kokoro'}
+    write_json_atomic(directory / TTS_LEASE_FILE, stub)
+    try:
+        synthesize, details = make_synthesizer(args)
+    except Exception as exc:  # noqa: BLE001
+        write_json_atomic(directory / TTS_LEASE_FILE, dict(stub, state='error', heartbeat=time.time(), last_error=f'{type(exc).__name__}: {exc}'[:300]))
+        return fail(f'{type(exc).__name__}: {exc}'[:600])
+    print(json.dumps({'ok': True, 'state': 'ready', **details}, ensure_ascii=True), flush=True)
+    counts = tts_loop(directory, synthesize, details)
+    return emit({'ok': True, 'stopped': True, **counts})
+
+
 def transcribe(args) -> int:
     from faster_whisper import WhisperModel
     started = time.perf_counter()
@@ -406,6 +521,13 @@ def main(argv=None) -> int:
     p.add_argument('--compute-type', default='float16')
     p.add_argument('--language', default='en', help="a language code, or 'auto' to detect it (unreliable on a few words)")
     p.add_argument('--keep-audio', action='store_true', help='keep each recording after it is transcribed (by default it is deleted)')
+    p = sub.add_parser('serve-tts', help='keep Kokoro loaded and speak each sentence the page asks for, as the lecture plays')
+    p.add_argument('--dir', required=True)
+    p.add_argument('--model-dir', required=True, help='the folder holding kokoro-v1.0.onnx and voices-v1.0.bin')
+    p.add_argument('--voice-blend', default='af_heart:0.6,af_sky:0.4')
+    p.add_argument('--speed', type=float, default=0.95)
+    p.add_argument('--gap', type=float, default=0.5)
+    p.add_argument('--colon-gap', type=float, default=0.3)
     args = parser.parse_args(argv)
     try:
         if args.command == 'info':
@@ -414,6 +536,8 @@ def main(argv=None) -> int:
             return transcribe(args)
         if args.command == 'serve':
             return serve(args)
+        if args.command == 'serve-tts':
+            return serve_tts(args)
         if args.batch_file:
             if args.provider != 'kokoro' or args.device != 'cpu':
                 return fail('--batch-file is for Kokoro on the CPU')
