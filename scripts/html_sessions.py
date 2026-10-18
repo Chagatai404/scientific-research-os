@@ -1977,6 +1977,8 @@ def validate_sessions(root, exceptions=None):
         if candidate["status"] != "migrated":
             errors.append(f"{candidate['path']}: {candidate['status']} session missing HTML/state sidecars")
     for data in Path(root).rglob("*.state.json"):
+        if {".git", ".claude"} & set(data.relative_to(root).parts):
+            continue  # tool folders (agent worktrees hold full copies of the repository, fixtures included) are not sessions
         md = data.with_name(data.name[:-11] + ".md")
         if md.relative_to(root).as_posix() in excluded:
             continue  # a declared archive or fixture is reported by its owner, not validated as a live session
