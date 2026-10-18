@@ -9,6 +9,7 @@ A transcript is text the learner said, never evidence that they understand; it e
 """
 from __future__ import annotations
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -63,7 +64,7 @@ def run_command(args: list, timeout: int = DEFAULT_TIMEOUT) -> dict:
     started = time.monotonic()
     env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', TOKENIZERS_PARALLELISM='false')
     try:
-        done = subprocess.run([str(a) for a in args], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout, env=env)
+        done = subprocess.run([str(a) for a in args], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout, env=env, **({'creationflags': getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)} if os.name == 'nt' else {}))
     except FileNotFoundError:
         return {'code': 127, 'stdout': '', 'stderr': f'{args[0]}: not found', 'seconds': 0.0}
     except subprocess.TimeoutExpired:
@@ -534,7 +535,13 @@ def spawn_detached(command: list[str], log: Path):
     stream = open(log, 'ab')
     options = {'stdin': subprocess.DEVNULL, 'stdout': stream, 'stderr': subprocess.STDOUT, 'env': worker_environment(), 'close_fds': True}
     if os.name == 'nt':
-        options['creationflags'] = (getattr(subprocess, 'DETACHED_PROCESS', 0x8) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0x200)
+        # GUI Python cannot receive a console window-close event. CREATE_NO_WINDOW
+        # is ignored when combined with DETACHED_PROCESS, so do not combine them.
+        executable = Path(command[0])
+        windowless = executable.with_name('pythonw.exe')
+        if executable.name.lower() == 'python.exe' and windowless.is_file():
+            command = [str(windowless), *command[1:]]
+        options['creationflags'] = (getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0x200)
                                     | getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000))
     else:
         options['start_new_session'] = True
@@ -551,7 +558,49 @@ def log_tail(log: Path, limit: int = 600) -> str:
         return ''
 
 
+@contextmanager
+def worker_start_lock(directory: Path, timeout: float = WARM_TIMEOUT, *, now=time.time, sleep=time.sleep, poll: float = 0.1):
+    """Serialize agent and companion startups; the OS releases the lock on a crash."""
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / 'startup.lock').open('a+b') as handle:
+        if handle.seek(0, 2) == 0:
+            handle.write(b'0')
+            handle.flush()
+        began = now()
+        while True:
+            handle.seek(0)
+            try:
+                if os.name == 'nt':
+                    import msvcrt
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except (OSError, BlockingIOError):
+                if now() - began >= timeout:
+                    raise VoiceError('another voice startup is still running; no duplicate worker was started')
+                sleep(poll)
+        try:
+            yield
+        finally:
+            handle.seek(0)
+            if os.name == 'nt':
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
 def ensure_workers(directory: Path, setup: dict, kinds=('tts', 'stt'), timeout: float = WARM_TIMEOUT, start: bool = True, *,
+                   spawn=spawn_detached, now=time.time, sleep=time.sleep, poll: float = 0.5) -> dict:
+    if not start:
+        return _ensure_workers_locked(directory, setup, kinds, timeout, start, spawn=spawn, now=now, sleep=sleep, poll=poll)
+    with worker_start_lock(directory, timeout, now=now, sleep=sleep, poll=poll):
+        return _ensure_workers_locked(directory, setup, kinds, timeout, start, spawn=spawn, now=now, sleep=sleep, poll=poll)
+
+
+def _ensure_workers_locked(directory: Path, setup: dict, kinds=('tts', 'stt'), timeout: float = WARM_TIMEOUT, start: bool = True, *,
                    spawn=spawn_detached, now=time.time, sleep=time.sleep, poll: float = 0.5) -> dict:
     """Make sure each named worker is listening, starting the missing ones detached and waiting until they report ready. ``ready`` is true only when every one does.
     A worker that cannot start says why (its last log lines) instead of being replaced by a silent fallback."""

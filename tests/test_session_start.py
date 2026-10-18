@@ -122,6 +122,22 @@ class Start(unittest.TestCase):
         result = hs.start_session(self.root, SESSION, voice=False)
         self.assertIn('COMPANION_DRIFT: main.js', '\n'.join(result['preflight']['issues']))
 
+    def test_voice_recovery_helpers_are_checked_as_part_of_the_companion(self):
+        self.course()
+        self.plan()
+        plugin = self.root / '.obsidian/plugins/research-os-html'
+        plugin.mkdir(parents=True)
+        for name in ('manifest.json', 'main.js', 'styles.css'):
+            (plugin / name).write_bytes((ROOT / 'extensions/obsidian-html' / name).read_bytes())
+        (self.root / '.obsidian/community-plugins.json').write_text('["research-os-html"]')
+        issues = hs.session_readiness(self.root, SESSION)['issues']
+        self.assertTrue(any('COMPANION_DRIFT: voice/voice.py' in issue for issue in issues))
+        (plugin / 'voice').mkdir()
+        for name in ('voice.py', 'voice_adapter.py', 'speech_text.py'):
+            (plugin / 'voice' / name).write_bytes((ROOT / 'scripts' / name).read_bytes())
+        issues = hs.session_readiness(self.root, SESSION)['issues']
+        self.assertFalse(any('COMPANION_DRIFT: voice/' in issue for issue in issues))
+
     def test_another_live_tutor_is_detected_before_starting_workers(self):
         supervision.heartbeat(self.root, SESSION, holder='other-tutor')
         ensure = Mock(side_effect=AssertionError('must resolve ownership first'))

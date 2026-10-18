@@ -1669,6 +1669,11 @@ def session_readiness(root, relative_md):
             target = Path(root) / '.obsidian/plugins/research-os-html' / name
             if not source.is_file() or not target.is_file() or source.read_bytes().replace(b'\r\n', b'\n') != target.read_bytes().replace(b'\r\n', b'\n'):
                 issues.append('COMPANION_DRIFT: ' + name + '; back up and update the companion, then reload Obsidian')
+        for name in ('voice.py', 'voice_adapter.py', 'speech_text.py'):
+            source = Path(__file__).with_name(name)
+            target = Path(root) / '.obsidian/plugins/research-os-html/voice' / name
+            if not source.is_file() or not target.is_file() or source.read_bytes().replace(b'\r\n', b'\n') != target.read_bytes().replace(b'\r\n', b'\n'):
+                issues.append('COMPANION_DRIFT: voice/' + name + '; install the local voice recovery helper')
         try:
             enabled = json.loads((Path(root) / '.obsidian/community-plugins.json').read_text(encoding='utf-8'))
             if not isinstance(enabled, list) or 'research-os-html' not in enabled:

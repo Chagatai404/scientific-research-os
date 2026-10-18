@@ -10,7 +10,7 @@ const file = path.join(__dirname, '../extensions/obsidian-html/main.js');
 const mod = {exports: {}};
 vm.runInNewContext(fs.readFileSync(file, 'utf8'), {require: name => name === 'obsidian' ? obsidian : require(name), module: mod, console, Date, Object, Set, Array, JSON, Number, Promise, Buffer, URL, process, setTimeout, clearTimeout, setInterval, clearInterval});
 const {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, resolveNote, acquireLock, buildDocument, SessionHost, sibling,
-  voiceWorkerState, parseVoiceResult, microphoneMessage, browserRecorder, youtubeId, videoAddress, videoSpec, videoFrameAttributes, playerSignal, safeVaultPath, handoutSpec, pickHandout, VideoView, VIDEO_VIEW} = mod.exports._test;
+  playerSlot, mountInlineVideo, voiceWorkerState, parseVoiceResult, microphoneMessage, browserRecorder, youtubeId, videoAddress, videoSpec, videoFrameAttributes, playerSignal, safeVaultPath, handoutSpec, pickHandout, VideoView, VIDEO_VIEW} = mod.exports._test;
 // The host decides note-reference syntax itself; it must agree with Python and the runtime on the shared fixture.
 const noteTargets = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/note-targets.json'), 'utf8'));
 for (const t of noteTargets.valid) assert(validNoteTarget(t), 'valid note target rejected by the host: ' + JSON.stringify(t));
@@ -604,6 +604,12 @@ assert(!html.includes('title":"</script>'));
       assert.equal(panes.leaves.at(-1).detached, true); assert.equal(panes.leaves.length, count2 + 1); assert.equal(ph.videoSession, null); }
 
     // 3. the handout
+    const courseSession = '01 Projects/STAT303/Tutor Sessions/lesson.html';
+    const courseFolder = '01 Projects/STAT303/Tutor Handouts/variance';
+    assert.equal(handoutSpec(lesson(), undefined, courseSession).directory, courseFolder, 'library-relative directory agrees with the Python handout builder');
+    assert.equal(handoutSpec(lesson(), courseFolder + '/a.pdf', courseSession).path, courseFolder + '/a.pdf');
+    assert.throws(() => handoutSpec(lesson(), 'Tutor Handouts/variance/a.pdf', courseSession), /not a PDF inside/);
+    assert.throws(() => handoutSpec(lesson(), '01 Projects/Other/Tutor Handouts/variance/a.pdf', courseSession), /not a PDF inside/);
     const open = async path => { ph.handoutAt = 0; const from2 = paneReplies.length; await ph.handout('open', path, 'secret'); return paneReplies.slice(from2); };
     const noTab = async (path, pattern, label) => {
       const tabs = panes.tabs.length, out2 = await open(path);
@@ -662,6 +668,56 @@ assert(!html.includes('title":"</script>'));
     const back = content.children.find(c => c.tag === 'button'); back.handlers.click(); assert.deepEqual(closed, ['detached'], '"Back to the lesson" closes the tab');
     await view.onClose(); assert.deepEqual(plain(reports.at(-1)), {kind: 'closed'}); const n = reports.length;
     await view.onClose(); assert.equal(reports.length, n, 'closed is reported once'); assert.equal(listeners.has('message'), false, 'nothing is listened to after the pane is gone');
+  }
+  // The Electron guest has a real application referrer and isolated, nonpersistent
+  // preferences. Fixed media diagnostics report progress and completion only.
+  {
+    const previous = process.versions.electron;
+    process.versions.electron = 'test';
+    let media = {time: 31, paused: false, ended: false, error: ''}, removed = false;
+    const signals = [], nodes = [];
+    const frame = {attrs: {}, handlers: {}, setAttribute(k, v) { this.attrs[k] = v; }, addEventListener(k, fn) { this.handlers[k] = fn; }, executeJavaScript: async code => { assert(!code.includes('require(')); return media; }, remove() { removed = true; }};
+    const container = {dataset: {}, ownerDocument: {createElement: tag => { assert.equal(tag, 'webview'); return frame; }}, append: node => nodes.push(node)};
+    let stop;
+    try {
+      stop = mountInlineVideo(container, {title: 'Video', address: videoAddress('dQw4w9WgXcQ', 30, 211), start:30, end:211}, signal => signals.push(signal));
+      assert.equal(frame.attrs.httpreferrer, 'https://md.obsidian.research-os-html');
+      assert.equal(frame.attrs.webpreferences, 'contextIsolation=yes,nodeIntegration=no,sandbox=yes');
+      assert(!frame.attrs.partition.startsWith('persist:') && !('allowpopups' in frame.attrs));
+      frame.handlers['dom-ready']();
+      await new Promise(resolve => setTimeout(resolve, 550));
+      assert.equal(container.dataset.playing, 'true');
+      media = {...media, time: 212};
+      await new Promise(resolve => setTimeout(resolve, 550));
+      assert.equal(signals.at(-1).kind, 'ended');
+      stop(); assert(removed);
+    } finally { if (stop) stop(); if (previous === undefined) delete process.versions.electron; else process.versions.electron = previous; }
+  }
+
+  // Recovery is owned by the companion and invokes only its installed helper,
+  // without a shell. Concurrent status requests share one startup.
+  {
+    const helperRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ros-voice-host-'));
+    const env = path.join(helperRoot, 'engine');
+    const python = path.join(env, process.platform === 'win32' ? 'Scripts/pythonw.exe' : 'bin/python');
+    const helper = path.join(helperRoot, '.obsidian/plugins/research-os-html/voice/voice.py');
+    for (const file of [python, helper]) { fs.mkdirSync(path.dirname(file), {recursive: true}); fs.writeFileSync(file, ''); }
+    const companion = new mod.exports();
+    companion.manifest = {id: 'research-os-html'};
+    companion.app = {vault: {adapter: {getBasePath: () => helperRoot, read: async () => JSON.stringify({schema: 1, envs: [env]})}}};
+    const calls = []; let finish;
+    companion.voiceExecFile = (file, args, options, done) => { calls.push({file, args, options}); finish = done; };
+    const first = companion.ensureVoice(), second = companion.ensureVoice();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].file, python);
+    assert.equal(calls[0].args[0], helper);
+    assert(calls[0].args.includes('tts') && calls[0].options.windowsHide && !calls[0].options.shell);
+    finish(null); await Promise.all([first, second]);
+    assert.equal(companion.voiceStarting, null);
+    fs.rmSync(helperRoot, {recursive: true});
+    assert.deepEqual(JSON.parse(JSON.stringify(playerSlot({x: 10, y: 20, width: 600, height: 400}))), {x: 10, y: 20, width: 600, height: 400});
+    for (const slot of [{x: -1,y: 0,width: 500,height: 200}, {x: 0,y: 0,width: Infinity,height: 200}, {x:0,y:0,width:1,height:2}]) assert.throws(() => playerSlot(slot), /layout/);
   }
   fs.rmdirSync(vaultRoot);
   console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions, live voice, lecture position, host-owned video and handout panes.');

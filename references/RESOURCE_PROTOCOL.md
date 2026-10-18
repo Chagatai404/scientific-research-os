@@ -111,3 +111,33 @@ python scripts/resources.py --vault <vault> card RES-gamma-video             # t
 python scripts/resources.py --vault <vault> index                            # a Markdown index; every row is a link
 python scripts/resources.py --vault <vault> validate                         # exit 1 on a damaged record
 ```
+
+### Integrated Video tab (2026-10-19)
+
+The learner requested a course-player layout with a Video tab inside the session.
+The session iframe still cannot embed or fetch. It names the same vetted resource
+and planned interval, plus a finite, bounded player rectangle. The companion owns
+an overlay only within that rectangle, leaving navigation and status visible; it
+removes the player on tab exit or session reload. Legacy requests without a rectangle
+retain the separate pane.
+
+On desktop the integrated player is an isolated Electron guest with Node integration
+disabled, context isolation and sandbox enabled, no preload or popups, and an
+in-memory video partition. Its HTTP referrer identifies this application as
+`https://md.obsidian.research-os-html`; it does not impersonate another site. The
+host reads only the guest's media time, paused/ended flag and standard player error
+for completion reporting. The evaluated expression is fixed plugin code, never
+supplied by a session or remote player. Only the vetted YouTube embed address may
+be navigated; no authentication or system browser is part of this flow.
+
+This follows the documented [YouTube embedded-client identity requirement](https://developers.google.com/youtube/terms/required-minimum-functionality#embedded-player-api-client-identity)
+and Electron's [guest referrer and isolation controls](https://www.electronjs.org/docs/latest/api/webview-tag).
+Real Obsidian playback must still be verified independently of simulated host tests.
+
+
+**Acceptance on 2026-10-19:** the vetted MIT MSE embed played in the actual Obsidian
+Video tab. Slides and captions advanced, and the elapsed-time display progressed
+from 0:05 to 1:06. The session navigation, player, return control and status all
+remained visible. This supersedes the earlier unperformed-playback statement for
+this one integrated desktop path; independent speaker recording and a physical
+mobile device remain outside that evidence.

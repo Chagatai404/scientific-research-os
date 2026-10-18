@@ -560,15 +560,15 @@ form[data-ros=open-question]:not(.ros-open-question) { border-top: 1px solid var
 .ros-board-voice-note{margin:.4rem 0 0;min-height:1.3em;font-size:.9rem;opacity:.85}
 .ros-board-voice-note[data-problem="true"]{color:#b45309}
 
-/* Research OS staged session (stages.js). One thing at a time: the page scrolls if it must, nothing inside it does (no overflow:auto or scroll in this file). */
+/* Research OS staged session (stages.js). The complete active stage fits the viewport; long supporting content uses pages, never hidden overflow. */
 body.ros-staged main.ros-document{max-width:none;margin:0;padding:0;background:transparent;box-shadow:none;border-radius:0}
 body.ros-staged main.ros-document > :not(.ros-stages){display:none}
 body.ros-staged .ros-side-panel,body.ros-staged .ros-panel-toggle,body.ros-staged .ros-arrival{display:none}
-.ros-stages{display:flex;flex-direction:column;min-height:100vh;min-height:100dvh;max-width:64rem;margin:0 auto;padding:var(--ros-space-3) var(--ros-space-4) var(--ros-space-4);gap:var(--ros-space-4)}
+.ros-stages{display:flex;flex-direction:column;height:100vh;height:100dvh;min-height:0;box-sizing:border-box;max-width:64rem;margin:0 auto;padding:12px;gap:12px}
 .ros-stages nav,.ros-stages ol,.ros-stages ul{margin:0}
 .ros-stages ol,.ros-stages ul{padding-left:0}
 .ros-stages li{margin:0;padding:0}
-.ros-stages[data-stage="lecture"]{min-height:0}
+.ros-stages[data-stage="lecture"]{min-height:0;max-width:none;width:100%}
 .ros-stages-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--ros-space-2) var(--ros-space-4)}
 .ros-stages .ros-stages-title{font:600 22px/1.2 var(--ros-font-body);margin:0;letter-spacing:0}
 .ros-stagebar ol{display:flex;flex-wrap:wrap;gap:var(--ros-space-1);list-style:none;margin:0;padding:0}
@@ -579,6 +579,8 @@ body.ros-staged .ros-side-panel,body.ros-staged .ros-panel-toggle,body.ros-stage
 .ros-stagebar li[data-state="todo"] button{opacity:.6}
 .ros-stagebar button[aria-current="step"]{box-shadow:0 0 0 3px var(--ros-focus,var(--ros-accent))}
 .ros-stage-body{flex:1;min-height:0}
+.ros-stage-lecture:not([hidden]){display:flex;flex-direction:column;height:100%;min-height:0;gap:8px}
+.ros-lecture-board{min-width:0;min-height:0}
 .ros-stage[hidden]{display:none}
 .ros-stages-footer{display:flex;flex-wrap:wrap;align-items:center;gap:var(--ros-space-1) var(--ros-space-4);font-size:14px;color:var(--ros-text-muted)}
 .ros-stages-footer p{margin:0}
@@ -625,10 +627,14 @@ body.ros-staged .ros-side-panel,body.ros-staged .ros-panel-toggle,body.ros-stage
 /* The handout card and the lecture. The lecture holds the board, a way to ask, and nothing else; the board is sized to fit the window. */
 .ros-handout ul{margin:var(--ros-space-2) 0;padding-left:1.4rem}
 .ros-voice-state{min-height:1.3em;font-size:15px;color:var(--ros-text-muted)}
-.ros-lecture-board .ros-board{margin:0 auto}   /* stages.js sets its max-width so the whole stage fits the window */
+.ros-lecture-board .ros-board{margin:0 auto;width:100%;max-width:none}
+.ros-lecture-board .ros-board-frame{margin:0 auto;max-width:100%;box-sizing:border-box}
 .ros-stage-lecture .ros-board-transcript,.ros-stage-lecture .ros-board-bar label{display:none}
 .ros-stage-lecture .ros-board-bar{justify-content:center}
-.ros-lecture-tools{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:center;gap:var(--ros-space-3);margin-top:var(--ros-space-3)}
+.ros-lecture-tools{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:center;gap:8px;margin:0}
+.ros-stage-lecture .ros-board-caption{font-size:15px;line-height:1.35;margin:6px 0 0}
+.ros-stage-lecture .ros-board-voice-note:empty{display:none}
+.ros-stage-lecture .ros-board-bar{margin-top:6px;gap:6px 10px}
 .ros-chips{display:flex;flex-wrap:wrap;gap:var(--ros-space-2)}
 .ros-offer{display:flex;flex-wrap:wrap;justify-content:center;gap:var(--ros-space-2);flex:1 1 100%}
 .ros-offer:empty{display:none}
@@ -647,3 +653,43 @@ body.ros-staged .ros-side-panel,body.ros-staged .ros-panel-toggle,body.ros-stage
   .ros-qcard,.ros-handout{padding:var(--ros-space-4)}
   .ros-qcard h2,.ros-handout h2{font-size:21px}
 }
+
+@media(min-width:1000px){.ros-stage-lecture:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:16px}.ros-lecture-tools{align-content:start;justify-content:stretch}.ros-lecture-tools>button,.ros-chips,.ros-chips button{width:100%}.ros-chips{display:grid;grid-template-columns:1fr}}
+@media(max-width:999px){.ros-chips{display:grid;grid-template-columns:1fr 1fr;width:100%}.ros-chips button{min-height:36px;padding:6px;font-size:13px;line-height:1.2}.ros-lecture-tools{flex:none}.ros-stage-lecture .ros-board-bar button{min-height:34px;padding:4px 10px}.ros-stages-footer{font-size:12px;line-height:1.25}}
+@media(max-height:700px){.ros-stages{padding:8px;gap:6px}.ros-stages .ros-stages-title{font-size:18px}.ros-stagebar button{min-height:32px;padding:4px 10px}.ros-qcard,.ros-handout{padding:12px}.ros-handout h2,.ros-qcard h2{font-size:20px;margin-bottom:8px}.ros-handout p,.ros-handout ul{margin:4px 0}.ros-handout li{font-size:15px;line-height:1.25}.ros-qcard-actions{margin-top:8px}.ros-stage-lecture .ros-board-caption{font-size:14px;line-height:1.25}.ros-stages-footer{font-size:12px;line-height:1.25}}
+
+.ros-caption-pages{display:flex;align-items:center;justify-content:center;gap:8px;font:12px/1.2 var(--ros-font-body);margin-top:4px}.ros-stage-lecture .ros-caption-pages button{min-height:26px;min-width:30px;padding:0 6px}
+
+@media(max-width:999px){.ros-stagebar button{font-size:14px;line-height:1.2;min-height:32px;padding:4px 8px}.ros-stages-head{gap:6px}.ros-stage-lecture .ros-board-bar button{font-size:14px;line-height:1.2;min-height:32px;padding:4px 8px}.ros-board-state{font-size:13px}.ros-stage-lecture .ros-board-voice-note{font-size:13px;line-height:1.2;margin:4px 0}.ros-stages-footer p{font-size:12px;line-height:1.25}.ros-stages-footer .ros-supervision{padding:0 8px}}
+
+/* Cards reserve room for navigation and the connection status, including feedback. */
+.ros-stage-probe .ros-qcard,.ros-stage-check .ros-qcard{padding:16px}
+.ros-qcard h2{font-size:21px;line-height:1.25;margin-bottom:10px}
+.ros-qcard .ros-pick,.ros-qcard .ros-picks li{padding:8px;margin-bottom:6px;line-height:1.3}
+.ros-qcard .ros-pick label{line-height:1.3}
+.ros-qcard p{margin-top:6px;margin-bottom:6px}
+.ros-qcard .ros-qcard-actions{margin-top:10px}
+.ros-qcard-feedback{margin-top:8px}
+.ros-qcard .ros-solution{margin-top:6px}
+
+.ros-review-pages:not([hidden]){display:flex;gap:8px;margin-bottom:8px}.ros-review-pages button{min-height:32px;padding:4px 10px;font-size:14px}.ros-review-pages button[aria-pressed="true"]{background:var(--ros-accent);color:var(--ros-on-accent)}
+
+.ros-qcard{font-size:16px;line-height:1.4}
+
+/* Course-player shell: navigation, teaching surface, supporting tools. */
+.ros-stages-head,.ros-stages-footer,.ros-stagebar,.ros-lecture-tools,.ros-board-bar,.ros-caption-pages{font-family:var(--ros-font-ui,Arial,sans-serif)}
+.ros-stage-video:not([hidden]){height:100%;min-height:0;display:flex;flex-direction:column;gap:10px}
+.ros-video-choices{display:flex;gap:8px;flex-wrap:wrap}.ros-video-choices button{font-size:14px;min-height:36px;padding:6px 12px}
+.ros-video-slot{flex:1;min-height:0;border:1px solid var(--ros-border);border-radius:12px;background:#111}
+.ros-video-library-status{font:14px/1.3 var(--ros-font-body);margin:0}
+@media(min-width:1100px){
+.ros-stages{display:grid;grid-template-columns:170px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;gap:12px;max-width:none}
+.ros-stages-head{display:contents}.ros-stages-title{grid-column:1/-1;grid-row:1}
+.ros-stagebar{grid-column:1;grid-row:2;padding:12px 8px;border-right:1px solid var(--ros-border)}
+.ros-stagebar ol{display:flex;flex-direction:column;gap:10px}.ros-stagebar button{width:100%;border-radius:8px;text-align:left}
+.ros-stage-body{grid-column:2;grid-row:2}.ros-stages-footer{grid-column:1/-1;grid-row:3}
+.ros-stage-lecture:not([hidden]){grid-template-columns:minmax(0,1fr) 220px}
+}
+@media(max-width:1099px){.ros-stagebar ol{gap:4px}.ros-stagebar button{font-size:14px;min-height:32px;padding:4px 8px}}
+
+.ros-stage-lecture .ros-board-retry-voice{min-height:26px;font-size:13px;padding:2px 8px;margin-left:6px}

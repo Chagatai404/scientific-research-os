@@ -836,6 +836,7 @@
         run++; loop(run);
         return undefined;
       },
+      restartStep() { const held = status === 'paused'; run++; timers.clear(); speaker.cancel(); effects.finishAll(); loop(run); if (held) api.pause(); },
       pause() { if (status !== 'playing') return; speaker.pause(); timers.pause(); effects.pause(); setStatus('paused'); },
       resume() { if (status !== 'paused') return; speaker.resume(); timers.resume(); effects.resume(); setStatus('playing'); },
       skip() {
@@ -1124,6 +1125,17 @@
     revised: 'The tutor revised the lecture. Press Replay.'};
 
   let boardCount = 0;
+  function captionPages(text, limit) {
+    const pages = []; let rest = String(text || '').trim();
+    if (!limit || limit < 1) return [rest];
+    while (rest.length > limit) {
+      const space = rest.lastIndexOf(' ', limit);
+      const end = space > limit / 2 ? space : limit;
+      pages.push(rest.slice(0, end).trim()); rest = rest.slice(end).trim();
+    }
+    pages.push(rest); return pages;
+  }
+
   function mount(container, script, options) {
     options = options || {};
     const doc = options.doc || container.ownerDocument;
@@ -1169,6 +1181,21 @@
     const state = node('span', undefined, 'ros-board-state'); state.setAttribute('role', 'status');
     bar.append(play, skip, replay, voiceLabel, rateLabel, state);
     const caption = node('p', '', 'ros-board-caption');
+    let captionParts = [''], captionIndex = 0;
+    function drawCaption() {
+      caption.textContent = captionParts[captionIndex];
+      if (captionParts.length < 2) return;
+      const nav = node('span', undefined, 'ros-caption-pages');
+      const prev = node('button', '‹'), next = node('button', '›');
+      prev.type = next.type = 'button';
+      prev.setAttribute('aria-label', 'Previous caption'); next.setAttribute('aria-label', 'Next caption');
+      prev.disabled = captionIndex === 0; next.disabled = captionIndex === captionParts.length - 1;
+      prev.addEventListener('click', () => { captionIndex--; drawCaption(); });
+      next.addEventListener('click', () => { captionIndex++; drawCaption(); });
+      nav.append(prev, node('span', `Caption ${captionIndex + 1} of ${captionParts.length}`), next); caption.append(nav);
+    }
+    function setCaption(text) { captionParts = captionPages(text, options.maxCaptionChars); captionIndex = 0; drawCaption(); }
+    const retryVoice = node('button', 'Retry voice', 'ros-board-retry-voice'); retryVoice.type = 'button'; retryVoice.hidden = true; bar.append(retryVoice);
     const voiceNote = node('p', '', 'ros-board-voice-note'); voiceNote.setAttribute('role', 'status');
     const transcript = node('details', undefined, 'ros-board-transcript');
     transcript.append(node('summary', 'Transcript and what is written on the board'));
@@ -1200,7 +1227,7 @@
       if (liveVoice.supported) speakers.live = liveVoice; else liveVoice = null;
     }
     if (liveVoice) {
-      liveVoice.onProblem = reason => { voiceNote.textContent = 'The live voice is not available (' + reason + '), so this uses the ' + (complete ? 'recorded' : speakers.device ? 'device' : 'caption') + ' voice instead.'; voiceNote.dataset.problem = 'true'; };
+      liveVoice.onProblem = reason => { voiceNote.textContent = 'Voice interrupted. '; voiceNote.title = reason; voiceNote.dataset.problem = 'true'; retryVoice.hidden = false; voiceNote.append(retryVoice); };
       liveVoice.onWait = waiting => { if (voiceNote.dataset.problem !== 'true') voiceNote.textContent = waiting ? 'Preparing the voice…' : ''; };
     }
     const order = ['live', 'recorded', 'device', 'captions'];   // the best voice first; anything a host adds follows
@@ -1246,14 +1273,21 @@
     const player = createPlayer({
       script, speaker: speakerProxy, effects, clock: options.clock, reducedMotion: reduced,
       onEvent(type, data) {
-        if (type === 'step') { hint.hidden = true; caption.textContent = data.step.say || ''; mark(data.index); }
-        if (type === 'reset') { hint.hidden = false; caption.textContent = ''; mark(-1); }
-        if (type === 'seek') { hint.hidden = true; caption.textContent = (script.steps[data.index - 1] || {}).say || ''; mark(data.index - 1); }
+        if (type === 'step') { hint.hidden = true; setCaption(data.step.say || ''); mark(data.index); }
+        if (type === 'reset') { hint.hidden = false; setCaption(''); mark(-1); }
+        if (type === 'seek') { hint.hidden = true; setCaption((script.steps[data.index - 1] || {}).say || ''); mark(data.index - 1); }
         if (type === 'status' || type === 'reset' || type === 'seek') refresh();
         if (options.onEvent) options.onEvent(type, data);
       }
     });
     if (options.startAt) player.seek(options.startAt);   // a resumed lecture waits at the step it had reached, with the board drawn as it was
+    function recoverVoice() {
+      if (!liveVoice) return;
+      liveVoice.retry(); liveVoice.unlock(); voiceNote.textContent = ''; delete voiceNote.dataset.problem; retryVoice.hidden = true;
+      if (speaker === liveVoice && ['playing', 'paused'].includes(player.status)) player.restartStep();
+      else warmUp();
+    }
+    retryVoice.addEventListener('click', recoverVoice);
     play.addEventListener('click', () => {
       const s = player.status;
       if (typeof speaker.unlock === 'function') speaker.unlock();   // the click is what lets live audio start
@@ -1273,6 +1307,7 @@
     return {
       player, figure, layout: () => effects.layout(),
       get status() { return player.status; },
+      recoverVoice,
       start: () => player.start(), pause: () => player.pause(), resume: () => player.resume(), skip: () => player.skip(), replay: () => player.replay(),
       // Short spoken acknowledgments for a question just sent: loaded ahead of time, played only when the live voice is the voice in use and the audio is already here.
       preloadAcks(texts) { if (liveVoice) liveVoice.preloadAcks(texts); },
@@ -1292,6 +1327,6 @@
     };
   }
 
-  return {SCHEMA, WIDTH, HEIGHT, COLORS, SIZES, HANDS, MAX, ZONES, FONT, validate, pathProblem, normalizePath, estimate, layoutProblems, layoutScript, estimateItem, mathBox, wrapText, createLayout, inkOf, sampledPath,
+  return {SCHEMA, WIDTH, HEIGHT, COLORS, SIZES, HANDS, MAX, ZONES, FONT, validate, pathProblem, normalizePath, estimate, layoutProblems, layoutScript, estimateItem, mathBox, wrapText, createLayout, inkOf, sampledPath, captionPages,
     createTimers, silentSpeaker, deviceSpeaker, audioSpeaker, liveSpeaker, speechChunks, createPlayer, mount};
 });

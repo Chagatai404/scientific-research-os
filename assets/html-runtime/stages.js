@@ -1,4 +1,4 @@
-/* Research OS staged session: runs a session plan (scripts/session_plan.py) as four stages, each in its own environment: Probe, Handout, Lecture, Check.
+/* Research OS staged session: runs a session plan (scripts/session_plan.py) as Quiz, Handout, Lecture, Video and Check environments.
    The logic (judging an answer, choosing the next question, choosing the lecture segments) mirrors session_plan.py and is pinned by tests/fixtures/plan-cases.json;
    the view shows one thing at a time, so nothing inside it scrolls and the questions never sink to the bottom of a page.
    A branch taken is a pacing decision made on the page against the plan's own key. It is never evidence of learning. */
@@ -10,7 +10,7 @@
 })(typeof window !== 'undefined' ? window : globalThis, function () {
   'use strict';
   const END = 'end';
-  const STAGES = [['probe', 'Probe'], ['handout', 'Handout'], ['lecture', 'Lecture'], ['check', 'Check']];
+  const STAGES = [['probe', 'Quiz'], ['handout', 'Handout'], ['lecture', 'Lecture'], ['video', 'Video'], ['check', 'Check']];
   const indexOf = id => STAGES.findIndex(([s]) => s === id);
 
   // ----------------------------------------------------------------------------------------------------------------- logic (mirrors scripts/session_plan.py)
@@ -216,7 +216,7 @@
     const panels = {};
     for (const id of [...STAGES.map(([s]) => s), 'done']) { panels[id] = el('section', {class: 'ros-stage ros-stage-' + id, 'data-stage': id, hidden: true}); body.append(panels[id]); }
 
-    let derived = stageOf(plan, ctx.events()), shown = derived;
+    let derived = stageOf(plan, ctx.events()), shown = derived, videoReturn = derived;
     const views = {};                         // per tree: what is on screen, so a refresh that changes nothing does not redraw (and lose a half-typed answer)
     const drafts = new Map();
 
@@ -225,13 +225,16 @@
       barList.textContent = '';
       const reached = derived === 'done' ? STAGES.length : indexOf(derived);
       STAGES.forEach(([id, label], index) => {
-        const state = index < reached ? 'done' : index === reached ? 'current' : 'todo';
+        const state = id === shown ? 'current' : id === 'video' ? 'available' : index < reached ? 'done' : index === reached ? 'current' : 'todo';
         const link = button(label, () => show(id), {'aria-current': shown === id ? 'step' : undefined, disabled: state === 'todo'});
         barList.append(el('li', {'data-state': state}, link));
       });
     }
     function show(id) {
-      if (id !== 'done' && derived !== 'done' && indexOf(id) > indexOf(derived)) return;
+      if (id !== 'video' && id !== 'done' && derived !== 'done' && indexOf(id) > indexOf(derived)) return;
+      if (shown === 'video' && id !== 'video' && ctx.panes) { ctx.panes.video.close(); selectedVideo = null; }
+      if (id === 'video' && shown !== 'video') videoReturn = shown;
+      if (id === 'video' && lecture.controller && lecture.controller.status === 'playing') lecture.controller.pause();
       shown = id;
       render();
     }
@@ -248,7 +251,7 @@
       const tree = current[name], questions = new Map(tree.questions.map(q => [q.id, q]));
       const focusId = view.viewing || r.current || (r.trail.length ? r.trail[r.trail.length - 1].id : null);
       const goTo = id => () => { view.viewing = id; treeView(name); };
-      const strip = el('ol', {class: 'ros-strip', 'aria-label': name === 'probe' ? 'Probe questions' : 'Check questions'});
+      const strip = el('ol', {class: 'ros-strip', 'aria-label': name === 'probe' ? 'Quiz questions' : 'Check questions'});
       r.trail.forEach((t, i) => {
         const mark = t.verdict === 'correct' ? 'answered correctly' : t.verdict === 'wrong' ? 'answered, not quite' : 'answered';
         const read = t.verdict === 'pending' && reviewOf(t.id);
@@ -268,7 +271,8 @@
       const feedback = el('div', {class: 'ros-qcard-feedback', role: 'status', 'aria-live': 'polite'});
 
       if (answered) {
-        card.append(review(question, answered));
+        const savedAnswer = review(question, answered);
+        card.append(savedAnswer);
         const tutor = answered.verdict === 'pending' ? reviewOf(focusId) : null;
         if (tutor) {
           // The tutor's reading of a written answer, under the answer itself. The learner's own words stay exactly as they were.
@@ -288,6 +292,38 @@
         else if (!last) row.append(button('Back to the latest question', goTo(null)));
         if (last && r.done) row.append(button(name === 'probe' ? 'Continue to your handout' : 'Finish', () => finishTree(name), {class: 'ros-primary'}));
         card.append(row);
+        // Feedback and the complete saved answer use separate pages when both
+        // would push navigation below the viewport. Neither is discarded.
+        const pager = el('div', {class: 'ros-review-pages', hidden: true});
+        const answerPage = button('Your answer', () => chooseReview(false));
+        const feedbackPage = button('Feedback', () => chooseReview(true));
+        const explanation = question.solution && answered.verdict !== 'pending' ? ctx.rich('div', question.solution) : null;
+        const explanationPage = explanation ? button('Explanation', () => chooseReview(false, true)) : null;
+        if (explanation) { explanation.hidden = true; card.insertBefore(explanation, row); }
+        const tutorBox = card.querySelector('.ros-agent-review');
+        function chooseReview(showFeedback, showExplanation = false) {
+          savedAnswer.hidden = showFeedback || showExplanation;
+          feedback.hidden = !showFeedback;
+          if (tutorBox) tutorBox.hidden = !showFeedback;
+          if (explanation) explanation.hidden = !showExplanation;
+          answerPage.setAttribute('aria-pressed', String(!showFeedback && !showExplanation));
+          feedbackPage.setAttribute('aria-pressed', String(showFeedback));
+          if (explanationPage) explanationPage.setAttribute('aria-pressed', String(showExplanation));
+        }
+        pager.append(answerPage, feedbackPage);
+        if (explanationPage) pager.append(explanationPage);
+        card.insertBefore(pager, savedAnswer);
+        const fit = () => {
+          if (!card.isConnected || panels[name].hidden) return;
+          const boundary = shell.querySelector('.ros-stages-footer').getBoundingClientRect().top - 8;
+          if (pager.hidden && card.getBoundingClientRect().bottom > boundary) {
+            const solution = feedback.querySelector('.ros-solution');
+            if (solution) solution.hidden = true;
+            pager.hidden = false; chooseReview(true);
+          }
+        };
+        view.fit = fit;
+        if (doc.defaultView) doc.defaultView.requestAnimationFrame(fit);
       } else {
         card.append(inputFor(question, name, feedback), feedback);
       }
@@ -401,6 +437,36 @@
       if (play && lecture.controller && lecture.controller.status === 'idle') play.click();   // inside the learner's click, so the browser lets sound start
     }
 
+    // Supplementary videos are reachable without changing quiz or lecture progress.
+    let selectedVideo = null;
+    function placeVideo() {
+      const slot = panels.video.querySelector('.ros-video-slot');
+      if (shown === 'video' && selectedVideo && slot && ctx.panes && ctx.panes.video.place) ctx.panes.video.place(slot.getBoundingClientRect().toJSON());
+    }
+    function renderVideoLibrary() {
+      const panel = panels.video;
+      if (panel.childNodes.length) { placeVideo(); return; }
+      const videos = current.segments.filter(segment => segment.video).map(segment => segment.video);
+      const choices = el('div', {class: 'ros-video-choices', 'aria-label': 'Session videos'});
+      const slot = el('div', {class: 'ros-video-slot', 'aria-label': 'Video player'});
+      const note = el('p', {class: 'ros-video-library-status', role: 'status', text: videos.length ? 'Choose a video to play here.' : 'No external videos are planned for this lesson.'});
+      for (const video of videos) {
+        const record = ctx.videoRecord && ctx.videoRecord(video.resource);
+        choices.append(button(record ? record.title : 'Session video', () => {
+          if (!ctx.panes) { note.textContent = 'Video playback requires the Obsidian companion.'; return; }
+          selectedVideo = video; note.textContent = video.notice || 'Playing the selected video.';
+          ctx.panes.video.open(video, slot.getBoundingClientRect().toJSON());
+        }));
+      }
+      const actions = el('div', {class: 'ros-video-library-actions'}, button('Back to session', () => show(videoReturn)));
+      panel.append(choices, slot, note, actions);
+      if (ctx.panes) ctx.panes.video.on(message => {
+        if (shown !== 'video') return;
+        note.textContent = message.status === 'error' ? message.message || 'The video could not play.' : message.status === 'opened' ? 'Video player open. Use its playback controls.' : message.status === 'ended' ? 'Video finished.' : 'Video closed.';
+      });
+      if (doc.defaultView) doc.defaultView.requestAnimationFrame(placeVideo);
+    }
+
     // ------------------------------------------------------------------------------------------------- lecture: the board, a way to ask, nothing else
     const lecture = {host: null, controller: null, stepId: '', asked: new Set(), path: [], script: null, built: null, k: 0, prompted: -1, video: null, videoBox: null, started: false, lastSent: '', sentAt: 0, timer: null};
     // The lecture position is recorded as checkpoints so a reload resumes: "lecture-path:" (the segments, once, at the first step) and "lecture-step:" (the step
@@ -470,17 +536,27 @@
       const win = doc.defaultView;
       if (win && win.MutationObserver) new win.MutationObserver(() => win.requestAnimationFrame(fitLecture)).observe(shell, {childList: true, characterData: true, subtree: true});
     }
-    // The board is as large as the window allows while everything else on the stage stays in view: its width follows from the height that is left once the
-    // header, the controls and the tools have their share.
+    // Fit from stable chrome, never from the caption's height. Measuring the
+    // entire shell creates a feedback loop: a narrow caption wraps, steals more
+    // height and makes the board narrower again. Paginate supporting text and
+    // size only the drawing frame to keep controls inside the viewport.
     function fitLecture() {
       const board = lecture.host && lecture.host.querySelector('.ros-board'), surface = board && board.querySelector('.ros-board-surface'), frame = board && board.querySelector('.ros-board-frame');
       const win = doc.defaultView;
       if (!surface || !frame || !win || shown !== 'lecture') return;
-      for (let pass = 0; pass < 3; pass++) {
-        const surfaceBox = surface.getBoundingClientRect(), padding = frame.getBoundingClientRect().width - surfaceBox.width;
-        const overhead = shell.getBoundingClientRect().height - surfaceBox.height;
-        const available = Math.max(160, win.innerHeight - overhead);
-        board.style.maxWidth = Math.max(240, available * 16 / 9 + padding) + 'px';
+      const width = lecture.host.getBoundingClientRect().width;
+      board.style.width = '100%';
+      board.style.maxWidth = 'none';
+      const tools = panels.lecture.querySelector('.ros-lecture-tools');
+      const sideBySide = win.innerWidth >= 1000;
+      const hostHeight = panels.lecture.getBoundingClientRect().height - (!sideBySide && tools ? tools.getBoundingClientRect().height + 8 : 0);
+      // Only the frame changes size. Captions retain the column width, so their
+      // wrapping cannot feed back into the size of the drawing.
+      for (let pass = 0; pass < 2; pass++) {
+        const surfaceBox = surface.getBoundingClientRect();
+        const padding = frame.getBoundingClientRect().width - surfaceBox.width;
+        const overhead = board.getBoundingClientRect().height - surfaceBox.height;
+        frame.style.width = Math.min(width, Math.max(1, hostHeight - overhead) * 16 / 9 + padding) + 'px';
       }
     }
     // ---- a video inside the lecture. It plays in a pane the host owns, at the end of the piece of the lecture that introduces it, and only when the learner chooses
@@ -509,8 +585,10 @@
     function startVideo() {
       const v = lecture.video, win = doc.defaultView;
       v.phase = 'opening'; paintVideo();
-      ctx.panes.video.open(v.spec);
-      if (win) { win.clearTimeout(v.timer); v.timer = win.setTimeout(() => videoFailed('The video tab did not open in time.'), ctx.panes.openTimeoutMs || 10000); }
+      show('video'); selectedVideo = v.spec;
+      const slot = panels.video.querySelector('.ros-video-slot');
+      ctx.panes.video.open(v.spec, slot.getBoundingClientRect().toJSON());
+      if (win) { win.clearTimeout(v.timer); v.timer = win.setTimeout(() => videoFailed('The video player did not open in time.'), ctx.panes.openTimeoutMs || 10000); }
     }
     function videoFailed(message) {
       const v = lecture.video;
@@ -518,11 +596,13 @@
       if (doc.defaultView) doc.defaultView.clearTimeout(v.timer);
       v.phase = 'failed'; v.message = 'The video could not be played here' + (message ? ': ' + message.replace(/[.\s]+$/, '') : '') + '. The lecture goes on without it.';
       paintVideo(); proceed();
+      if (shown === 'video') show('lecture');
     }
     function endVideo() {
       const v = lecture.video;
       if (doc.defaultView) doc.defaultView.clearTimeout(v.timer);
       v.phase = 'done'; paintVideo(); proceed();
+      if (shown === 'video') show('lecture');
     }
     function onVideoMessage(message) {
       const v = lecture.video;
@@ -539,8 +619,8 @@
       const record = v.record;
       box.append(el('p', {class: 'ros-video-title', text: 'Video: ' + (record ? record.title : 'the planned video')}));
       const notice = ctx.rich('p', v.spec.notice); notice.classList.add('ros-video-notice'); box.append(notice);
-      const say = {prompt: 'It plays in its own tab beside the lesson, and the lecture waits for it.', opening: 'Opening the video…',
-        playing: v.blocking ? 'The video is playing in its own tab. The lecture goes on when it ends.' : 'The video is open in its own tab.', failed: v.message}[v.phase];
+      const say = {prompt: 'It plays in the Video tab, and the lecture waits for it.', opening: 'Opening the video…',
+        playing: v.blocking ? 'The video is playing in the Video tab. The lecture goes on when it ends.' : 'The video is open in the Video tab.', failed: v.message}[v.phase];
       box.append(el('p', {class: 'ros-video-status', role: 'status', 'data-problem': v.phase === 'failed' ? 'true' : undefined, text: say}));
       const row = el('div', {class: 'ros-qcard-actions'});
       if (v.phase === 'prompt') row.append(button('Play the video', startVideo, {class: 'ros-primary'}), button('Skip the video', () => { v.phase = 'done'; paintVideo(); proceed(); }));
@@ -630,11 +710,19 @@
       if (shown === 'probe') treeView('probe');
       else if (shown === 'handout') renderHandout();
       else if (shown === 'lecture') { buildLecture(); fitLecture(); }
+      else if (shown === 'video') renderVideoLibrary();
       else if (shown === 'check') treeView('check');
       else if (shown === 'done') renderDone();
       shell.dataset.stage = shown;
     }
-    if (ctx.liveVoice) ctx.liveVoice.onState(() => { if (shown === 'handout') renderHandout(); });
+    if (ctx.liveVoice) {
+      let previousVoice = ctx.liveVoice.state();
+      ctx.liveVoice.onState(next => {
+        if (next === 'ready' && ['off', 'warming', 'stopped', 'error'].includes(previousVoice) && lecture.controller && lecture.controller.recoverVoice) lecture.controller.recoverVoice();
+        previousVoice = next;
+        if (shown === 'handout') renderHandout();
+      });
+    }
     // A revised plan or a new review reaches a lecture that has not played its first step: it is composed again from the latest plan, so the segments follow the
     // tutor's reading of a written answer. From the first step the path is frozen (recorded in the session) and nothing in the lecture changes; a lecture that
     // already took a question from the board is left as it is, since its added steps would be lost.
@@ -656,7 +744,7 @@
     });
     if (doc.defaultView) {
       doc.defaultView.addEventListener('pagehide', () => sendStep(true));
-      doc.defaultView.addEventListener('resize', fitLecture);
+      doc.defaultView.addEventListener('resize', () => { fitLecture(); placeVideo(); for (const view of Object.values(views)) if (view.fit) view.fit(); });
       if (doc.defaultView.requestAnimationFrame) doc.defaultView.requestAnimationFrame(() => doc.defaultView.requestAnimationFrame(fitLecture));   // once fonts and the first layout have settled
     }
     render();

@@ -297,6 +297,45 @@ function videoFrameAttributes(address, title) {
   return {src: address, title: String(title || 'Session video').slice(0, 200), sandbox: 'allow-scripts allow-same-origin allow-presentation', referrerpolicy: 'strict-origin-when-cross-origin',
     allow: 'encrypted-media; picture-in-picture; fullscreen', allowfullscreen: ''};
 }
+// A bounded player rectangle in the session frame; it never covers navigation.
+function playerSlot(value) {
+  if (!value || !['x','y','width','height'].every(k => typeof value[k] === 'number' && Number.isFinite(value[k]))) throw new Error('Invalid video player layout.');
+  if (value.x < 0 || value.y < 0 || value.width < 100 || value.height < 80 || value.width > 10000 || value.height > 10000) throw new Error('Invalid video player layout.');
+  return {x: value.x, y: value.y, width: value.width, height: value.height};
+}
+function mountInlineVideo(container, spec, report) {
+  const doc = container.ownerDocument, guest = !!process.versions.electron;
+  const frame = doc.createElement(guest ? 'webview' : 'iframe'); frame.className = 'ros-inline-video-frame';
+  frame.setAttribute('title', spec.title);
+  if (guest) {
+    frame.setAttribute('httpreferrer', 'https://md.obsidian.research-os-html');
+    frame.setAttribute('webpreferences', 'contextIsolation=yes,nodeIntegration=no,sandbox=yes');
+    frame.setAttribute('partition', 'research-os-video');
+    frame.setAttribute('allowfullscreen', '');
+    frame.setAttribute('src', spec.address);
+  } else for (const [key, value] of Object.entries(videoFrameAttributes(spec.address, spec.title))) frame.setAttribute(key, value);
+  let stopped = false, timer = null, checking = false;
+  const probe = async () => {
+    if (stopped || checking || typeof frame.executeJavaScript !== 'function') return;
+    checking = true;
+    try {
+      // Fixed read-only media diagnostics inside this isolated guest, never page-supplied code.
+      const state = await frame.executeJavaScript(`(()=>{const v=document.querySelector('video'),e=document.querySelector('.ytp-error-content-wrap');return {time:v?v.currentTime:0,paused:v?v.paused:true,ended:v?v.ended:false,error:e?e.textContent:''};})()`);
+      if (stopped) return;
+      if (state.error && /153|unavailable|cannot|error/i.test(state.error)) report({kind:'error',code:/153/.test(state.error)?153:5});
+      else if (state.ended || state.time >= spec.end) report({kind:'ended'});
+      else if (state.time > spec.start && !state.paused) container.dataset.playing = 'true';
+    } catch (_) { /* the guest may still be loading */ }
+    finally { checking = false; }
+  };
+  frame.addEventListener('dom-ready', () => { if (!timer) timer = setInterval(probe, 500); });
+  frame.addEventListener('did-fail-load', event => { if (event.isMainFrame !== false && event.errorCode !== -3) report({kind: 'error', code: 5}); });
+  frame.addEventListener('new-window', event => event.preventDefault());
+  frame.addEventListener('will-navigate', event => { if (!String(event.url || '').startsWith(VIDEO_ORIGIN + '/embed/')) event.preventDefault(); });
+  container.append(frame);
+  return () => { stopped = true; clearInterval(timer); frame.remove(); };
+}
+
 // What the player says (the YouTube iframe API's widget messages), reduced to what the lecture needs. Anything else is ignored; its text is never passed on.
 function playerSignal(raw) {
   let message = raw;
@@ -315,14 +354,18 @@ function safeVaultPath(value) {
 }
 // The handout is the PDF in the folder the plan declares, once the plan says it is built. A path from the page must lie inside that folder (a sibling folder whose
 // name merely starts the same does not count); with no path the host takes the PDF that is there.
-function handoutSpec(state, path) {
+function handoutSpec(state, path, sessionPath) {
   const handout = state && state.plan && state.plan.handout;
   if (!handout || typeof handout !== 'object') throw new Error('This session has no handout.');
   if (handout.status !== 'built') throw new Error('The handout is not ready yet.');
   if (!safeVaultPath(handout.directory)) throw new Error('The handout folder named by this session is not a safe place.');
-  if (path === undefined || path === null) return {directory: handout.directory, path: null};
-  if (!safeVaultPath(path) || !path.startsWith(handout.directory + '/') || !/\.pdf$/i.test(path)) throw new Error('That is not a PDF inside this session\'s handout folder.');
-  return {directory: handout.directory, path};
+  // handout.py resolves plan directories relative to the course/project library.
+  // Legacy vault-root plans stay valid, including already-qualified paths.
+  const library = typeof sessionPath === 'string' && safeVaultPath(sessionPath) ? /^01 Projects\/[^/]+\//.exec(sessionPath) : null;
+  const directory = library && !handout.directory.startsWith('01 Projects/') ? library[0] + handout.directory : handout.directory;
+  if (path === undefined || path === null) return {directory, path: null};
+  if (!safeVaultPath(path) || !path.startsWith(directory + '/') || !/\.pdf$/i.test(path)) throw new Error('That is not a PDF inside this session\'s handout folder.');
+  return {directory, path};
 }
 function pickHandout(folder, directory) {
   const pdfs = folder && Array.isArray(folder.children) ? folder.children.filter(f => f && !f.children && String(f.extension || '').toLowerCase() === 'pdf' && typeof f.path === 'string' && f.path.startsWith(directory + '/') && safeVaultPath(f.path)) : [];
@@ -625,11 +668,22 @@ class SessionHost extends Component {
   // The live voice needs only the vault's own files, so any desktop vault can offer it; whether a worker is running is checked when it is asked.
   speakCapable() { const adapter = this.plugin.app && this.plugin.app.vault && this.plugin.app.vault.adapter; return !!(adapter && typeof adapter.writeBinary === 'function' && typeof adapter.readBinary === 'function' && typeof adapter.exists === 'function'); }
   abilities() { return {capable: this.voiceCapable(), speak: this.speakCapable()}; }
-  async ttsWorker() {
+  async ttsWorker(recover = true) {
     try {
       const adapter = this.plugin.app.vault.adapter, path = VOICE_DIR + 'tts-worker.json';
-      if (!(await adapter.exists(path))) return {state: 'off', reason: 'no live voice worker has run here'};
-      return voiceWorkerState(await adapter.read(path), Date.now() / 1000);
+      if (!(await adapter.exists(path))) {
+        if (recover && typeof this.plugin.ensureVoice === 'function') {
+          this.plugin.ensureVoice().catch(() => {});
+          if (this.plugin.voiceStarting) return {state: 'warming', reason: 'Starting the saved local voice setup.'};
+        }
+        return {state: 'off', reason: 'no live voice worker has run here'};
+      }
+      const state = voiceWorkerState(await adapter.read(path), Date.now() / 1000);
+      if (recover && ['off', 'stopped', 'error'].includes(state.state) && typeof this.plugin.ensureVoice === 'function') {
+        this.plugin.ensureVoice().catch(() => {});
+        if (this.plugin.voiceStarting) return {state: 'warming', reason: 'Restarting the saved local voice setup.'};
+      }
+      return state;
     } catch (_) { return {state: 'off', reason: 'the live voice worker could not be checked'}; }
   }
   async speak(action, id, text, token) {
@@ -646,7 +700,10 @@ class SessionHost extends Component {
       if (typeof text !== 'string' || !text.trim() || text.length > TTS_MAX_CHARS || /[\u0000-\u0008\u000b-\u001f\u007f]/.test(text)) throw new Error('A speech request is one sentence of text, 1 to ' + TTS_MAX_CHARS + ' characters.');
       this.ttsPending = this.ttsPending || new Set();
       if (this.ttsPending.size >= TTS_MAX_PENDING) throw new Error('Too many sentences are waiting to be spoken.');
-      const worker = await this.ttsWorker();
+      let worker = await this.ttsWorker(false);
+      if (!['ready', 'busy'].includes(worker.state) && typeof this.plugin.ensureVoice === 'function') {
+        await this.plugin.ensureVoice(); worker = await this.ttsWorker(false);
+      }
       if (worker.state !== 'ready' && worker.state !== 'busy') throw new Error('The live voice is not running' + (worker.reason ? ' (' + worker.reason + ')' : '') + '. Start it with: python scripts/voice.py tts-worker --dir .research-os/voice --voice model_dir=<Kokoro folder>');
       const adapter = this.plugin.app.vault.adapter, request = crypto.randomBytes(8).toString('hex'), base = VOICE_DIR + 'tts/', aborted = this.ttsAbort || 0;
       this.ttsPending.add(label);
@@ -783,11 +840,24 @@ class SessionHost extends Component {
     const say = payload => this.reply(token, Object.assign({type: 'video', resource: label}, payload));
     try {
       if (action === 'close') { this.closeVideo('closed'); return; }
+      if (action === 'layout') { if (this.videoSession && this.videoSession.inline) this.placeInlineVideo(data.slot); return; }
       if (action !== 'open') throw new Error('Unknown video action.');
       const now = Date.now();
       if (this.videoAt && now - this.videoAt < PANE_GAP_MS) throw new Error('Please wait a moment before opening another video.');
       this.videoAt = now;
       const spec = videoSpec(this.state, data.resource, data.start, data.end, now);
+      if (data.slot) {
+        const slot = playerSlot(data.slot);
+        this.closeVideo(null);
+        const container = this.container.ownerDocument.createElement('div'); container.className = 'ros-inline-video';
+        this.container.append(container);
+        const session = {id: spec.id, title: spec.title, token, inline: true, container, finished: false};
+        session.leaf = {detach: () => { if (session.stop) session.stop(); container.remove(); }};
+        this.videoSession = session; this.placeInlineVideo(slot);
+        try { session.stop = mountInlineVideo(container, spec, signal => this.videoSignal(session, signal)); }
+        catch (error) { this.closeVideo(null); throw error; }
+        say({status: 'opened', title: spec.title}); return;
+      }
       const workspace = this.plugin.app.workspace;
       if (!workspace || typeof workspace.getLeaf !== 'function') throw new Error('Opening a video pane is not available in this Obsidian.');
       this.closeVideo(null);
@@ -801,6 +871,13 @@ class SessionHost extends Component {
       view.play(spec, signal => this.videoSignal(session, signal));
       say({status: 'opened', title: spec.title});
     } catch (error) { say({status: 'error', message: String(error && error.message || error).slice(0, 300)}); }
+  }
+  placeInlineVideo(value) {
+    const slot = playerSlot(value), session = this.videoSession;
+    if (!session || !session.inline || !this.frame) return;
+    const bounds = this.frame.getBoundingClientRect(), parent = this.container.getBoundingClientRect();
+    if (slot.x + slot.width > bounds.width + 1 || slot.y + slot.height > bounds.height + 1) throw new Error('Video player is outside the session.');
+    Object.assign(session.container.style, {left: (bounds.left - parent.left + slot.x) + 'px', top: (bounds.top - parent.top + slot.y) + 'px', width: slot.width + 'px', height: slot.height + 'px'});
   }
   // What the pane reports. Its words never reach the page: each outcome has a fixed message here.
   videoSignal(session, signal) {
@@ -834,7 +911,7 @@ class SessionHost extends Component {
       const now = Date.now();
       if (this.handoutAt && now - this.handoutAt < PANE_GAP_MS) throw new Error('Please wait a moment before opening the handout again.');
       this.handoutAt = now;
-      const spec = handoutSpec(this.state, path);
+      const spec = handoutSpec(this.state, path, this.path);
       const vault = this.plugin.app.vault, workspace = this.plugin.app.workspace;
       let file = spec.path ? vault.getAbstractFileByPath(spec.path) : pickHandout(vault.getAbstractFileByPath(spec.directory), spec.directory);
       if (!file && !spec.path) throw new Error('No PDF has been saved in the handout folder yet.');
@@ -900,6 +977,28 @@ class VideoView extends PaneBase {
   async onClose() { const report = this.report; this.stop(); if (report) report({kind: 'closed'}); }
 }
 class ResearchOSHTML extends Plugin {
+  // Start only the installed helper and the user's saved engine environments.
+  // The Obsidian process owns this launch, so closing an agent console cannot end it.
+  async ensureVoice() {
+    if (this.voiceStarting) return this.voiceStarting;
+    if (this.voiceStartAt && Date.now() - this.voiceStartAt < 30000) return;
+    this.voiceStartAt = Date.now();
+    this.voiceStarting = (async () => {
+      const base = this.app.vault.adapter.getBasePath();
+      const directory = nodePath.join(base, VOICE_DIR);
+      const setup = JSON.parse(await this.app.vault.adapter.read(VOICE_DIR + 'voice-setup.json'));
+      if (setup.schema !== 1 || !Array.isArray(setup.envs) || !setup.envs.length) throw new Error('No saved local voice setup.');
+      const environment = setup.envs.find(value => typeof value === 'string' && nodePath.isAbsolute(value));
+      if (!environment) throw new Error('No saved voice interpreter.');
+      const python = nodePath.join(environment, process.platform === 'win32' ? 'Scripts/pythonw.exe' : 'bin/python');
+      const helper = nodePath.join(base, this.app.vault.configDir || '.obsidian', 'plugins', this.manifest.id, 'voice', 'voice.py');
+      if (!fs.existsSync(python) || !fs.existsSync(helper)) throw new Error('The installed voice helper or interpreter is missing.');
+      await new Promise((resolve, reject) => (this.voiceExecFile || require('child_process').execFile)(python, [helper, 'up', '--dir', directory, '--only', 'tts', '--timeout', '90'],
+        {windowsHide: true, timeout: 100000, maxBuffer: 65536}, error => error ? reject(error) : resolve()));
+    })().finally(() => { this.voiceStarting = null; });
+    return this.voiceStarting;
+  }
+
   async loadTrust() {
     this.trustedModules = {};
     const adapter = this.app.vault.adapter;
@@ -952,4 +1051,4 @@ class ResearchOSHTML extends Plugin {
 }
 module.exports = ResearchOSHTML;
 module.exports._test = {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, declaredResource, resolveNote, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling, voiceWorkerState, parseVoiceResult, microphoneMessage, browserRecorder,
-  youtubeId, videoAddress, videoSpec, videoFrameAttributes, playerSignal, safeVaultPath, handoutSpec, pickHandout, VideoView, VIDEO_VIEW};
+  playerSlot, mountInlineVideo, youtubeId, videoAddress, videoSpec, videoFrameAttributes, playerSignal, safeVaultPath, handoutSpec, pickHandout, VideoView, VIDEO_VIEW};

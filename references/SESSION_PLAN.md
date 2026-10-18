@@ -35,11 +35,32 @@ If a good video already exists for the exact topic, play it instead of animating
 4. **Choose by:** exact topic and level; correct against the course source; clear and in the learner's language (English first); a creator with authority for the claim; captions available; the part is short. Prefer a primary lecture or an established educator over a re-upload.
 5. **Self-made visuals remain for what no video covers**, for what must match the course's own notation or numbers, and for anything a video gets wrong.
 
-**Where it plays.** The Obsidian view's frame forbids embedded players (`RESOURCE_PROTOCOL.md`: `frame-src 'none'`), and "Open" would hand the address to the system browser, which is exactly what the session must not do. So a video plays in a pane the Obsidian companion owns, which the page requests by record id and start and end (the researcher approved this widening on 2026-10-18; `RESOURCE_PROTOCOL.md`, "The video pane in Obsidian", has what it permits and why it is safe). `html_sessions.py plan` copies the vetted registry records the plan names into the session as `video_records` (a record that is missing, not vetted, stale or not embeddable is left out), and the host looks the video up there, takes the times from the plan, and builds the address itself.
+**Where it plays.** The Obsidian view's frame forbids embedded players (`RESOURCE_PROTOCOL.md`: `frame-src 'none'`), and "Open" would hand the address to the system browser, which is exactly what the session must not do. So a video plays in the integrated Video tab through a player the Obsidian companion owns, which the page requests by record id and start and end (the researcher approved this widening on 2026-10-18; `RESOURCE_PROTOCOL.md`, "The video pane in Obsidian", has what it permits and why it is safe). `html_sessions.py plan` copies the vetted registry records the plan names into the session as `video_records` (a record that is missing, not vetted, stale or not embeddable is left out), and the host looks the video up there, takes the times from the plan, and builds the address itself.
 
 On the page: the segment's script plays first and should introduce the video (a segment with no script gets its `notice` spoken). The board then waits and the video card appears with what to watch for and a "Play the video" button; nothing outside loads before the learner presses it. The lecture goes on when the video ends or its tab is closed, when the learner says they have finished, or when the video cannot be played (embedding refused, offline, no answer in ten seconds): the page says so, the lecture goes on from the board and the handout, and the video stays on offer ("Try the video again"). So **a segment with a video must still teach what matters on the board or in the handout**; the video adds to it and may fail. The check question follows the lecture as usual.
 
-This is **not verified inside Obsidian**: whether YouTube's player loads in Obsidian's Electron frame, whether autoplay and the end-of-video report work there, and whether the pane opens beside the lesson are untested (`tests/html-host.test.js` uses a scripted workspace; `tests/html-stages-browser.cjs` a scripted host).
+The integrated Video tab was observed playing the vetted MIT MSE lesson in
+Obsidian 1.14.4 on 19 October 2026, with advancing slides, captions and elapsed time.
+The host uses an isolated Electron guest with this application's own HTTP referrer;
+see `RESOURCE_PROTOCOL.md`. Browser tests separately cover completion, closing,
+errors and timeout behavior. Do not extend these observations to another video,
+a physical mobile device, or independently recorded speaker output.
+
+## Layout acceptance
+
+The complete active stage must fit the available Obsidian pane without vertical or
+horizontal scrolling. Use a course-player layout: Quiz, Handout, Lecture, Video and Check navigation on the left of a desktop teaching surface, with supporting question tools alongside it. Keep the stage navigation, playback and question actions,
+caption controls, and tutor status visible together. Use the wide lecture layout
+with the board beside its tools on desktop; stack compact tools on smaller panes.
+Size the drawing frame from the remaining height while keeping captions at a stable
+column width. Long captions use Previous/Next caption pages. When a saved answer
+and its feedback cannot fit together, use Your answer/Feedback/Explanation pages; preserve both
+in full. Never conceal an overflowing control with clipping or tiny text.
+
+Verify Probe, Handout, Lecture, question entry, feedback and Check at the actual
+pane size, plus desktop, tablet and narrow viewport regressions. A scrollbar-style
+check alone is insufficient: assert document dimensions and that interactive
+controls stay above the footer and can actually be clicked.
 
 ## Parallel work
 
@@ -57,4 +78,4 @@ frozen path, and a revised plan may not change how answered questions were judge
 A plan makes the common path instant. A question it did not anticipate still waits for the agent. A plan that has not been run by a learner is untested teaching; the check below only proves the plan is well-formed.
 
 - `session_plan.py check` verifies structure: references, reachability, the budget, board scripts, paths. It does not judge whether the questions test what they claim, whether the feedback is right, or whether the lecture is good.
-- The handout builder is a later slice (`docs/plans/v0.9.7-focused-session-plan.md`). The video pane and the handout button are built and tested only against scripted hosts, not in Obsidian.
+- The handout builder is a later slice (`docs/plans/v0.9.7-focused-session-plan.md`). The handout button was verified against the recovered STAT303 session in Obsidian on 2026-10-18; the integrated Video tab also has real Obsidian playback evidence; failure and completion paths remain separately tested by scripted hosts.

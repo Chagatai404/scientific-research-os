@@ -739,6 +739,34 @@ class Up(unittest.TestCase):
         result = self.run_up(self.spawn(stt={'warm': 3.0}), kinds=('stt',))
         self.assertTrue(result['ready'])
 
+    def test_startup_lock_is_shared_across_processes_and_released_on_exit(self):
+        ready = self.dir / 'lock-ready'
+        release = self.dir / 'lock-release'
+        code = (
+            "import sys,time;from pathlib import Path;sys.path.insert(0,sys.argv[1]);import voice;"
+            "folder=Path(sys.argv[2]);guard=voice.worker_start_lock(folder);guard.__enter__();"
+            "(folder/'lock-ready').touch();"
+            "\nwhile not (folder/'lock-release').exists(): time.sleep(.01)\n"
+        )
+        process = subprocess.Popen([sys.executable, '-S', '-c', code, str(ROOT / 'scripts'), str(self.dir)])
+        try:
+            deadline = time.time() + 10
+            while not ready.exists() and time.time() < deadline:
+                time.sleep(.01)
+            self.assertTrue(ready.exists())
+            with self.assertRaisesRegex(vc.VoiceError, 'no duplicate'):
+                with vc.worker_start_lock(self.dir, timeout=.1):
+                    self.fail('the second process acquired a held startup lock')
+            release.touch()
+            self.assertEqual(process.wait(timeout=10), 0)
+            with vc.worker_start_lock(self.dir, timeout=.1):
+                pass
+        finally:
+            release.touch()
+            if process.poll() is None:
+                process.terminate()
+                process.wait(timeout=10)
+
     def test_the_process_is_started_detached_with_a_log_and_no_console(self):
         with mock.patch.object(vc.subprocess, 'Popen') as popen:
             vc.spawn_detached(['py', 'x'], self.dir / 'logs' / 'tts-worker.log')
@@ -747,10 +775,24 @@ class Up(unittest.TestCase):
         self.assertEqual(options['stderr'], vc.subprocess.STDOUT)
         if os.name == 'nt':
             flags = options['creationflags']
-            self.assertTrue(flags & 0x8 and flags & 0x08000000)       # DETACHED_PROCESS and CREATE_NO_WINDOW
+            self.assertTrue(flags & 0x08000000)
+            self.assertFalse(flags & 0x8)  # DETACHED_PROCESS makes CREATE_NO_WINDOW ineffective
         else:
             self.assertTrue(options['start_new_session'])
         self.assertTrue((self.dir / 'logs').is_dir())
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows worker lifetime')
+    def test_gui_python_is_used_so_console_closure_cannot_end_the_worker(self):
+        environment = self.dir / 'engine'
+        environment.mkdir()
+        python = environment / 'python.exe'
+        windowless = environment / 'pythonw.exe'
+        python.touch()
+        windowless.touch()
+        with mock.patch.object(vc.subprocess, 'Popen') as popen:
+            vc.spawn_detached([str(python), 'adapter.py', 'serve-tts'], self.dir / 'logs' / 'gui.log')
+        self.assertEqual(popen.call_args.args[0][0], str(windowless))
+        self.assertFalse(popen.call_args.kwargs['creationflags'] & 0x8)
 
     def test_the_setup_is_saved_and_read_back_and_a_damaged_one_is_ignored(self):
         path = vc.save_setup(self.dir, {'envs': ['E'], 'voices': {'model_dir': 'm'}})

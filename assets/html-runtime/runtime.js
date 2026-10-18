@@ -130,7 +130,7 @@
       pause: 0.5,
       request(id, text) {
         return new Promise((resolve, reject) => {
-          const timer = root.setTimeout(() => { if (speechPending.delete(id)) reject(new Error('the live voice took too long')); }, 30000);
+          const timer = root.setTimeout(() => { if (speechPending.delete(id)) reject(new Error('the live voice took too long')); }, 120000);
           speechPending.set(id, {resolve: value => { root.clearTimeout(timer); resolve(value); }, reject: error => { root.clearTimeout(timer); reject(error); }});
           toHost('speak', {action: 'synth', id, text});
         });
@@ -1178,7 +1178,7 @@
             if (!host || !mounted || !at.step) return;
             toHost('board-position', {widget: 'plan-lecture', step: at.step, index: at.index, count: mounted.player && mounted.player.steps ? mounted.player.steps.length : 0, status: mounted.status});
           };
-          mounted = root.ResearchOSBoard.mount(container, script, {doc, win: root, renderMath, live: liveVoice || undefined, startAt,
+          mounted = root.ResearchOSBoard.mount(container, script, {doc, win: root, renderMath, live: liveVoice || undefined, startAt, maxCaptionChars: root.innerWidth < 600 ? 140 : 300,
             onEvent(type, data) {
               if (type === 'step') at = {step: data.step.id, index: data.index};
               if (type === 'step' || type === 'status' || type === 'steps') root.queueMicrotask(report);
@@ -1189,7 +1189,7 @@
         footer: element => element.append(status, supervisionLine),
         // Panes the host owns (a vetted video, the handout PDF). The page names them; the host decides and opens them. A page with no host has none.
         panes: host ? {
-          video: {open: video => toHost('video', {action: 'open', resource: video.resource, start: video.start, end: video.end}), close: () => toHost('video', {action: 'close'}), on: callback => paneListeners.video.add(callback)},
+          video: {open: (video, slot) => toHost('video', {action: 'open', resource: video.resource, start: video.start, end: video.end, ...(slot ? {slot} : {})}), place: slot => toHost('video', {action: 'layout', slot}), close: () => toHost('video', {action: 'close'}), on: callback => paneListeners.video.add(callback)},
           handout: {open: () => toHost('handout', {action: 'open'}), on: callback => paneListeners.handout.add(callback)},
           openTimeoutMs: Number.isFinite(host.video_timeout_ms) ? host.video_timeout_ms : undefined
         } : null,

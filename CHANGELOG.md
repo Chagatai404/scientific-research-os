@@ -13,9 +13,20 @@
   prepared lecture audio. Saved local settings work across agent hosts.
 - Both tutoring skills require automatic preparation from an ordinary start or
   resume request, preserving earlier responses and respecting requests to move on.
-- [STAT303 recovery findings](docs/STAT303_ROLLOUT_FINDINGS.md) distinguish verified
-  files, compiled handouts and generated audio from pending real-desktop playback
-  checks. This entry does not certify unperformed Obsidian or microphone checks.
+- Course-library-relative handout folders now resolve correctly in the Obsidian
+  companion. The prepared STAT303 PDF was opened in the actual app.
+- A course-player layout provides Quiz, Handout, Lecture, Video and Check navigation.
+  The integrated YouTube guest was observed playing the vetted MIT lesson in Obsidian.
+- Stages fit the viewport without page scrolling. The board uses stable caption
+  width, desktop tools sit beside it, and long captions and saved-answer feedback
+  use pages so navigation stays visible.
+- [STAT303 recovery findings](docs/STAT303_ROLLOUT_FINDINGS.md) record real Obsidian
+  playback progression, reload persistence, PDF opening and layout checks, with
+  explicit remaining microphone and speaker-hardware recording limits.
+- Windowless voice workers avoid incompatible Windows creation flags. Obsidian
+  restarts the saved local voice setup automatically with a shared startup lock; a stopped worker was replaced
+  in a real-app test, and a voice retry retains the current step and pause.
+  Companion 0.3.1 bundles and checks the local recovery helper.
 
 ## 0.9.6 - 2026-10-18 - Live Blackboard and Voice
 

@@ -262,6 +262,8 @@ def install_html_companion(cfg: dict, dry: bool) -> None:
         if target.exists() and target.read_bytes() != source.read_bytes():
             raise ValueError(f"Existing companion differs; back it up before updating: {target}")
         copy_file(source, target, dry)
+    for name in ('voice.py', 'voice_adapter.py', 'speech_text.py'):
+        copy_file(ROOT / 'scripts' / name, destination / 'voice' / name, dry)
     from html_sessions import install_runtime
     if dry:
         print(f"[dry] shared HTML runtime -> {vault / '.research-os/runtime'}")

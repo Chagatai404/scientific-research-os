@@ -67,6 +67,7 @@ function hostPage(size, seeded = [], options = {}) {
           if (mode === 'ended' || mode === 'closed') setTimeout(() => send(Object.assign({status: mode}, base)), 150);
         }
       }
+      if (d.type === 'video' && d.action === 'close') send({type: 'video', status: 'closed'});
       if (d.type === 'handout' && d.action === 'open') send(window.__handoutMode === 'ok' ? {type: 'handout', status: 'opened', title: 'variance'} : {type: 'handout', status: 'error', message: 'No PDF has been saved in the handout folder yet.'});
       if (d.type === 'speak' && d.action === 'status') send({type: 'speech', status: 'worker', state: window.__tts});
       if (d.type === 'speak' && d.action === 'synth') send({type: 'speech', status: 'error', id: d.id, message: 'the test host has no voice'});
@@ -105,12 +106,74 @@ function hostPage(size, seeded = [], options = {}) {
       if (scrolls && e.tagName !== 'TEXTAREA') bad.push(e.tagName + '.' + e.className);
       if (scrolls && e.tagName !== 'TEXTAREA' && (e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1)) bad.push('scrollable ' + e.tagName + '.' + e.className);
     }
+    const footer = document.querySelector('.ros-stages-footer');
+    for (const button of document.querySelectorAll('.ros-stage button, .ros-stage textarea, .ros-stage input')) {
+      const box = button.getBoundingClientRect();
+      if (box.width && box.height && footer && box.bottom > footer.getBoundingClientRect().top + 1) bad.push('control overlaps footer: ' + (button.textContent || button.getAttribute('aria-label') || button.tagName));
+    }
+    if (document.documentElement.scrollHeight > window.innerHeight + 1) bad.push('the page scrolls vertically: ' + document.documentElement.scrollHeight + ' > ' + window.innerHeight);
     if (document.documentElement.scrollWidth > window.innerWidth + 1) bad.push('the page scrolls sideways: ' + document.documentElement.scrollWidth + ' > ' + window.innerWidth);
     return bad;
   });
   const stage = t => t.frame.locator('.ros-stages').getAttribute('data-stage');
   const primary = (t, text) => t.frame.getByRole('button', {name: text, exact: true});
   const bar = t => t.frame.locator('.ros-stagebar li button').allTextContents();
+
+  // Long captions must not recursively shrink the board to a thumbnail.
+  for (const size of [{width: 1440, height: 800}, {width: 1280, height: 640}, {width: 1024, height: 640}, {width: 768, height: 800}, {width: 375, height: 740}]) {
+    const plan = structuredClone(baseState.plan);
+    plan.segments[0].script.steps[0].say = 'The sampling distribution describes the estimates from repeated samples. '.repeat(8);
+    plan.anticipated = ['Why does the constant not matter?', 'Why does the cross term vanish?', 'How is standard error different from variance?', 'Can a biased rule be better?'].map((label, i) => ({...plan.anticipated[0], label, steps: plan.anticipated[0].steps.map(step => ({...step, id: step.id + '-' + i}))}));
+    const t = await open(size, [answer('scale', 'b'), answer('twopoint', 1), answer('why', 'squares')], {plan, built: true});
+    await t.page.evaluate(() => { window.__tts = 'ready'; });
+    await t.frame.locator('.ros-voice-state', {hasText: 'voice is ready'}).waitFor({timeout: 8000});
+    await primary(t, 'Start the lecture').click();
+    await t.frame.locator('.ros-board').waitFor();
+    await t.page.waitForTimeout(250);
+    const box = await t.frame.locator('.ros-board').boundingBox();
+    const surface = await t.frame.locator('.ros-board-surface').boundingBox();
+    assert(surface.width >= Math.min(260, size.width * 0.6), `board remains readable at ${size.width}: ${surface.width}`);
+    assert(surface.bottom <= size.height || surface.y + surface.height <= size.height, 'the board fits vertically');
+    assert.deepEqual(await scrollbars(t), []);
+    await primary(t, 'Ask a question').click();
+    await t.page.waitForTimeout(250);
+    assert.deepEqual(await scrollbars(t), [], `question composer at ${size.width}`);
+    const sendBox = await primary(t, 'Send').boundingBox();
+    assert(sendBox.y + sendBox.height <= size.height, 'Send stays on screen');
+    await primary(t, 'Cancel').click();
+    await primary(t, 'Video').click();
+    assert.equal(await stage(t), 'video');
+    await t.page.evaluate(() => { window.__videoMode = 'hold'; });
+    await t.frame.locator('.ros-video-choices button').first().click();
+    await t.frame.locator('.ros-video-library-status', {hasText: 'Video player open'}).waitFor();
+    assert.deepEqual(await scrollbars(t), [], `video tab at ${size.width}`);
+    const slot = await t.frame.locator('.ros-video-slot').boundingBox();
+    assert(slot.width >= 260 && slot.height >= 150, 'video has a usable central player');
+    await primary(t, 'Back to session').click();
+    assert.equal(await stage(t), 'lecture');
+    await t.frame.locator('.ros-stagebar button').filter({hasText: 'Handout'}).click();
+    assert.deepEqual(await scrollbars(t), [], `handout at ${size.width}`);
+    await t.page.close();
+    const probe = await open(size);
+    assert.deepEqual(await scrollbars(probe), [], `probe at ${size.width}`);
+    await probe.frame.locator('input[type="radio"][value="c"]').check();
+    await primary(probe, 'Check my answer').click();
+    await probe.page.waitForTimeout(150);
+    assert.deepEqual(await scrollbars(probe), [], `feedback at ${size.width}`);
+    const nextBox = await primary(probe, 'Next question').boundingBox();
+    assert(nextBox.y + nextBox.height <= size.height, 'Next question stays on screen');
+    const pages = probe.frame.locator('.ros-review-pages');
+    if (await pages.isVisible()) {
+      await primary(probe, 'Your answer').click();
+      assert.deepEqual(await scrollbars(probe), [], 'the saved answer page fits');
+      await primary(probe, 'Explanation').click();
+      assert.deepEqual(await scrollbars(probe), [], 'the explanation page fits');
+      await primary(probe, 'Feedback').click();
+    }
+    await primary(probe, 'Next question').click();
+    await probe.page.close();
+  }
+  if (process.env.ROS_STAGES_LAYOUT_ONLY) { await browser.close(); console.log('staged lecture sizing regression passed'); return; }
 
   // A first plan attached to an open historical lesson takes effect immediately,
   // keeping saved answers; a second state update must not mount duplicate stages.
@@ -134,8 +197,8 @@ function hostPage(size, seeded = [], options = {}) {
     // The reading page is not shown: no lesson text, no contents list, no questions panel, no markdown dump.
     const visible = await t.frame.locator('body').innerText();
     assert(!visible.includes(built.lesson_text) && !visible.includes('Exact original Markdown') && !visible.includes('Contents'), 'only the stages are visible');
-    assert.deepEqual(await bar(t), ['Probe', 'Handout', 'Lecture', 'Check']);
-    assert.deepEqual(await t.frame.locator('.ros-stagebar li button').evaluateAll(bs => bs.map(b => b.disabled)), [false, true, true, true], 'later stages wait');
+    assert.deepEqual(await bar(t), ['Quiz', 'Handout', 'Lecture', 'Video', 'Check']);
+    assert.deepEqual(await t.frame.locator('.ros-stagebar li button').evaluateAll(bs => bs.map(b => b.disabled)), [false, true, true, false, true], 'later stages wait');
     assert.deepEqual(await scrollbars(t), [], 'probe stage');
 
     // Question 1: a wrong option says what the mistake was, at once, with nothing sent to the tutor to wait for.
@@ -197,7 +260,7 @@ function hostPage(size, seeded = [], options = {}) {
     assert.equal(await stage(t), 'handout');
     assert((await t.frame.locator('.ros-handout').textContent()).includes('Variance and rescaling'));
     assert.equal(await t.frame.locator('.ros-handout li').count(), 6);
-    assert.deepEqual(await t.frame.locator('.ros-stagebar li').evaluateAll(items => items.map(i => i.dataset.state)), ['done', 'current', 'todo', 'todo']);
+    assert.deepEqual(await t.frame.locator('.ros-stagebar li').evaluateAll(items => items.map(i => i.dataset.state)), ['done', 'current', 'todo', 'available', 'todo']);
     await t.page.waitForFunction(() => window.__log.some(m => m.type === 'speak' && m.action === 'status'));
     assert.equal(await primary(t, 'Start the lecture').isDisabled(), true, 'the voice is still warming up');
     assert((await t.frame.locator('.ros-voice-state').textContent()).includes('warming up'));
@@ -255,12 +318,12 @@ function hostPage(size, seeded = [], options = {}) {
     assert.deepEqual(await scrollbars(t), [], 'lecture stage with the video card');
     await primary(t, 'Play the video').click();
     await card.waitFor({state: 'hidden', timeout: 10000});
-    assert.deepEqual((await t.log()).filter(m => m.type === 'video').map(m => [m.action, m.keys]), [['open', 'action,channel,end,resource,session_id,start,token,type']], 'the page names a record and a part, and nothing else');
+    assert.deepEqual((await t.log()).filter(m => m.type === 'video' && m.action === 'open').map(m => [m.action, m.keys]), [['open', 'action,channel,end,resource,session_id,slot,start,token,type']], 'the page names a record and a part, and nothing else');
     assert.deepEqual(await t.page.evaluate(() => window.__opened), ['RES-example-variance-video']);
     await t.frame.locator('.ros-board[data-status="done"]').waitFor({timeout: 10000});
     await primary(t, 'Continue to the check').click();
     assert.equal(await stage(t), 'check');
-    assert.deepEqual(await t.frame.locator('.ros-stagebar li').evaluateAll(items => items.map(i => i.dataset.state)), ['done', 'done', 'done', 'current']);
+    assert.deepEqual(await t.frame.locator('.ros-stagebar li').evaluateAll(items => items.map(i => i.dataset.state)), ['done', 'done', 'done', 'available', 'current']);
     await t.frame.locator('.ros-qcard input[type="text"]').fill('36');
     await primary(t, 'Check my answer').click();
     assert.equal(await t.frame.locator('.ros-stage-check .ros-stage-verdict').textContent(), 'Correct.');
@@ -289,7 +352,7 @@ function hostPage(size, seeded = [], options = {}) {
   {
     const t = await open({width: 1280, height: 800}, [answer('scale', 'b'), answer('twopoint', 1), answer('why', 'squares', 'probe')]);
     assert.equal(await stage(t), 'handout', 'the saved answers say the probe is finished');
-    assert.deepEqual(await t.frame.locator('.ros-stagebar li').evaluateAll(items => items.map(i => i.dataset.state)), ['done', 'current', 'todo', 'todo']);
+    assert.deepEqual(await t.frame.locator('.ros-stagebar li').evaluateAll(items => items.map(i => i.dataset.state)), ['done', 'current', 'todo', 'available', 'todo']);
     await t.frame.locator('.ros-stagebar li button').nth(0).click();            // looking back at the probe is allowed
     assert.equal(await t.frame.locator('.ros-strip button').count(), 3);
     await t.page.close();
@@ -421,7 +484,7 @@ function hostPage(size, seeded = [], options = {}) {
     return t;
   }
   const boardStatus = t => t.frame.locator('.ros-board').getAttribute('data-status');
-  const videoMessages = async t => (await t.log()).filter(m => m.type === 'video').map(m => m.action);
+  const videoMessages = async t => (await t.log()).filter(m => m.type === 'video' && m.action !== 'layout').map(m => m.action);
   {   // closed: the learner closes the video tab; the lecture goes on and the check follows
     const t = await lectureAtVideo('closed');
     await primary(t, 'Play the video').click();
@@ -433,13 +496,13 @@ function hostPage(size, seeded = [], options = {}) {
   {   // the lecture waits while the video plays, and the learner can say they have finished watching
     const t = await lectureAtVideo('hold');
     await primary(t, 'Play the video').click();
-    await t.frame.locator('.ros-video-status', {hasText: 'is playing in its own tab'}).waitFor();
+    await t.frame.locator('.ros-video-library-status', {hasText: 'Video player open'}).waitFor();
     assert.equal(await boardStatus(t), 'waiting');
     await t.page.waitForTimeout(800);
     assert.equal(await boardStatus(t), 'waiting', 'the lecture pauses while the video plays');
     assert.equal(await t.frame.getByRole('button', {name: 'Continue to the check', exact: true}).isVisible(), false);
     assert.equal(await t.frame.getByRole('button', {name: 'Skip the video'}).count(), 0, 'no skip while it plays; finishing is one click');
-    await primary(t, 'I have finished watching').click();
+    await primary(t, 'Back to session').click();
     await t.page.waitForFunction(() => window.__log.some(m => m.type === 'video' && m.action === 'close'));
     assert.deepEqual(await videoMessages(t), ['open', 'close'], 'the host is asked to close the tab');
     await t.frame.locator('.ros-board[data-status="done"]').waitFor({timeout: 10000});

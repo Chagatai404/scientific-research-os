@@ -69,16 +69,37 @@ and a warm worker also do not establish speaker output or microphone operation.
 Record real Obsidian display, PDF opening, video playback, audio playback and
 reload persistence separately. Never call unperformed desktop checks passed.
 
-Native Computer Use was interrupted with Escape; subsequent attempts still
-reported stopped even after the learner authorized resuming. Desktop verification
-therefore remained pending at this checkpoint. The session must not be described
-as fully operational on that basis.
+Computer Use was resumed with the learner's permission. In Obsidian 1.14.4 the
+prepared lecture started, the board advanced through real narration steps, and
+saved progress survived a full application reload. The local Kokoro worker served
+cached lecture audio without the page showing a fallback. These observations verify
+the application playback path; speaker hardware was not independently recorded.
+The PDF opened through the handout button in a separate Obsidian tab, showing all
+five pages. The integrated MIT YouTube player subsequently played inside the Video tab; its
+slide, captions and elapsed time advanced from five seconds to over one minute.
+Microphone transcription and independently recorded speaker output remain untested.
+
+### Desktop findings and corrections
+
+- The PDF existed, but the companion treated a course-library-relative handout
+  directory as a vault-root path. Resolve it against the session's project library,
+  matching the Python builder; keep explicit requested PDFs confined to that folder.
+- Measuring the entire shrinking lecture layout made a wrapped caption shrink the
+  board again. Keep the caption column stable, measure the remaining viewport, and
+  resize only the drawing frame. Desktop tools sit beside the larger board.
+- A fixed-height layout can still overlap its footer. Compact cards and paginate
+  long captions and saved-answer feedback; do not hide overflow. Browser acceptance
+  checks assert page dimensions and control/footer separation, including question
+  entry and feedback at 1440x800, 768x800 and 375x740.
+- The actual full-width Obsidian lecture displayed the board, stage navigation,
+  playback/caption controls, all four anticipated questions and status together
+  without page scrolling. The handout stage also fitted the available pane.
 
 ### Checks performed on the recovery
 
-- Session startup: 13 Python tests passed.
-- Speech worker behavior and stale-process replacement: 60 Python tests passed.
-- Installation and deployed-content drift: 15 Python tests passed.
+- Session startup: 14 Python tests passed, including deployed recovery-helper drift.
+- Speech worker behavior, stale-process replacement, windowless launch and cross-process startup locking: 62 Python tests passed.
+- Installation and deployed-content drift: the earlier 15-test suite passed; the new companion recovery-helper installation check also passed.
 - Session plans: 58 Python tests passed; supervision: 25 passed.
 - Handout tooling: 26 passed, 2 environment-dependent checks skipped.
 - JavaScript stage logic, runtime/KaTeX checks, host bridge tests and the staged
@@ -97,3 +118,44 @@ as fully operational on that basis.
 - The changed helpers, skills, companion verification files and rebuilt runtime
   were deployed and compared with source for both Claude and Codex. Obsidian's
   installed CLI was checked but is disabled; it could not provide desktop evidence.
+
+## Course-player and voice-lifetime follow-up (19 October 2026)
+
+The learner supplied a Coursera layout reference. The desktop now uses a left
+lesson navigation, a central board/player and adjacent question tools. The visible
+entry stage is **Quiz**; its internal `probe` identifiers remain unchanged so saved
+answers and routing are preserved. Video is a supplementary tab, available without
+changing quiz progress. It hosts only the vetted planned resource and interval.
+The overlay is sized to a bounded central slot; navigation, status and return
+controls remain outside it. The Electron guest supplies this application's own
+referrer, uses an in-memory partition, and has Node integration and popups disabled.
+
+Both original voice workers disappeared together while the session was open;
+Whisper logged a window-CLOSE abort. The old Windows launcher combined
+`DETACHED_PROCESS` with `CREATE_NO_WINDOW`, which makes the latter ineffective
+according to [Microsoft's process-creation documentation](https://learn.microsoft.com/en-us/windows/win32/procthread/process-creation-flags).
+The corrected launcher uses windowless Python where present and no incompatible
+flag combination. Short engine-discovery commands also suppress console windows.
+
+The companion now owns recovery from the saved local environment setup, invoking
+only its installed helper with argument arrays and no shell. Startup calls are
+coalesced, missing setups are not installed automatically, and recovery never
+launches over a live current worker. Requests wait for warm-up; the page can retry
+the same interrupted step and retains a deliberate pause. The installed helper
+closure is included in deployment and startup drift checks.
+
+**Observed recovery:** a cooperative stop was requested only for this vault's TTS
+worker (PID 39308). Without an agent startup command, Obsidian launched replacement
+PID 6376, which reported ready after 15.55 seconds. The video kept playing during
+this test. After recovery, the local worker served 13 cached requests with zero failures while
+Obsidian advanced from `mse-split` through `mse-expand` to `mse-result`. The lecture
+was paused at that checkpoint, with the original answers and closing check intact.
+Worker readiness, in-app lecture progression and independent acoustic speaker
+recording are distinct evidence; only the first two have been checked.
+
+
+Agent startup and companion recovery share an OS-backed startup lock. Concurrent
+launch attempts wait and re-check leases instead of spawning duplicate models;
+process exit releases the lock. A two-process regression verifies contention and
+release. Companion 0.3.1 packages its three-file recovery helper closure, and the
+session preflight compares those files as well as renderer and host assets.

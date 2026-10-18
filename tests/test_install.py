@@ -420,3 +420,11 @@ class InstallationTests(unittest.TestCase):
         self.assertEqual(quiz["learning_state"], "unknown")
         for name in ("13_Knowledge_Graph.md", "14_Learning_Goal.md", "15_Course.md", "16_Course_Session.md"):
             self.assertTrue((vault / "Templates" / name).exists())
+
+    def test_html_companion_bundles_saved_voice_recovery_helpers(self):
+        vault = self.tmp_path / 'companion-vault'
+        with redirect_stdout(io.StringIO()):
+            install.install_html_companion({'vault': {'path': str(vault)}}, False)
+        for name in ('voice.py', 'voice_adapter.py', 'speech_text.py'):
+            self.assertEqual((vault / '.obsidian/plugins/research-os-html/voice' / name).read_bytes(), (ROOT / 'scripts' / name).read_bytes())
+        self.assertFalse((vault / '.obsidian/community-plugins.json').exists())

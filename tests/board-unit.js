@@ -25,6 +25,15 @@ assert.equal(B.normalizePath('M 1,1  L 5 5 Z'), 'M 1 1 L 5 5 Z');
 assert.equal(B.normalizePath('M 1 1 L 5 5 <script>'), null);
 assert.equal(B.normalizePath('M 1 1 l 5 5'), null, 'relative commands are refused');
 
+// Caption pagination preserves text and bounds the space reserved above the controls.
+assert.deepEqual(B.captionPages('', 20), ['']);
+assert.deepEqual(B.captionPages('Short caption.', 20), ['Short caption.']);
+const caption = 'The sampling distribution describes repeated estimates. '.repeat(12).trim();
+const pages = B.captionPages(caption, 140);
+assert.equal(pages.join(' '), caption);
+assert(pages.length > 1 && pages.every(page => page.length <= 140));
+assert.deepEqual(B.captionPages('x'.repeat(31), 10).map(page => page.length), [10, 10, 10, 1]);
+
 // --------------------------------------------------------------------------------------------------------- fakes
 function fakeClock() {
   let now = 0, next = 1;
@@ -99,6 +108,18 @@ function rig(steps, extra, effectDuration) {
     r.speaker.finish();
     await tick(); await tick();
     assert.equal(r.player.status, 'done');
+  }
+
+  // Reconnection retries the same step without consuming it or unpausing a held lesson.
+  {
+    const r = rig([{id: 'a', say: 'Interrupted.', do: []}, {id: 'b', say: 'Next.', do: []}]);
+    r.player.start(); await tick();
+    r.player.pause(); r.player.restartStep(); await tick();
+    assert.equal(r.player.index, 0);
+    assert.equal(r.player.status, 'paused');
+    assert.deepEqual(r.speaker.log.filter(item => item[0] === 'speak').map(item => item[1]), ['Interrupted.', 'Interrupted.']);
+    r.player.resume(); r.speaker.finish(); await tick(); await tick();
+    assert.equal(r.player.index, 1);
   }
 
   // A step waits for its slowest action as well as its sentence.
