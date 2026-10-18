@@ -161,6 +161,10 @@ delays are seconds from the start of a sentence, not aligned to words. Tested in
 recording path through the real engine was run once on the example lecture. Not tested inside Obsidian or Safari, with a real device voice, or by a learner:
 nobody has listened to the board speak, and legibility is the researcher's judgement (Kalam was chosen over Patrick Hand, which read as too casual).
 
+## Lecturing live on a board (v0.9.6)
+
+`references/LIVE_LECTURE.md` is the agent's loop. The commands: `html_sessions.py board-append <session> <widget> --source steps.json [--after <step id>] [--open true|false]` adds steps to a lecture while it plays (at the end, or right after the step the learner has reached; the result is checked with the page's own rules before anything is written, and open views play it live); `html_sessions.py board-position <session>` says which step the learner is on, its state and how old that report is. The host writes that position (`<session>.board-position.json`, validated, kept out of the session state, a pacing hint and never evidence) as the page reports it. The board speaks with the **live voice** (`VOICE_PROTOCOL.md`) where the host offers it.
+
 ## Asking aloud (v0.9.6)
 
 In the Obsidian view a **Hold to ask aloud** button sits under the open-question box. The sandboxed page never gets the microphone: it asks the host by action (`status`, `start`, `stop`, `cancel`) over the existing token-authenticated channel, the host records and hands the recording to a local voice worker (`VOICE_PROTOCOL.md`), and the transcript comes back as text in the question box. The learner reads and corrects it and presses Send; a spoken question is then an ordinary open question and `wait` / `answer` handle it unchanged. The lecture pauses while they ask and resumes when they send or cancel. The button is absent on a standalone page, where there is no host, and the host refuses to record when no worker has beaten recently, saying how to start one.

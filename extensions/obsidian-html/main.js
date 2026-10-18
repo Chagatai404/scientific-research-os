@@ -456,6 +456,7 @@ class SessionHost extends Component {
     }
     if (data.type === 'voice') { this.voice(data.action, this.token); return; }
     if (data.type === 'speak') { this.speak(data.action, data.id, data.text, this.token); return; }
+    if (data.type === 'board-position') { this.boardPosition(data); return; }
     if (data.type === 'navigate') { this.navigate(data.target, this.token); return; }
     if (data.type === 'open-resource') { this.openResource(data.id, this.token); return; }
     if (this.pending >= 32) { this.reply(this.token, {type: 'error', message: 'Too many pending events.'}); return; }
@@ -501,6 +502,28 @@ class SessionHost extends Component {
       } catch (error) { this.reply(token, {type: 'error', message: error.message}); }
       finally { this.writing = false; this.pending--; }
     });
+  }
+  // ---- where the learner is in a lecture. The page reports it (validated here); the lecturer reads <session>.board-position.json to pace itself and to know where an
+  // answer belongs. It is a hint, kept out of the session state, and never evidence of anything.
+  boardPosition(data) {
+    const id = /^[A-Za-z0-9_-]{1,64}$/;
+    if (typeof data.widget !== 'string' || !id.test(data.widget) || typeof data.step !== 'string' || !id.test(data.step) || !Number.isInteger(data.index) || data.index < 0 || data.index > 1000
+      || !Number.isInteger(data.count) || data.count < 0 || data.count > 1000 || !['idle', 'playing', 'paused', 'waiting', 'done', 'revised'].includes(data.status)) return;
+    this.positions = this.positions || {};
+    const was = this.positions[data.widget];
+    const next = {step: data.step, index: data.index, count: data.count, status: data.status, at: Date.now() / 1000};
+    if (Object.keys(this.positions).length >= 16 && !was) return;
+    this.positions[data.widget] = next;
+    const changed = !was || was.status !== next.status;
+    clearTimeout(this.positionTimer);
+    const write = async () => {
+      try {
+        const adapter = this.plugin.app.vault.adapter;
+        if (typeof adapter.write !== 'function' || this.invalidated) return;
+        await adapter.write(this.path.replace(/\.html$/i, '.board-position.json'), JSON.stringify({schema: 1, boards: this.positions}));
+      } catch (_) { /* a position is a hint; losing one changes nothing */ }
+    };
+    if (changed) write(); else this.positionTimer = setTimeout(write, this.positionDelayMs === undefined ? 400 : this.positionDelayMs);
   }
   // ---- spoken questions: the page asks by action only ("status", "start", "stop", "cancel"); everything else is decided here.
   voiceCapable() { return !!(this.plugin.recorder || browserRecorder()); }
@@ -659,7 +682,7 @@ class SessionHost extends Component {
     } catch (error) { this.reply(token, {type: 'resource-error', id: typeof id === 'string' ? id.slice(0, 80) : '', message: error.message}); }
   }
   reply(token, payload, transfer) { if (this.frame && token === this.token) this.frame.contentWindow.postMessage(Object.assign({channel: 'research-os', token, session_id: this.state.session_id}, payload), '*', transfer || []); }
-  onunload() { this.voiceCancel(); clearTimeout(this.refreshTimer); clearInterval(this.leaseTimer); if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
+  onunload() { this.voiceCancel(); clearTimeout(this.positionTimer); clearTimeout(this.refreshTimer); clearInterval(this.leaseTimer); if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
 }
 class SessionView extends FileView {
   constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }

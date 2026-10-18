@@ -426,6 +426,31 @@ assert(!html.includes('title":"</script>'));
   for (const extra of [{token: 'wrong'}, {session_id: 'other'}]) host.receive({source: frameWindow, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'speak', action: 'synth', id: 'z1', text: 'Hi.', ...extra}});
   host.receive({source: {}, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'speak', action: 'synth', id: 'z1', text: 'Hi.'}});
   await new Promise(resolve => setTimeout(resolve, 30)); assert.equal(replies.length, hush); assert.deepEqual(requests(), []);
+  // ---- Where the learner is in a lecture: validated, kept out of the session state, written beside it for the lecturer to read.
+  host.positionDelayMs = 15;
+  const positionFile = () => (voiceFiles.has('session.board-position.json') ? JSON.parse(voiceFiles.get('session.board-position.json')) : null);
+  const report = (extra = {}, token = 'secret') => host.receive({source: frameWindow, data: {channel: 'research-os', token, session_id: 'session-1', type: 'board-position', widget: 'lecture', step: 'loss', index: 1, count: 6, status: 'playing', ...extra}});
+  report(); await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(JSON.stringify(Object.keys(positionFile())), JSON.stringify(['schema', 'boards']));
+  assert.equal(positionFile().schema, 1);
+  assert.equal(JSON.stringify([positionFile().boards.lecture.step, positionFile().boards.lecture.index, positionFile().boards.lecture.count, positionFile().boards.lecture.status]), JSON.stringify(['loss', 1, 6, 'playing']));
+  assert.equal(typeof positionFile().boards.lecture.at, 'number');
+  assert(JSON.parse(raw).events.every(e => e.type !== 'board-position') && !('boards' in JSON.parse(raw)), 'a position is never written into the session state');
+  report({step: 'curve', index: 2}); assert.equal(positionFile().boards.lecture.step, 'loss', 'a step change on the same status waits a moment (throttled)');
+  await new Promise(resolve => setTimeout(resolve, 40)); assert.equal(positionFile().boards.lecture.step, 'curve');
+  report({status: 'paused'}); await new Promise(resolve => setTimeout(resolve, 5)); assert.equal(positionFile().boards.lecture.status, 'paused', 'a change of status is written at once');
+  report({widget: 'second', step: 'one', index: 0, count: 2, status: 'idle'}); await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(JSON.stringify(Object.keys(positionFile().boards).sort()), JSON.stringify(['lecture', 'second']));
+  const positionBefore = JSON.stringify(positionFile());
+  for (const bad of [{widget: 'has space'}, {widget: 7}, {step: 'a/b'}, {step: ''}, {index: -1}, {index: 1.5}, {index: 1001}, {count: -1}, {count: 'many'}, {status: 'dancing'}, {status: undefined},
+    {widget: 'x'.repeat(65)}, {step: null}]) { report(bad); }
+  report({}, 'wrong'); host.receive({source: {}, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'board-position', widget: 'lecture', step: 'loss', index: 1, count: 6, status: 'done'}});
+  await new Promise(resolve => setTimeout(resolve, 40));
+  assert.equal(JSON.stringify(positionFile()), positionBefore, 'malformed, forged and foreign reports change nothing');
+  for (let n = 0; n < 20; n++) report({widget: 'w' + n, status: 'playing'});
+  await new Promise(resolve => setTimeout(resolve, 40));
+  assert(Object.keys(positionFile().boards).length <= 16, 'only a handful of boards are remembered');
+  host.positions = {}; clearTimeout(host.positionTimer);
   fs.rmdirSync(vaultRoot);
-  console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions, live voice.');
+  console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions, live voice, lecture position.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

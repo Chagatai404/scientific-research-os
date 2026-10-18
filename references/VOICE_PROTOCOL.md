@@ -85,6 +85,14 @@ The page plays the recording only when the learner presses play (`preload="none"
 one stays out and that card uses the device voice). The Obsidian companion's sandbox cannot open vault files, so there the player says so and the Listen control reads the section with the device voice. Not
 verified: playback inside Obsidian, any audible output (a page was opened and the audio decoded with the right duration, but no one listened), and Safari.
 
+## The live voice (v0.9.6)
+
+The tutor speaks in real time, not from recordings made in advance. `python scripts/voice.py tts-worker --env <kokoro env> --dir <vault>/.research-os/voice --voice model_dir=<folder> [blend= speed= gap= colon_gap=]` keeps Kokoro loaded and **warmed up** (the delivery chosen by blind test, `docs/plans/v0.9.6-voice-blind-1.md`) and answers sentence requests: the Obsidian host writes `<dir>/tts/inbox/<id>.json` (`{"text": ...}`, one sentence of 1 to 600 characters), the worker writes `<dir>/tts/out/<id>.wav` (16-bit mono, 24 kHz) and then `<id>.json` (`audio_seconds`, `sample_rate`, `synth_seconds`, `chars`, or `error`), and keeps a lease `<dir>/tts-worker.json` (`worker-status --tts` reads it, and a worker that stopped beating is reported as off, never as ready). Create `<dir>/tts-stop` to stop it. At most 20 requests wait; answers older than ten minutes are removed.
+
+The page asks for the sentence being spoken and the next two, plays the audio it is sent with Web Audio (so a page that may not fetch media still speaks, and pausing is exact), and waits half a second after each sentence (0.3 after a colon), the pause the delivery was rated with. If the live voice fails (no worker, an error, no audio) it says why once in a note under the board and the lecture carries on with the device voice or captions. Recorded boards (`voice.py board`) remain for pages that have no host, such as a standalone export.
+
+**Measured (2026-10-17, CPU, this machine):** the worker is ready about 11 s after it starts; a sentence comes back in about half its own length (48 characters, 2.6 s of audio, in 1.4 s; 123 characters, 7.2 s of audio, in 3.4 s), so the voice keeps ahead of its own playback once the first sentence is out. **Not verified:** how it sounds through this path (the rated samples were made by the same engine and settings, but nobody has listened to a live lecture), and a long session.
+
 ## Spoken open questions (v0.9.6)
 
 The learner can ask an open question aloud in the Obsidian view. **Pieces:** the page's *Hold to ask aloud* button (below the question box; it exists only where the host can record), the Obsidian plugin (`extensions/obsidian-html/main.js`, which records, because the sandboxed page gets no microphone), and a local **voice worker** that keeps Whisper loaded.

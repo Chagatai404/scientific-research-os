@@ -38,6 +38,7 @@ function hostPage() {
       const frame = document.getElementById('session'), d = m.data;
       if (m.source !== frame.contentWindow || !d || d.token !== 'tok') return;
       window.__log.push({type: d.type, action: d.action, id: d.id, text: d.text, keys: Object.keys(d).sort().join(','), at: performance.now()});
+      if (d.type === 'board-position') (window.__positions = window.__positions || []).push({step: d.step, index: d.index, count: d.count, status: d.status});
       const send = (payload, transfer) => frame.contentWindow.postMessage(Object.assign({channel: 'research-os', token: 'tok', session_id: ${JSON.stringify(sessionId)}, type: 'speech'}, payload), '*', transfer || []);
       if (d.type === 'speak' && d.action === 'synth') {
         setTimeout(() => {
@@ -91,6 +92,13 @@ function hostPage() {
     assert(plays[1].at - plays[0].at >= 1500, 'the second sentence waits for the first to finish (2 s at 1.25x is 1.6 s): ' + (plays[1].at - plays[0].at));
     assert.equal(await t.frame.locator('.ros-board-voice-note').textContent(), '', 'no problem to report');
     for (const m of await t.speakLog()) assert.match(m.keys, /^(action,channel,id,session_id,text,token,type)$/, 'a request carries an action, an id and the sentence only: ' + m.keys);
+    // Where the learner is goes to the host as the lecture plays: the step, its place, the count and the state, and nothing else.
+    const positions = await t.page.evaluate(() => window.__log.filter(m => m.type === 'board-position'));
+    assert(positions.length >= 4, 'a report for each step and for the end: ' + positions.length);
+    for (const m of positions) assert.equal(m.keys, 'channel,count,index,session_id,status,step,token,type,widget', 'a position carries only where the learner is: ' + m.keys);
+    const seen = await t.page.evaluate(() => window.__positions);
+    assert.deepEqual([...new Set(seen.map(p => p.step))], ['s1', 's2', 's3'], 'every step in order');
+    assert.deepEqual([seen[0].status, seen.at(-1).status, seen.at(-1).index, seen.at(-1).count], ['playing', 'done', 2, 3]);
     await t.page.close();
   }
 

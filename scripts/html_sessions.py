@@ -1220,6 +1220,53 @@ def add_question(root, relative_md, question):
         return _save(root, relative_md, state)
 
 
+def edit_board(root, relative_md, widget_id, steps=None, after=None, open_=None):
+    """The lecturer extends a board while it plays. New ``steps`` go at the end, or right after the step ``after`` (an answer to a question goes after the step
+    the learner has reached); ``open_`` says whether more is coming (an open board shows "waiting for the tutor" at its end instead of finishing). Steps the
+    page has already started must not change: the board treats a changed earlier step as a revision and waits for Replay. The result is checked with the same
+    rules the page uses before anything is written; open views pick it up live. One lecturer writes to a session at a time (the supervision lease)."""
+    import copy
+    import board_script
+    state = load_session(root, relative_md)
+    widgets = copy.deepcopy(state.get("widgets", []))
+    widget = next((w for w in widgets if w.get("id") == widget_id and w.get("kind") == "board"), None)
+    if widget is None:
+        raise ValueError(f"no board widget named {widget_id!r} in this session")
+    script = widget["script"]
+    existing = script.get("steps", [])
+    index = len(existing)
+    if after is not None:
+        ids = [s.get("id") for s in existing]
+        if after not in ids:
+            raise ValueError(f"no step {after!r} on this board (steps: {', '.join(str(i) for i in ids)})")
+        index = ids.index(after) + 1
+    script["steps"] = existing[:index] + list(steps or []) + existing[index:]
+    if open_ is not None:
+        script["open"] = bool(open_)
+    board_script.check(script)
+    return update_session(root, relative_md, widgets=widgets)
+
+
+def board_position(root, relative_md, now=None):
+    """Where the learner is in each lecture, as the Obsidian host last reported it (``<session>.board-position.json``), with its age. ``None`` when nothing has been
+    reported (a standalone page, a view that was never opened). It is a hint for pacing and for where an answer belongs, never evidence of learning."""
+    md, _, _ = paths(root, relative_md)
+    path = md.with_suffix(".board-position.json")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or data.get("schema") != 1 or not isinstance(data.get("boards"), dict):
+        return None
+    stamp = time.time() if now is None else now
+    out = {}
+    for widget_id, record in data["boards"].items():
+        if isinstance(record, dict) and isinstance(record.get("step"), str) and isinstance(record.get("status"), str):
+            at = record.get("at")
+            out[widget_id] = dict(record, age_seconds=round(stamp - at, 1) if isinstance(at, (int, float)) else None)
+    return out or None
+
+
 def review_response(root, relative_md, question_id, verdict, feedback="", next_question=None, transcript=None,
                     criteria_met=None, reviewed_by=None, rationale=None, response_event_id=None):
     """Record the tutor's verdict on the learner's latest actual response.
@@ -1881,6 +1928,12 @@ def main():
     answer = sub.add_parser("answer"); answer.add_argument("session"); answer.add_argument("question_id"); answer.add_argument("--source", required=True, type=Path)
     question = sub.add_parser("add-question", help="Post one question (JSON); open views show it live")
     question.add_argument("session"); question.add_argument("--source", required=True, type=Path)
+    board = sub.add_parser("board-append", help="Add steps to a lecture on a board while it plays (JSON list of steps); open views play them live")
+    board.add_argument("session"); board.add_argument("widget"); board.add_argument("--source", required=True, type=Path, help="JSON: a list of steps, or {steps: [...]}")
+    board.add_argument("--after", metavar="STEP_ID", help="insert right after this step instead of at the end (an answer goes after the step the learner has reached)")
+    board.add_argument("--open", dest="board_open", choices=("true", "false"), help="true: more is coming (the board waits for it); false: this is the end of the lecture")
+    position = sub.add_parser("board-position", help="Where the learner is in each lecture, as the Obsidian view last reported it")
+    position.add_argument("session")
     review = sub.add_parser("review", help="Record the tutor verdict on the latest response; shown in place of 'Checking...'")
     review.add_argument("session"); review.add_argument("question_id")
     review.add_argument("--verdict", required=True, choices=REVIEW_VERDICTS)
@@ -1989,6 +2042,14 @@ def main():
         result = answer_open_question(root, args.session, args.question_id, args.source.read_text(encoding="utf-8"))
     elif args.command == "add-question":
         result = add_question(root, args.session, json.loads(args.source.read_text(encoding="utf-8")))
+    elif args.command == "board-append":
+        loaded = json.loads(args.source.read_text(encoding="utf-8"))
+        new_steps = loaded.get("steps") if isinstance(loaded, dict) else loaded
+        if not isinstance(new_steps, list):
+            raise SystemExit("error: the source must be a list of steps or {\"steps\": [...]}")
+        result = edit_board(root, args.session, args.widget, new_steps, args.after, None if args.board_open is None else args.board_open == "true")
+    elif args.command == "board-position":
+        result = board_position(root, args.session) or {"note": "nothing has been reported: no Obsidian view of this session has played a board yet"}
     elif args.command == "review":
         result = review_response(root, args.session, args.question_id, args.verdict,
                                  args.feedback.read_text(encoding="utf-8") if args.feedback else "",

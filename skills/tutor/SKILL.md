@@ -231,6 +231,10 @@ Do not use multiple choice exclusively. Deeper nodes should eventually be checke
 When a vault is configured, the HTML session is the UI. Chat carries only control messages
 (start, pause, redirect, stop). Follow the live loop in `references/HTML_SESSION_PROTOCOL.md`.
 
+To lecture in real time (a blackboard that is written and spoken as the tutor goes, with the Kokoro voice, taking written or spoken questions at any moment), follow
+`references/LIVE_LECTURE.md`: an open board widget, steps kept two or three ahead of where `board-position` says the learner is, and answers inserted after that step
+with `board-append --after`.
+
 Setup:
 
 1. Run `scripts/html_sessions.py --root <vault> context <session>` before creating or

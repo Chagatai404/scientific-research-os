@@ -4,6 +4,7 @@ import contextlib
 import copy
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -126,6 +127,74 @@ class InSessions(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'invalid board script'):
             self.make({'id': 'lecture', 'kind': 'board'})
         self.assertFalse((self.root / 'Sessions/Gradients.html').exists())
+
+
+class LiveLecture(unittest.TestCase):
+    """The lecturer extends a board while it plays and reads where the learner has got to."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        hs.install_runtime(self.root)
+        first = copy.deepcopy(LECTURE)
+        first['open'] = True
+        hs.create_session(self.root, 'Sessions/Live.md', '# Live\n\nA lecture.\n\n<!-- ros-widget: lecture -->\n', title='Live',
+                          widgets=[{'id': 'lecture', 'kind': 'board', 'title': 'The board', 'script': first}])
+
+    def steps(self):
+        return [s['id'] for s in hs.load_session(self.root, 'Sessions/Live.md')['widgets'][0]['script']['steps']]
+
+    def script(self):
+        return hs.load_session(self.root, 'Sessions/Live.md')['widgets'][0]['script']
+
+    def test_steps_are_added_at_the_end_and_the_board_can_be_closed(self):
+        hs.edit_board(self.root, 'Sessions/Live.md', 'lecture', [{'id': 'd', 'say': 'A fourth sentence.'}])
+        self.assertEqual(self.steps(), ['a', 'b', 'c', 'd'])
+        self.assertIs(self.script()['open'], True, 'adding does not close it')
+        hs.edit_board(self.root, 'Sessions/Live.md', 'lecture', [{'id': 'e', 'say': 'That is all.'}], open_=False)
+        self.assertEqual(self.steps(), ['a', 'b', 'c', 'd', 'e'])
+        self.assertIs(self.script()['open'], False)
+
+    def test_an_answer_goes_in_after_the_step_the_learner_has_reached(self):
+        hs.edit_board(self.root, 'Sessions/Live.md', 'lecture', [{'id': 'ans1', 'say': 'Good question.'}, {'id': 'ans2', 'say': 'Here is why.'}], after='a')
+        self.assertEqual(self.steps(), ['a', 'ans1', 'ans2', 'b', 'c'], 'what was already written stays, after the answer')
+        self.assertEqual(self.script()['steps'][0]['do'][0]['id'], 'title', 'earlier steps are untouched')
+
+    def test_a_bad_edit_is_refused_and_changes_nothing(self):
+        before = self.script()
+        for kwargs in ({'steps': [{'id': 'a', 'say': 'duplicate id'}]}, {'steps': [{'id': 'z', 'say': 'x', 'do': [{'op': 'erase', 'target': 'ghost'}]}]},
+                       {'steps': [{'id': 'z', 'say': 'x'}], 'after': 'nowhere'}, {'steps': [{'id': 'z', 'say': 'x' * 700}]}, {'steps': [{'id': 'z', 'say': 'x', 'do': [{'op': 'write', 'text': 'x', 'at': [1, 1], 'color': 'red;x'}]}]}):
+            with self.assertRaises(ValueError, msg=str(kwargs)):
+                hs.edit_board(self.root, 'Sessions/Live.md', 'lecture', **kwargs)
+        with self.assertRaisesRegex(ValueError, 'no board widget'):
+            hs.edit_board(self.root, 'Sessions/Live.md', 'missing', [{'id': 'z', 'say': 'x'}])
+        self.assertEqual(self.script(), before)
+
+    def test_the_command_line_appends_inserts_and_reports_errors(self):
+        source = self.root / 'steps.json'
+        source.write_text(json.dumps({'steps': [{'id': 'q1', 'say': 'About your question.'}]}), encoding='utf-8')
+        run = lambda *args: subprocess.run([sys.executable, str(ROOT / 'scripts/html_sessions.py'), '--root', str(self.root), *args], capture_output=True, text=True, encoding='utf-8')
+        done = run('board-append', 'Sessions/Live.md', 'lecture', '--source', str(source), '--after', 'b', '--open', 'false')
+        self.assertEqual(done.returncode, 0, done.stderr + done.stdout)
+        self.assertEqual(self.steps(), ['a', 'b', 'q1', 'c']); self.assertIs(self.script()['open'], False)
+        source.write_text(json.dumps([{'id': 'q2', 'say': 'A bare list also works.'}]), encoding='utf-8')
+        self.assertEqual(run('board-append', 'Sessions/Live.md', 'lecture', '--source', str(source)).returncode, 0)
+        self.assertEqual(self.steps()[-1], 'q2')
+        source.write_text(json.dumps({'nope': 1}), encoding='utf-8')
+        self.assertNotEqual(run('board-append', 'Sessions/Live.md', 'lecture', '--source', str(source)).returncode, 0)
+        self.assertIn('nothing has been reported', run('board-position', 'Sessions/Live.md').stdout)
+
+    def test_the_learners_position_is_read_with_its_age_and_never_trusted_when_malformed(self):
+        self.assertIsNone(hs.board_position(self.root, 'Sessions/Live.md'))
+        sidecar = self.root / 'Sessions' / 'Live.board-position.json'
+        sidecar.write_text(json.dumps({'schema': 1, 'boards': {'lecture': {'step': 'b', 'index': 1, 'count': 3, 'status': 'playing', 'at': 1000.0}}}), encoding='utf-8')
+        position = hs.board_position(self.root, 'Sessions/Live.md', now=1004.5)
+        self.assertEqual((position['lecture']['step'], position['lecture']['status'], position['lecture']['age_seconds']), ('b', 'playing', 4.5))
+        for bad in ('{not json', '[]', json.dumps({'schema': 2, 'boards': {}}), json.dumps({'schema': 1, 'boards': []}),
+                    json.dumps({'schema': 1, 'boards': {'lecture': {'step': 3, 'status': 'playing'}}}), json.dumps({'schema': 1, 'boards': {}})):
+            sidecar.write_text(bad, encoding='utf-8')
+            self.assertIsNone(hs.board_position(self.root, 'Sessions/Live.md'), bad)
 
 
 if __name__ == '__main__':
