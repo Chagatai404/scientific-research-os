@@ -8,8 +8,9 @@ class Component { registerDomEvent() {} registerEvent() {} }
 const obsidian = {Plugin: Component, Component, FileView: Component, normalizePath: p => p};
 const file = path.join(__dirname, '../extensions/obsidian-html/main.js');
 const mod = {exports: {}};
-vm.runInNewContext(fs.readFileSync(file, 'utf8'), {require: name => name === 'obsidian' ? obsidian : require(name), module: mod, console, Date, Object, Set, Array, JSON, Number, Promise, Buffer, URL, process, setTimeout, clearTimeout});
-const {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, resolveNote, acquireLock, buildDocument, SessionHost, sibling} = mod.exports._test;
+vm.runInNewContext(fs.readFileSync(file, 'utf8'), {require: name => name === 'obsidian' ? obsidian : require(name), module: mod, console, Date, Object, Set, Array, JSON, Number, Promise, Buffer, URL, process, setTimeout, clearTimeout, setInterval, clearInterval});
+const {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, resolveNote, acquireLock, buildDocument, SessionHost, sibling,
+  voiceWorkerState, parseVoiceResult, microphoneMessage, browserRecorder} = mod.exports._test;
 // The host decides note-reference syntax itself; it must agree with Python and the runtime on the shared fixture.
 const noteTargets = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/note-targets.json'), 'utf8'));
 for (const t of noteTargets.valid) assert(validNoteTarget(t), 'valid note target rejected by the host: ' + JSON.stringify(t));
@@ -252,6 +253,119 @@ assert(!html.includes('title":"</script>'));
   leaseText = undefined; await host.pollLease();
   assert.equal(replies.length, before + 2);
   assert.equal(replies.at(-1).live, null, 'a vanished lease is reported, not remembered');
+  // ---- Spoken questions: the host records, a local worker transcribes, the page gets text to check. The sandbox never sees the microphone.
+  assert.equal(browserRecorder(), null, 'no recorder where there is no microphone API');
+  assert(buildDocument('', base, 't', '', '', '', [], null, null, true).includes('"voice":{"capable":true}'));
+  assert(!buildDocument('', base, 't', '', '', '').includes('"voice"'), 'the page is not offered a microphone the host cannot use');
+  assert(!buildDocument('', base, 't', '', '', '', [], null, null, true).includes('allow="microphone"') && !html.includes('microphone'), 'the sandbox gets no microphone permission');
+  const beat = (state, extra = {}) => JSON.stringify({schema: 1, state, heartbeat: 1000, model: 'small', device: 'cuda', ...extra});
+  const same = (a, b, note) => assert.equal(JSON.stringify(a), JSON.stringify(b), note);   // objects made inside the host's own context differ in prototype, so compare as JSON
+  same(voiceWorkerState(beat('ready'), 1005), {state: 'ready', model: 'small', device: 'cuda'});
+  assert.equal(voiceWorkerState(beat('busy'), 1002).state, 'busy');
+  assert.equal(voiceWorkerState(beat('warming'), 1050).state, 'warming');
+  assert.equal(voiceWorkerState(beat('warming'), 1100).state, 'off');
+  assert.match(voiceWorkerState(beat('ready'), 1030).reason, /has not reported for 30 s/);
+  assert.equal(voiceWorkerState(beat('stopped'), 99999).state, 'stopped');
+  same(voiceWorkerState(beat('error', {last_error: 'CUDA failed'}), 99999), {state: 'error', model: 'small', device: 'cuda', reason: 'CUDA failed'});
+  for (const odd of ['{not json', '[]', 'null', '{"state":"ready"}', JSON.stringify({state: 'sleeping', heartbeat: 1000}), JSON.stringify({state: 'ready', heartbeat: '1000'})]) assert.equal(voiceWorkerState(odd, 1001).state, 'off', odd);
+  assert.equal(voiceWorkerState(beat('ready', {model: 'x'.repeat(500)}), 1001).model.length, 40);
+  same(parseVoiceResult(JSON.stringify({id: 'a1', text: '  Why   does\nit slow down? ', language: 'en'}), 'a1'), {text: 'Why does it slow down?', language: 'en'});
+  assert.equal(parseVoiceResult(JSON.stringify({id: 'a1', text: ''}), 'a1').text, '');
+  for (const [bad, expected] of [['{not json', /could not be read/], ['[]', /does not match/], [JSON.stringify({id: 'other', text: 'x'}), /does not match/], [JSON.stringify({id: 'a1', error: 'RuntimeError: decode failed'}), /decode failed/],
+    [JSON.stringify({id: 'a1', text: 'x'.repeat(4001)}), /too long/], [JSON.stringify({id: 'a1', text: 7}), /missing/], ['x'.repeat(20001), /could not be read/], [null, /could not be read/]])
+    assert.throws(() => parseVoiceResult(bad, 'a1'), expected, String(bad).slice(0, 40));
+  assert.match(microphoneMessage({name: 'NotAllowedError'}), /refused/);
+  assert.match(microphoneMessage({name: 'NotFoundError'}), /No microphone/);
+  assert.match(microphoneMessage({name: 'NotReadableError'}), /in use/);
+  assert.match(microphoneMessage(new Error('boom')), /boom/);
+
+  const voiceFiles = new Map(), folders = new Set(); const diskWrites = [];
+  const diskAdapter = {getBasePath: () => vaultRoot, exists: async p => voiceFiles.has(p) || folders.has(p), read: async p => voiceFiles.get(p), mkdir: async p => { folders.add(p); },
+    writeBinary: async (p, data) => { diskWrites.push([p, data.byteLength]); voiceFiles.set(p, Buffer.from(data)); }, remove: async p => { voiceFiles.delete(p); }};
+  host.plugin.app.vault.adapter = diskAdapter;
+  const recorderLog = []; let nextBytes = new Uint8Array([1, 2, 3, 4, 5]), startError = null, startGate = null, onLimit = null;
+  host.plugin.recorder = {async start(maxMs, limit) {
+    recorderLog.push(['start', maxMs]); onLimit = limit;
+    if (startGate) await startGate;
+    if (startError) throw startError;
+    return {async stop() { recorderLog.push(['stop']); return {bytes: nextBytes, mime: 'audio/webm;codecs=opus'}; }, cancel() { recorderLog.push(['cancel']); }};
+  }};
+  host.voicePollMs = 5; host.voiceWaitMs = 400;
+  const workerFile = (state, age = 1, extra = {}) => voiceFiles.set('.research-os/voice/worker.json', JSON.stringify({schema: 1, state, heartbeat: Date.now() / 1000 - age, model: 'small', device: 'cuda', ...extra}));
+  const talk = async (action, token = 'secret') => { host.voiceAt = 0; const from = replies.length; await host.voice(action, token); return replies.slice(from).filter(r => r.type === 'voice'); };
+  const audioNames = () => [...voiceFiles.keys()].filter(p => p.startsWith('.research-os/voice/inbox/'));
+  assert(host.voiceCapable(), 'a supplied recorder is enough');
+  // No worker, or a stale one, means no recording: the learner is told how to start it and the microphone is never opened.
+  let said = await talk('status');
+  assert.deepEqual(said.map(r => [r.status, r.state]), [['worker', 'off']]);
+  said = await talk('start');
+  assert.equal(said.length, 1); assert.equal(said[0].status, 'error'); assert.match(said[0].message, /No voice worker is running.*voice\.py worker --dir \.research-os\/voice/);
+  workerFile('ready', 60); said = await talk('start'); assert.match(said[0].message, /has not reported for/);
+  workerFile('warming', 5); said = await talk('start'); assert.match(said[0].message, /still warming up/);
+  workerFile('error', 5, {last_error: 'CUDA failed'}); said = await talk('start'); assert.match(said[0].message, /No voice worker is running \(CUDA failed\)/);
+  assert.deepEqual(recorderLog, [], 'the microphone was never opened without a worker');
+  // A whole question: record, write the recording where the worker looks, wait for its answer, hand the text back, tidy up.
+  workerFile('ready');
+  said = await talk('status'); assert.deepEqual([said[0].status, said[0].state, said[0].model, said[0].device], ['worker', 'ready', 'small', 'cuda']);
+  said = await talk('start'); assert.deepEqual(said.map(r => r.status), ['recording']); assert.equal(said[0].max_seconds, 60);
+  assert.deepEqual(recorderLog, [['start', 60000]]);
+  said = await talk('start'); assert.match(said[0].message, /Already listening/);
+  const asking = talk('stop');
+  await new Promise(resolve => setTimeout(resolve, 20));
+  const written = audioNames(); assert.equal(written.length, 1); assert.match(written[0], /^\.research-os\/voice\/inbox\/[a-f0-9]{24}\.webm$/);
+  assert.deepEqual(diskWrites.at(-1), [written[0], 5]); assert(folders.has('.research-os/voice') && folders.has('.research-os/voice/inbox'));
+  const id = written[0].split('/').pop().replace('.webm', '');
+  voiceFiles.set('.research-os/voice/out/' + id + '.json', JSON.stringify({id, text: 'Why does the slope shrink?', language: 'en', audio_seconds: 3}));
+  said = await asking;
+  assert.deepEqual(said.map(r => r.status), ['transcribing', 'transcript']); assert.equal(said[0].id, id);
+  assert.deepEqual([said[1].id, said[1].text, said[1].language], [id, 'Why does the slope shrink?', 'en']);
+  assert(!voiceFiles.has('.research-os/voice/out/' + id + '.json'), 'the result is removed once read');
+  assert.equal(host.voiceBusy, null); assert.equal(host.voiceSession, null);
+  // The worker's own error reaches the learner; silence is an empty transcript, not an invented one.
+  await talk('start'); const failing = talk('stop'); await new Promise(resolve => setTimeout(resolve, 20));
+  const failId = audioNames().pop().split('/').pop().replace('.webm', ''); voiceFiles.delete('.research-os/voice/inbox/' + failId + '.webm');
+  voiceFiles.set('.research-os/voice/out/' + failId + '.json', JSON.stringify({id: failId, error: 'RuntimeError: decode failed'}));
+  said = await failing; assert.deepEqual(said.map(r => r.status), ['transcribing', 'error']); assert.match(said[1].message, /decode failed/);
+  await talk('start'); const quiet = talk('stop'); await new Promise(resolve => setTimeout(resolve, 20));
+  const quietId = audioNames().pop().split('/').pop().replace('.webm', ''); voiceFiles.delete('.research-os/voice/inbox/' + quietId + '.webm');
+  voiceFiles.set('.research-os/voice/out/' + quietId + '.json', JSON.stringify({id: quietId, text: '', language: 'en'}));
+  said = await quiet; assert.deepEqual([said[1].status, said[1].text], ['transcript', '']);
+  // Cancel discards the recording; a stop after it does nothing; letting go before the microphone opened cancels it cleanly.
+  recorderLog.length = 0; await talk('start');
+  said = await talk('cancel'); assert.deepEqual(said.map(r => r.status), ['cancelled']); assert.deepEqual(recorderLog, [['start', 60000], ['cancel']]);
+  said = await talk('stop'); assert.deepEqual(said, []);
+  recorderLog.length = 0; let openMicrophone; startGate = new Promise(resolve => { openMicrophone = resolve; });
+  const opening = talk('start'); await new Promise(resolve => setTimeout(resolve, 10));
+  said = await talk('stop'); assert.deepEqual(said.map(r => r.status), ['cancelled']);
+  openMicrophone(); startGate = null; await opening;
+  assert.deepEqual(recorderLog, [['start', 60000], ['cancel']], 'the microphone that opened late is closed again');
+  assert.equal(host.voiceSession, null);
+  // Failures are reported in words and leave the host ready for the next question.
+  startError = Object.assign(new Error('denied'), {name: 'NotAllowedError'}); said = await talk('start');
+  assert.deepEqual(said.map(r => r.status), ['error']); assert.match(said[0].message, /Microphone access was refused/); assert.equal(host.voiceSession, null);
+  startError = null;
+  await talk('start'); nextBytes = new Uint8Array(0); said = await talk('stop'); assert.match(said.at(-1).message, /Nothing was recorded/);
+  await talk('start'); nextBytes = new Uint8Array(3 * 1024 * 1024 + 1); const writesBefore = diskWrites.length; said = await talk('stop'); assert.match(said.at(-1).message, /too long/); assert.equal(diskWrites.length, writesBefore, 'an over-long recording is never written');
+  nextBytes = new Uint8Array([9, 9]);
+  await talk('start'); said = await talk('stop'); assert.deepEqual(said.map(r => r.status), ['transcribing', 'error']); assert.match(said[1].message, /did not answer in time.*worker-status/);
+  said = await talk('wave'); assert.match(said[0].message, /Unknown voice action/);
+  // The 60 second limit stops the recording by itself; leaving the page abandons a question in flight.
+  await talk('start'); const limited = (async () => { const from = replies.length; await onLimit(); return replies.slice(from).filter(r => r.type === 'voice'); })();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  const limitedId = audioNames().pop().split('/').pop().replace('.webm', ''); voiceFiles.delete('.research-os/voice/inbox/' + limitedId + '.webm');
+  voiceFiles.set('.research-os/voice/out/' + limitedId + '.json', JSON.stringify({id: limitedId, text: 'A long question', language: 'en'}));
+  said = await limited; assert.equal(said.at(-1).text, 'A long question');
+  await talk('start'); const abandoned = talk('stop'); await new Promise(resolve => setTimeout(resolve, 20));
+  host.frame.remove = () => {}; host.container = {replaceChildren() {}}; host.onunload(); said = await abandoned; assert.deepEqual(said.map(r => r.status), ['transcribing'], 'nothing more is said to a page that has gone');
+  host.token = 'secret'; host.invalidated = false;
+  // Only the page that owns the token can ask, and only by action.
+  const quietBefore = replies.length; recorderLog.length = 0;
+  for (const extra of [{token: 'wrong'}, {session_id: 'other'}]) host.receive({source: host.frame.contentWindow, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'voice', action: 'start', ...extra}});
+  host.receive({source: {}, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'voice', action: 'start'}});
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(replies.length, quietBefore); assert.deepEqual(recorderLog, []);
+  delete host.plugin.recorder; assert.equal(host.voiceCapable(), false);
+  said = await talk('start'); assert.match(said[0].message, /cannot record audio/);
   fs.rmdirSync(vaultRoot);
-  console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin.');
+  console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

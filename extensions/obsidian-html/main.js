@@ -8,6 +8,10 @@ const MAX_STATE = 4 * 1024 * 1024;
 const MAX_HTML = 4 * 1024 * 1024;
 const MAX_EVENTS = 10000;
 const RUNTIME = '.research-os/runtime/';
+// Spoken questions. The host records (the sandboxed page never gets the microphone), a local worker (scripts/voice.py worker) transcribes, and the
+// transcript goes back to the page as text for the learner to read and edit before sending it as an ordinary open question.
+const VOICE_DIR = '.research-os/voice/';
+const VOICE_MAX_MS = 60000, VOICE_MAX_BYTES = 3 * 1024 * 1024, VOICE_WAIT_MS = 45000, VOICE_POLL_MS = 400, VOICE_BEAT_MAX = 10, VOICE_WARM_MAX = 60;
 const TRUST_REGISTRY = RUNTIME + 'extensions/trusted-modules.json';
 const TAGS = new Set(('a abbr article aside b blockquote br button caption code col colgroup dd del details div dl dt em fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr i img input label legend li main mark nav ol option p pre section select small span strong sub summary sup table tbody td textarea th thead tr ul svg g path circle rect line polyline polygon ellipse text tspan canvas').split(' '));
 const ATTRS = new Set(('id class title alt role aria-label aria-labelledby aria-describedby aria-expanded aria-live aria-hidden tabindex type name value start min max step placeholder checked disabled selected for open rows cols scope colspan rowspan width height viewbox d x y x1 x2 y1 y2 cx cy r rx ry points fill stroke stroke-width transform xmlns').split(' '));
@@ -252,9 +256,61 @@ function pageState(state, live = null) {
   if (!('supervision' in visible)) visible.supervision = null;
   return visible;
 }
-function buildDocument(body, state, token, runtime, css, theme, modules = [], position = null, live = null) {
+// What the page may say about the voice worker, from its lease file (the same rule as voice.py lease_state): never "listening" unless it beat recently.
+function voiceWorkerState(text, nowSeconds) {
+  let lease; try { lease = JSON.parse(text); } catch (_) { return {state: 'off', reason: 'no worker has run here'}; }
+  if (!lease || typeof lease !== 'object' || Array.isArray(lease) || typeof lease.heartbeat !== 'number') return {state: 'off', reason: 'the worker record is unreadable'};
+  const model = typeof lease.model === 'string' ? lease.model.slice(0, 40) : null, device = typeof lease.device === 'string' ? lease.device.slice(0, 16) : null;
+  if (lease.state === 'stopped' || lease.state === 'error') return {state: lease.state, model, device, reason: typeof lease.last_error === 'string' ? lease.last_error.slice(0, 200) : null};
+  const age = nowSeconds - lease.heartbeat;
+  if (age > (lease.state === 'warming' ? VOICE_WARM_MAX : VOICE_BEAT_MAX)) return {state: 'off', reason: 'the worker has not reported for ' + Math.floor(age) + ' s'};
+  return {state: ['ready', 'busy', 'warming'].includes(lease.state) ? lease.state : 'off', model, device};
+}
+// A transcript file from the worker, for one recording. Anything else is refused; the text is only ever text.
+function parseVoiceResult(text, id) {
+  if (typeof text !== 'string' || text.length > 20000) throw new Error('The transcript could not be read.');
+  let result; try { result = JSON.parse(text); } catch (_) { throw new Error('The transcript could not be read.'); }
+  if (!result || typeof result !== 'object' || Array.isArray(result) || result.id !== id) throw new Error('The transcript does not match the recording.');
+  if (typeof result.error === 'string') throw new Error(result.error.slice(0, 300));
+  if (typeof result.text !== 'string' || result.text.length > 4000) throw new Error('The transcript is missing or too long.');
+  return {text: result.text.replace(/\s+/g, ' ').trim(), language: typeof result.language === 'string' ? result.language.slice(0, 8) : null};
+}
+function microphoneMessage(error) {
+  const name = error && error.name;
+  if (name === 'NotAllowedError' || name === 'SecurityError') return 'Microphone access was refused. Allow it for Obsidian in your system settings (on Windows: Privacy & security, Microphone, let desktop apps use it).';
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'No microphone was found.';
+  if (name === 'NotReadableError') return 'The microphone is in use by another program.';
+  return 'The microphone could not start: ' + String(error && error.message || error).slice(0, 160);
+}
+// The recorder is the host's own (Electron renderer); a plugin can supply another (tests do). Returns null where recording is impossible.
+function browserRecorder() {
+  const nav = typeof navigator !== 'undefined' ? navigator : null;
+  if (!nav || !nav.mediaDevices || typeof nav.mediaDevices.getUserMedia !== 'function' || typeof MediaRecorder === 'undefined') return null;
+  return {
+    async start(maxMs, onLimit) {
+      const stream = await nav.mediaDevices.getUserMedia({audio: {channelCount: 1, echoCancellation: true, noiseSuppression: true}});
+      const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'].find(type => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mime ? {mimeType: mime} : undefined);
+      const chunks = []; recorder.ondataavailable = event => { if (event.data && event.data.size) chunks.push(event.data); };
+      const stopped = new Promise(resolve => { recorder.onstop = resolve; });
+      const release = () => stream.getTracks().forEach(track => track.stop());
+      recorder.start(250);
+      const limit = setTimeout(() => { if (onLimit) onLimit(); }, maxMs);
+      return {
+        async stop() {
+          clearTimeout(limit); if (recorder.state !== 'inactive') recorder.stop();
+          await stopped; release();
+          const blob = new Blob(chunks, {type: recorder.mimeType});
+          return {bytes: new Uint8Array(await blob.arrayBuffer()), mime: recorder.mimeType};
+        },
+        cancel() { clearTimeout(limit); recorder.ondataavailable = null; try { if (recorder.state !== 'inactive') recorder.stop(); } catch (_) { /* already stopped */ } release(); }
+      };
+    }
+  };
+}
+function buildDocument(body, state, token, runtime, css, theme, modules = [], position = null, live = null, voice = false) {
   const nonce = crypto.randomBytes(24).toString('hex');
-  const safeJSON = JSON.stringify({token, session_id: state.session_id, state: pageState(state, live), position}).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  const safeJSON = JSON.stringify({token, session_id: state.session_id, state: pageState(state, live), position, voice: voice ? {capable: true} : undefined}).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const safeScript = runtime.replace(/<\/script/gi, '<\\/script');
   const safeCSS = css.replace(/<\/style/gi, '<\\/style');
   const moduleScripts = modules.map(code => '<script nonce="' + nonce + '">document.addEventListener("DOMContentLoaded",function(){"use strict";\n' + code.replace(/<\/script/gi, '<\\/script') + '\n},{once:true});</script>').join('');
@@ -380,7 +436,7 @@ class SessionHost extends Component {
       const body = sanitizeHtml(html, doc, images, new Map(resources.map(r => [r.id, r.alt])), state.placement !== 'explicit');
       if (this.frame) this.frame.remove();
       this.frame = doc.createElement('iframe'); this.frame.className = 'ros-html-frame'; this.frame.title = this.state.title || 'Research OS session'; this.frame.setAttribute('sandbox', 'allow-scripts'); this.frame.setAttribute('referrerpolicy', 'no-referrer');
-      this.frame.srcdoc = buildDocument(body, this.state, this.token, runtime, css, doc.body.classList.contains('theme-dark') ? 'dark' : 'light', modules, this.position || null, this.lease || null);
+      this.frame.srcdoc = buildDocument(body, this.state, this.token, runtime, css, doc.body.classList.contains('theme-dark') ? 'dark' : 'light', modules, this.position || null, this.lease || null, this.voiceCapable());
       this.container.appendChild(this.frame); this.status.classList.remove('ros-error'); this.status.textContent = runtime ? '' : 'Interactive runtime is not installed; showing isolated session content.';
     } catch (error) { if (generation === this.generation) this.fail(error.message); }
   }
@@ -393,6 +449,7 @@ class SessionHost extends Component {
       if (typeof data.section === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(data.section) && Number.isFinite(data.offset) && Math.abs(data.offset) < 1e6) this.position = {section: data.section, offset: data.offset};
       return;
     }
+    if (data.type === 'voice') { this.voice(data.action, this.token); return; }
     if (data.type === 'navigate') { this.navigate(data.target, this.token); return; }
     if (data.type === 'open-resource') { this.openResource(data.id, this.token); return; }
     if (this.pending >= 32) { this.reply(this.token, {type: 'error', message: 'Too many pending events.'}); return; }
@@ -439,6 +496,82 @@ class SessionHost extends Component {
       finally { this.writing = false; this.pending--; }
     });
   }
+  // ---- spoken questions: the page asks by action only ("status", "start", "stop", "cancel"); everything else is decided here.
+  voiceCapable() { return !!(this.plugin.recorder || browserRecorder()); }
+  async voiceWorker() {
+    try {
+      const adapter = this.plugin.app.vault.adapter, path = VOICE_DIR + 'worker.json';
+      if (typeof adapter.exists === 'function' && !(await adapter.exists(path))) return {state: 'off', reason: 'no worker has run here'};
+      return voiceWorkerState(await adapter.read(path), Date.now() / 1000);
+    } catch (_) { return {state: 'off', reason: 'the worker could not be checked'}; }
+  }
+  voiceCancel() {
+    const session = this.voiceSession; this.voiceSession = null; this.voiceAborted = (this.voiceAborted || 0) + 1;
+    if (session) { session.cancelled = true; if (session.handle) { try { session.handle.cancel(); } catch (_) { /* nothing to cancel */ } } }
+  }
+  async voiceWrite(name, bytes) {
+    const adapter = this.plugin.app.vault.adapter;
+    for (const directory of [VOICE_DIR.slice(0, -1), VOICE_DIR + 'inbox']) if (!(await adapter.exists(directory))) await adapter.mkdir(directory);
+    await adapter.writeBinary(VOICE_DIR + 'inbox/' + name, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  }
+  async voiceWait(id, token) {
+    const adapter = this.plugin.app.vault.adapter, path = VOICE_DIR + 'out/' + id + '.json', aborted = this.voiceAborted || 0;
+    const deadline = Date.now() + (this.voiceWaitMs || VOICE_WAIT_MS);
+    while (Date.now() < deadline) {
+      if (this.invalidated || token !== this.token || (this.voiceAborted || 0) !== aborted) return null;
+      if (await adapter.exists(path)) {
+        const text = await adapter.read(path);
+        try { await adapter.remove(path); } catch (_) { /* the worker tidies old results itself */ }
+        return parseVoiceResult(text, id);
+      }
+      await new Promise(resolve => setTimeout(resolve, this.voicePollMs || VOICE_POLL_MS));
+    }
+    throw new Error('The voice worker did not answer in time. Check that it is running: python scripts/voice.py worker-status --dir .research-os/voice');
+  }
+  async voice(action, token) {
+    const say = payload => this.reply(token, Object.assign({type: 'voice'}, payload));
+    try {
+      if (action === 'status') { say(Object.assign({status: 'worker'}, await this.voiceWorker())); return; }
+      if (action === 'cancel') { this.voiceCancel(); say({status: 'cancelled'}); return; }
+      const recorder = this.plugin.recorder || browserRecorder();
+      if (!recorder) throw new Error('This Obsidian cannot record audio.');
+      if (action === 'start') {
+        if (this.voiceSession || this.voiceBusy) throw new Error('Already listening.');
+        const now = Date.now();
+        if (this.voiceAt && now - this.voiceAt < 400) throw new Error('Please wait a moment.');
+        this.voiceAt = now;
+        const worker = await this.voiceWorker();
+        if (worker.state === 'warming') throw new Error('The voice worker is still warming up. Try again in a moment.');
+        if (worker.state !== 'ready' && worker.state !== 'busy') throw new Error('No voice worker is running' + (worker.reason ? ' (' + worker.reason + ')' : '') + '. Start it with: python scripts/voice.py worker --dir .research-os/voice');
+        const session = {id: crypto.randomBytes(12).toString('hex'), cancelled: false, handle: null};
+        this.voiceSession = session;
+        try { session.handle = await recorder.start(this.voiceMaxMs || VOICE_MAX_MS, () => this.voice('stop', token)); }
+        catch (error) { if (this.voiceSession === session) this.voiceSession = null; throw new Error(microphoneMessage(error)); }
+        if (session.cancelled || this.voiceSession !== session) { try { session.handle.cancel(); } catch (_) { /* nothing to cancel */ } return; }
+        say({status: 'recording', max_seconds: (this.voiceMaxMs || VOICE_MAX_MS) / 1000});
+        return;
+      }
+      if (action === 'stop') {
+        const session = this.voiceSession;
+        if (!session) return;
+        this.voiceSession = null;
+        if (!session.handle) { session.cancelled = true; say({status: 'cancelled'}); return; }   // let go before the microphone had opened
+        this.voiceBusy = session.id;
+        try {
+          say({status: 'transcribing', id: session.id});
+          const {bytes, mime} = await session.handle.stop();
+          if (session.cancelled) return;
+          if (!bytes || !bytes.byteLength) throw new Error('Nothing was recorded.');
+          if (bytes.byteLength > VOICE_MAX_BYTES) throw new Error('The recording is too long to send. Keep a question under a minute.');
+          await this.voiceWrite(session.id + (/ogg/.test(String(mime)) ? '.ogg' : '.webm'), bytes);
+          const heard = await this.voiceWait(session.id, token);
+          if (heard) say({status: 'transcript', id: session.id, text: heard.text, language: heard.language});
+        } finally { this.voiceBusy = null; }
+        return;
+      }
+      throw new Error('Unknown voice action.');
+    } catch (error) { say({status: 'error', message: String(error && error.message || error).slice(0, 400)}); }
+  }
   // Open a note the session links to, in a new tab so the lesson stays exactly where the learner left it.
   async navigate(target, token) {
     const now = Date.now();
@@ -469,7 +602,7 @@ class SessionHost extends Component {
     } catch (error) { this.reply(token, {type: 'resource-error', id: typeof id === 'string' ? id.slice(0, 80) : '', message: error.message}); }
   }
   reply(token, payload) { if (this.frame && token === this.token) this.frame.contentWindow.postMessage(Object.assign({channel: 'research-os', token, session_id: this.state.session_id}, payload), '*'); }
-  onunload() { clearTimeout(this.refreshTimer); clearInterval(this.leaseTimer); if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
+  onunload() { this.voiceCancel(); clearTimeout(this.refreshTimer); clearInterval(this.leaseTimer); if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
 }
 class SessionView extends FileView {
   constructor(leaf, plugin) { super(leaf); this.plugin = plugin; }
@@ -527,4 +660,4 @@ class ResearchOSHTML extends Plugin {
   onunload() { this.app.workspace.detachLeavesOfType(VIEW); }
 }
 module.exports = ResearchOSHTML;
-module.exports._test = {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, declaredResource, resolveNote, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling};
+module.exports._test = {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, declaredResource, resolveNote, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling, voiceWorkerState, parseVoiceResult, microphoneMessage, browserRecorder};
