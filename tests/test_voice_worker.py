@@ -287,6 +287,11 @@ def fake_synthesizer(seconds=1.0, fail_on=None):
     return synthesize
 
 
+def core(counts):
+    """The two counts a worker has always returned (it now also reports cache hits and sentences rendered ahead)."""
+    return {key: counts[key] for key in ('synthesized', 'failed')}
+
+
 class LiveVoice(unittest.TestCase):
     """The worker that speaks each sentence of a lecture when the page asks for it, not from recordings made in advance."""
 
@@ -313,7 +318,7 @@ class LiveVoice(unittest.TestCase):
         self.ask('s1.json', {'text': 'Suppose the loss is L of w.'})
         fake = fake_synthesizer(seconds=2.5)
         counts = self.serve(fake)
-        self.assertEqual((counts, fake.heard), ({'synthesized': 1, 'failed': 0}, ['Suppose the loss is L of w.']))
+        self.assertEqual((core(counts), fake.heard), ({'synthesized': 1, 'failed': 0}, ['Suppose the loss is L of w.']))
         out = self.answer('s1')
         self.assertEqual((out['id'], out['audio_seconds'], out['sample_rate'], out['chars']), ('s1', 2.5, 24000, 27))
         self.assertTrue((self.dir / 'tts' / 'out' / 's1.wav').is_file())
@@ -337,7 +342,7 @@ class LiveVoice(unittest.TestCase):
         self.ask('fine.json', {'text': 'a good sentence'}, age=1.0)
         fake = fake_synthesizer(fail_on='explode')
         counts = self.serve(fake)
-        self.assertEqual(counts, {'synthesized': 1, 'failed': 5})
+        self.assertEqual(core(counts), {'synthesized': 1, 'failed': 5})
         for name in ('empty', 'long', 'ctrl', 'shape'):
             self.assertIn('1 to 600 characters', self.answer(name)['error'], name)
         self.assertIn('could not be read', self.answer('broken')['error'])
@@ -381,8 +386,180 @@ class LiveVoice(unittest.TestCase):
         self.serve(fake_synthesizer(), loops=700, poll=0.05)   # 35 seconds of waiting reaches the housekeeping
         self.assertFalse(old.exists())
         (self.dir / 'tts-stop').write_text('', encoding='utf-8')
-        self.assertEqual(self.serve(fake_synthesizer(), loops=5), {'synthesized': 0, 'failed': 0})
+        self.assertEqual(core(self.serve(fake_synthesizer(), loops=5)), {'synthesized': 0, 'failed': 0})
         self.assertFalse((self.dir / 'tts-stop').exists())
+
+    # ---- v0.9.7 speed: the cache, hits before misses, rendering ahead, and a lease that stays fresh
+
+    def out_wav(self, name):
+        return self.dir / 'tts' / 'out' / f'{name}.wav'
+
+    def test_a_sentence_asked_twice_is_rendered_once_and_the_second_answer_is_a_copy(self):
+        fake = fake_synthesizer(seconds=2.0)
+        self.ask('first.json', {'text': 'The slope is the derivative.'})
+        self.serve(fake, loops=1)
+        self.assertFalse(self.answer('first')['cached'])
+        self.ask('second.json', {'text': '  The slope is the derivative. '})          # the same sentence, padded: the key is the stripped text
+        counts = self.serve(fake, loops=1)
+        again = self.answer('second')
+        self.assertEqual((fake.heard, again['cached'], again['synth_seconds'], again['audio_seconds'], counts['cache_hits']), (['The slope is the derivative.'], True, 0.0, 2.0, 1))
+        self.assertEqual(self.out_wav('second').read_bytes(), self.out_wav('first').read_bytes())
+
+    def test_a_changed_delivery_never_reuses_an_old_rendering(self):
+        fake = fake_synthesizer()
+        self.ask('a.json', {'text': 'Same words.'})
+        self.serve(fake, loops=1)
+        self.ask('b.json', {'text': 'Same words.'})
+        va.tts_loop(self.dir, fake, dict(TTS_DETAILS, speed=1.1), now=self.clock, sleep=self.clock.sleep, max_loops=1)
+        self.assertEqual(fake.heard, ['Same words.', 'Same words.'])
+        self.assertFalse(self.answer('b')['cached'])
+
+    def test_a_failed_rendering_is_not_cached(self):
+        fake = fake_synthesizer(fail_on='explode')
+        self.ask('boom.json', {'text': 'explode'})
+        self.serve(fake, loops=1)
+        self.assertEqual(list((self.dir / 'tts' / 'cache').glob('*.wav')), [])
+
+    def test_the_cache_is_bounded_and_drops_the_least_recently_used(self):
+        cache = va.TtsCache(self.dir / 'c', 'd', max_files=3)
+        source = self.dir / 'src.wav'
+        fake_synthesizer()('x', source)
+        for number in range(4):
+            cache.store(f'sentence {number}', source)
+            os.utime(cache.path(f'sentence {number}'), (1000 + number, 1000 + number))
+        cache.touch('sentence 1')                                                      # a hit makes it recent again
+        os.utime(cache.path('sentence 1'), (2000, 2000))
+        cache.store('sentence 4', source)
+        kept = {text for text in (f'sentence {n}' for n in range(5)) if cache.has(text)}
+        self.assertEqual(kept, {'sentence 1', 'sentence 3', 'sentence 4'})
+        small = va.TtsCache(self.dir / 'd', 'd', max_bytes=source.stat().st_size * 2 + 10)
+        for number in range(4):
+            small.store(f'b{number}', source)
+            os.utime(small.path(f'b{number}'), (1000 + number, 1000 + number))
+        self.assertEqual(len(list((self.dir / 'd').glob('*.wav'))), 2)
+
+    def test_a_cached_request_is_answered_before_an_older_one_that_needs_rendering(self):
+        fake = fake_synthesizer()
+        self.ask('seed.json', {'text': 'Known sentence.'})
+        self.serve(fake, loops=1)
+        order = []
+        inner = fake_synthesizer()
+
+        def watching(text, out):
+            order.append(('rendering', text, self.answer_exists('quick')))
+            return inner(text, out)
+        self.ask('slow.json', {'text': 'A new sentence.'}, age=9.0)
+        self.ask('quick.json', {'text': 'Known sentence.'}, age=1.0)
+        self.serve(watching, loops=1)
+        self.assertEqual(order, [('rendering', 'A new sentence.', True)], 'the cached answer was already written when the other sentence began')
+
+    def answer_exists(self, name):
+        return (self.dir / 'tts' / 'out' / f'{name}.json').exists()
+
+    def test_the_inbox_is_looked_at_again_after_each_rendering(self):
+        fake = fake_synthesizer()
+        self.ask('seed.json', {'text': 'Known sentence.'})
+        self.serve(fake, loops=1)
+        sequence = []
+        inner = fake_synthesizer()
+
+        def synthesize(text, out):
+            sequence.append(text)
+            if text == 'miss one':                       # while this renders, a cached request and another miss arrive
+                self.ask('late-hit.json', {'text': 'Known sentence.'}, age=0.0)
+                self.ask('miss-two.json', {'text': 'miss two'}, age=0.0)
+            if text == 'miss two':
+                sequence.append(('late hit already answered', self.answer_exists('late-hit')))
+            return inner(text, out)
+        self.ask('miss-one.json', {'text': 'miss one'}, age=9.0)
+        self.serve(synthesize, loops=1)
+        self.assertEqual(sequence, ['miss one', 'miss two', ('late hit already answered', True)])
+
+    def prefetch(self, name, texts, age=5.0, **extra):
+        folder = self.dir / 'tts' / 'prefetch'
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / name
+        path.write_text(texts if isinstance(texts, str) and extra.get('raw') else json.dumps(dict({'texts': texts}, **{k: v for k, v in extra.items() if k != 'raw'})), encoding='utf-8')
+        os.utime(path, (self.clock() - age, self.clock() - age))
+        return path
+
+    def test_sentences_are_rendered_ahead_in_order_one_per_idle_loop_and_then_answered_from_the_cache(self):
+        fake = fake_synthesizer()
+        path = self.prefetch('plan.json', ['One.', 'Two.', 'Three.', 'One.'])
+        counts = self.serve(fake, loops=5)
+        self.assertEqual((fake.heard, counts['prefetch_done'], path.exists()), (['One.', 'Two.', 'Three.'], 3, False))
+        self.assertEqual(list((self.dir / 'tts' / 'out').glob('*.wav')), [], 'rendering ahead answers nobody')
+        self.ask('now.json', {'text': 'Two.'})
+        self.serve(fake, loops=1)
+        self.assertTrue(self.answer('now')['cached'])
+        self.assertEqual(fake.heard, ['One.', 'Two.', 'Three.'], 'nothing was rendered twice')
+
+    def test_a_waiting_request_is_never_made_to_wait_for_rendering_ahead(self):
+        fake = fake_synthesizer()
+        self.prefetch('plan.json', ['Ahead one.', 'Ahead two.'])
+        self.ask('live.json', {'text': 'Wanted now.'})
+        self.serve(fake, loops=1)
+        self.assertEqual(fake.heard, ['Wanted now.'])
+        lease = json.loads((self.dir / 'tts-worker.json').read_text(encoding='utf-8'))
+        self.assertEqual(lease['prefetch_pending'], 2, 'the list was taken in but nothing was rendered from it while a request was waiting')
+        self.ask('live2.json', {'text': 'Wanted too.'})
+        self.prefetch('plan2.json', ['Ahead one.', 'Ahead two.'])
+        fake2 = fake_synthesizer()
+        self.serve(fake2, loops=3)
+        self.assertEqual(fake2.heard, ['Wanted too.', 'Ahead one.', 'Ahead two.'])
+
+    def test_a_prefetch_list_can_replace_the_queue_and_bad_lists_are_dropped(self):
+        fake = fake_synthesizer()
+        self.prefetch('a-old.json', ['Stale one.', 'Stale two.'], age=9.0)
+        self.prefetch('b-new.json', ['Fresh.'], age=8.0, reset=True)
+        (self.dir / 'tts' / 'prefetch' / 'junk.txt').write_text('x', encoding='utf-8')
+        self.prefetch('broken.json', '{nope', age=9.0, raw=True)
+        self.prefetch('shape.json', 'not a list')
+        self.prefetch('bad.json', ['', 'a\x00b', 'x' * (va.MAX_TTS_CHARS + 1), 7])
+        self.serve(fake, loops=4)
+        self.assertEqual(fake.heard, ['Fresh.'])
+        self.assertEqual([p.name for p in (self.dir / 'tts' / 'prefetch').iterdir()], [])
+
+    def test_the_queue_of_sentences_to_render_ahead_is_capped(self):
+        fake = fake_synthesizer()
+        for number in range(4):
+            self.prefetch(f'p{number}.json', [f'sentence {number}-{n}' for n in range(va.TTS_PREFETCH_LIST_MAX)])
+        self.serve(fake, loops=1)
+        lease = json.loads((self.dir / 'tts-worker.json').read_text(encoding='utf-8'))
+        self.assertLessEqual(lease['prefetch_pending'], va.TTS_PREFETCH_MAX)
+        self.assertGreater(lease['prefetch_pending'], va.TTS_PREFETCH_LIST_MAX)
+
+    def test_a_failure_while_rendering_ahead_is_counted_and_never_stops_the_worker(self):
+        fake = fake_synthesizer(fail_on='bad')
+        self.prefetch('plan.json', ['a bad one', 'a good one'])
+        counts = self.serve(fake, loops=3)
+        self.assertEqual((counts['prefetch_done'], counts['failed']), (1, 0))
+        self.assertEqual(list((self.dir / 'tts' / 'cache').glob('*.part')), [])
+
+    def test_the_lease_stays_fresh_while_one_long_rendering_runs(self):
+        import threading
+        beats = []
+
+        def slow(text, out):
+            lease = self.dir / 'tts-worker.json'
+            beats.append(json.loads(lease.read_text(encoding='utf-8'))['heartbeat'])
+            threading.Event().wait(0.35)
+            beats.append(json.loads(lease.read_text(encoding='utf-8'))['heartbeat'])
+            return fake_synthesizer()(text, out)
+        self.ask('long.json', {'text': 'A very long sentence that takes a long time.'})
+        va.tts_loop(self.dir, slow, TTS_DETAILS, max_loops=1, beat=0.05, heartbeat=True)
+        self.assertGreater(beats[1], beats[0], 'the heartbeat advanced while synthesis was still running')
+
+    def test_the_heartbeat_thread_beats_and_stops(self):
+        import threading
+        ticks = []
+        beating = va.Heartbeat(lambda: ticks.append(1), 0.01).start()
+        threading.Event().wait(0.15)
+        beating.close()
+        count = len(ticks)
+        threading.Event().wait(0.05)
+        self.assertGreaterEqual(count, 3)
+        self.assertEqual(len(ticks), count, 'no beat after it was closed')
 
     def test_the_command_starts_the_adapter_with_the_chosen_delivery(self):
         args = vc.tts_worker_args(Path('v'), {'model_dir': 'models'})

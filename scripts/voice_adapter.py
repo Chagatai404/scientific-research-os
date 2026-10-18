@@ -370,10 +370,19 @@ def serve(args) -> int:
 # Not recordings made in advance: a worker keeps Kokoro loaded and turns each sentence into audio when the page asks for it (the page asks a sentence or two
 # ahead of the one being spoken). Requests are small JSON files in `<dir>/tts/inbox`, answers are `<dir>/tts/out/<id>.wav` plus `<id>.json`, and a lease
 # (`<dir>/tts-worker.json`) says whether anyone is listening. As with the speech-to-text worker, the loop takes a function and is tested with a fake.
+#
+# v0.9.7 speed: every sentence the worker renders is kept in a bounded cache (`<dir>/tts/cache`), keyed by the delivery and the exact text, so a sentence spoken
+# twice, or rendered ahead, is answered by a file copy. Sentences can be rendered ahead of time: `voice.py prefetch` writes a list into `<dir>/tts/prefetch` and
+# the worker renders it one sentence at a time whenever nobody is waiting, so a live request never queues behind more than the sentence being rendered.
 TTS_NAME = re.compile(r'[A-Za-z0-9_-]{1,64}\.json\Z')
 MAX_TTS_CHARS = 600
 TTS_OUTPUT_KEEP_SECONDS = 600
 TTS_LEASE_FILE = 'tts-worker.json'
+TTS_CACHE_MAX_FILES = 300
+TTS_CACHE_MAX_BYTES = 192 * 1024 * 1024         # a minute of speech is about 3 MB, so this is over an hour of lecture
+TTS_PREFETCH_MAX = 400                           # sentences waiting to be rendered ahead
+TTS_PREFETCH_LIST_MAX = 150                      # sentences in one prefetch file
+BAD_TEXT = re.compile(r'[\x00-\x08\x0b-\x1f\x7f]')
 
 
 def make_synthesizer(args):
@@ -386,32 +395,133 @@ def make_synthesizer(args):
 
     def synthesize(text: str, out: Path) -> dict:
         return render_kokoro(model, style, text, args, out)
+    folder = Path(args.model_dir or '')
+    stamp = '/'.join(str((folder / name).stat().st_size) for name in (KOKORO_MODEL, KOKORO_VOICES))
     details = {'engine': 'kokoro', 'voice': args.voice_blend, 'speed': args.speed, 'gap': args.gap, 'colon_gap': args.colon_gap, 'load_seconds': load_seconds,
-               'warm_seconds': round(time.perf_counter() - started, 2)}
+               'warm_seconds': round(time.perf_counter() - started, 2), 'model_stamp': stamp}
     return synthesize, details
 
 
-def tts_loop(directory: Path, synthesize, details: dict, *, now=time.time, sleep=time.sleep, poll: float = 0.05, beat: float = 2.0, max_loops: int | None = None) -> dict:
-    """Answer sentence requests in ``<directory>/tts/inbox`` until ``<directory>/tts-stop`` appears. A bad request becomes an error result, never a crash."""
+def delivery_id(details: dict) -> str:
+    """Everything that changes how a sentence sounds, so a changed voice, speed, gap or model never reuses an old rendering."""
+    return '|'.join(str(details.get(key)) for key in ('engine', 'voice', 'speed', 'gap', 'colon_gap', 'model_stamp'))
+
+
+class TtsCache:
+    """Rendered sentences on disk: ``<folder>/<sha256(delivery, text)>.wav``. Bounded by file count and bytes; the least recently used are dropped first
+    (a hit refreshes the file's time)."""
+
+    def __init__(self, folder: Path, delivery: str, max_files: int = TTS_CACHE_MAX_FILES, max_bytes: int = TTS_CACHE_MAX_BYTES):
+        self.folder, self.delivery, self.max_files, self.max_bytes = Path(folder), delivery, max_files, max_bytes
+        self.folder.mkdir(parents=True, exist_ok=True)
+        for leftover in self.folder.glob('*.part'):
+            leftover.unlink(missing_ok=True)           # a rendering cut short by a stop; never a whole file
+
+    def path(self, text: str) -> Path:
+        import hashlib
+        return self.folder / (hashlib.sha256(f'{self.delivery}\n{text}'.encode('utf-8')).hexdigest()[:40] + '.wav')
+
+    def has(self, text: str) -> bool:
+        return self.path(text).is_file()
+
+    def touch(self, text: str) -> Path | None:
+        import os
+        path = self.path(text)
+        if not path.is_file():
+            return None
+        try:
+            os.utime(path, None)
+        except OSError:
+            pass
+        return path
+
+    def store(self, text: str, source: Path, move: bool = False) -> None:
+        """Keep a rendering. ``source`` is copied (or moved) in whole: the cache never holds half a file."""
+        import shutil
+        final = self.path(text)
+        part = final.with_suffix('.part')
+        if move:
+            replace_retrying(source, part)
+        else:
+            shutil.copyfile(source, part)
+        replace_retrying(part, final)
+        self.evict()
+
+    def evict(self) -> None:
+        files = []
+        for path in self.folder.glob('*.wav'):
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            files.append((stat.st_mtime, path, stat.st_size))
+        files.sort(key=lambda item: item[0])
+        total = sum(size for _, _, size in files)
+        while files and (len(files) > self.max_files or total > self.max_bytes):
+            _, path, size = files.pop(0)
+            path.unlink(missing_ok=True)
+            total -= size
+
+
+class Heartbeat:
+    """Rewrites the lease every ``interval`` seconds from a thread, so a sentence that takes longer than the lease's life to render (a long one on a busy
+    machine) does not make the worker look gone: the host, and ``voice.py up``, would otherwise refuse requests or start a second worker."""
+
+    def __init__(self, tick, interval: float = 2.0):
+        import threading
+        self.tick, self.interval, self.stopped = tick, interval, threading.Event()
+        self.thread = threading.Thread(target=self.run, name='tts-heartbeat', daemon=True)
+
+    def run(self) -> None:
+        while not self.stopped.wait(self.interval):
+            try:
+                self.tick()
+            except Exception:  # noqa: BLE001 - a missed beat is not worth ending the worker
+                pass
+
+    def start(self) -> 'Heartbeat':
+        self.thread.start()
+        return self
+
+    def close(self) -> None:
+        self.stopped.set()
+        if self.thread.is_alive():
+            self.thread.join(timeout=2.0)
+
+
+def tts_loop(directory: Path, synthesize, details: dict, *, now=time.time, sleep=time.sleep, poll: float = 0.05, beat: float = 2.0, max_loops: int | None = None,
+             cache: TtsCache | None = None, heartbeat: bool = False) -> dict:
+    """Answer sentence requests in ``<directory>/tts/inbox`` until ``<directory>/tts-stop`` appears. A bad request becomes an error result, never a crash.
+
+    A request whose text is in the cache is answered before any request that needs rendering, and the inbox is looked at again after each rendering, so a
+    cached sentence never waits behind more than the one being rendered. When nobody is waiting, sentences listed in ``<directory>/tts/prefetch/*.json``
+    (``{"texts": [...], "reset": false}``) are rendered ahead, one at a time, into the cache."""
     import os
-    inbox, out = Path(directory) / 'tts' / 'inbox', Path(directory) / 'tts' / 'out'
-    inbox.mkdir(parents=True, exist_ok=True)
-    out.mkdir(parents=True, exist_ok=True)
+    import shutil
+    import threading
+    inbox, out, listed = Path(directory) / 'tts' / 'inbox', Path(directory) / 'tts' / 'out', Path(directory) / 'tts' / 'prefetch'
+    for folder in (inbox, out, listed):
+        folder.mkdir(parents=True, exist_ok=True)
+    cache = cache or TtsCache(Path(directory) / 'tts' / 'cache', delivery_id(details))
     stop = Path(directory) / 'tts-stop'
     if stop.exists():
         stop.unlink()
-    lease = {'schema': 1, 'pid': os.getpid(), 'started_at': now(), 'synthesized': 0, 'failed': 0, 'last_error': None, **details}
+    lease = {'schema': 1, 'pid': os.getpid(), 'started_at': now(), 'synthesized': 0, 'failed': 0, 'last_error': None, 'cache_hits': 0, 'prefetch_pending': 0,
+             'prefetch_done': 0, 'prefetch_failed': 0, **details}
+    lock = threading.Lock()
+    queue: list[str] = []                           # sentences to render ahead, in the order they will be wanted
 
-    def publish(state: str) -> None:
-        lease.update(state=state, heartbeat=now())
-        try:
-            write_json_atomic(Path(directory) / TTS_LEASE_FILE, lease)
-        except OSError:
-            pass                                   # a missed heartbeat is not worth stopping the worker; the next one will land
+    def publish(state: str | None = None) -> None:
+        with lock:
+            lease.update(state=state or lease.get('state', 'ready'), heartbeat=now(), prefetch_pending=len(queue))
+            try:
+                write_json_atomic(Path(directory) / TTS_LEASE_FILE, lease)
+            except OSError:
+                pass                                   # a missed heartbeat is not worth stopping the worker; the next one will land
     publish('ready')
-    last_beat, last_clean, loops = now(), now(), 0
-    while not stop.exists() and (max_loops is None or loops < max_loops):
-        loops += 1
+    beating = Heartbeat(publish, beat).start() if heartbeat else None
+
+    def scan() -> list:
         waiting = []
         for path in inbox.iterdir():
             if not path.is_file():
@@ -424,48 +534,136 @@ def tts_loop(directory: Path, synthesize, details: dict, *, now=time.time, sleep
         for path in waiting[MAX_PENDING:]:
             write_json_atomic(out / f'{path.stem}.json', {'id': path.stem, 'error': 'The voice queue is full; try again in a moment.'})
             path.unlink(missing_ok=True)
-        for path in waiting[:MAX_PENDING]:
-            try:
-                request = json.loads(path.read_text(encoding='utf-8'))
-            except (OSError, ValueError):
-                if now() - path.stat().st_mtime < 1.0:
-                    continue                       # perhaps still being written
-                write_json_atomic(out / f'{path.stem}.json', {'id': path.stem, 'error': 'The request could not be read.'})
-                path.unlink(missing_ok=True)
-                continue
-            publish('busy')
-            result = {'id': path.stem}
-            try:
-                text = request.get('text') if isinstance(request, dict) else None
-                if not isinstance(text, str) or not text.strip() or len(text) > MAX_TTS_CHARS or re.search(r'[\x00-\x08\x0b-\x1f\x7f]', text):
-                    raise ValueError(f'a request is one sentence of text, 1 to {MAX_TTS_CHARS} characters')
-                wav = out / f'{path.stem}.wav'
-                tmp = out / f'{path.stem}.wav.tmp'
-                done = synthesize(text.strip(), tmp)
+        return waiting[:MAX_PENDING]
+
+    def valid_text(request) -> str:
+        text = request.get('text') if isinstance(request, dict) else None
+        if not isinstance(text, str) or not text.strip() or len(text) > MAX_TTS_CHARS or BAD_TEXT.search(text):
+            raise ValueError(f'a request is one sentence of text, 1 to {MAX_TTS_CHARS} characters')
+        return text.strip()
+
+    def answer(path: Path, request) -> None:
+        publish('busy')
+        result, text, wav = {'id': path.stem}, None, out / f'{path.stem}.wav'
+        try:
+            text = valid_text(request)
+            tmp = out / f'{path.stem}.wav.tmp'
+            kept = cache.touch(text)
+            if kept is not None:
+                shutil.copyfile(kept, tmp)
                 replace_retrying(tmp, wav)
                 seconds, rate = wav_seconds(wav)
-                result.update(done, audio_seconds=round(seconds, 3), sample_rate=rate, chars=len(text))
+                result.update(cached=True, synth_seconds=0.0, audio_seconds=round(seconds, 3), sample_rate=rate, chars=len(text))
+                lease['cache_hits'] += 1
+            else:
+                done = synthesize(text, tmp)
+                replace_retrying(tmp, wav)
+                seconds, rate = wav_seconds(wav)
+                result.update(done, cached=False, audio_seconds=round(seconds, 3), sample_rate=rate, chars=len(text))
                 lease['synthesized'] += 1
-            except Exception as exc:  # noqa: BLE001 - the page falls back and says why; the worker goes on
-                result['error'] = f'{type(exc).__name__}: {exc}'[:300]
-                lease['failed'] += 1
-                lease['last_error'] = result['error']
-            write_json_atomic(out / f'{path.stem}.json', result)   # the answer file appears last, after the audio is whole
+        except Exception as exc:  # noqa: BLE001 - the page falls back and says why; the worker goes on
+            result['error'] = f'{type(exc).__name__}: {exc}'[:300]
+            lease['failed'] += 1
+            lease['last_error'] = result['error']
+        write_json_atomic(out / f'{path.stem}.json', result)   # the answer file appears last, after the audio is whole
+        path.unlink(missing_ok=True)
+        if text is not None and 'error' not in result and not result.get('cached'):
+            try:
+                cache.store(text, wav)                     # after the answer, so keeping it costs the page nothing
+            except OSError:
+                pass
+
+    def take_lists() -> None:
+        for path in sorted((p for p in listed.iterdir() if p.is_file()), key=lambda p: (p.stat().st_mtime, p.name)):
+            if not TTS_NAME.match(path.name):
+                path.unlink(missing_ok=True)
+                continue
+            try:
+                body = json.loads(path.read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                if now() - path.stat().st_mtime < 1.0:
+                    continue                               # perhaps still being written
+                path.unlink(missing_ok=True)
+                continue
             path.unlink(missing_ok=True)
-        if waiting:
-            publish('ready')
-            last_beat = now()
-        elif now() - last_beat >= beat:
-            publish('ready')
-            last_beat = now()
-        if now() - last_clean >= 30:
-            for old in list(out.glob('*')):
-                if now() - old.stat().st_mtime > TTS_OUTPUT_KEEP_SECONDS:
-                    old.unlink(missing_ok=True)
-            last_clean = now()
-        sleep(poll)
+            texts = body.get('texts') if isinstance(body, dict) else None
+            if not isinstance(texts, list):
+                continue
+            if body.get('reset') is True:
+                queue.clear()
+            for text in texts[:TTS_PREFETCH_LIST_MAX]:
+                if isinstance(text, str) and text.strip() and len(text) <= MAX_TTS_CHARS and not BAD_TEXT.search(text) and text.strip() not in queue and len(queue) < TTS_PREFETCH_MAX:
+                    queue.append(text.strip())
+
+    def render_ahead() -> bool:
+        while queue:
+            text = queue.pop(0)
+            if cache.has(text):
+                continue
+            part = cache.folder / f'ahead-{os.getpid()}.part'
+            try:
+                synthesize(text, part)
+                cache.store(text, part, move=True)
+                lease['prefetch_done'] += 1
+            except Exception as exc:  # noqa: BLE001 - rendering ahead is best effort: the sentence will be rendered when it is wanted
+                lease['prefetch_failed'] += 1
+                lease['last_error'] = f'prefetch: {type(exc).__name__}: {exc}'[:300]
+                part.unlink(missing_ok=True)
+            return True
+        return False
+
+    last_beat, last_clean, loops = now(), now(), 0
+    try:
+        while not stop.exists() and (max_loops is None or loops < max_loops):
+            loops += 1
+            handled, parsed, busy = set(), {}, False
+            while True:
+                pick, waiting = None, [p for p in scan() if p not in handled]
+                for path in waiting:
+                    try:
+                        parsed[path] = json.loads(path.read_text(encoding='utf-8'))
+                    except (OSError, ValueError):
+                        if now() - path.stat().st_mtime < 1.0:
+                            handled.add(path)              # perhaps still being written: next time round
+                            continue
+                        write_json_atomic(out / f'{path.stem}.json', {'id': path.stem, 'error': 'The request could not be read.'})
+                        path.unlink(missing_ok=True)
+                        handled.add(path)
+                        continue
+                    try:
+                        text = valid_text(parsed[path])
+                    except ValueError:
+                        text = None
+                    if pick is None:
+                        pick = path
+                    if text is not None and cache.has(text):
+                        pick = path
+                        break                              # the oldest request that costs nothing goes first
+                if pick is None:
+                    break
+                handled.add(pick)
+                busy = True
+                answer(pick, parsed[pick])
+            take_lists()
+            rendered = False if busy else render_ahead()
+            if busy or rendered:
+                publish('ready')
+                last_beat = now()
+            elif now() - last_beat >= beat:
+                publish('ready')
+                last_beat = now()
+            if now() - last_clean >= 30:
+                for old in list(out.glob('*')):
+                    if now() - old.stat().st_mtime > TTS_OUTPUT_KEEP_SECONDS:
+                        old.unlink(missing_ok=True)
+                last_clean = now()
+            if not rendered:
+                sleep(poll)
+    finally:
+        if beating:
+            beating.close()
     publish('stopped')
-    return {'synthesized': lease['synthesized'], 'failed': lease['failed']}
+    return {'synthesized': lease['synthesized'], 'failed': lease['failed'], 'cache_hits': lease['cache_hits'], 'prefetch_done': lease['prefetch_done']}
 
 
 def serve_tts(args) -> int:
@@ -480,7 +678,7 @@ def serve_tts(args) -> int:
         write_json_atomic(directory / TTS_LEASE_FILE, dict(stub, state='error', heartbeat=time.time(), last_error=f'{type(exc).__name__}: {exc}'[:300]))
         return fail(f'{type(exc).__name__}: {exc}'[:600])
     print(json.dumps({'ok': True, 'state': 'ready', **details}, ensure_ascii=True), flush=True)
-    counts = tts_loop(directory, synthesize, details)
+    counts = tts_loop(directory, synthesize, details, heartbeat=True)
     return emit({'ok': True, 'stopped': True, **counts})
 
 
