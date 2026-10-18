@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.7 - 2026-10-18 - Planned Sessions and Reliable Startup
+
+- Prepared probe trees, lecture segments, anticipated answers, PDF handouts and
+  closing checks run through the staged session view. Attaching a first plan to
+  an open lesson now activates that view immediately.
+- Tutor and course startup checks lesson preparation and the actual deployed
+  runtime/companion files before warming voices. The installed skill status check
+  now includes helpers and assets, not only instruction text and references.
+- Speech workers record the adapter revision loaded into memory. Startup
+  cooperatively replaces obsolete workers, refuses duplicate workers, and queues
+  prepared lecture audio. Saved local settings work across agent hosts.
+- Both tutoring skills require automatic preparation from an ordinary start or
+  resume request, preserving earlier responses and respecting requests to move on.
+- [STAT303 recovery findings](docs/STAT303_ROLLOUT_FINDINGS.md) distinguish verified
+  files, compiled handouts and generated audio from pending real-desktop playback
+  checks. This entry does not certify unperformed Obsidian or microphone checks.
+
 ## 0.9.6 - 2026-10-18 - Live Blackboard and Voice
 
 Developed on the `v0.9.6-live-board` branch and merged to `main`; not tagged. Release gates: the full run passed all but two checks (a stale expectation about the voice menu order, and the rule that the page code never names a voice provider); both were fixed and re-run, and the Python suite then passed (1,381 tests; one skipped browser gate needs an external reference page). The Obsidian companion label stays 0.3.0 (its code is new).

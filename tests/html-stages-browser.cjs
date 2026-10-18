@@ -37,9 +37,10 @@ const today = new Date().toISOString().slice(0, 10);
 const videoRecords = {'RES-example-variance-video': {id: 'RES-example-variance-video', title: 'Why spread changes', url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', kind: 'video', lang: 'en', publisher: 'An educator', license: 'Standard YouTube licence', embed: 'youtube', video_id: 'dQw4w9WgXcQ', vetted_on: today}};
 // options: built (the plan's handout is built), videoTimeout (ms the page waits for the host to open a video)
 function hostPage(size, seeded = [], options = {}) {
-  const {built, videoTimeout, ...extra} = options;
+  const {built, videoTimeout, unplanned, ...extra} = options;
   const plan = built ? {...baseState.plan, handout: {...baseState.plan.handout, status: 'built'}} : baseState.plan;
   const state = {...baseState, ...extra, events: seeded, plan: extra.plan || plan, video_records: videoRecords};
+  if (unplanned) delete state.plan;
   const hostInfo = JSON.stringify({token: 'tok', session_id: sessionId, state, voice: {speak: true, capable: true}, video_timeout_ms: videoTimeout}).replace(/</g, '\\u003c');
   const srcdoc = standalone.replace('<script type="application/json" id="ros-session-data">', '<script>' + INSTRUMENT + 'window.ROS_HOST=' + hostInfo + ';</script><script type="application/json" id="ros-session-data">');
   return {srcdoc, html: `<!doctype html><body style="margin:0"><iframe id="session" sandbox="allow-scripts" style="width:${size.width}px;height:${size.height}px;border:0"></iframe><script>
@@ -92,7 +93,7 @@ function hostPage(size, seeded = [], options = {}) {
     await page.setContent(html);
     await page.locator('#session').evaluate((frame, doc) => { frame.srcdoc = doc; }, srcdoc);
     const frame = page.frameLocator('#session');
-    await frame.locator('.ros-stages').waitFor();
+    await frame.locator(options.unplanned ? '.ros-session-header' : '.ros-stages').waitFor();
     return {page, frame, events: () => page.evaluate(() => window.__events), log: () => page.evaluate(() => window.__log)};
   }
   // Nothing inside the stages scrolls on its own, and the page itself does not scroll sideways.
@@ -110,6 +111,21 @@ function hostPage(size, seeded = [], options = {}) {
   const stage = t => t.frame.locator('.ros-stages').getAttribute('data-stage');
   const primary = (t, text) => t.frame.getByRole('button', {name: text, exact: true});
   const bar = t => t.frame.locator('.ros-stagebar li button').allTextContents();
+
+  // A first plan attached to an open historical lesson takes effect immediately,
+  // keeping saved answers; a second state update must not mount duplicate stages.
+  {
+    const saved = {event_id: 'legacy-checkpoint', type: 'checkpoint', question_id: null, response: 'Earlier learner progress', created_at: new Date().toISOString()};
+    const t = await open(undefined, [saved], {unplanned: true});
+    assert.equal(await t.frame.locator('.ros-stages').count(), 0);
+    await t.page.evaluate(plan => window.__push({plan}), baseState.plan);
+    await t.frame.locator('.ros-stages').waitFor();
+    assert.equal(await stage(t), 'probe');
+    assert.deepEqual(await t.events(), [saved]);
+    await t.page.evaluate(plan => window.__push({plan}), baseState.plan);
+    assert.equal(await t.frame.locator('.ros-stages').count(), 1);
+    await t.page.close();
+  }
 
   // ------------------------------------------------------------------------------------------------------------ the whole session at desktop width
   {

@@ -1617,6 +1617,67 @@ def pending_activity(state):
 VOICE_FOLDER = Path(".research-os") / "voice"
 
 
+def session_readiness(root, relative_md):
+    """Check the prepared lesson and its deployed renderer before starting workers.
+
+    This is a filesystem preflight, not proof that the desktop has displayed or
+    played the lesson. Historical records remain readable without a plan.
+    """
+    state = load_session(root, relative_md)
+    _ensure_context(state)
+    issues = []
+    if state['type'] not in {'tutor-session', 'course-session'}:
+        return {'ready': True, 'issues': [], 'desktop_verified': False}
+    plan = state.get('plan')
+    if not plan:
+        issues.append('SESSION_PLAN_MISSING: prepare and attach the lesson plan before starting; preserve existing answers')
+    elif (plan.get('handout') or {}).get('status') != 'built':
+        issues.append('HANDOUT_NOT_BUILT: build the planned handout before calling the session ready')
+    else:
+        import handout
+        try:
+            located = handout.locate(root, str(relative_md))
+            pdf = _path(root, located.get('pdf', '')) if located.get('pdf') else None
+            if not located.get('built') or pdf is None or not pdf.read_bytes().startswith(b'%PDF'):
+                issues.append('HANDOUT_MISSING: the built handout PDF is missing or invalid')
+        except (OSError, ValueError) as exc:
+            issues.append('HANDOUT_UNAVAILABLE: ' + str(exc))
+
+    def compare(source, destination, label):
+        if not source.is_dir():
+            issues.append(label + '_BUNDLE_MISSING: reinstall the complete skill bundle')
+            return
+        for path in sorted(source.rglob('*')):
+            if not path.is_file() or '__pycache__' in path.parts:
+                continue
+            target = destination / path.relative_to(source)
+            # Git may check text out with CRLF; that alone is not stale code.
+            a = path.read_bytes()
+            b = target.read_bytes() if target.is_file() else None
+            if path.suffix in {'.js', '.css', '.json', '.md', '.py', '.txt'}:
+                a = a.replace(b'\r\n', b'\n')
+                b = b.replace(b'\r\n', b'\n') if b is not None else None
+            if a != b:
+                issues.append(label + '_DRIFT: ' + target.relative_to(Path(root)).as_posix())
+
+    compare(RUNTIME, Path(root) / '.research-os/runtime', 'RUNTIME')
+    if (Path(root) / '.obsidian').is_dir():
+        companion = Path(__file__).resolve().parents[1] / 'extensions/obsidian-html'
+        # README is documentation, not a deployed companion resource.
+        for name in ('main.js', 'manifest.json', 'styles.css'):
+            source = companion / name
+            target = Path(root) / '.obsidian/plugins/research-os-html' / name
+            if not source.is_file() or not target.is_file() or source.read_bytes().replace(b'\r\n', b'\n') != target.read_bytes().replace(b'\r\n', b'\n'):
+                issues.append('COMPANION_DRIFT: ' + name + '; back up and update the companion, then reload Obsidian')
+        try:
+            enabled = json.loads((Path(root) / '.obsidian/community-plugins.json').read_text(encoding='utf-8'))
+            if not isinstance(enabled, list) or 'research-os-html' not in enabled:
+                issues.append('COMPANION_DISABLED: enable the Research OS HTML Sessions companion')
+        except (OSError, ValueError):
+            issues.append('COMPANION_UNCONFIGURED: cannot verify the enabled companion')
+    return {'ready': not issues, 'issues': issues, 'desktop_verified': False}
+
+
 def start_session(root, relative_md, holder=None, provider="generic", timeout=None, voice=True, ensure=None):
     """Get a session ready for the learner: the live voice and the speech worker running and warm, and the tutor connected.
 
@@ -1625,15 +1686,31 @@ def start_session(root, relative_md, holder=None, provider="generic", timeout=No
     _, _, data = paths(root, relative_md)
     if not data.exists():
         raise SystemExit(f"The session does not exist yet: {relative_md}")
-    result = {"session": str(relative_md), "voice": None, "lease": None}
+    result = {"session": str(relative_md), "voice": None, "lease": None,
+              "preflight": session_readiness(root, relative_md)}
+    if not result['preflight']['ready']:
+        result['ready'] = False
+        return result
+    # The documented command must connect without host-specific argument knowledge.
+    provider = provider.strip().lower()
+    holder = re.sub(r'[^A-Za-z0-9_.-]+', '-', holder or f'{provider}-tutor-{os.getpid()}').strip('-')
+    import supervision
+    if not supervision.HOLDER.fullmatch(holder) or not supervision.PROVIDER.fullmatch(provider):
+        raise ValueError('Invalid tutor holder or provider; use a short identifier')
+    existing, _ = supervision.read_lease(root, relative_md)
+    if existing and supervision.alive(existing) and existing['holder'] != holder:
+        raise supervision.SupervisionError('LEASE_HELD', 'Another tutor is supervising this session; resolve ownership before starting workers')
     if voice:
         import voice as voice_module
         directory = Path(root) / VOICE_FOLDER
         run = ensure or voice_module.ensure_workers
         options = {} if timeout is None else {"timeout": float(timeout)}
         result["voice"] = run(directory, voice_module.load_setup(directory), **options)
+        state = load_session(root, relative_md)
+        if result['voice'].get('ready') and state.get('plan'):
+            # Preparation belongs to startup, not to another learner request.
+            result['audio_prefetch'] = voice_module.prefetch(directory, voice_module.plan_sentences(state['plan']))
     if holder:
-        import supervision
         lease = supervision.heartbeat(root, relative_md, holder=holder, provider=provider, mode="working")
         result["lease"] = {"holder": lease["holder"], "expires_at": lease["expires_at"]}
     result["ready"] = bool(result["voice"]["ready"]) if result["voice"] else True

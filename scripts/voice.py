@@ -424,7 +424,11 @@ LEASE_MAX_AGE = 10.0          # seconds; a worker beats every two, so a lease ol
 TTS_LEASE_FILE = 'tts-worker.json'
 
 
-def lease_state(directory: Path, now: float | None = None, filename: str = LEASE_FILE) -> dict:
+def adapter_revision() -> str:
+    return hashlib.sha256(ADAPTER.read_bytes()).hexdigest()
+
+
+def lease_state(directory: Path, now: float | None = None, filename: str = LEASE_FILE, require_current: bool = False) -> dict:
     """What the page may say about the voice worker: ``ready``, ``busy``, ``warming``, ``error``, ``stopped`` or ``off`` (no worker, or one that stopped beating).
     Never claims a worker is listening unless its lease is recent."""
     now = time.time() if now is None else now
@@ -439,6 +443,8 @@ def lease_state(directory: Path, now: float | None = None, filename: str = LEASE
         return {'state': state, 'reason': lease.get('last_error'), 'model': lease.get('model'), 'device': lease.get('device')}
     if now - lease['heartbeat'] > LEASE_MAX_AGE * (6 if state == 'warming' else 1):   # a model can take a while to load; a beating worker cannot go quiet
         return {'state': 'off', 'reason': f'the worker has not reported for {int(now - lease["heartbeat"])} s'}
+    if require_current and state in ('ready', 'busy') and lease.get('adapter_revision') != adapter_revision():
+        return {'state': 'stale', 'reason': 'the running speech worker predates the installed adapter; restart it cooperatively'}
     return {'state': state if state in ('ready', 'busy', 'warming') else 'off', 'model': lease.get('model'), 'device': lease.get('device'),
             'warm_seconds': lease.get('warm_seconds'), 'fallback_reason': lease.get('fallback_reason'), 'transcribed': lease.get('transcribed'), 'failed': lease.get('failed')}
 
@@ -553,11 +559,24 @@ def ensure_workers(directory: Path, setup: dict, kinds=('tts', 'stt'), timeout: 
     report, started, retried = {}, {}, set()
     for kind in kinds:
         info = WORKERS[kind]
-        state = lease_state(directory, filename=info['lease'])
+        state = lease_state(directory, filename=info['lease'], require_current=True)
+        if state['state'] == 'stale' and start:
+            # Stop only this voice folder's worker through its documented signal;
+            # never launch a second model worker over a live obsolete process.
+            (directory / info['stop']).write_text('adapter updated\n', encoding='utf-8')
+            stop_deadline = now() + min(5.0, max(0.0, timeout))
+            while now() < stop_deadline:
+                previous = lease_state(directory, filename=info['lease'])
+                if previous['state'] in ('stopped', 'off', 'error'):
+                    state = previous
+                    break
+                sleep(poll)
+            else:
+                state = {'state': 'unavailable', 'reason': 'the obsolete worker did not stop; no duplicate was started'}
         report[kind] = {'label': info['label'], 'state': state['state'], 'started': False, 'reason': state.get('reason'), 'seconds': None}
         if state['state'] in ('ready', 'busy'):
             report[kind]['seconds'] = 0.0
-        if state['state'] in ('ready', 'busy', 'warming') or not start:
+        if state['state'] in ('ready', 'busy', 'warming', 'unavailable') or not start:
             continue
         try:
             command = worker_command(kind, setup, directory)
@@ -580,7 +599,7 @@ def ensure_workers(directory: Path, setup: dict, kinds=('tts', 'stt'), timeout: 
             row = report[kind]
             if row['state'] in ('unavailable', 'error', 'stopped', 'off') or row['seconds'] is not None:
                 continue
-            state = lease_state(directory, filename=WORKERS[kind]['lease'])
+            state = lease_state(directory, filename=WORKERS[kind]['lease'], require_current=True)
             process = started.get(kind)
             if state['state'] in ('ready', 'busy'):
                 row.update(state=state['state'], reason=None, seconds=round(now() - began, 1))

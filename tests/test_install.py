@@ -360,6 +360,13 @@ class InstallationTests(unittest.TestCase):
         state = install.skill_status(base)
         self.assertEqual(state['tutor'], 'drifted')
         self.assertEqual(state['derive'], 'current')
+        # Matching SKILL.md and version labels do not cover the executable bundle.
+        (base / 'derive/scripts/html_sessions.py').write_text('# stale helper\n')
+        (base / 'course-study/assets/html-runtime/stages.js').unlink()
+        (base / 'study-source/extensions/obsidian-html/main.js').write_text('// old host\n')
+        state = install.skill_status(base)
+        for name in ('derive', 'course-study', 'study-source'):
+            self.assertEqual(state[name], 'drifted')
 
     def test_renamed_skill_is_retired_not_deleted_and_foreign_directories_are_left(self):
         base = self.tmp_path / 'rename-skills'

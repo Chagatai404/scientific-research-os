@@ -21,7 +21,11 @@ import re
 import sys
 import time
 import wave
+import hashlib
 from pathlib import Path
+
+# Snapshot at process startup: replacing the script cannot update an existing worker.
+ADAPTER_REVISION = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 ENGINES = {'piper': 'piper-tts', 'chatterbox': 'chatterbox-tts', 'kokoro_onnx': 'kokoro-onnx', 'faster_whisper': 'faster-whisper'}
 SENTENCE_END = r'(?<=[.!?:])\s+'
@@ -287,7 +291,8 @@ def serve_loop(directory: Path, transcribe_file, details: dict, *, now=time.time
     stop = Path(directory) / 'stop'
     if stop.exists():
         stop.unlink()
-    lease = {'schema': 1, 'pid': os.getpid(), 'started_at': now(), 'transcribed': 0, 'failed': 0, 'last_error': None, **details}
+    lease = {'schema': 1, 'pid': os.getpid(), 'started_at': now(), 'transcribed': 0, 'failed': 0, 'last_error': None, **details,
+             'adapter_revision': ADAPTER_REVISION}
 
     def publish(state: str) -> None:
         lease.update(state=state, heartbeat=now())
@@ -507,7 +512,7 @@ def tts_loop(directory: Path, synthesize, details: dict, *, now=time.time, sleep
     if stop.exists():
         stop.unlink()
     lease = {'schema': 1, 'pid': os.getpid(), 'started_at': now(), 'synthesized': 0, 'failed': 0, 'last_error': None, 'cache_hits': 0, 'prefetch_pending': 0,
-             'prefetch_done': 0, 'prefetch_failed': 0, **details}
+             'prefetch_done': 0, 'prefetch_failed': 0, **details, 'adapter_revision': ADAPTER_REVISION}
     lock = threading.Lock()
     queue: list[str] = []                           # sentences to render ahead, in the order they will be wanted
 

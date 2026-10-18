@@ -2805,6 +2805,7 @@
       if ((data.type === 'state' || data.type === 'update') && data.state && Array.isArray(data.state.events)) {
         mergeState(data.state);
         const fresh = data.type === 'update' && typeof data.body === 'string' ? applyBody(data.body) : [];
+        activatePlannedSession();
         refreshAll();
         status.textContent = pending.size ? 'Saving…' : fresh.length ? 'Session updated.' : 'Progress saved.';
       } else if (data.type === 'supervision') {
@@ -3769,8 +3770,13 @@
       if (Rich && Rich.validNoteTarget(target)) openNote(target, link);
     });
     // A session with a plan runs as stages: Probe, Handout, Lecture, Check, each in its own environment. The reading page is not built for it.
-    const Stages = root.ResearchOSStages;
-    if (state.plan && Stages) {
+    function activatePlannedSession() {
+      const Stages = root.ResearchOSStages;
+      if (staged || !state.plan || !Stages) return;
+      // An agent may attach the first plan while the old reading view is open.
+      // Keep its saved/local events and drafts, but stop the old board's audio.
+      for (const controller of boards.values()) controller.destroy();
+      boards.clear();
       doc.body.classList.add('ros-staged');
       let liveState = 'none';
       const liveOn = !!(host && host.voice && host.voice.speak);
@@ -3809,7 +3815,9 @@
           onState: callback => liveVoiceListeners.add(callback)
         } : null
       });
-    } else for (const child of contentNodes) enhance(child);
+    }
+    activatePlannedSession();
+    if (!staged) for (const child of contentNodes) enhance(child);
     placeProgress(); renumber(); refreshAll();
     if (host && host.position && typeof host.position.section === 'string') {
       const target = doc.getElementById(host.position.section);

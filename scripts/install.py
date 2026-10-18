@@ -180,6 +180,10 @@ def install_skills(base: Path, dry: bool) -> None:
             copy_file(ROOT / "scripts" / helper, destination / "scripts" / helper, dry)
         copy_dir(ROOT / "assets/html-runtime", destination / "assets/html-runtime", dry)
         copy_dir(ROOT / "assets/handout", destination / "assets/handout", dry)      # the LaTeX template and style that handout.py builds with
+        # Startup checks the actual host files, not only its (possibly unchanged) version label.
+        for name in ("main.js", "manifest.json", "styles.css"):
+            copy_file(ROOT / "extensions/obsidian-html" / name,
+                      destination / "extensions/obsidian-html" / name, dry)
         if skill.name in GRAPH_SKILLS:
             for helper in GRAPH_HELPERS:
                 copy_file(ROOT / "scripts" / helper, destination / "scripts" / helper, dry)
@@ -281,9 +285,29 @@ def skill_status(base: Path) -> dict[str, str]:
         if not (installed / "SKILL.md").is_file():
             result[skill.name] = "missing"
             continue
-        pairs = [(skill / "SKILL.md", installed / "SKILL.md")]
-        pairs += [(p, installed / "references" / p.name) for p in (ROOT / "references").glob("*.md")]
-        drifted = any(not dst.is_file() or dst.read_bytes() != src.read_bytes() for src, dst in pairs)
+        pairs = [(p, installed / p.relative_to(skill)) for p in skill.rglob('*') if p.is_file()]
+        for source, destination in ((ROOT / 'references', installed / 'references'),
+                                    (ROOT / 'assets/html-runtime', installed / 'assets/html-runtime'),
+                                    (ROOT / 'assets/handout', installed / 'assets/handout')):
+            pairs += [(p, destination / p.relative_to(source)) for p in source.rglob('*') if p.is_file()]
+        helpers = set(SESSION_HELPERS)
+        if skill.name in GRAPH_SKILLS:
+            helpers.update(GRAPH_HELPERS)
+        if skill.name in COMPUTE_SKILLS:
+            helpers.update(('scientific_tools.py', 'computational_manifest.py'))
+            source = ROOT / 'extensions/scientific-tools'
+            pairs += [(p, installed / 'extensions/scientific-tools' / p.relative_to(source)) for p in source.rglob('*') if p.is_file()]
+        pairs += [(ROOT / 'scripts' / name, installed / 'scripts' / name) for name in helpers]
+        pairs += [(ROOT / 'extensions/obsidian-html' / name, installed / 'extensions/obsidian-html' / name)
+                  for name in ('main.js', 'manifest.json', 'styles.css')]
+        def matches(src, dst):
+            if not dst.is_file():
+                return False
+            a, b = src.read_bytes(), dst.read_bytes()
+            if src.suffix in {'.md', '.py', '.js', '.css', '.json', '.toml', '.txt', '.tex', '.sty'}:
+                a, b = a.replace(b'\r\n', b'\n'), b.replace(b'\r\n', b'\n')
+            return a == b
+        drifted = any(not matches(src, dst) for src, dst in pairs)
         result[skill.name] = "drifted" if drifted else "current"
     for old in RENAMED_SKILLS:
         if (base / old).is_dir():

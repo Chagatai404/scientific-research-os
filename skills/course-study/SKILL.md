@@ -60,6 +60,28 @@ before posting, give every probe a contract within the diagnostic budget, answer
 explanation in the lesson (it is never evidence), and review answers against every criterion. A prerequisite the learner
 record does not establish is taught, probed or branched to first, never assumed.
 
+## Automatic session preparation
+
+"Start/continue/resume <course>" authorizes the full preparation workflow; never
+ask the learner to name helpers, reconnect the tutor, or request each capability.
+Read `references/SESSION_PLAN.md` and `references/HANDOUT_PROTOCOL.md`. Prepare a
+complete plan (probe tree, core/repair/extension lecture segments, anticipated
+answers and closing checks), attach it with `html_sessions.py plan`, and build the
+LaTeX PDF handout. On resume, preserve every original answer and review, reuse
+relevant existing diagnostic results with explicit provenance, and respect a
+request to continue teaching rather than repeat probes. A course-map node with
+unknown mastery does not erase actual saved answers.
+
+Run `html_sessions.py --root <vault> start <session> --holder <agent-id>` before
+calling it ready. Startup checks the plan, handout, deployed runtime and companion,
+then warms the voices and connects a tutor lease. A failed check is preparation
+work for the agent, not an instruction for the learner to debug. Back up files
+before an explicitly authorized rollout; never bypass a conflict by substituting
+an unrelated runtime. The preflight reports `desktop_verified: false`: validate
+the real Obsidian handoff separately when authorized, and never equate valid files
+with visible boards or audible speech. Keep the live answer loop attached during
+active tutoring; if it ends, report disconnected rather than promise monitoring.
+
 ## Mandatory session artifacts
 
 When this workflow creates or continues a substantive session, follow

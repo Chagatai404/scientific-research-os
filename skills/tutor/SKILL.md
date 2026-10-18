@@ -247,6 +247,15 @@ anticipate. **If a good video exists for the exact topic, plan a video segment i
 part that teaches; `SESSION_PLAN.md` says how). You may use subagents and subprocesses to write the handout, make figures and animations, and pre-render audio while
 the learner is in the probe.
 
+A request to start or continue tutoring authorizes this preparation automatically.
+Do not make the learner request the plan, handout, board, voice startup or live
+connection separately. On resume, inspect and preserve actual saved responses and
+reviews before choosing another diagnostic; a request to continue teaching is not
+permission to restart the assessment. `html_sessions.py start` refuses readiness
+when the plan, built handout or deployed renderer is missing or stale. Its
+`desktop_verified: false` explicitly means that filesystem checks do not verify
+the learner's actual Obsidian display or speech playback.
+
 **The handout is a LaTeX PDF, not page text.** Write the body to a `.tex` file and run `python scripts/handout.py build --root <vault> --session <note> --body body.tex`: it
 lints, compiles, saves the PDF in the course or project library and records the status in the plan; `references/HANDOUT_PROTOCOL.md` says how to write it and what it may use.
 

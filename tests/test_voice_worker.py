@@ -206,6 +206,14 @@ class Lease(unittest.TestCase):
         self.assertEqual(status['state'], 'off')
         self.assertIn('no worker', status['reason'])
 
+    def test_warm_old_process_is_not_current_just_because_its_heartbeat_is_fresh(self):
+        self.write()
+        self.assertEqual(vc.lease_state(self.dir, now=1005, require_current=True)['state'], 'stale')
+        self.write(adapter_revision='old-adapter')
+        self.assertEqual(vc.lease_state(self.dir, now=1005, require_current=True)['state'], 'stale')
+        self.write(adapter_revision=vc.adapter_revision())
+        self.assertEqual(vc.lease_state(self.dir, now=1005, require_current=True)['state'], 'ready')
+
     def test_a_recent_beat_is_listening_and_an_old_one_is_not(self):
         self.write()
         self.assertEqual(vc.lease_state(self.dir, now=1005.0)['state'], 'ready')
@@ -587,7 +595,7 @@ class FakeProcess:
         if self.exit_code is not None:
             return self.exit_code
         if not self.wrote and self.clock() - self.born >= self.warm:
-            (self.directory / self.lease_name).write_text(json.dumps({'schema': 1, 'state': self.state, 'heartbeat': self.clock(), 'device': 'cuda'}), encoding='utf-8')
+            (self.directory / self.lease_name).write_text(json.dumps({'schema': 1, 'state': self.state, 'heartbeat': self.clock(), 'device': 'cuda', 'adapter_revision': vc.adapter_revision()}), encoding='utf-8')
             self.wrote = True
         return None
 
@@ -623,7 +631,7 @@ class Up(unittest.TestCase):
             return vc.ensure_workers(self.dir, self.SETUP, spawn=spawn or self.spawn(), now=self.clock, sleep=self.sleep, **kw)
 
     def beat(self, name, state='ready'):
-        (self.dir / name).write_text(json.dumps({'schema': 1, 'state': state, 'heartbeat': self.clock()}), encoding='utf-8')
+        (self.dir / name).write_text(json.dumps({'schema': 1, 'state': state, 'heartbeat': self.clock(), 'adapter_revision': vc.adapter_revision()}), encoding='utf-8')
 
     def test_a_cold_start_starts_both_and_is_ready_only_when_both_beat(self):
         result = self.run_up(self.spawn(tts={'warm': 11.0}, stt={'warm': 33.0}))
@@ -638,6 +646,32 @@ class Up(unittest.TestCase):
         self.beat('worker.json', 'busy')
         result = self.run_up()
         self.assertTrue(result['ready'])
+        self.assertEqual(self.started, [])
+
+    def test_old_worker_is_stopped_cooperatively_before_a_new_one_starts(self):
+        self.beat('tts-worker.json')
+        lease = self.dir / 'tts-worker.json'
+        old = json.loads(lease.read_text())
+        old.pop('adapter_revision')
+        lease.write_text(json.dumps(old))
+        self.beat('worker.json')
+        def sleep(seconds):
+            if (self.dir / 'tts-stop').exists():
+                self.beat('tts-worker.json', 'stopped')
+            self.sleep(seconds)
+        with mock.patch.object(vc, 'worker_command', return_value=['py', 'a.py', 'serve-tts']):
+            result = vc.ensure_workers(self.dir, self.SETUP, spawn=self.spawn(), now=self.clock, sleep=sleep)
+        self.assertTrue(result['ready'])
+        self.assertEqual([kind for kind, _ in self.started], ['tts'])
+
+    def test_old_worker_that_does_not_stop_never_gets_a_duplicate(self):
+        self.beat('tts-worker.json')
+        lease = self.dir / 'tts-worker.json'
+        old = json.loads(lease.read_text()); old.pop('adapter_revision'); lease.write_text(json.dumps(old))
+        self.beat('worker.json')
+        result = self.run_up()
+        self.assertFalse(result['ready'])
+        self.assertEqual(result['workers']['tts']['state'], 'unavailable')
         self.assertEqual(self.started, [])
 
     def test_a_worker_that_is_still_warming_is_waited_for_not_started_twice(self):
