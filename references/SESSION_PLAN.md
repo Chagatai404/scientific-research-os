@@ -57,7 +57,9 @@ column width. Long captions use Previous/Next caption pages. When a saved answer
 and its feedback cannot fit together, use Your answer/Feedback/Explanation pages; preserve both
 in full. Never conceal an overflowing control with clipping or tiny text.
 
-Verify Probe, Handout, Lecture, question entry, feedback and Check at the actual
+Video offers and video failures belong to the Video environment, alongside paged source/licence details; they must never consume the board's height. Test realistic long attribution text.
+
+Verify Quiz, Handout, Lecture, Video, question entry, feedback and Check at the actual
 pane size, plus desktop, tablet and narrow viewport regressions. A scrollbar-style
 check alone is insufficient: assert document dimensions and that interactive
 controls stay above the footer and can actually be clicked.

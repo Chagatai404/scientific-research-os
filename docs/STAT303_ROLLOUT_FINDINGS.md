@@ -159,3 +159,19 @@ launch attempts wait and re-check leases instead of spawning duplicate models;
 process exit releases the lock. A two-process regression verifies contention and
 release. Companion 0.3.1 packages its three-file recovery helper closure, and the
 session preflight compares those files as well as renderer and host assets.
+
+
+### Real-content viewport regression
+
+Final desktop acceptance exposed another case the short synthetic credit missed:
+the actual MIT source/licence paragraph occupied the lecture's tools area, reducing
+the board to a thumbnail. The video offer, its failure/retry actions and its source
+metadata now live in the Video environment. Metadata uses bounded detail pages;
+the full attribution remains available. A failure lets the learner return to the
+lecture and check, without putting a large error card over the board.
+
+Browser regressions now use long licence and attribution records at 1440x800,
+803x680 and 375x740, step through every details page, assert control/footer bounds,
+and return through the explicit video-skip action. The underlying lesson answers
+and progress identifiers are unchanged. Viewport acceptance must test real content
+lengths as well as empty or concise example panels.

@@ -2196,14 +2196,14 @@
       barList.textContent = '';
       const reached = derived === 'done' ? STAGES.length : indexOf(derived);
       STAGES.forEach(([id, label], index) => {
-        const state = id === shown ? 'current' : id === 'video' ? 'available' : index < reached ? 'done' : index === reached ? 'current' : 'todo';
+        const state = id === shown ? 'current' : id === 'video' ? 'available' : index <= reached ? 'done' : 'todo';
         const link = button(label, () => show(id), {'aria-current': shown === id ? 'step' : undefined, disabled: state === 'todo'});
         barList.append(el('li', {'data-state': state}, link));
       });
     }
     function show(id) {
       if (id !== 'video' && id !== 'done' && derived !== 'done' && indexOf(id) > indexOf(derived)) return;
-      if (shown === 'video' && id !== 'video' && ctx.panes) { ctx.panes.video.close(); selectedVideo = null; }
+      if (shown === 'video' && id !== 'video' && ctx.panes) { if (selectedVideo) ctx.panes.video.close(); selectedVideo = null; }
       if (id === 'video' && shown !== 'video') videoReturn = shown;
       if (id === 'video' && lecture.controller && lecture.controller.status === 'playing') lecture.controller.pause();
       shown = id;
@@ -2409,7 +2409,26 @@
     }
 
     // Supplementary videos are reachable without changing quiz or lecture progress.
-    let selectedVideo = null;
+    let selectedVideo = null, videoMetadata = null;
+    function renderVideoMetadata(video) {
+      if (!videoMetadata || !video) return;
+      const record = ctx.videoRecord && ctx.videoRecord(video.resource);
+      const text = [video.notice, record && record.publisher, record && record.license, record && record.attribution].filter(Boolean).join(' · ');
+      const limit = doc.defaultView && doc.defaultView.innerWidth < 600 ? 140 : 240;
+      const words = text.split(/\s+/), pages = []; let part = '';
+      for (const word of words) { if (part && part.length + word.length + 1 > limit) { pages.push(part); part = ''; } part += (part ? ' ' : '') + word; }
+      if (part) pages.push(part);
+      let page = 0;
+      const paint = () => {
+        videoMetadata.textContent = '';
+        videoMetadata.append(el('p', {text: pages[page] || '', class: 'ros-video-source-text'}));
+        if (pages.length > 1) videoMetadata.append(el('div', {class: 'ros-video-source-pages'},
+          button('Previous details', () => { page--; paint(); }, {disabled: page === 0}),
+          el('span', {text: `Details ${page + 1} of ${pages.length}`}),
+          button('Next details', () => { page++; paint(); }, {disabled: page === pages.length - 1})));
+        if (doc.defaultView) doc.defaultView.requestAnimationFrame(placeVideo);
+      }; paint();
+    }
     function placeVideo() {
       const slot = panels.video.querySelector('.ros-video-slot');
       if (shown === 'video' && selectedVideo && slot && ctx.panes && ctx.panes.video.place) ctx.panes.video.place(slot.getBoundingClientRect().toJSON());
@@ -2425,12 +2444,14 @@
         const record = ctx.videoRecord && ctx.videoRecord(video.resource);
         choices.append(button(record ? record.title : 'Session video', () => {
           if (!ctx.panes) { note.textContent = 'Video playback requires the Obsidian companion.'; return; }
-          selectedVideo = video; note.textContent = video.notice || 'Playing the selected video.';
+          if (lecture.video && lecture.video.spec.resource === video.resource && ['prompt', 'failed'].includes(lecture.video.phase)) { startVideo(); return; }
+          selectedVideo = video; renderVideoMetadata(video); note.textContent = 'Opening the selected video…';
           ctx.panes.video.open(video, slot.getBoundingClientRect().toJSON());
         }));
       }
+      videoMetadata = el('section', {class: 'ros-video-source', 'aria-label': 'Video source and licence'});
       const actions = el('div', {class: 'ros-video-library-actions'}, button('Back to session', () => show(videoReturn)));
-      panel.append(choices, slot, note, actions);
+      panel.append(choices, slot, note, videoMetadata, actions);
       if (ctx.panes) ctx.panes.video.on(message => {
         if (shown !== 'video') return;
         note.textContent = message.status === 'error' ? message.message || 'The video could not play.' : message.status === 'opened' ? 'Video player open. Use its playback controls.' : message.status === 'ended' ? 'Video finished.' : 'Video closed.';
@@ -2539,8 +2560,8 @@
       lecture.prompted = lecture.k;
       if (lecture.video && (lecture.video.phase === 'opening' || lecture.video.phase === 'playing') && ctx.panes) ctx.panes.video.close();
       lecture.video = {spec: chunk.video, record: ctx.videoRecord ? ctx.videoRecord(chunk.video.resource) : null, phase: 'prompt', blocking: true, message: '', timer: null};
-      if (!ctx.panes) { lecture.video.phase = 'failed'; lecture.video.message = 'This page cannot play videos, so the lecture goes on without it.'; paintVideo(); proceed(); return; }
-      paintVideo();
+      if (!ctx.panes) { lecture.video.phase = 'failed'; lecture.video.message = 'This page cannot play videos, so the lecture goes on without it.'; show('video'); renderVideoMetadata(lecture.video.spec); paintVideo(); proceed(); return; }
+      show('video'); renderVideoMetadata(lecture.video.spec); paintVideo();
     }
     // Go on from the next piece of the lecture: the board has been waiting at the end of this one.
     function proceed() {
@@ -2556,7 +2577,7 @@
     function startVideo() {
       const v = lecture.video, win = doc.defaultView;
       v.phase = 'opening'; paintVideo();
-      show('video'); selectedVideo = v.spec;
+      show('video'); selectedVideo = v.spec; renderVideoMetadata(v.spec);
       const slot = panels.video.querySelector('.ros-video-slot');
       ctx.panes.video.open(v.spec, slot.getBoundingClientRect().toJSON());
       if (win) { win.clearTimeout(v.timer); v.timer = win.setTimeout(() => videoFailed('The video player did not open in time.'), ctx.panes.openTimeoutMs || 10000); }
@@ -2567,7 +2588,6 @@
       if (doc.defaultView) doc.defaultView.clearTimeout(v.timer);
       v.phase = 'failed'; v.message = 'The video could not be played here' + (message ? ': ' + message.replace(/[.\s]+$/, '') : '') + '. The lecture goes on without it.';
       paintVideo(); proceed();
-      if (shown === 'video') show('lecture');
     }
     function endVideo() {
       const v = lecture.video;
@@ -2585,21 +2605,24 @@
     function paintVideo() {
       const v = lecture.video, box = lecture.videoBox;
       box.textContent = '';
-      if (!v || v.phase === 'done') { box.hidden = true; return; }
+      if (!v || ['done', 'playing'].includes(v.phase)) { const slot = panels.video.querySelector('.ros-video-slot'); if (slot) slot.hidden = false; box.hidden = true; if (doc.defaultView) doc.defaultView.requestAnimationFrame(placeVideo); return; }
       box.hidden = false;
+      {
+        // Video offers belong to the Video screen. Source text never consumes
+        // the board's height or pushes its controls behind another panel.
+        renderVideoLibrary();
+        const slot = panels.video.querySelector('.ros-video-slot');
+        slot.hidden = ['prompt', 'failed'].includes(v.phase);
+        panels.video.insertBefore(box, slot);
+      }
       const record = v.record;
       box.append(el('p', {class: 'ros-video-title', text: 'Video: ' + (record ? record.title : 'the planned video')}));
-      const notice = ctx.rich('p', v.spec.notice); notice.classList.add('ros-video-notice'); box.append(notice);
-      const say = {prompt: 'It plays in the Video tab, and the lecture waits for it.', opening: 'Opening the video…',
-        playing: v.blocking ? 'The video is playing in the Video tab. The lecture goes on when it ends.' : 'The video is open in the Video tab.', failed: v.message}[v.phase];
+      const say = {prompt: 'Play this optional clip or skip it to continue.', opening: 'Opening the video…', failed: v.message}[v.phase];
       box.append(el('p', {class: 'ros-video-status', role: 'status', 'data-problem': v.phase === 'failed' ? 'true' : undefined, text: say}));
       const row = el('div', {class: 'ros-qcard-actions'});
-      if (v.phase === 'prompt') row.append(button('Play the video', startVideo, {class: 'ros-primary'}), button('Skip the video', () => { v.phase = 'done'; paintVideo(); proceed(); }));
-      if (v.phase === 'playing') row.append(button(v.blocking ? 'I have finished watching' : 'Close the video', () => { ctx.panes.video.close(); endVideo(); }, {class: 'ros-primary'}));
-      if (v.phase === 'failed') row.append(button('Try the video again', startVideo));
+      if (v.phase === 'prompt') row.append(button('Play the video', startVideo, {class: 'ros-primary'}), button('Skip the video', () => { v.phase = 'done'; paintVideo(); proceed(); show('lecture'); }));
+      if (v.phase === 'failed' && ctx.panes) row.append(button('Try the video again', startVideo));
       if (row.childNodes.length) box.append(row);
-      const credit = record && [record.publisher, record.license, record.attribution].filter(Boolean).join(' · ');
-      if (credit) box.append(el('p', {class: 'ros-stage-hint', text: credit}));
     }
     function renderChips() {
       lecture.chips.textContent = '';
@@ -2680,7 +2703,14 @@
       renderBar();
       if (shown === 'probe') treeView('probe');
       else if (shown === 'handout') renderHandout();
-      else if (shown === 'lecture') { buildLecture(); fitLecture(); }
+      else if (shown === 'lecture') {
+        buildLecture();
+        if (lecture.video && lecture.controller && lecture.controller.status === 'waiting') {
+          const status = lecture.host.querySelector('.ros-board-state');
+          if (status) status.textContent = 'Ready for the optional video. Open Video to continue.';
+        }
+        fitLecture();
+      }
       else if (shown === 'video') renderVideoLibrary();
       else if (shown === 'check') treeView('check');
       else if (shown === 'done') renderDone();

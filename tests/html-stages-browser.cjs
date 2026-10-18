@@ -29,7 +29,10 @@ const sessionId = baseState.session_id;
   assert.equal(Stages.resumeStep(script, [mark('stage:lecture')]), null);
 }
 // The frame under test has no device speech engine, so every fallback voice is the timed captions (fast, and the same everywhere).
-const INSTRUMENT = `(() => { Object.defineProperty(window, 'speechSynthesis', {configurable: true, value: undefined}); })();`;
+// Rendering and transitions use real Chromium; synthetic caption waits are capped
+// at two seconds. Exact pause/voice timing is covered by board-unit.js, and native
+// voice/video playback is accepted separately in Obsidian.
+const INSTRUMENT = `(() => { Object.defineProperty(window, 'speechSynthesis', {configurable: true, value: undefined}); const nativeTimeout = window.setTimeout.bind(window); window.setTimeout = (fn, ms, ...args) => nativeTimeout(fn, Math.min(Number(ms) || 0, 2000), ...args); })();`;
 
 const answer = (question, value, tree = 'probe') => ({event_id: 'seed-' + question, type: 'plan-answer', question_id: question, response: {answer: value, verdict: 'correct', tree}, created_at: new Date().toISOString(), status: 'pending-review'});
 
@@ -39,7 +42,7 @@ const videoRecords = {'RES-example-variance-video': {id: 'RES-example-variance-v
 function hostPage(size, seeded = [], options = {}) {
   const {built, videoTimeout, unplanned, ...extra} = options;
   const plan = built ? {...baseState.plan, handout: {...baseState.plan.handout, status: 'built'}} : baseState.plan;
-  const state = {...baseState, ...extra, events: seeded, plan: extra.plan || plan, video_records: videoRecords};
+  const state = {...baseState, ...extra, events: seeded, plan: extra.plan || plan, video_records: extra.video_records || videoRecords};
   if (unplanned) delete state.plan;
   const hostInfo = JSON.stringify({token: 'tok', session_id: sessionId, state, voice: {speak: true, capable: true}, video_timeout_ms: videoTimeout}).replace(/</g, '\\u003c');
   const srcdoc = standalone.replace('<script type="application/json" id="ros-session-data">', '<script>' + INSTRUMENT + 'window.ROS_HOST=' + hostInfo + ';</script><script type="application/json" id="ros-session-data">');
@@ -172,6 +175,34 @@ function hostPage(size, seeded = [], options = {}) {
     }
     await primary(probe, 'Next question').click();
     await probe.page.close();
+  }
+  // The actual course has long attribution and licence text. A video offer is
+  // a Video screen, never a card that reduces the lecture board to a thumbnail.
+  for (const size of [{width:1440,height:800}, {width:803,height:680}, {width:375,height:740}]) {
+    const plan = structuredClone(baseState.plan), segment = structuredClone(plan.segments.find(s => s.video));
+    segment.script = {board_schema: 1, steps: [{id:'intro', say:'Watch the short explanation.', do:[]}]};
+    plan.segments = [segment];
+    const records = structuredClone(videoRecords);
+    records[segment.video.resource].license = 'Official course licence and platform terms. '.repeat(8);
+    records[segment.video.resource].attribution = 'Author, institution, course and full source attribution. '.repeat(30);
+    const t = await open(size, [answer('scale','b'),answer('twopoint',1),answer('why','squares')], {plan, video_records:records});
+    await t.page.evaluate(() => { window.__tts='ready'; });
+    await t.frame.locator('.ros-voice-state',{hasText:'voice is ready'}).waitFor({timeout:8000});
+    await primary(t,'Start the lecture').click();
+    await t.frame.locator('.ros-video-card').waitFor({timeout:15000});
+    assert.equal(await stage(t),'video');
+    assert.deepEqual(await scrollbars(t),[],`long source at ${size.width}`);
+    const all = []; all.push(await t.frame.locator('.ros-video-source-text').textContent());
+    while (!(await primary(t,'Next details').isDisabled())) {
+      await primary(t,'Next details').click();
+      all.push(await t.frame.locator('.ros-video-source-text').textContent());
+      assert.deepEqual(await scrollbars(t),[], 'every source page fits');
+    }
+    assert(all.join(' ').includes('Author, institution, course'), 'full attribution remains available');
+    await primary(t,'Skip the video').click();
+    assert.equal(await stage(t),'lecture');
+    assert.deepEqual(await scrollbars(t),[]);
+    await t.page.close();
   }
   if (process.env.ROS_STAGES_LAYOUT_ONLY) { await browser.close(); console.log('staged lecture sizing regression passed'); return; }
 
@@ -311,8 +342,8 @@ function hostPage(size, seeded = [], options = {}) {
     const card = t.frame.locator('.ros-video-card');
     await card.waitFor({timeout: 90000});
     assert.equal(await t.frame.locator('.ros-board').getAttribute('data-status'), 'waiting');
-    assert((await card.textContent()).includes('Video: Why spread changes') && (await card.textContent()).includes('Watch how the same shape gets wider'), 'the card names the video and says what to watch for');
-    assert((await card.textContent()).includes('Standard YouTube licence'), 'the licence travels with it');
+    assert((await card.textContent()).includes('Video: Why spread changes') && (await t.frame.locator('.ros-video-source').textContent()).includes('Watch how the same shape gets wider'), 'the card names the video and says what to watch for');
+    assert((await t.frame.locator('.ros-video-source').textContent()).includes('Standard YouTube licence'), 'the licence travels with it');
     assert.equal(await t.frame.getByRole('button', {name: 'Continue to the check', exact: true}).isVisible(), false, 'the check waits for the video');
     assert.deepEqual(await t.page.evaluate(() => window.__opened), [], 'nothing is requested until the learner chooses');
     assert.deepEqual(await scrollbars(t), [], 'lecture stage with the video card');
@@ -515,10 +546,13 @@ function hostPage(size, seeded = [], options = {}) {
     await t.frame.locator('.ros-video-status[data-problem="true"]').waitFor();
     const said = await t.frame.locator('.ros-video-status').textContent();
     assert(said.includes('could not be played here') && said.includes('player code 153') && said.includes('The lecture goes on without it.'), said);
-    await t.frame.locator('.ros-board[data-status="done"]').waitFor({timeout: 10000});
-    assert.equal(await t.frame.getByRole('button', {name: 'Continue to the check', exact: true}).isVisible(), true, 'the lecture is not held up by the video');
+    await t.frame.locator('.ros-board[data-status="done"]').waitFor({state:'attached', timeout:10000});
+    assert.equal(await stage(t), 'video');
     assert.equal(await t.frame.locator('.ros-video-card').isVisible(), true, 'the video is still on offer');
-    assert.deepEqual(await scrollbars(t), [], 'lecture stage after a failed video');
+    assert.deepEqual(await scrollbars(t), [], 'Video screen after a failed video');
+    await primary(t, 'Back to session').click();
+    assert.equal(await t.frame.getByRole('button', {name: 'Continue to the check', exact: true}).isVisible(), true, 'the lecture is not held up by the video');
+    await primary(t, 'Video').click();
     await t.page.evaluate(() => { window.__videoMode = 'ended'; });
     await primary(t, 'Try the video again').click();
     await t.frame.locator('.ros-video-card').waitFor({state: 'hidden', timeout: 10000});
@@ -530,6 +564,7 @@ function hostPage(size, seeded = [], options = {}) {
     const t = await lectureAtVideo('silent', {videoTimeout: 700});
     await primary(t, 'Play the video').click();
     await t.frame.locator('.ros-video-status[data-problem="true"]', {hasText: 'did not open in time'}).waitFor({timeout: 5000});
+    await primary(t, 'Back to session').click();
     await t.frame.locator('.ros-board[data-status="done"]').waitFor({timeout: 10000});
     await t.page.close();
   }
@@ -559,6 +594,7 @@ function hostPage(size, seeded = [], options = {}) {
     await t.frame.locator('.ros-board').waitFor();
     await t.frame.locator('.ros-board select').nth(1).evaluate(select => { select.value = '1.25'; select.dispatchEvent(new Event('change')); });
     await t.frame.locator('.ros-video-status[data-problem="true"]', {hasText: 'cannot play videos'}).waitFor({timeout: 90000});
+    await primary(t, 'Back to session').click();
     await t.frame.locator('.ros-board[data-status="done"]').waitFor({timeout: 10000});
     assert.equal(await t.frame.getByRole('button', {name: 'Continue to the check', exact: true}).isVisible(), true);
     await context.close();

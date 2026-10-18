@@ -693,3 +693,12 @@ body.ros-staged .ros-side-panel,body.ros-staged .ros-panel-toggle,body.ros-stage
 @media(max-width:1099px){.ros-stagebar ol{gap:4px}.ros-stagebar button{font-size:14px;min-height:32px;padding:4px 8px}}
 
 .ros-stage-lecture .ros-board-retry-voice{min-height:26px;font-size:13px;padding:2px 8px;margin-left:6px}
+
+.ros-video-source{font:13px/1.3 var(--ros-font-ui);overflow-wrap:anywhere}
+.ros-video-source-text{margin:0}.ros-video-source:empty{display:none}
+.ros-video-source-pages{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px}
+.ros-video-source-pages button{font-size:12px;min-height:28px;padding:2px 8px}
+.ros-stage-video .ros-video-card{flex:none;width:100%;max-width:none;padding:8px 12px;box-sizing:border-box}
+.ros-stage-video .ros-video-card p{margin:4px 0;font-size:14px;line-height:1.25}
+.ros-stage-video .ros-video-card .ros-qcard-actions{margin-top:6px}
+.ros-stage-video .ros-video-card button{min-height:32px;padding:4px 10px;font-size:14px}

@@ -19,7 +19,8 @@
   The integrated YouTube guest was observed playing the vetted MIT lesson in Obsidian.
 - Stages fit the viewport without page scrolling. The board uses stable caption
   width, desktop tools sit beside it, and long captions and saved-answer feedback
-  use pages so navigation stays visible.
+  use pages so navigation stays visible. Video offers and failures stay in the
+  Video screen, with paged full source/licence details.
 - [STAT303 recovery findings](docs/STAT303_ROLLOUT_FINDINGS.md) record real Obsidian
   playback progression, reload persistence, PDF opening and layout checks, with
   explicit remaining microphone and speaker-hardware recording limits.
