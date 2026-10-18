@@ -4,9 +4,10 @@ import argparse
 import datetime as dt
 from pathlib import Path
 import os
+import subprocess
+import sys
 import time
 import urllib.parse
-import webbrowser
 
 from common import load_config, expand, safe_filename, parse_frontmatter
 
@@ -96,6 +97,23 @@ def append_note(args, cfg):
                 f.write(block)
     print(note.relative_to(root).as_posix())
 
+def open_uri(uri):
+    """Hand an obsidian:// address to the operating system's handler for that scheme (Obsidian). Never through a web browser: a browser would open a tab
+    (Chrome, in practice) and show a prompt instead of the note. Returns False when nothing took it."""
+    if not uri.startswith("obsidian://"):
+        return False
+    try:
+        if os.name == "nt":
+            os.startfile(uri)  # noqa: S606 - the scheme was checked above; Windows routes it to the registered Obsidian handler
+        elif sys.platform == "darwin":
+            subprocess.run(["open", uri], check=True)
+        else:
+            subprocess.run(["xdg-open", uri], check=True)
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    return True
+
+
 def open_note(args, cfg):
     root = vault_root(cfg)
     note = root / args.note
@@ -109,8 +127,11 @@ def open_note(args, cfg):
         + "&file="
         + urllib.parse.quote(rel)
     )
-    webbrowser.open(uri)
     print(uri)
+    if getattr(args, "print_only", False):
+        return
+    if not open_uri(uri):
+        print("Could not hand the address to Obsidian; open the note from Obsidian itself.", file=sys.stderr)
 
 def main():
     ap = argparse.ArgumentParser()
@@ -127,8 +148,9 @@ def main():
     p.add_argument("--speaker", required=True)
     p.add_argument("--text", required=True)
 
-    p = sub.add_parser("open")
+    p = sub.add_parser("open", help="Ask Obsidian (never a web browser) to open a note; the learner usually has it open already")
     p.add_argument("--note", required=True)
+    p.add_argument("--print-only", action="store_true", help="print the obsidian:// address and open nothing")
 
     args = ap.parse_args()
     cfg = load_config()

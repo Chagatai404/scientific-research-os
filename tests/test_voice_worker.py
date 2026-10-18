@@ -398,6 +398,162 @@ class LiveVoice(unittest.TestCase):
         self.assertEqual(call.call_args[0][0][2], 'serve-tts')
 
 
+class FakeProcess:
+    """A worker process that writes its lease after ``warm`` fake seconds, or exits with ``exit_code`` at once."""
+
+    def __init__(self, clock, directory, lease_name, warm=5.0, exit_code=None, state='ready'):
+        self.clock, self.directory, self.lease_name, self.warm, self.exit_code, self.state = clock, directory, lease_name, warm, exit_code, state
+        self.born = clock()
+        self.wrote = False
+
+    def poll(self):
+        if self.exit_code is not None:
+            return self.exit_code
+        if not self.wrote and self.clock() - self.born >= self.warm:
+            (self.directory / self.lease_name).write_text(json.dumps({'schema': 1, 'state': self.state, 'heartbeat': self.clock(), 'device': 'cuda'}), encoding='utf-8')
+            self.wrote = True
+        return None
+
+
+class Up(unittest.TestCase):
+    SETUP = {'envs': ['E'], 'voices': {'model_dir': 'm'}}
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = Path(tmp.name)
+        self.clock = Clock(time.time())
+        self.started = []
+        self.processes = []
+
+    def spawn(self, **processes):
+        def spawn(command, log):
+            kind = 'tts' if 'serve-tts' in command else 'stt'
+            self.started.append((kind, log))
+            process = FakeProcess(self.clock, self.dir, vc.WORKERS[kind]['lease'], **processes.get(kind, {}))
+            self.processes.append(process)
+            return process
+        return spawn
+
+    def sleep(self, seconds):
+        self.clock.sleep(seconds)
+        for process in self.processes:
+            process.poll()                      # the fake workers write their lease as time passes
+
+    def run_up(self, spawn=None, **kw):
+        commands = {'tts': ['py', 'a.py', 'serve-tts'], 'stt': ['py', 'a.py', 'serve']}
+        with mock.patch.object(vc, 'worker_command', side_effect=lambda kind, setup, directory: commands[kind]):
+            return vc.ensure_workers(self.dir, self.SETUP, spawn=spawn or self.spawn(), now=self.clock, sleep=self.sleep, **kw)
+
+    def beat(self, name, state='ready'):
+        (self.dir / name).write_text(json.dumps({'schema': 1, 'state': state, 'heartbeat': self.clock()}), encoding='utf-8')
+
+    def test_a_cold_start_starts_both_and_is_ready_only_when_both_beat(self):
+        result = self.run_up(self.spawn(tts={'warm': 11.0}, stt={'warm': 33.0}))
+        self.assertTrue(result['ready'])
+        self.assertEqual([k for k, _ in self.started], ['tts', 'stt'])
+        self.assertTrue(all(row['started'] for row in result['workers'].values()))
+        self.assertGreaterEqual(result['workers']['stt']['seconds'], 33.0)
+        self.assertEqual(result['workers']['tts']['state'], 'ready')
+
+    def test_workers_that_are_already_listening_are_left_alone(self):
+        self.beat('tts-worker.json')
+        self.beat('worker.json', 'busy')
+        result = self.run_up()
+        self.assertTrue(result['ready'])
+        self.assertEqual(self.started, [])
+
+    def test_a_worker_that_is_still_warming_is_waited_for_not_started_twice(self):
+        self.beat('worker.json', 'warming')
+        self.beat('tts-worker.json')
+        began = self.clock()
+
+        def sleep(seconds):
+            self.clock.sleep(seconds)
+            self.beat('worker.json', 'ready' if self.clock() - began >= 8.0 else 'warming')
+        with mock.patch.object(vc, 'worker_command', side_effect=AssertionError('must not start a second worker')):
+            result = vc.ensure_workers(self.dir, self.SETUP, now=self.clock, sleep=sleep)
+        self.assertTrue(result['ready'])
+        self.assertGreaterEqual(result['workers']['stt']['seconds'], 8.0)
+
+    def test_not_ready_in_time_is_reported_as_a_timeout_not_as_ready(self):
+        result = self.run_up(self.spawn(tts={'warm': 5.0}, stt={'warm': 999.0}), timeout=20.0)
+        self.assertFalse(result['ready'])
+        self.assertEqual(result['workers']['tts']['state'], 'ready')
+        self.assertEqual(result['workers']['stt']['state'], 'timeout')
+        self.assertIn('20 s', result['workers']['stt']['reason'])
+
+    def test_a_worker_that_exits_says_why_from_its_log(self):
+        def spawn(command, log):
+            log.parent.mkdir(parents=True, exist_ok=True)
+            log.write_text('Traceback...\nOSError: CUDA out of memory', encoding='utf-8')
+            return FakeProcess(self.clock, self.dir, 'worker.json', exit_code=1)
+        result = self.run_up(spawn=spawn, kinds=('stt',))
+        row = result['workers']['stt']
+        self.assertFalse(result['ready'])
+        self.assertEqual(row['state'], 'error')
+        self.assertIn('CUDA out of memory', row['reason'])
+
+    def test_a_worker_that_dies_at_once_is_started_one_more_time_and_then_reported(self):
+        attempts = []
+
+        def flaky(command, log):
+            attempts.append(log)
+            return FakeProcess(self.clock, self.dir, 'worker.json', exit_code=3221225786) if len(attempts) == 1 else FakeProcess(self.clock, self.dir, 'worker.json', warm=4.0)
+        result = self.run_up(spawn=flaky, kinds=('stt',))
+        self.assertTrue(result['ready'])
+        self.assertEqual(len(attempts), 2)
+        attempts.clear()
+        (self.dir / 'worker.json').unlink()
+        result = self.run_up(spawn=lambda c, l: (attempts.append(l), FakeProcess(self.clock, self.dir, 'worker.json', exit_code=1))[1], kinds=('stt',))
+        self.assertFalse(result['ready'])
+        self.assertEqual(len(attempts), 2)                 # one retry, not a loop
+
+    def test_without_an_environment_nothing_starts_and_it_says_so(self):
+        with mock.patch.object(vc, 'detect', return_value=[]):
+            result = vc.ensure_workers(self.dir, {}, kinds=('tts',), now=self.clock, sleep=self.sleep, spawn=self.spawn())
+        self.assertFalse(result['ready'])
+        self.assertEqual(result['workers']['tts']['state'], 'unavailable')
+        self.assertIn('no environment with kokoro', result['workers']['tts']['reason'])
+        self.assertEqual(self.started, [])
+
+    def test_check_starts_nothing(self):
+        result = self.run_up(start=False)
+        self.assertFalse(result['ready'])
+        self.assertEqual(self.started, [])
+        self.assertEqual(result['workers']['tts']['state'], 'off')
+
+    def test_a_stale_error_lease_is_cleared_before_the_new_start_so_it_is_not_misread(self):
+        (self.dir / 'worker.json').write_text(json.dumps({'schema': 1, 'state': 'error', 'heartbeat': 1.0, 'last_error': 'old failure'}), encoding='utf-8')
+        result = self.run_up(self.spawn(stt={'warm': 3.0}), kinds=('stt',))
+        self.assertTrue(result['ready'])
+
+    def test_the_process_is_started_detached_with_a_log_and_no_console(self):
+        with mock.patch.object(vc.subprocess, 'Popen') as popen:
+            vc.spawn_detached(['py', 'x'], self.dir / 'logs' / 'tts-worker.log')
+        options = popen.call_args[1]
+        self.assertEqual(options['stdin'], vc.subprocess.DEVNULL)
+        self.assertEqual(options['stderr'], vc.subprocess.STDOUT)
+        if os.name == 'nt':
+            flags = options['creationflags']
+            self.assertTrue(flags & 0x8 and flags & 0x08000000)       # DETACHED_PROCESS and CREATE_NO_WINDOW
+        else:
+            self.assertTrue(options['start_new_session'])
+        self.assertTrue((self.dir / 'logs').is_dir())
+
+    def test_the_setup_is_saved_and_read_back_and_a_damaged_one_is_ignored(self):
+        path = vc.save_setup(self.dir, {'envs': ['E'], 'voices': {'model_dir': 'm'}})
+        self.assertEqual(vc.load_setup(self.dir), {'envs': ['E'], 'voices': {'model_dir': 'm'}, 'schema': 1})
+        path.write_text('{nope', encoding='utf-8')
+        self.assertEqual(vc.load_setup(self.dir), {})
+
+    def test_the_up_command_with_check_exits_one_when_nothing_is_running(self):
+        command = [sys.executable, str(ROOT / 'scripts/voice.py'), 'up', '--dir', str(self.dir), '--check']
+        done = subprocess.run(command, capture_output=True, text=True, encoding='utf-8')
+        self.assertEqual(done.returncode, 1)
+        self.assertFalse(json.loads(done.stdout)['ready'])
+
+
 class Names(unittest.TestCase):
     def test_the_recording_name_rule(self):
         for good in ('a.webm', 'A-1_b.ogg', 'x' * 64 + '.wav'):

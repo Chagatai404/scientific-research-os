@@ -239,6 +239,22 @@ the Listen control, or a device voice is the fallback, used only when the learne
 block is a question or a check rather than teaching; say which, once. A session started before the board was installed has none: add a board widget to it rather than
 carrying on in prose. Do not ask the learner whether to use the board; it is the default (the researcher has said so).
 
+**Plan before the learner arrives, then follow the plan.** Write a session plan (`references/SESSION_PLAN.md`; `python scripts/session_plan.py check plan.json`): a
+probe tree whose questions carry their own answer keys, per-option feedback and next-question rules; the whole core lecture as board segments, with repair segments
+for the gaps the probe can show and extension segments for mastery; anticipated questions with ready answers; and the handout. The page follows the plan with no
+agent turn between questions, so the learner never waits for you to choose the next step; you adapt at stage boundaries and for a question the plan did not
+anticipate. **If a good video exists for the exact topic, plan a video segment instead of drawing the idea yourself** (find it, have a different agent vet it, play the
+part that teaches; `SESSION_PLAN.md` says how). You may use subagents and subprocesses to write the handout, make figures and animations, and pre-render audio while
+the learner is in the probe.
+
+**The session lives in Obsidian. Never open a browser** (Chrome, Edge, the built-in browser pane, a `file://` page or a local server) to show, check or "verify"
+a session unless the researcher asks for it in that message. The learner already has the note open; `vault.py open` hands the address to Obsidian, never to a
+browser, and is only needed when they ask you to open something. Check your own work with `html_sessions.py` commands and the session state, not by looking at a page.
+
+Before the learner presses Start, bring the voices up and wait for them: `python scripts/html_sessions.py --root <vault> start <session> --holder <name>`
+(it runs `voice.py up`, which starts the live voice and the spoken-question worker detached so they outlive your shell, and returns only when both are ready or says
+which one is not and why). Do not tell the learner the session is ready before it reports `ready: true`.
+
 Setup:
 
 1. Run `scripts/html_sessions.py --root <vault> context <session>` before creating or

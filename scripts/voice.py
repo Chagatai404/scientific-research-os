@@ -456,26 +456,158 @@ def tts_worker_args(directory: Path, voices: dict) -> list[str]:
             '--colon-gap', str(s['colon_gap'])]
 
 
-def run_tts_worker(envs: list[str] | None, directory: Path, voices: dict) -> int:
-    """Run the live voice worker in the foreground until it is stopped (Ctrl+C, or create ``<directory>/tts-stop``). Kokoro loads once and stays loaded."""
+def worker_environment() -> dict:
+    return dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', TOKENIZERS_PARALLELISM='false')
+
+
+def tts_worker_command(envs: list[str] | None, directory: Path, voices: dict) -> list[str]:
     entry = find_env(detect(envs), 'kokoro')
     python = python_of(Path(entry['env']))
     if python is None:
         raise VoiceError(f'no Python found in {entry["env"]}')
-    command = [str(python), str(ADAPTER), *tts_worker_args(Path(directory), voices)]
-    env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', TOKENIZERS_PARALLELISM='false')
-    return subprocess.call(command, env=env)
+    return [str(python), str(ADAPTER), *tts_worker_args(Path(directory), voices)]
 
 
-def run_worker(envs: list[str] | None, directory: Path, model: str = 'small', device: str = 'cuda', language: str = 'en', keep_audio: bool = False) -> int:
-    """Run the worker in the foreground until it is stopped (Ctrl+C, or create ``<directory>/stop``). The model loads once and stays loaded."""
+def stt_worker_command(envs: list[str] | None, directory: Path, model: str = 'small', device: str = 'cuda', language: str = 'en', keep_audio: bool = False) -> list[str]:
     entry = find_env(detect(envs), 'whisper')
     python = python_of(Path(entry['env']))
     if python is None:
         raise VoiceError(f'no Python found in {entry["env"]}')
-    command = [str(python), str(ADAPTER), *worker_args(Path(directory), model, device, language, keep_audio)]
-    env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', TOKENIZERS_PARALLELISM='false')
-    return subprocess.call(command, env=env)
+    return [str(python), str(ADAPTER), *worker_args(Path(directory), model, device, language, keep_audio)]
+
+
+def run_tts_worker(envs: list[str] | None, directory: Path, voices: dict) -> int:
+    """Run the live voice worker in the foreground until it is stopped (Ctrl+C, or create ``<directory>/tts-stop``). Kokoro loads once and stays loaded."""
+    return subprocess.call(tts_worker_command(envs, directory, voices), env=worker_environment())
+
+
+def run_worker(envs: list[str] | None, directory: Path, model: str = 'small', device: str = 'cuda', language: str = 'en', keep_audio: bool = False) -> int:
+    """Run the worker in the foreground until it is stopped (Ctrl+C, or create ``<directory>/stop``). The model loads once and stays loaded."""
+    return subprocess.call(stt_worker_command(envs, directory, model, device, language, keep_audio), env=worker_environment())
+
+
+# ---------------------------------------------------------------- bringing the workers up (v0.9.7)
+# A worker started from an agent's shell dies with that shell, which is why the voice kept reporting "off" between turns. `up` starts each worker detached, so it
+# outlives the agent, then waits until its lease says ready: the session is not offered as ready before the voices are warm. It never installs anything; it only
+# runs engines already present in the environments the researcher named once (`up --save`).
+
+SETUP_FILE = 'voice-setup.json'
+WORKERS = {'tts': {'lease': TTS_LEASE_FILE, 'stop': 'tts-stop', 'label': 'live voice (Kokoro)'},
+           'stt': {'lease': LEASE_FILE, 'stop': 'stop', 'label': 'spoken questions (Whisper)'}}
+WARM_TIMEOUT = 180.0          # seconds; the first CUDA start of Whisper took 33 s here, Kokoro about 11 s
+
+
+def load_setup(directory: Path) -> dict:
+    try:
+        setup = json.loads((Path(directory) / SETUP_FILE).read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError):
+        return {}
+    return setup if isinstance(setup, dict) and setup.get('schema') == SCHEMA else {}
+
+
+def save_setup(directory: Path, setup: dict) -> Path:
+    path = Path(directory) / SETUP_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + '.tmp')
+    tmp.write_text(json.dumps({**setup, 'schema': SCHEMA}, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+    os.replace(tmp, path)
+    return path
+
+
+def worker_command(kind: str, setup: dict, directory: Path) -> list[str]:
+    envs = [str(e) for e in setup.get('envs') or []]
+    if kind == 'tts':
+        return tts_worker_command(envs, directory, dict(setup.get('voices') or {}))
+    stt = setup.get('stt') or {}
+    return stt_worker_command(envs, directory, stt.get('model', 'small'), stt.get('device', 'cuda'), stt.get('language', 'en'))
+
+
+def spawn_detached(command: list[str], log: Path):
+    """Start a command that keeps running after this process and its shell end. Output goes to a log file, never to a console window."""
+    log.parent.mkdir(parents=True, exist_ok=True)
+    stream = open(log, 'ab')
+    options = {'stdin': subprocess.DEVNULL, 'stdout': stream, 'stderr': subprocess.STDOUT, 'env': worker_environment(), 'close_fds': True}
+    if os.name == 'nt':
+        options['creationflags'] = (getattr(subprocess, 'DETACHED_PROCESS', 0x8) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0x200)
+                                    | getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000))
+    else:
+        options['start_new_session'] = True
+    try:
+        return subprocess.Popen(command, **options)
+    finally:
+        stream.close()
+
+
+def log_tail(log: Path, limit: int = 600) -> str:
+    try:
+        return log.read_text(encoding='utf-8', errors='replace')[-limit:].strip()
+    except OSError:
+        return ''
+
+
+def ensure_workers(directory: Path, setup: dict, kinds=('tts', 'stt'), timeout: float = WARM_TIMEOUT, start: bool = True, *,
+                   spawn=spawn_detached, now=time.time, sleep=time.sleep, poll: float = 0.5) -> dict:
+    """Make sure each named worker is listening, starting the missing ones detached and waiting until they report ready. ``ready`` is true only when every one does.
+    A worker that cannot start says why (its last log lines) instead of being replaced by a silent fallback."""
+    directory = Path(directory)
+    report, started, retried = {}, {}, set()
+    for kind in kinds:
+        info = WORKERS[kind]
+        state = lease_state(directory, filename=info['lease'])
+        report[kind] = {'label': info['label'], 'state': state['state'], 'started': False, 'reason': state.get('reason'), 'seconds': None}
+        if state['state'] in ('ready', 'busy'):
+            report[kind]['seconds'] = 0.0
+        if state['state'] in ('ready', 'busy', 'warming') or not start:
+            continue
+        try:
+            command = worker_command(kind, setup, directory)
+        except VoiceError as exc:
+            report[kind].update(state='unavailable', reason=str(exc))
+            continue
+        (directory / info['lease']).unlink(missing_ok=True)           # a leftover "error" or "stopped" must not be read as this launch's answer
+        (directory / info['stop']).unlink(missing_ok=True)
+        log = directory / 'logs' / f'{kind}-worker.log'
+        try:
+            started[kind] = spawn(command, log)
+        except OSError as exc:
+            report[kind].update(state='unavailable', reason=f'could not start: {exc}')
+            continue
+        report[kind].update(started=True, state='warming', reason=None, log=str(log))
+    began = now()
+    while True:
+        pending = False
+        for kind in kinds:
+            row = report[kind]
+            if row['state'] in ('unavailable', 'error', 'stopped', 'off') or row['seconds'] is not None:
+                continue
+            state = lease_state(directory, filename=WORKERS[kind]['lease'])
+            process = started.get(kind)
+            if state['state'] in ('ready', 'busy'):
+                row.update(state=state['state'], reason=None, seconds=round(now() - began, 1))
+            elif state['state'] in ('error', 'stopped'):
+                row.update(state='error', reason=state.get('reason') or (log_tail(Path(row['log'])) if row.get('log') else None))
+            elif process is not None and process.poll() is not None:
+                # One early exit was seen on the first cold start here (exit 0xC000013A, empty log, not reproduced in later runs): try once more before giving up.
+                if kind not in retried:
+                    retried.add(kind)
+                    try:
+                        started[kind] = spawn(worker_command(kind, setup, directory), Path(row['log']))
+                        pending = True
+                        continue
+                    except (OSError, VoiceError):
+                        pass
+                row.update(state='error', reason=f'the worker exited ({process.poll()}): {log_tail(Path(row["log"]))}')
+            else:
+                pending = True            # still warming, or its first beat has not landed yet
+        if not pending or now() - began >= timeout:
+            break
+        sleep(poll)
+    for kind in kinds:
+        row = report[kind]
+        if row['seconds'] is None and row['state'] in ('warming', 'off'):
+            row.update(state='timeout' if row['started'] or row['state'] == 'warming' else 'off',
+                       reason=f'still not ready after {int(timeout)} s' if row['started'] or row['state'] == 'warming' else row['reason'])
+    return {'ready': all(report[k]['state'] in ('ready', 'busy') for k in kinds), 'workers': report}
 
 
 # ---------------------------------------------------------------- speech to text and scoring
@@ -643,6 +775,17 @@ def main(argv=None) -> int:
     common(p)
     p.add_argument('--dir', type=Path, required=True, help='the voice folder, normally <vault>/.research-os/voice')
     p.add_argument('--voice', action='append', default=[], help='model_dir=FOLDER (required) and optionally blend= speed= gap= colon_gap=, as for speak')
+    p = sub.add_parser('up', help='start the live voice and the speech worker if they are not running, detached so they outlive this shell, and wait until both are ready')
+    common(p)
+    p.add_argument('--dir', type=Path, required=True, help='the voice folder, normally <vault>/.research-os/voice')
+    p.add_argument('--voice', action='append', default=[], help='model_dir=FOLDER (Kokoro) and optionally blend= speed= gap= colon_gap=')
+    p.add_argument('--stt-model', help='Whisper model (default small)')
+    p.add_argument('--stt-device', choices=('cpu', 'cuda'), help='default cuda')
+    p.add_argument('--stt-language', help='default en')
+    p.add_argument('--only', choices=('tts', 'stt'), help='bring up just the live voice (tts) or just spoken questions (stt)')
+    p.add_argument('--timeout', type=float, default=WARM_TIMEOUT, help='seconds to wait for each worker to report ready')
+    p.add_argument('--check', action='store_true', help='start nothing; report whether they are ready (exit 0 only if both are)')
+    p.add_argument('--save', action='store_true', help='remember these environments and settings in <dir>/voice-setup.json so later runs need no arguments')
     p = sub.add_parser('list', help='recordings in the registry')
     p.add_argument('--root', type=Path, required=True)
     p = sub.add_parser('transcribe', help='text from a recording')
@@ -696,6 +839,23 @@ def main(argv=None) -> int:
             return run_worker(args.env, args.dir, args.model, args.device, args.language, args.keep_audio)
         if args.command == 'tts-worker':
             return run_tts_worker(args.env, args.dir, parse_voices(args.voice))
+        if args.command == 'up':
+            setup = load_setup(args.dir)
+            if args.env:
+                setup['envs'] = [str(Path(e).resolve()) for e in args.env]
+            if args.voice:
+                setup['voices'] = parse_voices(args.voice)
+            stt = dict(setup.get('stt') or {})
+            for key, value in (('model', args.stt_model), ('device', args.stt_device), ('language', args.stt_language)):
+                if value:
+                    stt[key] = value
+            if stt:
+                setup['stt'] = stt
+            if args.save:
+                print(f'saved {save_setup(args.dir, setup)}', file=sys.stderr)
+            result = ensure_workers(args.dir, setup, (args.only,) if args.only else ('tts', 'stt'), args.timeout, start=not args.check)
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return 0 if result['ready'] else 1
         if args.command == 'worker-status':
             status = lease_state(args.dir, filename=TTS_LEASE_FILE if args.tts else LEASE_FILE)
             print(json.dumps(status, indent=2, ensure_ascii=False))

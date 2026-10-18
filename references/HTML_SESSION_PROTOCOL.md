@@ -219,6 +219,10 @@ Other optional Obsidian integrations (search, retention cards, Canvas, suggestio
 
 ## Obsidian and fallback
 
+The session lives in Obsidian. An agent must never open a browser (Chrome, a `file://` page, a local server or a browser pane) to show or check a session unless
+the researcher asks for it in that message; `vault.py open` passes an `obsidian://` address to the system's Obsidian handler and never uses a web browser. Start
+the voices with `html_sessions.py start <session> --holder <name>` (it waits until the live voice and the speech worker report ready).
+
 Install the companion plugin and shared runtime using the documented installer.
 Markdown bridges use a `ros-session` code block to embed their HTML. Sessions run
 inside opaque-origin sandboxed iframes; the renderer receives no Obsidian, filesystem,

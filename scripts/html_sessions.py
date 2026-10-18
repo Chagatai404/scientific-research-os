@@ -1393,6 +1393,32 @@ def pending_activity(state):
     return items
 
 
+VOICE_FOLDER = Path(".research-os") / "voice"
+
+
+def start_session(root, relative_md, holder=None, provider="generic", timeout=None, voice=True, ensure=None):
+    """Get a session ready for the learner: the live voice and the speech worker running and warm, and the tutor connected.
+
+    ``ready`` is true only when every worker reports ready, so the agent never tells the learner a session is ready while a voice is still loading. A worker that
+    cannot start is reported with the end of its log; nothing is installed and nothing falls back silently. ``ensure`` replaces the worker launcher in tests."""
+    _, _, data = paths(root, relative_md)
+    if not data.exists():
+        raise SystemExit(f"The session does not exist yet: {relative_md}")
+    result = {"session": str(relative_md), "voice": None, "lease": None}
+    if voice:
+        import voice as voice_module
+        directory = Path(root) / VOICE_FOLDER
+        run = ensure or voice_module.ensure_workers
+        options = {} if timeout is None else {"timeout": float(timeout)}
+        result["voice"] = run(directory, voice_module.load_setup(directory), **options)
+    if holder:
+        import supervision
+        lease = supervision.heartbeat(root, relative_md, holder=holder, provider=provider, mode="working")
+        result["lease"] = {"holder": lease["holder"], "expires_at": lease["expires_at"]}
+    result["ready"] = bool(result["voice"]["ready"]) if result["voice"] else True
+    return result
+
+
 def wait_for_activity(root, relative_md, timeout=900.0, interval=1.0, holder=None, provider="generic", ttl=None):
     """Bounded poll for an explicit learner submission; returns immediately if work is pending.
 
@@ -1962,6 +1988,10 @@ def main():
     board.add_argument("session"); board.add_argument("widget"); board.add_argument("--source", required=True, type=Path, help="JSON: a list of steps, or {steps: [...]}")
     board.add_argument("--after", metavar="STEP_ID", help="insert right after this step instead of at the end (an answer goes after the step the learner has reached)")
     board.add_argument("--open", dest="board_open", choices=("true", "false"), help="true: more is coming (the board waits for it); false: this is the end of the lecture")
+    starting = sub.add_parser("start", help="Bring the voices up (detached, warmed) and connect the tutor; ready only when every worker reports ready")
+    starting.add_argument("session"); starting.add_argument("--holder", help="a name for this agent: renews the supervision lease so the page says a tutor is connected")
+    starting.add_argument("--provider", default="generic"); starting.add_argument("--timeout", type=float, help="seconds to wait for each worker (default 180)")
+    starting.add_argument("--no-voice", action="store_true", help="only connect the tutor; start no voice worker")
     position = sub.add_parser("board-position", help="Where the learner is in each lecture, as the Obsidian view last reported it")
     position.add_argument("session")
     review = sub.add_parser("review", help="Record the tutor verdict on the latest response; shown in place of 'Checking...'")
@@ -2083,6 +2113,12 @@ def main():
         if not isinstance(loaded, dict):
             raise SystemExit("error: the source must be a board script object")
         result = add_board(root, args.session, args.widget, loaded, args.title, args.after_heading)
+    elif args.command == "start":
+        result = start_session(root, args.session, args.holder, args.provider, args.timeout, voice=not args.no_voice)
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        raise SystemExit(0 if result["ready"] else 1)
     elif args.command == "board-position":
         result = board_position(root, args.session) or {"note": "nothing has been reported: no Obsidian view of this session has played a board yet"}
     elif args.command == "review":

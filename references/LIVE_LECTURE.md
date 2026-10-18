@@ -10,6 +10,10 @@ How a tutor agent gives a lecture in real time on the blackboard, with the Kokor
 | Live voice (the tutor speaks) | `python scripts/voice.py worker-status --dir <vault>/.research-os/voice --tts` exits 0 | `python scripts/voice.py tts-worker --env <kokoro env> --dir <vault>/.research-os/voice --voice model_dir=<Kokoro folder>` |
 | Spoken questions | `python scripts/voice.py worker-status --dir <vault>/.research-os/voice` exits 0 | `python scripts/voice.py worker --env <whisper env> --dir <vault>/.research-os/voice` |
 
+**Bring them up with one command, before the learner starts:** `python scripts/html_sessions.py --root <vault> start <session> --holder <name>` runs `voice.py up --dir <vault>/.research-os/voice`. It starts each missing worker **detached** (a worker started from an agent's shell dies when that shell ends, which is why the voice used to read "off" between turns), waits until each lease says `ready`, and prints `ready: true` only when both are. The first time, name the environments once with `voice.py up --dir <vault>/.research-os/voice --env <kokoro env> --env <whisper env> --voice model_dir=<Kokoro folder> --save`; later runs need no arguments. `voice.py up --check` starts nothing. Logs are in `<vault>/.research-os/voice/logs/`. Nothing is installed; a worker that cannot start is reported with the end of its log, and the lecture then offers captions or the device voice and says so.
+
+**Never open a browser.** The session is in Obsidian, which the learner already has open. Do not open Chrome or any browser, a `file://` page or a local server to show, check or "verify" a lecture unless the researcher asks for that in the message. Verify with `board_script.py check`, `board-position` and the session state.
+
 If a worker is not running the lecture still plays (device voice or captions) and typed questions still work; say which, once, and go on. A standalone export has no host, so no live voice and no asking aloud there.
 
 ## Starting
