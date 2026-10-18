@@ -366,6 +366,66 @@ assert(!html.includes('title":"</script>'));
   assert.equal(replies.length, quietBefore); assert.deepEqual(recorderLog, []);
   delete host.plugin.recorder; assert.equal(host.voiceCapable(), false);
   said = await talk('start'); assert.match(said[0].message, /cannot record audio/);
+  // ---- The tutor's live voice: one sentence at a time to a local Kokoro worker, the audio handed back to the page to play as it arrives.
+  assert(buildDocument('', base, 't', '', '', '', [], null, null, {capable: true, speak: true}).includes('"voice":{"capable":true,"speak":true}'));
+  assert(buildDocument('', base, 't', '', '', '', [], null, null, {speak: true}).includes('"voice":{"speak":true}'));
+  assert(!buildDocument('', base, 't', '', '', '', [], null, null, {capable: false, speak: false}).includes('"voice"'));
+  assert(!buildDocument('', base, 't', '', '', '', [], null, null, {capable: 'yes', speak: 1, extra: true}).includes('"voice"'), 'only a true capability is offered');
+  Object.assign(diskAdapter, {write: async (p, text) => { voiceFiles.set(p, text); }, readBinary: async p => { const value = voiceFiles.get(p); return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength); }});
+  assert.equal(JSON.stringify(host.abilities()), JSON.stringify({capable: false, speak: true}), 'no recorder, but the live voice needs only files');
+  host.plugin.recorder = {}; assert.equal(JSON.stringify(host.abilities()), JSON.stringify({capable: true, speak: true})); delete host.plugin.recorder;
+  const withoutBinary = host.plugin.app.vault.adapter; host.plugin.app.vault.adapter = {exists: diskAdapter.exists};
+  assert.equal(host.speakCapable(), false); host.plugin.app.vault.adapter = withoutBinary;
+  const transfers = []; const frameWindow = host.frame.contentWindow; frameWindow.postMessage = (value, origin, transfer) => { replies.push(value); transfers.push(transfer); };
+  const ttsLease = (state, age = 1, extra = {}) => voiceFiles.set('.research-os/voice/tts-worker.json', JSON.stringify({schema: 1, state, heartbeat: Date.now() / 1000 - age, engine: 'kokoro', ...extra}));
+  const speech = async (action, id, text, token = 'secret') => { const from = replies.length; await host.speak(action, id, text, token); return replies.slice(from).filter(r => r.type === 'speech'); };
+  const requests = () => [...voiceFiles.keys()].filter(p => p.startsWith('.research-os/voice/tts/inbox/'));
+  host.ttsPollMs = 5; host.ttsWaitMs = 500;
+  let heard = await speech('status'); assert.deepEqual(heard.map(r => [r.status, r.state]), [['worker', 'off']]);
+  heard = await speech('synth', 's1', 'Hello there.');
+  assert.equal(heard.length, 1); assert.equal(heard[0].status, 'error'); assert.equal(heard[0].id, 's1');
+  assert.match(heard[0].message, /live voice is not running.*voice\.py tts-worker --dir \.research-os\/voice/); assert.deepEqual(requests(), [], 'nothing is queued for a worker that is not there');
+  ttsLease('ready', 60); heard = await speech('synth', 's1', 'Hello there.'); assert.match(heard[0].message, /has not reported for/);
+  ttsLease('ready'); heard = await speech('status'); assert.equal(heard[0].state, 'ready');
+  // A sentence: the request file the worker reads, the audio and answer it writes, and what the page is handed.
+  const sentence = speech('synth', 's1', '  Let us look at the gradient.  ');
+  await new Promise(resolve => setTimeout(resolve, 25));
+  const queued = requests(); assert.equal(queued.length, 1); assert.match(queued[0], /^\.research-os\/voice\/tts\/inbox\/[a-f0-9]{16}\.json$/);
+  assert.equal(JSON.stringify(JSON.parse(voiceFiles.get(queued[0]))), JSON.stringify({text: 'Let us look at the gradient.'}));
+  const rid = queued[0].split('/').pop().replace('.json', '');
+  voiceFiles.set('.research-os/voice/tts/out/' + rid + '.wav', Buffer.from([82, 73, 70, 70, 1, 2, 3, 4]));
+  voiceFiles.set('.research-os/voice/tts/out/' + rid + '.json', JSON.stringify({id: rid, audio_seconds: 2.6244, sample_rate: 24000}));
+  heard = await sentence;
+  assert.equal(heard.length, 1); assert.deepEqual([heard[0].status, heard[0].id, heard[0].seconds, heard[0].sample_rate], ['audio', 's1', 2.624, 24000]);
+  assert.equal(heard[0].wav.byteLength, 8); assert.equal(transfers.at(-1).length, 1, 'the audio is transferred, not copied');
+  assert.deepEqual([...new Uint8Array(heard[0].wav)], [82, 73, 70, 70, 1, 2, 3, 4]);
+  assert(![...voiceFiles.keys()].some(p => p.includes('/tts/out/') || p.includes('/tts/inbox/')), 'the host tidies the request and the answer');
+  // The worker's own error, a mismatched answer, a late worker, an oversize sentence: each is said in words.
+  const answerWith = async (id, body, wait = 25) => { const pending = speech('synth', id, 'A sentence.'); await new Promise(resolve => setTimeout(resolve, wait)); const r = requests()[0].split('/').pop().replace('.json', ''); body(r); return pending; };
+  heard = await answerWith('e1', r => voiceFiles.set('.research-os/voice/tts/out/' + r + '.json', JSON.stringify({id: r, error: 'RuntimeError: synthesis failed'})));
+  assert.deepEqual([heard[0].status, heard[0].id], ['error', 'e1']); assert.match(heard[0].message, /synthesis failed/);
+  heard = await answerWith('e2', r => voiceFiles.set('.research-os/voice/tts/out/' + r + '.json', JSON.stringify({id: 'someone-else'}))); assert.match(heard[0].message, /unreadable/);
+  heard = await answerWith('e3', r => { voiceFiles.set('.research-os/voice/tts/out/' + r + '.wav', Buffer.alloc(3 * 1024 * 1024 + 1)); voiceFiles.set('.research-os/voice/tts/out/' + r + '.json', JSON.stringify({id: r, audio_seconds: 99})); });
+  assert.match(heard[0].message, /too large/);
+  heard = await speech('synth', 'late', 'Nobody answers.'); assert.match(heard[0].message, /did not answer in time/); assert.deepEqual(requests(), [], 'an unanswered request is withdrawn');
+  // Cancelling a sentence the learner no longer needs withdraws it quietly.
+  const wanted = speech('synth', 'c1', 'No longer needed.'); await new Promise(resolve => setTimeout(resolve, 25));
+  assert.equal(requests().length, 1); await speech('cancel', 'c1'); heard = await wanted;
+  assert.deepEqual(heard, [], 'nothing is said about a cancelled sentence'); assert.deepEqual(requests(), []);
+  const batch = [speech('synth', 'p1', 'One.'), speech('synth', 'p2', 'Two.'), speech('synth', 'p3', 'Three.'), speech('synth', 'p4', 'Four.')];
+  await new Promise(resolve => setTimeout(resolve, 25));
+  heard = await speech('synth', 'p5', 'Five.'); assert.match(heard[0].message, /Too many sentences/);
+  await speech('cancel', null, undefined); await Promise.all(batch);
+  // Requests that are not a sentence, or not for this page, change nothing.
+  for (const [id, text, expected] of [['ok', '', /1 to 600/], ['ok', '   ', /1 to 600/], ['ok', 'x'.repeat(601), /1 to 600/], ['ok', 'a\u0000b', /1 to 600/], ['ok', 7, /1 to 600/], ['has space', 'Hi.', /needs an id/], [null, 'Hi.', /needs an id/], ['x'.repeat(40), 'Hi.', /needs an id/], [{id: 1}, 'Hi.', /needs an id/]]) {
+    heard = await speech('synth', id, text); assert.equal(heard[0].status, 'error', JSON.stringify([id, text])); assert.match(heard[0].message, expected, JSON.stringify([id, text]));
+  }
+  heard = await speech('sing', 'a1', 'Hi.'); assert.match(heard[0].message, /Unknown speech action/);
+  assert.deepEqual(requests(), []);
+  const hush = replies.length;
+  for (const extra of [{token: 'wrong'}, {session_id: 'other'}]) host.receive({source: frameWindow, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'speak', action: 'synth', id: 'z1', text: 'Hi.', ...extra}});
+  host.receive({source: {}, data: {channel: 'research-os', token: 'secret', session_id: 'session-1', type: 'speak', action: 'synth', id: 'z1', text: 'Hi.'}});
+  await new Promise(resolve => setTimeout(resolve, 30)); assert.equal(replies.length, hush); assert.deepEqual(requests(), []);
   fs.rmdirSync(vaultRoot);
-  console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions.');
+  console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions, live voice.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

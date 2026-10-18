@@ -12,6 +12,9 @@ const RUNTIME = '.research-os/runtime/';
 // transcript goes back to the page as text for the learner to read and edit before sending it as an ordinary open question.
 const VOICE_DIR = '.research-os/voice/';
 const VOICE_MAX_MS = 60000, VOICE_MAX_BYTES = 3 * 1024 * 1024, VOICE_WAIT_MS = 45000, VOICE_POLL_MS = 400, VOICE_BEAT_MAX = 10, VOICE_WARM_MAX = 60;
+// The tutor's live voice: the page asks for one sentence at a time, a local Kokoro worker (scripts/voice.py tts-worker) speaks it, and the audio comes back
+// for the page to play as it arrives. Not recordings made in advance.
+const TTS_WAIT_MS = 25000, TTS_POLL_MS = 40, TTS_MAX_BYTES = 3 * 1024 * 1024, TTS_MAX_CHARS = 600, TTS_MAX_PENDING = 4;
 const TRUST_REGISTRY = RUNTIME + 'extensions/trusted-modules.json';
 const TAGS = new Set(('a abbr article aside b blockquote br button caption code col colgroup dd del details div dl dt em fieldset figcaption figure footer form h1 h2 h3 h4 h5 h6 header hr i img input label legend li main mark nav ol option p pre section select small span strong sub summary sup table tbody td textarea th thead tr ul svg g path circle rect line polyline polygon ellipse text tspan canvas').split(' '));
 const ATTRS = new Set(('id class title alt role aria-label aria-labelledby aria-describedby aria-expanded aria-live aria-hidden tabindex type name value start min max step placeholder checked disabled selected for open rows cols scope colspan rowspan width height viewbox d x y x1 x2 y1 y2 cx cy r rx ry points fill stroke stroke-width transform xmlns').split(' '));
@@ -310,7 +313,9 @@ function browserRecorder() {
 }
 function buildDocument(body, state, token, runtime, css, theme, modules = [], position = null, live = null, voice = false) {
   const nonce = crypto.randomBytes(24).toString('hex');
-  const safeJSON = JSON.stringify({token, session_id: state.session_id, state: pageState(state, live), position, voice: voice ? {capable: true} : undefined}).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+  // `voice` is what this host can do: true (record spoken questions) or {capable, speak}. A capability the host lacks is not offered to the page.
+  const abilities = voice === true ? {capable: true} : voice && typeof voice === 'object' ? Object.fromEntries(['capable', 'speak'].filter(k => voice[k] === true).map(k => [k, true])) : {};
+  const safeJSON = JSON.stringify({token, session_id: state.session_id, state: pageState(state, live), position, voice: Object.keys(abilities).length ? abilities : undefined}).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const safeScript = runtime.replace(/<\/script/gi, '<\\/script');
   const safeCSS = css.replace(/<\/style/gi, '<\\/style');
   const moduleScripts = modules.map(code => '<script nonce="' + nonce + '">document.addEventListener("DOMContentLoaded",function(){"use strict";\n' + code.replace(/<\/script/gi, '<\\/script') + '\n},{once:true});</script>').join('');
@@ -436,7 +441,7 @@ class SessionHost extends Component {
       const body = sanitizeHtml(html, doc, images, new Map(resources.map(r => [r.id, r.alt])), state.placement !== 'explicit');
       if (this.frame) this.frame.remove();
       this.frame = doc.createElement('iframe'); this.frame.className = 'ros-html-frame'; this.frame.title = this.state.title || 'Research OS session'; this.frame.setAttribute('sandbox', 'allow-scripts'); this.frame.setAttribute('referrerpolicy', 'no-referrer');
-      this.frame.srcdoc = buildDocument(body, this.state, this.token, runtime, css, doc.body.classList.contains('theme-dark') ? 'dark' : 'light', modules, this.position || null, this.lease || null, this.voiceCapable());
+      this.frame.srcdoc = buildDocument(body, this.state, this.token, runtime, css, doc.body.classList.contains('theme-dark') ? 'dark' : 'light', modules, this.position || null, this.lease || null, this.abilities());
       this.container.appendChild(this.frame); this.status.classList.remove('ros-error'); this.status.textContent = runtime ? '' : 'Interactive runtime is not installed; showing isolated session content.';
     } catch (error) { if (generation === this.generation) this.fail(error.message); }
   }
@@ -450,6 +455,7 @@ class SessionHost extends Component {
       return;
     }
     if (data.type === 'voice') { this.voice(data.action, this.token); return; }
+    if (data.type === 'speak') { this.speak(data.action, data.id, data.text, this.token); return; }
     if (data.type === 'navigate') { this.navigate(data.target, this.token); return; }
     if (data.type === 'open-resource') { this.openResource(data.id, this.token); return; }
     if (this.pending >= 32) { this.reply(this.token, {type: 'error', message: 'Too many pending events.'}); return; }
@@ -498,6 +504,57 @@ class SessionHost extends Component {
   }
   // ---- spoken questions: the page asks by action only ("status", "start", "stop", "cancel"); everything else is decided here.
   voiceCapable() { return !!(this.plugin.recorder || browserRecorder()); }
+  // The live voice needs only the vault's own files, so any desktop vault can offer it; whether a worker is running is checked when it is asked.
+  speakCapable() { const adapter = this.plugin.app && this.plugin.app.vault && this.plugin.app.vault.adapter; return !!(adapter && typeof adapter.writeBinary === 'function' && typeof adapter.readBinary === 'function' && typeof adapter.exists === 'function'); }
+  abilities() { return {capable: this.voiceCapable(), speak: this.speakCapable()}; }
+  async ttsWorker() {
+    try {
+      const adapter = this.plugin.app.vault.adapter, path = VOICE_DIR + 'tts-worker.json';
+      if (!(await adapter.exists(path))) return {state: 'off', reason: 'no live voice worker has run here'};
+      return voiceWorkerState(await adapter.read(path), Date.now() / 1000);
+    } catch (_) { return {state: 'off', reason: 'the live voice worker could not be checked'}; }
+  }
+  async speak(action, id, text, token) {
+    const say = (payload, transfer) => this.reply(token, Object.assign({type: 'speech'}, payload), transfer);
+    const label = typeof id === 'string' && /^[A-Za-z0-9_-]{1,32}$/.test(id) ? id : null;
+    try {
+      if (action === 'status') { say(Object.assign({status: 'worker'}, await this.ttsWorker())); return; }
+      if (action === 'cancel') {
+        if (label) (this.ttsCancelled = this.ttsCancelled || new Set()).add(label); else if (id === undefined || id === null) this.ttsAbort = (this.ttsAbort || 0) + 1;
+        return;
+      }
+      if (action !== 'synth') throw new Error('Unknown speech action.');
+      if (!label) throw new Error('A speech request needs an id.');
+      if (typeof text !== 'string' || !text.trim() || text.length > TTS_MAX_CHARS || /[\u0000-\u0008\u000b-\u001f\u007f]/.test(text)) throw new Error('A speech request is one sentence of text, 1 to ' + TTS_MAX_CHARS + ' characters.');
+      this.ttsPending = this.ttsPending || new Set();
+      if (this.ttsPending.size >= TTS_MAX_PENDING) throw new Error('Too many sentences are waiting to be spoken.');
+      const worker = await this.ttsWorker();
+      if (worker.state !== 'ready' && worker.state !== 'busy') throw new Error('The live voice is not running' + (worker.reason ? ' (' + worker.reason + ')' : '') + '. Start it with: python scripts/voice.py tts-worker --dir .research-os/voice --voice model_dir=<Kokoro folder>');
+      const adapter = this.plugin.app.vault.adapter, request = crypto.randomBytes(8).toString('hex'), base = VOICE_DIR + 'tts/', aborted = this.ttsAbort || 0;
+      this.ttsPending.add(label);
+      try {
+        for (const directory of [VOICE_DIR.slice(0, -1), base.slice(0, -1), base + 'inbox']) if (!(await adapter.exists(directory))) await adapter.mkdir(directory);
+        await adapter.write(base + 'inbox/' + request + '.json', JSON.stringify({text: text.trim()}));
+        const answer = base + 'out/' + request + '.json', wav = base + 'out/' + request + '.wav', deadline = Date.now() + (this.ttsWaitMs || TTS_WAIT_MS);
+        const tidy = async () => { for (const path of [answer, wav, base + 'inbox/' + request + '.json']) { try { if (await adapter.exists(path)) await adapter.remove(path); } catch (_) { /* the worker tidies old files itself */ } } };
+        let result = null;
+        while (Date.now() < deadline) {
+          if (this.invalidated || token !== this.token || (this.ttsAbort || 0) !== aborted || (this.ttsCancelled && this.ttsCancelled.has(label))) { await tidy(); return; }
+          if (await adapter.exists(answer)) { result = JSON.parse(await adapter.read(answer)); break; }
+          await new Promise(resolve => setTimeout(resolve, this.ttsPollMs || TTS_POLL_MS));
+        }
+        if (!result) { await tidy(); throw new Error('The live voice did not answer in time.'); }
+        if (!result || typeof result !== 'object' || result.id !== request) { await tidy(); throw new Error('The live voice answered with something unreadable.'); }
+        if (typeof result.error === 'string') { await tidy(); throw new Error(result.error.slice(0, 300)); }
+        const bytes = await adapter.readBinary(wav);
+        await tidy();
+        if (!bytes || !bytes.byteLength || bytes.byteLength > TTS_MAX_BYTES) throw new Error('The spoken sentence is missing or too large.');
+        if (this.ttsCancelled && this.ttsCancelled.has(label)) return;
+        const seconds = Number.isFinite(result.audio_seconds) ? Math.round(result.audio_seconds * 1000) / 1000 : null;
+        say({status: 'audio', id: label, seconds, sample_rate: Number.isFinite(result.sample_rate) ? result.sample_rate : 24000, wav: bytes}, [bytes]);
+      } finally { this.ttsPending.delete(label); if (this.ttsCancelled) this.ttsCancelled.delete(label); }
+    } catch (error) { say({status: 'error', id: label, message: String(error && error.message || error).slice(0, 400)}); }
+  }
   async voiceWorker() {
     try {
       const adapter = this.plugin.app.vault.adapter, path = VOICE_DIR + 'worker.json';
@@ -601,7 +658,7 @@ class SessionHost extends Component {
       this.reply(token, {type: 'resource-opened', id, title: String(spec.title || id).slice(0, 200)});
     } catch (error) { this.reply(token, {type: 'resource-error', id: typeof id === 'string' ? id.slice(0, 80) : '', message: error.message}); }
   }
-  reply(token, payload) { if (this.frame && token === this.token) this.frame.contentWindow.postMessage(Object.assign({channel: 'research-os', token, session_id: this.state.session_id}, payload), '*'); }
+  reply(token, payload, transfer) { if (this.frame && token === this.token) this.frame.contentWindow.postMessage(Object.assign({channel: 'research-os', token, session_id: this.state.session_id}, payload), '*', transfer || []); }
   onunload() { this.voiceCancel(); clearTimeout(this.refreshTimer); clearInterval(this.leaseTimer); if (this.plugin.hosts) this.plugin.hosts.delete(this); this.invalidated = true; this.generation++; this.token = null; if (this.frame) this.frame.remove(); this.container.replaceChildren(); }
 }
 class SessionView extends FileView {
