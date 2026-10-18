@@ -575,9 +575,10 @@ function rig(steps, extra, effectDuration) {
     // The cache is bounded: sentences nobody used are withdrawn from the worker.
     {
       const r = rig2(); r.asked.respond = () => new Promise(() => {});
-      for (let i = 0; i < 12; i++) { r.speaker.prefetch(['Sentence ' + i]); }
+      for (let i = 0; i < 20; i++) { r.speaker.prefetch(['Sentence ' + i]); }
       await tick();
-      assert.equal(r.cancelled.length, 4, 'the oldest four of twelve were withdrawn');
+      assert.equal(r.asked.length, 2, 'only two requests are out for sentences wanted ahead; the third place stays free for a sentence wanted now');
+      assert.equal(r.cancelled.length, 2, 'the oldest four of twenty were forgotten; the two of them already asked for were withdrawn from the worker, the others were never asked');
     }
     // The player asks the voice to stay ahead of the lecture.
     {

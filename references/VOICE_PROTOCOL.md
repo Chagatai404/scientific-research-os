@@ -114,3 +114,5 @@ that they understand. Turkish accuracy of `small` is unmeasured on real learner 
 
 A persistent engine worker (each segment starts a process and reloads the model, which is why code-switched scripts pay the cold start per segment), word-level highlighting from alignment, compressed audio
 (`.ogg` is accepted on a card but nothing here makes it), a cloud provider, an MCP wrapper, and the lexicon file (read when you give one; none is created for you).
+
+**Speed (v0.9.7).** The live worker keeps a bounded cache of rendered sentences and answers cached requests first. `python scripts/voice.py prefetch --dir <voice folder> --plan <session plan or board script> [--wait N] [--no-acks] [--reset] [--dry-run]` writes list files to `<dir>/tts/prefetch/` and the worker renders those sentences ahead in play order, so the lecture starts with no synthesis wait. The texts must equal what the page asks for (`phrase_chunks`; shared cases in `tests/fixtures/plan-cases.json`) or every request misses the cache. Measurements: `docs/plans/v0.9.7-s6-speed.md`.
