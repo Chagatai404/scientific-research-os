@@ -1,11 +1,12 @@
 # Scientific Research OS
 
-Current release: **v0.9.7**. Adaptive-learning changes below are unreleased.
+Current release: **v0.9.8** — Adaptive Learning Core.
 
-Unreleased adaptive-learning work is tracked in the
-[incremental implementation plan](docs/plans/v0.9.8-adaptive-learn-core-and-ink.md).
-See [migration and local acceptance notes](docs/MIGRATION_v0.9.8.md) for completed
-slices and remaining gates; this does not change the current release or live vault.
+The mandatory personalized text core (P0) is implemented. See the
+[implementation and verification record](docs/plans/v0.9.8-adaptive-learn-core-and-ink.md)
+and [migration and local acceptance notes](docs/MIGRATION_v0.9.8.md).
+P1 teaching behaviors and P2 tablet ink remain future work; actual Obsidian
+acceptance of the new core remains pending.
 
 A model-independent research and learning workflow for human-led scientific work with AI assistance.
 
