@@ -257,10 +257,25 @@ def _validate_plan_reviews(reviews, plan, events):
             raise ValueError("criteria_met has one true/false for each of the question's %d criteria" % len(criteria))
 
 
-def reviewed_results(results, reviews):
+def active_plan_reviews(events, reviews):
+    """Only a review of the latest actual attempt may pace current instruction.
+
+    Retain superseded reviews in storage. Contradictory criterion records cannot
+    establish a correct pacing result even in unvalidated projections.
+    """
+    latest = {e['question_id']: e['event_id'] for e in events if e.get('type') == 'plan-answer'}
+    selected = {}
+    for review in reviews:
+        if latest.get(review['question_id']) == review['response_event_id']:
+            selected[review['question_id']] = review
+    return [r for r in selected.values() if not (
+        r['verdict'] == 'correct' and 'criteria_met' in r and not all(r['criteria_met']))]
+
+
+def reviewed_results(results, reviews, events=None):
     """The results the lecture is chosen from: the page's probe results (question id -> correct/wrong/pending) with each written answer's pending result
     replaced by the tutor's latest verdict on it (see ``PLAN_REVIEW_RESULT``). Choice and numeric results are never touched. Mirrors Stages.reviewedResults."""
-    latest = {r["question_id"]: r for r in reviews}
+    latest = {r["question_id"]: r for r in (active_plan_reviews(events, reviews) if events is not None else reviews)}
     return {q: (PLAN_REVIEW_RESULT.get(latest[q]["verdict"], v) if v == "pending" and q in latest else v) for q, v in results.items()}
 
 
@@ -279,11 +294,55 @@ def plan_lecture(state):
     follows the probe results with the tutor's reviews applied, so a verdict on a written answer can still change a lecture that has not begun."""
     import session_plan
     plan, events = state["plan"], state["events"]
-    results = reviewed_results(session_plan.replay(plan, "probe", events)["results"], state.get("plan_reviews", []))
+    results = reviewed_results(session_plan.replay(plan, "probe", events)["results"], state.get("plan_reviews", []), events)
     recorded = recorded_lecture_path(events)
     known = {s["id"] for s in plan["segments"]}
     return {"results": results, "started": recorded is not None,
             "path": [s for s in recorded if s in known] if recorded is not None else session_plan.lecture_path(plan, results)}
+
+
+def session_adaptation(state):
+    """Attempt-bound teaching advice; never a canonical mastery projection.
+
+    Uses existing replay/repair rules. Advice does not switch stages, rewrite
+    questions, reroute a started lecture or expand the assessment budget.
+    """
+    import session_plan
+    base = {'adaptation_schema': 1, 'evidence': False}
+    plan, events = state.get('plan'), state['events']
+    if not plan:
+        return dict(base, action='prepare_lesson', stage='handout', reason='A prepared lesson is not available yet.')
+    active = active_plan_reviews(events, state.get('plan_reviews', []))
+    by_question = {r['question_id']: r for r in active}
+    lecture = plan_lecture(state)
+    pending, gaps = [], []
+    for tree in ('probe', 'check'):
+        replayed = session_plan.replay(plan, tree, events)
+        for answer in replayed['trail']:
+            review = by_question.get(answer['id'])
+            if answer['verdict'] == 'pending' and (review is None or review['verdict'] == 'reviewed'):
+                pending.append(answer['id'])
+            if review and review['verdict'] in {'incorrect', 'partially-correct'}:
+                gaps.append((tree, answer['id'], review))
+    if gaps:
+        tree, question, review = gaps[-1]
+        repairs = [s['id'] for s in plan['segments'] if s['role'] == 'repair'
+                   and question in s['plays_if']['wrong']]
+        available = [r for r in repairs if r in lecture['path']]
+        return dict(base, action='review_repair' if available else 'request_repair', stage='lecture' if available else 'handout',
+                    reason='The latest reviewed attempt has an unresolved gap. ' + (
+                        'The prepared lecture includes its repair.' if available else
+                        'Ask the tutor for a focused repair; the current lecture path stays intact.'),
+                    question_id=question, response_event_id=review['response_event_id'], tree=tree,
+                    verdict=review['verdict'], repair_segments=available, lecture_started=lecture['started'],
+                    pending_review=len(pending))
+    if pending:
+        return dict(base, action='await_review', stage='handout', pending_review=len(pending),
+                    reason='Written reasoning awaits a substantive review. You can keep studying; no learning credit is inferred.')
+    stage = session_plan.stage_of(plan, events)
+    return dict(base, action='continue', stage='check' if stage == 'done' else stage,
+                reason='Continue the prepared lesson. Local results and reading pace study; they do not establish mastery.',
+                pending_review=0)
 
 
 def plan_revision_problems(old, new, events):
@@ -344,6 +403,7 @@ def review_plan_answer(root, relative_md, question_id, verdict, feedback="", rev
             review["rationale"] = rationale
         before = plan_lecture(state)
         if revised_plan is not None:
+            _ensure_context(state)
             session_plan.check(revised_plan)
             problems = plan_revision_problems(plan, revised_plan, state["events"])
             if problems and not allow_reroute:
@@ -359,7 +419,7 @@ def review_plan_answer(root, relative_md, question_id, verdict, feedback="", rev
     after = plan_lecture(saved)
     return {"session": str(relative_md), "question_id": question_id, "verdict": verdict, "stage": session_plan.stage_of(saved["plan"], saved["events"]),
             "lecture_started": after["started"], "lecture_path_before": before["path"], "lecture_path": after["path"], "plan_revised": revised_plan is not None,
-            "pending": pending_activity(saved)}
+            "pending": pending_activity(saved), "adaptation": session_adaptation(saved)}
 
 
 def _validate_context(context):
@@ -1816,13 +1876,14 @@ def session_recommendation(root, relative_md, state=None):
     if not bound or bound.get('waived'):
         return {'policy_revision': 1, 'status': 'limited', 'evidence': False,
                 'next': {'action': 'inspect_context'},
-                'rationale': 'Historical or explicitly waived context: bind a current canonical target before claiming personalized instruction.'}
+                'rationale': 'Historical or explicitly waived context: bind a current canonical target before claiming personalized instruction.',
+                'adaptation': session_adaptation(state)}
     receipt, _, reused = ck.preflight(planning_request(root, relative_md, state))
     ck.require(receipt)
     return dict(receipt['retrieval'].get('recommendation') or {
         'status': 'limited', 'evidence': False, 'next': {'action': 'inspect_context'},
         'rationale': 'This context workflow does not select tutoring actions.'},
-        receipt_id=receipt['receipt_id'], cached=reused)
+        receipt_id=receipt['receipt_id'], cached=reused, adaptation=session_adaptation(state))
 
 
 def _adapter_lines(root, project_root=None):
@@ -1869,7 +1930,8 @@ def session_context(root, relative_md, project_root=None, learning_root=None, as
              "research": None, "knowledge": None, "notes": [], "receipt": receipt,
              "receipt_file": str(receipt_file) if receipt_file else None, "blocked": receipt["outcome"] == "blocked",
              "adapters": _adapter_lines(root, project_root), "at_risk": ck.at_risk(receipt),
-             "recommendation": retrieval.get('recommendation')}
+             "recommendation": retrieval.get('recommendation'),
+             "adaptation": session_adaptation(state) if state else None}
     for q in (state["questions"] if state else []):
         responses = [e for e in state["events"] if e["type"] == "response" and e.get("question_id") == q["id"]]
         review = (q.get("reviews") or [None])[-1]
@@ -1948,6 +2010,10 @@ def render_context(brief):
         lines += ['', '## Recommended next action', '',
                   f"- {recommendation['next']['action']} ({recommendation['status']}): {recommendation['rationale']}",
                   '- This is pacing advice, not a grade or a change to the current lesson.']
+    adaptation = brief.get('adaptation')
+    if adaptation:
+        lines += ['', '## Session pacing', '', f"- {adaptation['action']}: {adaptation['reason']}",
+                  '- A session review does not promote canonical evidence.']
     lines += ["", "## Awaiting you", ""]
     for item in brief["pending"]:
         if item["kind"] == "response":

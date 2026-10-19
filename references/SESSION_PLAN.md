@@ -118,3 +118,20 @@ renderer. If no narration or writing is prepared, disclose the missing text
 alternative and direct the learner to Handout/the tutor. Authors must prepare a
 useful source-grounded textual explanation; this fallback is not automatic image
 interpretation or proof that every legacy lesson is accessible.
+
+## Review-driven session pacing
+
+A review can influence current instruction only when its `response_event_id`
+matches the latest actual attempt at that question. Historical and late reviews
+remain stored; they cannot approve, reject or supply feedback for a newer attempt.
+The stage renderer and Python planner use the same attempt-specific rule.
+`reviewed` alone leaves reasoning pending, and contradictory criterion data cannot
+produce a correct pacing result. Existing criteria and raw-answer contracts apply.
+
+`plan-review` returns an `adaptation` projection, also present in startup/resume
+advice. It distinguishes a prepared repair, a focused repair request when none is
+available on the current path, pending review, and ordinary continuation. This
+advice is not canonical evidence. A newly needed repair affects an unstarted
+lecture through existing segment rules; a started lecture retains its frozen path.
+Revised teaching in a review transaction requires current essential context and
+must still pass the existing answered-question/started-path revision guards.

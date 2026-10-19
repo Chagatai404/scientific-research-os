@@ -45,9 +45,15 @@
   // by the review_effects cases in tests/fixtures/supervision-cases.json). A partly correct answer leaves a gap, so it plays a repair and does not satisfy an
   // extension; "reviewed" carries no judgement. Choice and numeric results are never touched. The latest review of a question wins.
   const REVIEW_RESULT = {correct: 'correct', 'partially-correct': 'wrong', incorrect: 'wrong'};
-  function reviewedResults(results, reviews) {
+  function activePlanReviews(events, reviews) {
+    const latest = new Map((events || []).filter(e => e.type === 'plan-answer').map(e => [e.question_id, e.event_id]));
+    const selected = new Map();
+    for (const review of reviews || []) if (latest.get(review.question_id) === review.response_event_id) selected.set(review.question_id, review);
+    return [...selected.values()].filter(r => !(r.verdict === 'correct' && r.criteria_met && !r.criteria_met.every(Boolean)));
+  }
+  function reviewedResults(results, reviews, events) {
     const latest = new Map();
-    for (const review of reviews || []) latest.set(review.question_id, review);
+    for (const review of events ? activePlanReviews(events, reviews) : reviews || []) latest.set(review.question_id, review);
     const out = {};
     for (const [id, verdict] of Object.entries(results)) out[id] = verdict === 'pending' && latest.has(id) && REVIEW_RESULT[latest.get(id).verdict] ? REVIEW_RESULT[latest.get(id).verdict] : verdict;
     return out;
@@ -61,7 +67,7 @@
   }
   // What the lecture plays now: the recorded path once started, otherwise the one the probe results (with the tutor's reviews) choose.
   function lectureFor(plan, events, reviews) {
-    const results = reviewedResults(replay(plan, 'probe', events).results, reviews), recorded = recordedPath(events), known = new Set(plan.segments.map(s => s.id));
+    const results = reviewedResults(replay(plan, 'probe', events).results, reviews, events), recorded = recordedPath(events), known = new Set(plan.segments.map(s => s.id));
     return {results, started: recorded !== null, path: recorded !== null ? recorded.filter(id => known.has(id)) : lecturePath(plan, results)};
   }
   // The step a reloaded lecture waits at: the last "lecture-step:" checkpoint whose step is in the script (a step added by an answered question is not).
@@ -171,6 +177,34 @@
     return 'done';
   }
 
+  // A local teaching recommendation, not a grade. Mirrors session_adaptation in
+  // html_sessions.py and uses only reviews of the latest actual attempts.
+  function sessionAdaptation(plan, events, reviews) {
+    const base = {adaptation_schema: 1, evidence: false};
+    if (!plan) return {...base, action: 'prepare_lesson', stage: 'handout', reason: 'A prepared lesson is not available yet.'};
+    const active = new Map(activePlanReviews(events, reviews).map(r => [r.question_id, r]));
+    const lecture = lectureFor(plan, events, reviews), pending = [], gaps = [];
+    for (const tree of ['probe', 'check']) for (const answer of replay(plan, tree, events).trail) {
+      const review = active.get(answer.id);
+      if (answer.verdict === 'pending' && (!review || review.verdict === 'reviewed')) pending.push(answer.id);
+      if (review && ['incorrect', 'partially-correct'].includes(review.verdict)) gaps.push({tree, question: answer.id, review});
+    }
+    if (gaps.length) {
+      const {tree, question, review} = gaps.at(-1);
+      const repairs = plan.segments.filter(s => s.role === 'repair' && s.plays_if.wrong.includes(question)).map(s => s.id);
+      const available = repairs.filter(id => lecture.path.includes(id));
+      return {...base, action: available.length ? 'review_repair' : 'request_repair', stage: available.length ? 'lecture' : 'handout',
+        reason: 'The latest reviewed attempt has an unresolved gap. ' + (available.length ? 'The prepared lecture includes its repair.' : 'Ask the tutor for a focused repair; the current lecture path stays intact.'),
+        question_id: question, response_event_id: review.response_event_id, tree, verdict: review.verdict,
+        repair_segments: available, lecture_started: lecture.started, pending_review: pending.length};
+    }
+    if (pending.length) return {...base, action: 'await_review', stage: 'handout', pending_review: pending.length,
+      reason: 'Written reasoning awaits a substantive review. You can keep studying; no learning credit is inferred.'};
+    const stage = stageOf(plan, events);
+    return {...base, action: 'continue', stage: stage === 'done' ? 'check' : stage,
+      reason: 'Continue the prepared lesson. Local results and reading pace study; they do not establish mastery.', pending_review: 0};
+  }
+
   // Recommended progress and the learner's selected view are separate. Visiting
   // a stage neither completes it nor creates assessment evidence.
   function selectedStage(plan, events) {
@@ -204,10 +238,10 @@
     const doc = ctx.doc;
     let current = plan;
     const reviews = () => (ctx.reviews ? ctx.reviews() : []);
-    const reviewOf = id => { const all = reviews().filter(r => r.question_id === id); return all.length ? all[all.length - 1] : null; };
+    const reviewOf = id => activePlanReviews(ctx.events(), reviews()).find(r => r.question_id === id) || null;
     const REVIEW_LABEL = {correct: 'Correct', 'partially-correct': 'Partly correct', incorrect: 'Not quite', reviewed: 'Read'};
     // Pending written answers become the tutor's verdict once there is one; everything else keeps the page's own result.
-    const effective = t => (t.verdict === 'pending' ? reviewedResults({[t.id]: 'pending'}, reviews())[t.id] : t.verdict);
+    const effective = t => (t.verdict === 'pending' ? reviewedResults({[t.id]: 'pending'}, reviews(), ctx.events())[t.id] : t.verdict);
     const el = (tag, attrs, ...children) => {
       const node = doc.createElement(tag);
       for (const [key, value] of Object.entries(attrs || {})) {
@@ -889,5 +923,5 @@
     };
   }
 
-  return {END, STAGES, ACKS, judge, lecturePath, composeScript, lectureChunks, chunkScript, replay, stageOf, selectedStage, stageStatus, marks, parseNumber, tokens, matchAnticipated, mount, reviewedResults, recordedPath, lectureFor, resumeStep};
+  return {END, STAGES, ACKS, judge, lecturePath, composeScript, lectureChunks, chunkScript, replay, stageOf, selectedStage, stageStatus, marks, parseNumber, tokens, matchAnticipated, mount, reviewedResults, recordedPath, lectureFor, resumeStep, activePlanReviews, sessionAdaptation};
 });

@@ -75,4 +75,17 @@ assert.equal(S.parseNumber(' 1,5 '), 1.5);
 assert.equal(S.parseNumber('-2e3'), -2000);
 for (const bad of ['', 'abc', '1 2', '0x10', 'Infinity', '--1']) assert(Number.isNaN(S.parseNumber(bad)), bad);
 
+// Attempt identity and review-driven pacing mirror the central Python writer.
+{
+  const plan = JSON.parse(fs.readFileSync(path.join(__dirname, '../examples/session-plan-variance.json'), 'utf8'));
+  plan.segments[1].plays_if = {wrong: ['why']}; plan.segments[3].plays_if = {correct: ['why']};
+  const cases = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/adaptation-cases.json'), 'utf8')).cases;
+  for (const c of cases) {
+    const advice = S.sessionAdaptation(plan, c.events, c.reviews);
+    for (const [key, value] of Object.entries(c.expect)) assert.deepEqual(advice[key], value, c.name + ': ' + key);
+    assert.deepEqual(S.lectureFor(plan, c.events, c.reviews).path, c.path, c.name);
+    assert.equal(advice.evidence, false);
+  }
+}
+
 console.log('stages unit tests passed');

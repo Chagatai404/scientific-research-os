@@ -2,6 +2,10 @@
 
 ## Unreleased — adaptive learning core
 
+- Review-driven pacing applies only to the latest actual answer attempt; old or
+  late reviews cannot approve newer pending reasoning. Session advice identifies
+  prepared repairs while preserving started lecture paths and canonical evidence.
+
 - Tutor/course context receipts and startup/resume briefs include bounded canonical
   next-action recommendations with rationales, independent of optional services.
   Bound target/root/policy survive resume; explicit target rebinding is supported.
