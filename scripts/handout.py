@@ -637,17 +637,111 @@ def load_plan(root: Path, session: str) -> dict | None:
 
 
 def set_status(root: Path, session: str, stage: str, plan: dict) -> None:
-    """Move the plan's handout status forward (planned, draft, built) through the ordinary session update; the plan stays valid or nothing changes."""
+    """Advance export status without overwriting work published during compilation."""
     import session_plan
-    new = copy.deepcopy(plan)
-    new.setdefault("handout", {})["status"] = stage
-    problems = session_plan.validate(new)
-    if problems:
-        raise HandoutError("The session plan would not be valid after the status update", problems)
-    _session_api().update_session(root, session, plan=new)
+    hs = _session_api()
+    md, _, _ = hs.paths(root, session)
+    with hs.Lock(md.with_suffix('.session.lock')):
+        state = hs.load_session(root, session)
+        new = copy.deepcopy(state.get('plan'))
+        current = (new or {}).get('handout') or {}
+        expected = plan.get('handout') or {}
+        if not current or any(current.get(key) != expected.get(key) for key in ('title', 'directory')):
+            raise HandoutError('The handout destination changed during export; the prepared resource is preserved')
+        if STAGES.index(stage) < STAGES.index(current.get('status', 'planned')):
+            raise HandoutError('The handout export status cannot move backwards')
+        current['status'] = stage
+        session_plan.check(new)
+        state['plan'] = new
+        state['updated_at'] = hs._now()
+        hs._save(root, session, state)
 
 
 # ---------------------------------------------------------------------------------------------------- build
+
+def readable_markdown(title: str, session: str, content: dict) -> str:
+    """A reusable resource with provenance, never a permanent knowledge promotion."""
+    lines = ['---', 'type: tutor-handout', 'title: ' + json.dumps(title, ensure_ascii=False),
+             'readable_revision: ' + str(content['revision']), '---', '', '# ' + title, '',
+             'Teaching material; reading this is not evidence of learning.', '', 'Session: [[' + session + ']]', '']
+    if content.get('focus'):
+        lines += ['## Suggested focus', '', *('- ' + item for item in content['focus']), '']
+    for section in content['sections']:
+        lines += ['## ' + section['title'], '']
+        if section.get('solution'):
+            lines += ['> Solution appendix — reveal only after an attempt or an explicit request.', '']
+        lines += ['\n\n'.join(section['paragraphs']), '']
+    lines += ['## Sources', '']
+    for source in content['sources']:
+        lines += ['- ' + source['title'] + ' — ' + source['reference'] + '; ' + source['locator']]
+    return '\n'.join(lines) + '\n'
+
+
+def publish_readable(root, session: str, content: dict, library: str | None = None) -> dict:
+    """Publish native content before diagnostics or PDF export, with isolated revisions.
+
+    Uses the central session lock/writer, then a library lock. Old content and
+    learner edits are retained; replay is idempotent. A failed session projection
+    leaves its complete library artifact available for recovery, never deletes it.
+    """
+    import session_plan
+    hs = _session_api()
+    root = Path(root).resolve()
+    md, _, _ = hs.paths(root, session)
+    session = md.relative_to(root).as_posix()
+    if not hs.rich_text.valid_note_target(session):
+        raise HandoutError('The session path must be a valid Obsidian note reference')
+    content = copy.deepcopy(content)
+    if isinstance(content, dict) and 'note' in content:
+        raise HandoutError('The publisher manages readable.note; supply content without a note path')
+    problems = session_plan.readable_problems(content)
+    if problems:
+        raise HandoutError('Invalid readable handout', problems)
+    with hs.Lock(md.with_suffix('.session.lock')):
+        state = hs.load_session(root, session)
+        hs._ensure_context(state)
+        plan = copy.deepcopy(state.get('plan'))
+        if not plan or not plan.get('handout'):
+            raise HandoutError('Prepare a session plan with a handout declaration first')
+        handout = plan['handout']
+        previous = {k: v for k, v in handout.get('readable', {}).items() if k != 'note'}
+        if content != previous and content['revision'] != previous.get('revision', 0) + 1:
+            raise HandoutError('Use the next readable revision; earlier content is preserved')
+        lib = library_of(root, session, library)
+        directory = _resolve(root, lib['path'] + '/' + handout['directory'], 'the handout directory')
+        data = readable_markdown(handout['title'], session, content).encode('utf-8')
+        stem = re.sub(r'[\[\]|#]', '-', _slug(handout['title'])) + '-readable-r' + str(content['revision']) + '-' + _sha(data)[:16]
+        note = directory / (stem + '.md')
+        # Validate the final backlink/path before creating anything on disk.
+        prospective = dict(content, note=note.relative_to(root).as_posix())
+        problems = session_plan.readable_problems(prospective)
+        if problems:
+            raise HandoutError('Invalid readable handout path', problems)
+        directory.mkdir(parents=True, exist_ok=True)
+        with hs.Lock(directory / 'readable.lock'):
+            version = 1
+            while note.exists() and (note.is_symlink() or note.read_bytes() != data):
+                version += 1
+                if version > 1000:
+                    raise HandoutError('Too many conflicting native handout files; inspect the library')
+                note = directory / (stem + '-v' + str(version) + '.md')
+            _resolve(root, note.relative_to(root).as_posix(), 'the readable handout')
+            prospective['note'] = note.relative_to(root).as_posix()
+            handout['readable'] = prospective
+            session_plan.check(plan)
+            if state['plan'] == plan and note.is_file() and note.read_bytes() == data:
+                return {'note': prospective['note'], 'revision': content['revision'], 'unchanged': True, 'pdf_required': False}
+            if not note.exists():
+                _atomic(note, data)
+            old_note = (state['plan']['handout'].get('readable') or {}).get('note')
+            navigation = [item for item in state.get('navigation', []) if not
+                          (item.get('kind') == 'related' and item.get('label') == 'Study handout' and item.get('target') == old_note)]
+            navigation.append({'kind': 'related', 'label': 'Study handout', 'target': prospective['note']})
+            state['navigation'] = navigation
+            state['plan'] = plan
+            state['updated_at'] = hs._now()
+            hs._save(root, session, state)
+        return {'note': prospective['note'], 'revision': content['revision'], 'unchanged': False, 'pdf_required': False}
 
 def build(root, session: str, body_path, title: str | None = None, library: str | None = None, stage: str = "built", figures=None, subtitle: str = "",
           course: str | None = None, line: str = "", date: str | None = None, on_conflict: str = "version", max_overfull: float = DEFAULT_OVERFULL_PT,
@@ -776,6 +870,11 @@ def main(argv=None) -> int:
     c.add_argument("--figures", type=Path)
     t = sub.add_parser("template", help="print the environments and macros a body may use")
     t.add_argument("--json", action="store_true")
+    native = sub.add_parser('publish-readable', help='publish structured native handout content without a PDF compiler')
+    native.add_argument('--root', required=True, type=Path)
+    native.add_argument('--session', required=True)
+    native.add_argument('--content', required=True, type=Path, help='JSON readable resource: revision, sections, sources, optional focus')
+    native.add_argument('--library')
     b = sub.add_parser("build", help="lint, compile, check the log, save to the library and write the vault note")
     b.add_argument("--root", required=True, type=Path)
     b.add_argument("--session", required=True)
@@ -798,6 +897,10 @@ def main(argv=None) -> int:
     loc.add_argument("--session", required=True)
     args = parser.parse_args(argv)
     try:
+        if args.command == 'publish-readable':
+            content = json.loads(args.content.read_text(encoding='utf-8-sig'))
+            print(json.dumps(publish_readable(args.root, args.session, content, args.library), indent=2, ensure_ascii=False))
+            return 0
         if args.command == "template":
             print(json.dumps({"environments": {k: {"usage": u, "use": w} for k, (u, w) in ENVIRONMENTS.items()}, "macros": MACROS, "packages": PACKAGES}, indent=2) if args.json else template_text())
             return 0

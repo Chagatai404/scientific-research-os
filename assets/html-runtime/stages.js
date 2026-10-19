@@ -426,14 +426,29 @@
 
     // ------------------------------------------------------------------------------------------------- handout
     let handoutNote = {text: '', problem: false};      // what the host last said about opening the PDF
+    let nativeReader = null;
     function openHandout() { handoutNote = {text: 'Opening the handout…', problem: false}; ctx.panes.handout.open(); renderHandout(); }
     function renderHandout() {
       const panel = panels.handout;
       const handout = current.handout, voiceState = ctx.liveVoice ? ctx.liveVoice.state() : 'none';
-      const signature = JSON.stringify([handout, voiceState, derived, shown, handoutNote]);
+      const signature = JSON.stringify([handout, handout && handout.readable ? null : voiceState, derived, shown, handoutNote]);
       if (panel.dataset.signature === signature) return;
+      if (nativeReader) { nativeReader.destroy(); nativeReader = null; }
       panel.dataset.signature = signature; panel.textContent = '';
       const card = el('article', {class: 'ros-handout'});
+      if (handout && handout.readable && doc.defaultView.ResearchOSReader) {
+        card.classList.add('ros-native-handout');
+        card.append(el('h2', {text: handout.title}));
+        const host = el('div', {class: 'ros-reader-host'});
+        const actions = el('div', {class: 'ros-reader-actions'});
+        if (handout.status === 'built' && ctx.panes) actions.append(button('Open the handout', openHandout));
+        if (handout.readable.note) actions.append(ctx.rich('p', '[[' + handout.readable.note + '|Library copy]]'));
+        actions.append(button(derived === 'handout' ? 'Start the lecture' : 'Go to the lecture', startLecture));
+        card.append(host, actions, el('p', {class: 'ros-stage-hint', role: 'status', text: handoutNote.text || 'Readable now · revision ' + handout.readable.revision + (handout.status === 'built' ? ' · PDF available' : ' · PDF export optional')}));
+        panel.append(card);
+        nativeReader = doc.defaultView.ResearchOSReader.mount(host, handout.readable, {doc, rich: ctx.rich, events: ctx.events, emit: ctx.emit});
+        return;
+      }
       if (handout) {
         card.append(el('h2', {text: handout.title}));
         card.append(el('p', {class: 'ros-handout-status', text: {planned: 'The tutor is preparing this document.', draft: 'A draft is ready; the tutor is finishing it.', built: 'Ready.'}[handout.status || 'planned']}));
@@ -765,6 +780,7 @@
       else if (shown === 'check') treeView('check');
       else if (shown === 'done') renderDone();
       shell.dataset.stage = shown;
+      if (shown === 'handout' && nativeReader) nativeReader.layout();
     }
     if (ctx.liveVoice) {
       let previousVoice = ctx.liveVoice.state();
@@ -805,6 +821,7 @@
       get stage() { return shown; },
       update(next) { current = next; title.textContent = next.title; adjustLecture(); render(); },
       destroy() {
+        if (nativeReader) nativeReader.destroy();
         if (lecture.video && (lecture.video.phase === 'opening' || lecture.video.phase === 'playing') && ctx.panes) ctx.panes.video.close();
         if (lecture.controller && lecture.controller.destroy) lecture.controller.destroy();
         shell.remove();

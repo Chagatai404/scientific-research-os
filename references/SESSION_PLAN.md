@@ -14,8 +14,10 @@ reload persistence remains a tracked follow-up).
 `--voice` explicitly requests optional workers under the existing process consent;
 `--no-voice` remains accepted. `ready` reports core readiness; `voice_ready`
 separately reports optional voice availability. Warming, failed or unavailable
-speech never disables stage navigation or lecture entry. The existing PDF
-readiness check is being replaced in the next native-handout slice.
+speech never disables stage navigation or lecture entry. A valid `handout.readable`
+resource now satisfies preparation without PDF compilation; legacy PDF-only plans
+retain their checked-export path. Native resource publication, bounds, revisions
+and source requirements are specified in `HANDOUT_PROTOCOL.md`.
 
 What a tutor decides before the learner sees anything, so the session moves without waiting for the agent between steps. It works with any agent that can write a JSON file and run a command. `TUTOR_PLANNING.md` still decides what is taught and in what order, `TUTORING_GATES.md` when a probe is due, `LIVE_LECTURE.md` how a lecture is given, and `RESOURCE_PROTOCOL.md` which outside material may be used. This file is the plan that ties them together.
 
@@ -33,7 +35,7 @@ A plan is one JSON object (`plan_schema: 1`), checked by `python scripts/session
 | `probe` | a tree of questions: `start` and `questions`. Each question has an `id`, a `prompt`, the contract (`tests`, optionally `assumes`, `introduces`), a `solution` that explains the reasoning, and where it leads |
 | `segments` | the lecture, in pieces. `core` always plays; `repair` plays before a named core segment when any listed probe question was answered wrong; `extension` plays when all listed questions were answered right. A segment has a `script` (a board script), a `video`, or both (the script plays first) |
 | `anticipated` | questions the learner is likely to ask, each with `match` words and ready board `steps`, shown as buttons and answered at once |
-| `handout` | the detailed LaTeX document: `title`, `directory` inside the course or project library, `status` (planned, draft, built), `sections` |
+| `handout` | `title`, library `directory`, declared `sections`, optional native `readable` resource; `status` (planned, draft, built) retains the PDF export lifecycle |
 | `check` | the closing questions, a second tree with the same rules and its own budget |
 
 **Questions.** `choice` (one right option; every wrong option carries feedback that names the mistake it stands for, and may route elsewhere with `next`), `numeric` (a value and a tolerance, plus feedback for a wrong number), and `short` (a free response with the criteria the agent will judge against; it never blocks: the learner goes straight on and the agent reviews in the background). `on_correct` and `on_wrong` name the next question or `end`. Questions only move forward, every one must be reachable, and the units on the longest path must fit the budget. Hidden answer-position balancing still applies: `session_plan.py check` warns when every right answer sits in the same place.

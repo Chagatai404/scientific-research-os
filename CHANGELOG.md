@@ -2,6 +2,11 @@
 
 ## Unreleased — adaptive learning core
 
+- Native handouts open before diagnostics and PDF export, with source locators,
+  responsive pages, explicit solution reveal and saved reading position.
+- Native publication versions reusable library notes and preserves human edits;
+  optional PDF completion retains newer native content and plan changes.
+
 - Prepared session stages can be visited in any order; navigation records the
   selected view independently of diagnostic progress and pauses a playing lecture.
 - Session startup defaults to text. Optional `--voice` readiness is reported

@@ -10,6 +10,11 @@ distribution file hashes and the official npm source; `KATEX-LICENSE.txt` retain
 the license. Rebuild with `python build.py /path/to/extracted/katex/package`.
 `runtime.js` and `theme.css` are editable Research OS sources.
 
+`reader.js` is the native handout reader: safe inline DOM, responsive pagination,
+source sections and explicit solution reveal. It stores only presentation checkpoints
+through the existing session bridge. Rebuild with `python build.py --refresh` after
+editing it or `stages.js`/`stages.css`; no external renderer or compiler is needed.
+
 The document uses `main#ros-session` and semantic `data-ros` attributes listed in
 `ResearchOS.VOCABULARY`. Question sections identify `data-question-id`; their
 controls are generated from structured questions. Supported kinds: `mcq`, `multi`,

@@ -17,6 +17,21 @@ body.ros-staged .ros-side-panel,body.ros-staged .ros-panel-toggle,body.ros-stage
 .ros-stagebar li[data-state="todo"] button{opacity:.6}
 .ros-stagebar button[aria-current="step"]{box-shadow:0 0 0 3px var(--ros-focus,var(--ros-accent))}
 .ros-stage-body{flex:1;min-height:0}
+.ros-stage-handout:not([hidden]){height:100%;min-height:0}
+.ros-native-handout{display:flex;flex-direction:column;box-sizing:border-box;height:100%;min-height:0;width:100%;gap:8px}
+.ros-native-handout h2{margin:0;font-size:22px}
+.ros-reader-host{flex:1;min-height:0}
+.ros-reader{display:flex;flex-direction:column;height:100%;min-height:0;gap:8px}
+.ros-reader select{width:100%;min-width:0;max-width:100%;font:inherit;padding:6px}
+.ros-reader h3{font-size:19px;line-height:1.3;margin:0;overflow-wrap:anywhere}
+.ros-reader-page{flex:1;min-height:0;overflow-wrap:anywhere}
+.ros-reader-page p{margin:0 0 10px;font-size:17px;line-height:1.5}
+.ros-reader-controls,.ros-reader-actions{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;flex:none}
+.ros-reader-controls button,.ros-reader-actions button{min-height:36px;padding:5px 10px;font-size:14px}
+.ros-reader-controls span{font-size:13px}
+.ros-reader-actions p{margin:0;font-size:14px}
+.ros-native-handout>.ros-stage-hint{margin:0;font-size:13px}
+@media(max-width:640px){.ros-native-handout{padding:12px}.ros-native-handout h2{font-size:20px}.ros-reader-page p{font-size:16px;line-height:1.4}.ros-reader h3{font-size:18px}.ros-reader-controls{display:grid;grid-template-columns:1fr 1fr}.ros-reader-controls span{grid-column:1/-1;grid-row:2;min-height:18px;text-align:center}.ros-reader-controls button:last-child{grid-column:2;grid-row:1}}
 .ros-stage-lecture:not([hidden]){display:flex;flex-direction:column;height:100%;min-height:0;gap:8px}
 .ros-lecture-board{min-width:0;min-height:0}
 .ros-stage[hidden]{display:none}

@@ -19,9 +19,9 @@ to text preparation and connects the tutor without starting voice workers.
 Automation/scripts that intentionally request narration should pass `--voice`
 under the existing worker process consent. `--no-voice` remains compatible.
 Read `ready` for core preparation and `voice_ready` for optional speech; failed
-or warming voice does not make a prepared core unready. PDF readiness is still
-an outstanding restriction addressed by P0b; do not claim full dependency
-isolation or a complete personalized core from P0a alone.
+or warming voice does not make a prepared core unready. P0b1 below removes the
+PDF-only readiness restriction. Board-independent text teaching and integrated
+adaptive refresh are still pending; this is not the complete personalized core.
 
 There is no ledger migration or automatic change to retention targets, grades,
 raw answers, research decisions or permanent notes. Old plans have no new required
@@ -36,6 +36,40 @@ runtime and installed skills, update through the existing installer/conflict
 workflow, and reload the companion/session. Keep existing session JSON and
 Markdown; never regenerate answers from HTML. Roll back runtime/skills from the
 backup if needed; additional view checkpoints do not require data rollback.
+
+## P0b1: native handouts before diagnostics
+
+Publish source-grounded `readable.json` through the existing handout helper:
+
+```
+python scripts/handout.py publish-readable --root <vault> --session <note> --content readable.json
+```
+
+See `references/HANDOUT_PROTOCOL.md` for its additive, bounded plan contract. The
+Handout stage now shows usable study content while the PDF status is still planned
+or draft. Sources retain precise locators; solutions require explicit reveal.
+Section/page position and reveal requests survive stage switching and reload.
+Reading and reveal checkpoints never award mastery; assessed attempts still need
+honest assistance attribution and review.
+
+The publisher writes a revisioned Markdown resource inside the declared library,
+adds a session backlink and a generated bridge link, and registers that specific
+note through existing mediated navigation. It holds the central session lock;
+human-edited copies are retained. Retrying after a projection failure reuses the
+complete library artifact. Ordinary session journals still require the existing
+recovery procedure before another write. PDF compilation is independent, and its
+completion cannot overwrite a newer native resource or plan.
+
+Old plans need no data migration and remain readable. New native plans require
+the updated runtime bundle, including reader.js, and updated helper/skill bundles.
+For rollback, restore the prior runtime and plan from an explicitly made backup;
+keep the generated Markdown resource and all raw answer history. Old runtimes do
+not display the new native content, so do not roll back the runtime alone for a
+native-only lesson. No live installation has been performed here.
+
+Native v1 supports structured prose, inline mathematics, source references and
+solution appendices. Advanced figures/tables and designed page layout remain in
+the existing optional PDF workflow; their native adapters are not claimed complete.
 
 ## Local acceptance still pending
 
@@ -52,8 +86,14 @@ With explicit approval, use a disposable session in the actual Obsidian host:
 5. Request voice explicitly under existing process approval and verify speech,
    failure feedback and recovery. Speaker/microphone behavior requires physical
    checks; synthetic browser tests cannot establish it.
+6. In an approved disposable Obsidian session, publish a native handout while its
+   PDF is absent. Open it before Quiz; check math, exact source locators, section
+   changes, responsive paging and Library copy opening inside Obsidian. Reload
+   and verify the page, solution reveal and any pending raw answers are retained.
+   Compiler absence/failure must leave the native handout accessible. This local
+   acceptance is still PENDING; the executed browser host is synthetic.
 
 Real tablet stylus, LAN/TLS/pairing and handwriting assessment remain unimplemented
 P2 work. No bridge, listener, firewall change, cloud upload or private-data transfer
-is introduced by P0a. Native readable handouts, board-independent text teaching
-and integrated adaptive refresh remain later slices in the plan.
+is introduced by these slices. Board-independent text teaching and integrated
+adaptive refresh remain later slices in the plan.

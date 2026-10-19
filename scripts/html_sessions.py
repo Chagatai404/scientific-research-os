@@ -1038,7 +1038,9 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
 
 def render_bridge(state, relative_html):
     # Preserve the full note for existing Markdown-based graph/protocol readers.
-    return state["source_markdown"] + BRIDGE_MARKER + '\n```ros-session\n' + relative_html + '\n```\n'
+    readable = ((state.get('plan') or {}).get('handout') or {}).get('readable') or {}
+    link = '\nStudy handout: [[' + readable['note'] + ']]\n' if readable.get('note') else ''
+    return state["source_markdown"] + BRIDGE_MARKER + '\n```ros-session\n' + relative_html + '\n```\n' + link
 
 
 def _transaction_path(root, relative_md):
@@ -1631,6 +1633,10 @@ def session_readiness(root, relative_md):
     plan = state.get('plan')
     if not plan:
         issues.append('SESSION_PLAN_MISSING: prepare and attach the lesson plan before starting; preserve existing answers')
+    elif (plan.get('handout') or {}).get('readable'):
+        # The validated native resource is self-contained in the plan. Optional
+        # PDF export or library availability cannot make that content unreadable.
+        pass
     elif (plan.get('handout') or {}).get('status') != 'built':
         issues.append('HANDOUT_NOT_BUILT: build the planned handout before calling the session ready')
     else:
