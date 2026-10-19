@@ -158,3 +158,53 @@ with a blocked advice notice, while revised teaching remains refused. A blocked
 snapshot never replaces the last usable context binding. Once records return,
 explicit refresh can recover. Older unbound/waived sessions show an honest missing
 context message, with a request to the tutor rather than fabricated knowledge.
+
+## Optional P1 pedagogy contract (schema 1)
+
+`plan.pedagogy` is optional; legacy plans need no migration. It has exactly
+`schema: 1` plus optional `socratic` and `explanations` arrays (at most 40 each,
+120 KiB UTF-8 in total). `pedagogy_contract.validate` checks these after the base
+plan validates. Structural acceptance does not verify scientific content.
+
+Every entry requires `id` (safe 1..64 characters), exact plan `target`, positive
+integer `version`, and 1..12 `sources: [{id, locator}]`. These source declarations
+need independent content verification; a string locator is no proof of access.
+
+Socratic entries additionally require `tree` (`probe` or `check`), `question_id`,
+`question_sha256` and `hints: [{kind, text}]`. The digest is SHA-256 of sorted,
+compact, UTF-8 JSON of the complete existing question. Hints progress through
+`cue`, `structure`, `partial-step`, without duplicates (1..3 hints, 2000 chars
+each). The original question owns the solution, key, criteria and routing.
+
+Explanation entries require `segment_id`, `segment_sha256` (same digest rule)
+and `levels`. One or more `intuitive`, `intermediate`, `formal` variants each
+contains exactly `text` (1..12000 characters), `assumptions` (1..12 explicit
+strings of at most 500 characters) and `bridge` (1..2000 characters explaining
+simplification/connection). A missing level must be reported, never invented.
+Metadata cannot override canonical scopes, dimensions, criteria or evidence.
+
+Wave 0 freezes the following interaction interfaces for P1 integration:
+
+- Shared issuance: checkpoint response `pedagogy-probe:<qid>:<units>`, units 1..4.
+  `pedagogy_budget.project(state, lesson=None)` counts each issued assessment once
+  across both trees, including off-route historical answers and legacy contracted
+  reservations. `assert_can_issue` rejects only a new assessment; pending answers
+  and revisions remain savable. Tutoring extensions retain the existing explicit
+  learner request/reason requirement. The optional same-session `lesson` is an
+  explicitly supplied, independently replayed tutor_session declaration; no saved
+  state mapping or automatic equivalence between formats is presumed.
+- Staged assistance will use `pedagogy-help`, with question_id and response exactly
+  `{entry_id, version, tree, question_sha256, level, prior_response_event_id}`.
+  Level is an integer hint index starting at 1, or `solution`. Prior response
+  identifies the actual latest attempt (null before the first). Persist and
+  acknowledge before presenting content; rejected persistence reveals nothing.
+- Explanation selection uses checkpoint `pedagogy-level:<entry-id>:<version>:<level>`.
+  It records presentation only, retains the lecture path/step and never grades.
+- New UI modules receive `persist(type, questionId, response): Promise<event>`,
+  committed `events()`, `doc`, `rich(tag,text)` and the unchanged prepared entry.
+  The host owns validation and persistence; offline persistence is explicitly
+  page-local. The existing five stages and three-column layout are preserved.
+
+Wave 0 supplies contracts/projection only. Issuance enforcement, acknowledgement,
+help attribution and level controls are the separately tested P1a/P1b integrations;
+they are not claimed implemented by this contract checkpoint.
