@@ -121,8 +121,10 @@ Manual gates remain:
 - Human reviewer validates a genuine course source and criterion-bound Check,
   reviews the proposal, and chooses any authorized canonical record update. A
   generated fixture must never be presented as demonstrated learner knowledge.
-- Real PDF compilation needs the local compiler; audio needs microphone/device
-  consent; neither is required for P0 text acceptance.
+- Real PDF compilation is verified: all 28 handout tests passed with access to
+  the existing MiKTeX installation, including the two previously skipped real
+  compile tests (`adaptive-p0-real-pdf-gates.json`). Audio still needs microphone/
+  device consent; neither enhancement is required for P0 text acceptance.
 - iPad/Android stylus, pairing, LAN/TLS/firewall and live-ink latency remain P2
   gates. No physical-tablet or network-security validation occurred here.
 - Representative full STAT303 bias/MSE and research-linked box-counting lessons,
