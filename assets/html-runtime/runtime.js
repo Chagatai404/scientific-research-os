@@ -1205,6 +1205,7 @@
       staged = Stages.mount(mount, state.plan, {
         doc, events: () => localEvents, emit, rich, drafts: draftStore,
         canonicalAdvice: () => state.canonical_advice || null,
+        learningPreferences: () => state.learning_preferences || null,
         requestPending: text => conversationRecords().some(r => r.prompt === text && !isAnswered(r)),
         reviews: () => state.plan_reviews || [],     // the tutor's verdicts on written answers (a getter: the state is replaced as saves arrive)
         // The staged lecture is not a declared widget: it reports where the learner is under the reserved id "plan-lecture" (html_sessions.py board-position).

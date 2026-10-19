@@ -267,7 +267,7 @@
       bar.append(opener);
       advice = doc.defaultView.ResearchOSAdvice.mount(opener, {doc, container: shell, rich: ctx.rich, emit: ctx.emit, show,
         sessionAdvice: () => sessionAdaptation(current, ctx.events(), reviews()),
-        canonicalAdvice: ctx.canonicalAdvice, requestPending: ctx.requestPending});
+        canonicalAdvice: ctx.canonicalAdvice, learningPreferences: ctx.learningPreferences, requestPending: ctx.requestPending});
     }
     if (ctx.footer) ctx.footer(footer);
 

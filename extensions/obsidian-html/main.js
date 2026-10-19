@@ -419,10 +419,27 @@ function parseLease(text) {
 function pageState(state, live = null) {
   const visible = Object.assign({}, state); delete visible.context;
   visible.canonical_advice = adviceSnapshot(state.context && state.context.advice);
+  visible.learning_preferences = preferenceSnapshot(state.context && state.context.preferences);
   visible.supervision_live = live; visible.host_now = Date.now();
   // Always present, so a decision that was withdrawn clears on the page instead of lingering through a merge.
   if (!('supervision' in visible)) visible.supervision = null;
   return visible;
+}
+function preferenceSnapshot(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).some(k => !['objective', 'goal', 'time_minutes', 'language', 'depth'].includes(k))) return null;
+  const prefs = {...value};
+  if ('objective' in prefs && !['understand', 'exam', 'research', 'apply', 'review'].includes(prefs.objective) ||
+      'depth' in prefs && !['intuitive', 'intermediate', 'formal'].includes(prefs.depth) ||
+      'time_minutes' in prefs && (!Number.isInteger(prefs.time_minutes) || prefs.time_minutes < 1 || prefs.time_minutes > 480)) return null;
+  if ('goal' in prefs) {
+    if (typeof prefs.goal !== 'string' || !prefs.goal.trim() || [...prefs.goal.trim()].length > 500 || /[\x00-\x1f\x7f]/.test(prefs.goal)) return null;
+    prefs.goal = prefs.goal.trim();
+  }
+  if ('language' in prefs) {
+    if (typeof prefs.language !== 'string' || prefs.language.length > 35 || /[\r\n]/.test(prefs.language) || !/^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$/.test(prefs.language)) return null;
+    prefs.language = prefs.language.toLowerCase();
+  }
+  return {preferences: prefs};
 }
 // Only this bounded presentation projection crosses the context/privacy boundary.
 function adviceSnapshot(value) {

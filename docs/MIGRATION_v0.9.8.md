@@ -165,3 +165,18 @@ pages preserve edits only while open, with the existing download warning.
 
 Actual installation/reload testing in the local Obsidian vault remains pending
 approval; repository checks use disposable vaults and isolated browser fixtures.
+
+## P0c3: explicit study preferences
+
+Updated helpers accept optional `context.preferences` with objective
+(`understand`, `exam`, `research`, `apply`, `review`), goal, time_minutes (1–480),
+language tag and depth (`intuitive`, `intermediate`, `formal`). Save explicit
+learner choices using `html_sessions.py --root <vault> preferences <session.md>
+--source <preferences.json>`; `{}` clears the choices. Study advice displays them
+and lets the learner request a change through the existing tutor conversation.
+It does not silently apply new teaching content or reduce evidence requirements.
+
+Install complete helper/runtime/companion bundles together after approval.
+Older strict helper validators may reject this optional field; before rolling
+back, back up the state and remove only `context.preferences`. Retain all raw
+events, reviews, context bindings and canonical knowledge records.

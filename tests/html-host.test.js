@@ -734,3 +734,15 @@ assert(!html.includes('title":"</script>'));
   }
   assert.equal(pageState(base).canonical_advice,null,'withdrawal clears old advice');
 }
+
+// Only explicit bounded preferences cross the private context boundary.
+{
+  const preferences = {objective:'exam',goal:'Understand variance',time_minutes:15,language:'TR',depth:'formal'};
+  const visible = pageState({...base,context:{request:{vault:'C:/private/path'},preferences}});
+  assert.equal(JSON.stringify(visible.learning_preferences),JSON.stringify({preferences:{...preferences,language:'tr'}}));
+  assert(!JSON.stringify(visible).includes('C:/private/path'));
+  for (const bad of [{time_minutes:true},{time_minutes:0},{depth:'mastered'},{language:'en\n'},{goal:'two\nlines'},{token:'private'},[]]) {
+    assert.equal(pageState({...base,context:{preferences:bad}}).learning_preferences,null,JSON.stringify(bad));
+  }
+  assert.equal(pageState(base).learning_preferences,null,'withdrawal clears old preferences');
+}

@@ -428,14 +428,17 @@ def _validate_context(context):
     """Optional binding to a context receipt; absent in historical sessions, never required to read one."""
     if not isinstance(context, dict):
         raise ValueError("Invalid session context")
+    if "preferences" in context:
+        import learning_preferences
+        learning_preferences.validate(context["preferences"])
     if context.get("waived") is True:
-        if set(context) - {"waived", "reason", "bound_at"} or not isinstance(context.get("reason"), str) or not context["reason"].strip():
+        if set(context) - {"waived", "reason", "bound_at", "preferences"} or not isinstance(context.get("reason"), str) or not context["reason"].strip():
             raise ValueError("A context waiver needs a reason")
         return
     if "advice" in context:
         import learning_advice
         learning_advice.validate(context["advice"])
-    if set(context) - {"binding", "request", "bound_at", "refreshed_at", "advice"} or not isinstance(context.get("binding"), dict) \
+    if set(context) - {"binding", "request", "bound_at", "refreshed_at", "advice", "preferences"} or not isinstance(context.get("binding"), dict) \
             or not isinstance(context.get("request"), dict):
         raise ValueError("Invalid session context binding")
     binding = context["binding"]
@@ -1078,6 +1081,7 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
     page_state = {k: v for k, v in state.items() if k != "context"}
     import learning_advice
     page_state["canonical_advice"] = learning_advice.public(state)
+    page_state["learning_preferences"] = learning_advice.public_preferences(state)
     audio_urls = _audio_urls(state, runtime_prefix, standalone, audio_data)
     if audio_urls:
         page_state["audio_urls"] = audio_urls  # for the page only: the stored session never holds a resolved location
@@ -1292,7 +1296,7 @@ def _validate_video_records(records):
             raise ValueError("Invalid video record")
 
 
-def bind_context(receipt, request=None):
+def bind_context(receipt, request=None, preferences=None):
     """The durable form of a context receipt stored in a session (a binding, not the receipt)."""
     import context_kernel as ck
     import learning_advice
@@ -1300,6 +1304,9 @@ def bind_context(receipt, request=None):
     advice = learning_advice.snapshot(receipt)
     if advice is not None:
         bound["advice"] = advice
+    if preferences is not None:
+        import learning_preferences
+        bound["preferences"] = learning_preferences.validate(preferences)
     return bound
 
 
@@ -1317,9 +1324,32 @@ def bind_session_context(root, relative_md, receipt):
     md, _, _ = paths(root, relative_md)
     with Lock(md.with_suffix(".session.lock")):
         state = load_session(root, relative_md)
-        state["context"] = bind_context(receipt)
+        state["context"] = bind_context(receipt, preferences=(state.get("context") or {}).get("preferences"))
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
+
+
+def set_learning_preferences(root, relative_md, preferences):
+    """Persist an explicit learner choice through the existing locked writer.
+
+    This changes presentation advice only. It does not reroute prepared lessons,
+    write canonical records or require an optional model/provider service.
+    """
+    import learning_preferences
+    value = learning_preferences.validate(preferences)
+    md, _, _ = paths(root, relative_md)
+    with Lock(md.with_suffix('.session.lock')):
+        state = load_session(root, relative_md)
+        bound = state.get('context')
+        if bound is None:
+            raise ValueError('Bind canonical context or explicitly waive it before saving learning preferences')
+        changed = bound.get('preferences', {}) != value
+        if changed:
+            state['context'] = dict(bound, preferences=value)
+            state['updated_at'] = _now()
+            _save(root, relative_md, state)
+        return {'session': str(relative_md), 'changed': changed, 'preferences': value}
+
 
 
 def _ensure_context(state):
@@ -1901,19 +1931,22 @@ def planning_request(root, relative_md, state, **overrides):
 def session_recommendation(root, relative_md, state=None):
     """Startup projection, cached by the context kernel; no session/ledger writes."""
     import context_kernel as ck
+    import learning_preferences
     state = state if state is not None else load_session(root, relative_md)
     bound = state.get('context') or {}
     if not bound or bound.get('waived'):
-        return {'policy_revision': 1, 'status': 'limited', 'evidence': False,
+        result = {'policy_revision': 1, 'status': 'limited', 'evidence': False,
                 'next': {'action': 'inspect_context'},
                 'rationale': 'Historical or explicitly waived context: bind a current canonical target before claiming personalized instruction.',
                 'adaptation': session_adaptation(state)}
+        return learning_preferences.recommend(result, bound.get('preferences'), result['adaptation'])
     receipt, _, reused = ck.preflight(planning_request(root, relative_md, state))
     ck.require(receipt)
-    return dict(receipt['retrieval'].get('recommendation') or {
+    result = dict(receipt['retrieval'].get('recommendation') or {
         'status': 'limited', 'evidence': False, 'next': {'action': 'inspect_context'},
         'rationale': 'This context workflow does not select tutoring actions.'},
         receipt_id=receipt['receipt_id'], cached=reused, adaptation=session_adaptation(state))
+    return learning_preferences.recommend(result, bound.get('preferences'), result['adaptation'])
 
 
 def _adapter_lines(root, project_root=None):
@@ -1962,6 +1995,10 @@ def session_context(root, relative_md, project_root=None, learning_root=None, as
              "adapters": _adapter_lines(root, project_root), "at_risk": ck.at_risk(receipt),
              "recommendation": retrieval.get('recommendation'),
              "adaptation": session_adaptation(state) if state else None}
+    if brief['recommendation'] is not None:
+        import learning_preferences
+        brief['recommendation'] = learning_preferences.recommend(brief['recommendation'],
+            ((state or {}).get('context') or {}).get('preferences'), brief['adaptation'])
     for q in (state["questions"] if state else []):
         responses = [e for e in state["events"] if e["type"] == "response" and e.get("question_id") == q["id"]]
         review = (q.get("reviews") or [None])[-1]
@@ -2040,6 +2077,10 @@ def render_context(brief):
         lines += ['', '## Recommended next action', '',
                   f"- {recommendation['next']['action']} ({recommendation['status']}): {recommendation['rationale']}",
                   '- This is pacing advice, not a grade or a change to the current lesson.']
+        policy = recommendation.get('policy')
+        if policy and policy['preferences']:
+            lines += [f"- Explicit study preferences: {json.dumps(policy['preferences'], ensure_ascii=False)}",
+                      f"- Suggested presentation: {policy['action']}: {policy['reason']}"]
     adaptation = brief.get('adaptation')
     if adaptation:
         lines += ['', '## Session pacing', '', f"- {adaptation['action']}: {adaptation['reason']}",
@@ -2505,6 +2546,9 @@ def main():
     resume.add_argument("--bind", action="store_true", help="store this context as the session's binding (adopts a historical session)")
     advice = sub.add_parser("refresh-advice", help="Refresh the bounded presentation snapshot from current canonical context; preserves answers and prepared content")
     advice.add_argument("session")
+    preferences = sub.add_parser("preferences", help="Save explicit learner preferences from JSON; empty object clears preferences, without changing evidence or content")
+    preferences.add_argument("session")
+    preferences.add_argument("--source", type=Path, required=True)
     recovery = sub.add_parser("recover"); recovery.add_argument("session"); recovery.add_argument("--apply", action="store_true")
     bridge = sub.add_parser("import"); bridge.add_argument("session"); bridge.add_argument("--apply", action="store_true")
     export = sub.add_parser("export"); export.add_argument("session"); export.add_argument("destination", type=Path)
@@ -2634,6 +2678,8 @@ def main():
     elif args.command == "refresh-advice":
         import learning_advice
         result = learning_advice.refresh(root, args.session)
+    elif args.command == "preferences":
+        result = set_learning_preferences(root, args.session, json.loads(args.source.read_text(encoding="utf-8-sig")))
     elif args.command == "recover":
         result = recover_session(root, args.session, args.apply)
     elif args.command == "import":

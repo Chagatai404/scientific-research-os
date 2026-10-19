@@ -40,6 +40,15 @@ def public(state):
     return deepcopy(validate(value)) if value is not None else None
 
 
+def public_preferences(state):
+    """Explicit presentation choices only; no potentially stale policy cache."""
+    import learning_preferences
+    bound = state.get('context') or {}
+    if 'preferences' not in bound:
+        return None
+    return {'preferences': learning_preferences.validate(bound['preferences'])}
+
+
 def refresh_in_state(root, session, state, *, require_usable=False):
     """Called under the session lock at meaningful boundaries, never per page view.
 
@@ -57,7 +66,7 @@ def refresh_in_state(root, session, state, *, require_usable=False):
         if require_usable or receipt['outcome']!='blocked': ck.require(receipt)
         if not receipt['retrieval'].get('recommendation'): return False
         if receipt['outcome']!='blocked':
-            fresh=hs.bind_context(receipt)
+            fresh=hs.bind_context(receipt, preferences=bound.get('preferences'))
             fresh['bound_at']=bound.get('bound_at',fresh['bound_at'])
             # Preserve timestamps on an unchanged receipt, request and snapshot.
             fresh['refreshed_at']=bound.get('refreshed_at')

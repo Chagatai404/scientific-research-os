@@ -2115,8 +2115,8 @@
     const el=(tag,text,cls)=>{const n=doc.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
     const button=(text,fn)=>{const b=el('button',text);b.type='button';b.addEventListener('click',fn);return b;};
     const title=el('h2','Study advice'), close=button('Close advice',()=>dialog.close());
-    const session=button('This session',()=>{pane='session';paint(true);}), knowledge=button('Recorded knowledge',()=>{pane='knowledge';paint(true);});
-    const selectors=el('div',undefined,'ros-advice-selectors');selectors.setAttribute('role','group');selectors.setAttribute('aria-label','Advice source');selectors.append(session,knowledge);
+    const session=button('This session',()=>{pane='session';paint(true);}), knowledge=button('Recorded knowledge',()=>{pane='knowledge';paint(true);}), preferences=button('Study preferences',()=>{pane='preferences';paint(true);});
+    const selectors=el('div',undefined,'ros-advice-selectors');selectors.setAttribute('role','group');selectors.setAttribute('aria-label','Advice source');selectors.append(session,knowledge,preferences);
     const note=el('p',undefined,'ros-advice-note'), host=el('div',undefined,'ros-reader-host');
     const use=button('Open suggested stage',()=>apply()), ask=button('Ask tutor to refresh',()=>request('Please refresh canonical learning context and explain the next step for this session. Preserve my raw answers and running lecture path.'));
     const status=el('p','','ros-advice-status');status.setAttribute('role','status');
@@ -2131,6 +2131,9 @@
       if(chosen&&chosen.action==='request_repair')use.disabled=true;
     }
     function apply(){
+      if(pane==='preferences'){
+        request('Please ask me which study preferences to save or change: objective, goal, available minutes, language and explanation depth. Record only my explicit choices. Preserve all raw answers, learning requirements and prepared content.');return;
+      }
       if(pane==='knowledge'){
         request('Please adapt the next teaching step to the current canonical learning recommendation. Refresh context first and preserve original answers and the running lecture path.');return;
       }
@@ -2141,13 +2144,24 @@
     }
     function paint(force=false){
       if(!dialog.open)return;
-      const local=ctx.sessionAdvice(), canonical=ctx.canonicalAdvice&&ctx.canonicalAdvice();
-      const fresh=JSON.stringify([pane,local,canonical]);if(!force&&fresh===signature)return;signature=fresh;
+      const local=ctx.sessionAdvice(), canonical=ctx.canonicalAdvice&&ctx.canonicalAdvice(), saved=ctx.learningPreferences&&ctx.learningPreferences();
+      const fresh=JSON.stringify([pane,local,canonical,saved]);if(!force&&fresh===signature)return;signature=fresh;
       if(reader)reader.destroy();
       session.setAttribute('aria-pressed',String(pane==='session'));knowledge.setAttribute('aria-pressed',String(pane==='knowledge'));
+      preferences.setAttribute('aria-pressed',String(pane==='preferences'));
       status.textContent=''; ask.disabled=false;use.disabled=false;
       let paragraphs,heading;
-      if(pane==='knowledge'){
+      if(pane==='preferences'){
+        chosen=saved;heading='Study preferences';note.textContent='Explicit choices guide presentation and pacing. They do not change learning evidence.';
+        const value=saved&&saved.preferences;
+        paragraphs=[];
+        if(value&&Object.keys(value).length){
+          const labels={objective:'Objective',goal:'Goal',time_minutes:'Available minutes',language:'Presentation language',depth:'Explanation depth'};
+          for(const key of Object.keys(labels))if(Object.prototype.hasOwnProperty.call(value,key))paragraphs.push(labels[key]+': '+value[key]);
+        }else paragraphs.push('No study preferences are saved. Ask the tutor to record the choices you want; unspecified choices remain open.');
+        paragraphs.push('Language is a presentation choice, not a proficiency assessment. A short session never removes prerequisite or independent evidence requirements. Other prepared content stays available.');
+        use.hidden=false;use.textContent='Ask to change preferences';
+      }else if(pane==='knowledge'){
         chosen=canonical;heading='Recorded knowledge';
         note.textContent=canonical?'From the context check dated '+canonical.as_of+'. This is advice, not a grade.':'Canonical context has not been checked for this lesson.';
         paragraphs=canonical?[canonical.reason,canonical.status==='blocked'?'Essential context is unavailable. Ask the tutor to repair it before new instruction.':canonical.context_outcome==='degraded'?'Some context is unavailable. The advice is limited to the readable records.':'Reading, local quiz results and session feedback do not by themselves demonstrate lasting understanding.']:
@@ -2465,7 +2479,7 @@
       bar.append(opener);
       advice = doc.defaultView.ResearchOSAdvice.mount(opener, {doc, container: shell, rich: ctx.rich, emit: ctx.emit, show,
         sessionAdvice: () => sessionAdaptation(current, ctx.events(), reviews()),
-        canonicalAdvice: ctx.canonicalAdvice, requestPending: ctx.requestPending});
+        canonicalAdvice: ctx.canonicalAdvice, learningPreferences: ctx.learningPreferences, requestPending: ctx.requestPending});
     }
     if (ctx.footer) ctx.footer(footer);
 
@@ -4389,6 +4403,7 @@
       staged = Stages.mount(mount, state.plan, {
         doc, events: () => localEvents, emit, rich, drafts: draftStore,
         canonicalAdvice: () => state.canonical_advice || null,
+        learningPreferences: () => state.learning_preferences || null,
         requestPending: text => conversationRecords().some(r => r.prompt === text && !isAnswered(r)),
         reviews: () => state.plan_reviews || [],     // the tutor's verdicts on written answers (a getter: the state is replaced as saves arrive)
         // The staged lecture is not a declared widget: it reports where the learner is under the reserved id "plan-lecture" (html_sessions.py board-position).
