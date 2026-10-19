@@ -1,6 +1,26 @@
 # Changelog
 
-## Unreleased — adaptive learning core
+## 0.9.8 - 2026-10-19 - Adaptive Learning Core
+
+This release covers P0 of the adaptive-learning brief. P1 teaching behaviors,
+P2 tablet ink and broader P3 evaluation remain outstanding. The desktop companion
+keeps its independent version 0.3.1. See [migration and acceptance notes](docs/MIGRATION_v0.9.8.md)
+and the [slice verification record](docs/plans/v0.9.8-adaptive-learn-core-and-ink.md).
+Repository Python/Node/Chromium checks cover the implemented core; actual updated
+Obsidian UI, audio hardware and physical tablets remain unverified. Real XeLaTeX
+handout verification passed all 28 tests with no skips. The full Python suite
+has not been rerun green; the slice record retains earlier failures and their
+focused passing reruns.
+
+- Unsent typed drafts recover through an authenticated, bounded companion sidecar;
+  drafts clear only after acknowledged raw submission and never become evidence.
+- Explicit goal, time, language and depth preferences inform conservative study
+  recommendations without changing canonical evidence requirements.
+- Reviewed written Checks can produce explicit, read-only canonical evidence
+  proposals with exact attempt provenance and conservative assistance checks.
+  Historical question semantics and frozen lecture paths remain protected.
+- Changed teaching and new tutor answers require current usable bound context;
+  blocked writes preserve files, while legacy and waived sessions remain compatible.
 
 - Study advice exposes attempt-specific and canonical recommendations beside the
   existing stage controls, with explicit navigation and pending tutor requests.

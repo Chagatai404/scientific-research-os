@@ -1,8 +1,11 @@
-# Adaptive learning changes (unreleased, incremental)
+# Migrating to v0.9.8 — Adaptive Learning Core
 
-VERSION remains 0.9.7. This document describes completed implementation slices,
-not a released or installed v0.9.8. Follow the progress record in
-[the adaptive plan](plans/v0.9.8-adaptive-learn-core-and-ink.md).
+VERSION is 0.9.8. This release contains the completed P0 implementation, with
+legacy sessions and canonical knowledge records preserved. P1 teaching behaviors,
+P2 ink and broader P3 evaluation are outstanding. Follow the exact test results
+and remaining gates in [the adaptive plan](plans/v0.9.8-adaptive-learn-core-and-ink.md).
+The companion retains its independent version 0.3.1; startup verifies actual
+installed file contents rather than trusting the version label alone.
 
 ## P0a: free navigation and optional voice startup
 
@@ -20,7 +23,7 @@ under the existing worker process consent. `--no-voice` remains compatible.
 Read `ready` for core preparation and `voice_ready` for optional speech; failed
 or warming voice does not make a prepared core unready. P0b1 below removes the
 PDF-only readiness restriction. Board-independent text teaching and integrated
-adaptive refresh are still pending; this is not the complete personalized core.
+adaptive recommendations are included in this release.
 
 There is no ledger migration or automatic change to retention targets, grades,
 raw answers, research decisions or permanent notes. Old plans have no new required
@@ -29,8 +32,8 @@ presentation progress only. Existing readers safely ignore those checkpoints.
 
 ## Deployment and rollback
 
-The repository checkout and live vault are separate. No live installation is
-performed by these slices. After explicit rollout approval, back up the deployed
+The repository checkout and live vault are separate. Local installation was
+explicitly authorized after P0 merged. For each reinstall, back up the deployed
 runtime and installed skills, update through the existing installer/conflict
 workflow, and reload the companion/session. Keep existing session JSON and
 Markdown; never regenerate answers from HTML. Roll back runtime/skills from the
@@ -64,7 +67,8 @@ the updated runtime bundle, including reader.js, and updated helper/skill bundle
 For rollback, restore the prior runtime and plan from an explicitly made backup;
 keep the generated Markdown resource and all raw answer history. Old runtimes do
 not display the new native content, so do not roll back the runtime alone for a
-native-only lesson. No live installation has been performed here.
+native-only lesson. Local file installation does not establish actual Obsidian
+UI acceptance.
 
 Native v1 supports structured prose, inline mathematics, source references and
 solution appendices. Advanced figures/tables and designed page layout remain in
@@ -94,7 +98,8 @@ With explicit approval, use a disposable session in the actual Obsidian host:
 
 Real tablet stylus, LAN/TLS/pairing and handwriting assessment remain unimplemented
 P2 work. No bridge, listener, firewall change, cloud upload or private-data transfer
-is introduced by these slices. Integrated adaptive refresh remains a later slice.
+is introduced by this release. Review-driven advice refresh is included;
+automatic generation of revised teaching content remains later work.
 
 Lecture now supports Text lesson / Blackboard using the same prepared steps and
 checkpoint history. Test switching in both directions, backward step navigation,
@@ -115,8 +120,9 @@ status; bind current context before claiming personalized teaching.
 
 `context --target concept:ID --bind` explicitly changes a session's context target
 without rewriting prepared questions or lecture checkpoints. Review any subsequent
-plan change through existing stage-boundary guards. Full review-driven dispatch,
-goal/time policy and a learner-facing recommendation control are still pending.
+plan change through existing stage-boundary guards. Review-driven advice, explicit
+goal/time policy and learner-facing Study advice are included below. Automatic
+lesson-content generation and P1 teaching behaviors remain future work.
 The packaged session helper set now includes `tutor_plan.py`; update complete
 bundles rather than copying the changed context helper alone.
 
@@ -145,7 +151,8 @@ requests while disconnected and after reconnecting; latest-attempt feedback;
 reload, draft preservation and a running lecture's frozen path. Check that actual
 host updates expose advice without context paths. These local checks remain
 PENDING; automated browser acceptance uses an offline scripted host. The styling
-was inspected in dark desktop/phone screenshots, not deployed to the live vault.
+was inspected in dark desktop/phone screenshots; actual Obsidian UI acceptance
+remains pending.
 
 Explicit goal/time preferences are described below. Richer teaching behavior
 selection and automatic guarded lesson-content revision remain later slices; the advice does not pretend to have
@@ -163,8 +170,9 @@ Older runtimes ignore the sidecar. Rollback can retain it safely; removal discar
 unsent work, so first copy any text the learner still needs. Standalone exported
 pages preserve edits only while open, with the existing download warning.
 
-Actual installation/reload testing in the local Obsidian vault remains pending
-approval; repository checks use disposable vaults and isolated browser fixtures.
+Local installation was authorized and installed-file parity checked. Actual
+Obsidian reload/UI acceptance remains pending; repository checks use disposable
+vaults and isolated browser fixtures.
 
 ## P0c3: explicit study preferences
 
