@@ -149,6 +149,33 @@ class TextOnlyFlow(unittest.TestCase):
         self.assertEqual(self.proposal()['assistance'], 'open-notes')
         self.assertFalse(self.proposal()['counts_as_independent_demonstration'])
 
+    def test_acknowledged_staged_help_preserves_raw_work_and_prevents_independence(self):
+        import pedagogy_contract
+        state = hs.load_session(self.root, SESSION)
+        plan = deepcopy(state['plan']); q = plan['check']['questions'][0]
+        entry = dict(id='transfer-cue', target=plan['target'], version=1, tree='check', question_id=q['id'],
+            question_sha256=pedagogy_contract.digest(q), sources=[dict(id='synthetic-fixture', locator='finite enumeration')],
+            hints=[dict(kind='cue', text='Compare centred deviations before and after the shift.')])
+        plan['pedagogy'] = dict(schema=1,socratic=[entry])
+        hs.update_session(self.root, SESSION, plan=plan)
+        ledger = self.ledger()
+        response = dict(entry_id=entry['id'],version=1,tree='check',question_sha256=entry['question_sha256'],level=1,prior_response_event_id=None)
+        hs.append_event(self.root, SESSION,dict(event_id='cue',type='pedagogy-help',question_id=q['id'],response=response))
+        self.reviewed_check()
+        proposed = self.proposal()
+        self.assertTrue(proposed['proposable'])
+        self.assertEqual(proposed['assistance'],'hinted')
+        self.assertFalse(proposed['counts_as_independent_demonstration'])
+        response.update(level='solution',prior_response_event_id='novel-1')
+        hs.append_event(self.root, SESSION,dict(event_id='reveal',type='pedagogy-help',question_id=q['id'],response=response))
+        ingest(self.root,[self.answer('revision','novel','A new revision after the revealed explanation.',tree='check')])
+        ingest(self.root,[],dict(question_id='novel',verdict='correct',criteria_met=[True,True],reviewed_by='scripted reviewer'))
+        self.assertEqual(self.proposal()['assistance'],'open-notes')
+        self.assertFalse(self.proposal()['counts_as_independent_demonstration'])
+        self.assertEqual(self.ledger(),ledger)
+        answers = [e for e in hs.load_session(self.root,SESSION)['events'] if e['type']=='plan-answer']
+        self.assertEqual([e['event_id'] for e in answers],['novel-1','revision'])
+
     def test_stale_mapping_unknown_identity_and_invalid_scope_fail_closed(self):
         self.reviewed_check()
         for changes in [dict(question_sha256='0' * 64), dict(capability='invented'),

@@ -1,0 +1,66 @@
+{
+  "provenance": "Synthetic STAT303-style finite-distribution fixture. No claim of access to a real course source or independent source review. Verified by exact rational arithmetic in test_pedagogy_socratic.py.",
+  "verification": {
+    "definition": "For a probability distribution with finite second moment, Var(X)=sum p(x)*(x-sum p(x)*x)^2.",
+    "support": [
+      0,
+      2
+    ],
+    "probabilities": [
+      "1/2",
+      "1/2"
+    ],
+    "calculation": {
+      "mean": 1,
+      "variance": 1,
+      "signed_deviation_mean": 0
+    },
+    "assumptions": [
+      "Probabilities are nonnegative and sum to 1.",
+      "Finite support implies finite mean and second moment."
+    ]
+  },
+  "question": {
+    "id": "variance-reason",
+    "kind": "short",
+    "prompt": "STAT303 synthetic practice: X takes 0 and 2, each with probability 1/2. Explain why its variance is 1 rather than 0.",
+    "tests": [
+      "variance"
+    ],
+    "criteria": [
+      "Compute mean 1.",
+      "Average squared deviations, not signed deviations.",
+      "State finite second moment and normalized probabilities."
+    ],
+    "solution": "The probabilities sum to 1. The mean is (0+2)/2=1. Variance is E[(X-1)^2]=((0-1)^2+(2-1)^2)/2=1. Averaging signed deviations instead gives 0 but does not define variance. The finite support ensures finite second moment.",
+    "next": "end"
+  },
+  "entry": {
+    "id": "finite-variance-hints",
+    "target": "variance",
+    "version": 1,
+    "sources": [
+      {
+        "id": "synthetic-local-definition",
+        "locator": "tests/fixtures/p1a/finite-variance.json: verification.definition and verification.calculation"
+      }
+    ],
+    "tree": "probe",
+    "question_id": "variance-reason",
+    "question_sha256": "1448a14ed4ec177c99032d5b7201d2e769890a86ba9a275437cbb69bc8ac3172",
+    "hints": [
+      {
+        "kind": "cue",
+        "text": "Does variance average signed distances or squared distances from the mean?"
+      },
+      {
+        "kind": "structure",
+        "text": "Find the mean, then write E[(X-mean)^2] with the two given probabilities."
+      },
+      {
+        "kind": "partial-step",
+        "text": "The mean is 1. Each squared distance from 1 equals 1; now average with the given probabilities."
+      }
+    ]
+  }
+}

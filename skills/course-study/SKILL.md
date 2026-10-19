@@ -101,3 +101,10 @@ questions and loads the project's research and knowledge graphs, which remain th
 memory; the page is only a view. Post questions, checks and teaching through the
 live loop in that protocol so the session reads in order and updates without reload. Ordinary notes, evidence records and source files retain
 their canonical formats. Browser feedback never automatically establishes mastery.
+
+Prepared reasoning help uses the tutor's optional digest-bound
+`plan.pedagogy.socratic` contract (SESSION_PLAN.md). Select it when a course goal
+needs a prediction, conceptual contrast or derivation repair. Keep original typed
+attempts, criterion review and assistance; never count a revealed solution or a
+correct guess as independent understanding. Offer direct explanation, revision
+and pause without locking the five stages or introducing additional services.

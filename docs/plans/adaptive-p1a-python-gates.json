@@ -1,0 +1,18 @@
+{
+  "patterns": [
+    "test_pedagogy_contract.py",
+    "test_pedagogy_budget.py",
+    "test_pedagogy_socratic.py",
+    "test_pedagogy_persistence.py",
+    "test_p0_text_flow.py",
+    "test_session_plan.py",
+    "test_html_sessions.py",
+    "test_teaching_context_boundaries.py",
+    "test_context_enforcement.py"
+  ],
+  "tests": 195,
+  "failures": 0,
+  "errors": 0,
+  "skipped": [],
+  "seconds": 99.166
+}

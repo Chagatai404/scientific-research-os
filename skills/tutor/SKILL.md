@@ -383,3 +383,19 @@ questions and loads the project's research and knowledge graphs, which remain th
 memory; the page is only a view. Post questions, checks and teaching through the
 live loop in that protocol so the session reads in order and updates without reload. Ordinary notes, evidence records and source files retain
 their canonical formats. Browser feedback never automatically establishes mastery.
+
+### Prepared Socratic reasoning (P1)
+
+When a bounded prediction, contrast or missing derivation step serves the current
+canonical target, prepare a digest-bound `plan.pedagogy.socratic` entry using
+`references/SESSION_PLAN.md`. Ask one purposeful question at a time and use the
+latest actual written attempt and substantive criterion review. Do not infer
+reasoning from a selected option or promote local correctness to mastery.
+The learner can request graduated hints, an explicit original solution, revision
+or pause. Help is committed before display and remains assistance after revision;
+never relabel a solution-assisted answer as independent transfer. Shared issuance
+counts Probe, Check and legacy contracted assessments; only an explicit explained
+learner request extends the initial budget. Preserve raw attempts and frozen
+content. A partial/ambiguous answer calls for review and a bounded revision, not
+an automatic loop of probes. The prepared behavior works offline; novel reasoning
+still awaits tutor review. No new service or specialist call is required.

@@ -57,6 +57,11 @@ class Contracts(unittest.TestCase):
             plan = prepared(); change(plan)
             self.assertTrue(session_plan.validate(plan))
 
+    def test_cross_family_entry_identity_cannot_bypass_content_freeze(self):
+        plan = prepared()
+        plan['pedagogy']['explanations'][0]['id'] = plan['pedagogy']['socratic'][0]['id']
+        self.assertTrue(any('unique' in p for p in session_plan.validate(plan)))
+
     def test_container_byte_bound(self):
         plan = prepared(); entry = plan['pedagogy']['explanations'][0]
         entry['levels']['intuitive']['text'] = '界' * 12000

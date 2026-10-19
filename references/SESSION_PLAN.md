@@ -193,7 +193,7 @@ Wave 0 freezes the following interaction interfaces for P1 integration:
   learner request/reason requirement. The optional same-session `lesson` is an
   explicitly supplied, independently replayed tutor_session declaration; no saved
   state mapping or automatic equivalence between formats is presumed.
-- Staged assistance will use `pedagogy-help`, with question_id and response exactly
+- Staged assistance uses `pedagogy-help`, with question_id and response exactly
   `{entry_id, version, tree, question_sha256, level, prior_response_event_id}`.
   Level is an integer hint index starting at 1, or `solution`. Prior response
   identifies the actual latest attempt (null before the first). Persist and
@@ -205,6 +205,6 @@ Wave 0 freezes the following interaction interfaces for P1 integration:
   The host owns validation and persistence; offline persistence is explicitly
   page-local. The existing five stages and three-column layout are preserved.
 
-Wave 0 supplies contracts/projection only. Issuance enforcement, acknowledgement,
-help attribution and level controls are the separately tested P1a/P1b integrations;
-they are not claimed implemented by this contract checkpoint.
+P1a now enforces locked shared issuance and acknowledged help attribution.
+P1b level controls are a separate integration. Never infer scientific validation
+or evidence from metadata, reading or a presentation selection.

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — P1 teaching behaviors
+
+- Optional digest-bound Socratic reasoning help adds graduated hints, explicit
+  solution reveal, raw-answer revisions and pause controls. Help is acknowledged
+  before display, remains attributable after revision and never grants mastery.
+- Shared staged assessment issuance preserves spent budget across both trees,
+  reloads and reroutes, while keeping pending answers and revisions savable.
+  Existing explicit learner-requested extensions remain authoritative.
+
+
 ## 0.9.8 - 2026-10-19 - Adaptive Learning Core
 
 This release covers P0 of the adaptive-learning brief. P1 teaching behaviors,

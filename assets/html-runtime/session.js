@@ -2210,6 +2210,117 @@
   return {canonical, signature, validValue, key};
 });
 
+/* Optional prepared help. Committed assistance is presentation history, never evidence. */
+(function(root, factory) {
+  'use strict'; const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  root.ResearchOSSocratic = api;
+})(typeof window !== 'undefined' ? window : globalThis, function() {
+  'use strict';
+  function stable(value) {
+    if (Array.isArray(value)) return '[' + value.map(stable).join(',') + ']';
+    if (value && typeof value === 'object') return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + stable(value[k])).join(',') + '}';
+    return JSON.stringify(value);
+  }
+  // The trusted Python plan writer validates the complete authored question digest.
+  // JS serialization cannot reproduce Python number spellings (1.0 vs 1).
+  // The host supplies that validated entry/question pair; help binds its exact metadata.
+  function project(entry, question, events=[], reviews=[]) {
+    const base={available:false,evidence:false,assisted:false,level:0,solution:false,response_event_id:null,action:'unavailable'};
+    if (!entry || !question || entry.question_id!==question.id || typeof entry.question_sha256!=='string' || !/^[a-f0-9]{64}$/.test(entry.question_sha256) || !Number.isInteger(entry.version) || !['probe','check'].includes(entry.tree) || !Array.isArray(entry.hints) || !entry.hints.length) return base;
+    let latest=null, level=0, solution=false, assisted=false;
+    for(const event of events) {
+      const r=event.response; if(event.question_id!==entry.question_id || !r || typeof r!=='object') continue;
+      if(event.type==='plan-answer' && r.tree===entry.tree && event.event_id) {latest=event;level=0;solution=false;}
+      else if(event.type==='pedagogy-help') {
+        const expected={entry_id:entry.id,version:entry.version,tree:entry.tree,question_sha256:entry.question_sha256,prior_response_event_id:latest?latest.event_id:null};
+        if(Object.keys(r).length!==6 || !Number.isInteger(r.version) || !Object.keys(expected).every(k=>r[k]===expected[k])) continue;
+        if(r.level==='solution') {solution=true;assisted=true;}
+        else if(Number.isInteger(r.level) && r.level>=1 && r.level<=entry.hints.length && r.level<=level+1) {level=Math.max(level,r.level);assisted=true;}
+      }
+    }
+    let review=null;
+    if(latest) for(const r of reviews) if(r.question_id===entry.question_id && r.response_event_id===latest.event_id) review=r;
+    let verdict=latest ? question.kind==='short' ? 'pending' : latest.response.verdict || 'pending' : 'unanswered';
+    if(review && ['correct','incorrect','partially-correct'].includes(review.verdict)) {
+      verdict=review.verdict;
+      if(verdict==='correct' && review.criteria_met!=null && (!Array.isArray(review.criteria_met) || !review.criteria_met.length || !review.criteria_met.every(v=>v===true))) verdict='pending';
+    }
+    const action=verdict==='pending'?'await_review':['wrong','incorrect','partially-correct'].includes(verdict)?'revise':verdict==='correct'?'continue':'attempt';
+    return {...base,available:true,assisted,level,solution,response_event_id:latest?latest.event_id:null,action,verdict};
+  }
+  const openViews=new WeakMap();
+  function mount(container, entry, question, ctx) {
+    let busy=false, dead=false, message='',reader=null,target=container;
+    const doc=ctx.doc;
+    const candidate=doc.createElement('dialog'),modal=typeof candidate.showModal==='function';
+    const key=entry?entry.id+':'+entry.version+':'+entry.question_sha256:'';
+    if(!openViews.has(doc)) openViews.set(doc,new Map());
+    const views=openViews.get(doc),view=views.get(key)||{open:false,selected:null};views.set(key,view);
+    function add(tag,text) {const el=ctx.rich?ctx.rich(tag,text):doc.createElement(tag); if(!ctx.rich) el.textContent=text;target.appendChild(el);return el;}
+    function button(label,callback) {const b=doc.createElement('button');b.type='button';b.textContent=label;b.disabled=busy;b.addEventListener('click',callback);target.appendChild(b);return b;}
+    function render() {
+      if(dead) return;if(reader){reader.destroy();reader=null;}container.replaceChildren();target=container;
+      const p=project(entry,question,ctx.events(),ctx.reviews()); if(!p.available) return;
+      let dialog=null;
+      if(modal) {
+        button('Reasoning help',()=>{view.open=true;render();});
+        if(!view.open)return;
+        dialog=doc.createElement('dialog');dialog.className='ros-advice-dialog ros-socratic-dialog';dialog.setAttribute('aria-label','Reasoning help');container.appendChild(dialog);target=dialog;
+        dialog.addEventListener('cancel',()=>{view.open=false;});
+        dialog.addEventListener('close',()=>{view.open=false;});
+        add('h2','Reasoning help');
+      }
+      const advice=add('p',p.action==='await_review'?'Your written reasoning awaits tutor review. Help is optional.':p.action==='revise'?'Review the gap, then revise your reasoning.':'Try your own reasoning first; prepared help is optional.');
+      if(modal)advice.className='ros-advice-note';
+      if(p.assisted){const assisted=add('p','Help used in this question. A revision does not establish independent mastery.');if(modal)assisted.className='ros-advice-note';}
+      if(modal) {
+        const options=Array.from({length:p.level},(_,i)=>({id:String(i+1),title:'Hint '+(i+1),text:entry.hints[i].text}));
+        if(p.solution)options.push({id:'solution',title:'Full solution',text:question.solution});
+        if(p.solution&&!view.solution || p.level>(view.level||0))view.selected=p.solution?'solution':String(p.level);
+        view.level=p.level;view.solution=p.solution;
+        if(options.length) {
+          if(!options.some(o=>o.id===view.selected))view.selected=options[options.length-1].id;
+          const choose=doc.createElement('select');choose.setAttribute('aria-label','Revealed help');
+          for(const option of options){const o=doc.createElement('option');o.value=option.id;o.textContent=option.title;choose.appendChild(o);}choose.value=view.selected;target.appendChild(choose);
+          choose.addEventListener('change',()=>{view.selected=choose.value;render();});
+          const selected=options.find(o=>o.id===view.selected),host=doc.createElement('div');host.className='ros-reader-host';target.appendChild(host);
+          const Reader=doc.defaultView&&doc.defaultView.ResearchOSReader;
+          if(Reader)reader=Reader.mount(host,{revision:entry.version,sections:[{title:selected.title,paragraphs:[selected.text]}],sources:[]},{doc,rich:ctx.rich,events:()=>[],emit:()=>{},hideSelector:true});
+          else {target=host;add('p',selected.text);target=dialog;}
+        }
+      } else {
+        for(let i=0;i<p.level;i++) add('p',entry.hints[i].text);
+        if(p.solution) add('p',question.solution);
+      }
+      const status=add('p',message);status.setAttribute('role','status');status.setAttribute('aria-live','polite');
+      if(modal){status.className='ros-advice-status';const actions=doc.createElement('div');actions.className='ros-reader-actions';target.appendChild(actions);target=actions;}
+      if(p.level<entry.hints.length && !p.solution) button('Hint '+(p.level+1),()=>reveal(p.level+1));
+      if(!p.solution && typeof question.solution==='string' && question.solution.trim()) button('Show full solution',()=>reveal('solution'));
+      if(ctx.revise) button('Revise answer',()=>{view.open=false;if(dialog)dialog.close();ctx.revise();});
+      if(ctx.pause) button('Pause and review handout',()=>{view.open=false;if(dialog)dialog.close();ctx.pause();});
+      if(dialog){button('Close help',()=>{view.open=false;dialog.close();render();});doc.defaultView.requestAnimationFrame(()=>{if(!dead&&dialog.isConnected&&!dialog.open)dialog.showModal();});}
+    }
+    async function reveal(level) {
+      if(busy || dead) return;
+      const p=project(entry,question,ctx.events(),ctx.reviews());if(!p.available) return;
+      if(level==='solution'?p.solution:p.level>=level) return;
+      const response={entry_id:entry.id,version:entry.version,tree:entry.tree,question_sha256:entry.question_sha256,level,prior_response_event_id:p.response_event_id};
+      busy=true;message='Saving help request…';render();
+      try {
+        const saved=await ctx.persist('pedagogy-help',entry.question_id,response);
+        // Never append optimistically: the host owns the committed event view.
+        if(!saved || saved.type!=='pedagogy-help' || !saved.event_id || saved.question_id!==entry.question_id || stable(saved.response)!==stable(response) || !ctx.events().some(e=>e.event_id===saved.event_id && e.type==='pedagogy-help' && stable(e.response)===stable(response))) throw new Error('Help acknowledgement is not committed');
+        view.selected=String(level);message='';
+      } catch (_) {message='Help could not be saved. Nothing new was revealed. Try again.';}
+      busy=false;render();
+    }
+    render();return {refresh:render,destroy(){dead=true;if(reader)reader.destroy();container.replaceChildren();}};
+  }
+  return {project,mount};
+});
+
+;
 /* Research OS staged session: runs a session plan (scripts/session_plan.py) as Quiz, Handout, Lecture, Video and Check environments.
    The logic (judging an answer, choosing the next question, choosing the lecture segments) mirrors session_plan.py and is pinned by tests/fixtures/plan-cases.json;
    the view shows one thing at a time, so nothing inside it scrolls and the questions never sink to the bottom of a page.
@@ -2449,6 +2560,8 @@
   function mount(container, plan, ctx) {
     const doc = ctx.doc;
     let current = plan;
+    const reservations = new Map();
+    const savedEvents = () => ctx.savedEvents ? ctx.savedEvents() : ctx.events();
     const reviews = () => (ctx.reviews ? ctx.reviews() : []);
     const reviewOf = id => activePlanReviews(ctx.events(), reviews()).find(r => r.question_id === id) || null;
     const REVIEW_LABEL = {correct: 'Correct', 'partially-correct': 'Partly correct', incorrect: 'Not quite', reviewed: 'Read'};
@@ -2552,9 +2665,10 @@
       if (!current[name]) { panel.textContent = ''; panel.append(el('p', {role: 'status', text: 'This check has not been prepared yet. You can study in another stage.'})); return; }
       const view = views[name] = views[name] || {viewing: null, signature: ''};
       const r = replay(current, name, ctx.events());
-      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, derived, shown]);
+      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
       if (signature === view.signature) return;
       view.signature = signature;
+      if (view.help) {view.help.destroy();view.help=null;}
       panel.textContent = '';
       const tree = current[name], questions = new Map(tree.questions.map(q => [q.id, q]));
       const focusId = view.viewing || r.current || (r.trail.length ? r.trail[r.trail.length - 1].id : null);
@@ -2573,13 +2687,27 @@
 
       if (!focusId) { panel.append(el('p', {text: 'There are no questions here.'})); return; }
       const question = questions.get(focusId), answered = r.trail.find(t => t.id === focusId);
-      if (answered) clearDraft(draftKey(name, question), draftSignature(question));
+      if (current.pedagogy && !savedEvents().some(e => e.type === 'plan-answer' && e.question_id === focusId || e.type === 'checkpoint' && typeof e.response === 'string' && e.response.startsWith('pedagogy-probe:' + focusId + ':'))) {
+        const reservation = reservations.get(focusId);
+        panel.append(el('p', {role:'status',text:reservation && reservation.error ? 'Question not opened: ' + reservation.error : 'Opening this question within the shared diagnostic budget…'}));
+        if (reservation && reservation.error) panel.append(button('Retry opening question',()=>{reservations.delete(focusId);view.signature='';treeView(name);}));
+        if (!reservation) {
+          reservations.set(focusId,{pending:true});
+          if (!ctx.persist) { reservations.set(focusId,{error:'Updated session runtime required.'}); view.signature=''; return; }
+          ctx.persist('checkpoint',null,'pedagogy-probe:' + focusId + ':' + (question.units || 1)).then(()=>{
+            reservations.delete(focusId); view.signature=''; treeView(name);
+          },error=>{reservations.set(focusId,{error:String(error.message || error)});view.signature='';treeView(name);});
+        }
+        return;
+      }
+      const socratic = ((current.pedagogy || {}).socratic || []).find(e => e.tree === name && e.question_id === focusId);
+      if (answered && view.revising !== focusId) clearDraft(draftKey(name, question), draftSignature(question));
       const card = el('article', {class: 'ros-qcard', 'data-kind': question.kind});
       const number = answered ? r.trail.indexOf(answered) + 1 : r.trail.length + 1;
       card.append(el('p', {class: 'ros-qcard-count', text: `Question ${number}`}), ctx.rich('h2', question.prompt));
       const feedback = el('div', {class: 'ros-qcard-feedback', role: 'status', 'aria-live': 'polite'});
 
-      if (answered) {
+      if (answered && view.revising !== focusId) {
         const savedAnswer = review(question, answered);
         card.append(savedAnswer);
         const tutor = answered.verdict === 'pending' ? reviewOf(focusId) : null;
@@ -2594,7 +2722,7 @@
         const verdictText = answered.verdict === 'correct' ? 'Correct.' : answered.verdict === 'wrong' ? 'Not quite.' : tutor ? 'Saved. The tutor has read your answer.' : 'Saved. The tutor reads your answer in the background; you can go on.';
         feedback.append(el('p', {class: 'ros-stage-verdict', 'data-verdict': answered.verdict, text: verdictText}));
         if (answered.feedback) feedback.append(ctx.rich('p', answered.feedback));
-        if (question.solution && answered.verdict !== 'pending') feedback.append(el('details', {class: 'ros-solution', open: answered.verdict !== 'correct'}, el('summary', {text: 'Why'}), ctx.rich('p', question.solution)));
+        if (!socratic && question.solution && answered.verdict !== 'pending') feedback.append(el('details', {class: 'ros-solution', open: answered.verdict !== 'correct'}, el('summary', {text: 'Why'}), ctx.rich('p', question.solution)));
         card.append(feedback);
         const row = el('div', {class: 'ros-qcard-actions'});
         if (last && r.current) row.append(button('Next question', goTo(null), {class: 'ros-primary'}));
@@ -2606,7 +2734,7 @@
         const pager = el('div', {class: 'ros-review-pages', hidden: true});
         const answerPage = button('Your answer', () => chooseReview(false));
         const feedbackPage = button('Feedback', () => chooseReview(true));
-        const explanation = question.solution && answered.verdict !== 'pending' ? ctx.rich('div', question.solution) : null;
+        const explanation = !socratic && question.solution && answered.verdict !== 'pending' ? ctx.rich('div', question.solution) : null;
         const explanationPage = explanation ? button('Explanation', () => chooseReview(false, true)) : null;
         if (explanation) { explanation.hidden = true; card.insertBefore(explanation, row); }
         const tutorBox = card.querySelector('.ros-agent-review');
@@ -2636,6 +2764,11 @@
       } else {
         card.append(inputFor(question, name, feedback), feedback);
       }
+      if (socratic && doc.defaultView.ResearchOSSocratic) {
+        const help = el('section',{class:'ros-socratic','aria-label':'Reasoning help'}); card.append(help);
+        view.help = doc.defaultView.ResearchOSSocratic.mount(help,socratic,question,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,
+          revise:()=>{view.revising=focusId;view.signature='';treeView(name);},pause:()=>show('handout')});
+      }
       panel.append(card);
     }
 
@@ -2660,6 +2793,7 @@
       if (ctx.emit('plan-answer', question.id, {answer, verdict: judged.verdict, tree: name}) === false) return;
       clearDraft(draftKey(name, question), draftSignature(question));
       views[name].viewing = question.id;
+      views[name].revising = false;
       render();
     }
 
@@ -3314,6 +3448,7 @@
     const nowMs = () => Date.now() + clockOffset;
     const currentSupervision = () => supervisionOf(state, liveLease, nowMs(), localEvents);
     const pending = new Map();
+    const persisted = new Map();
     const failed = new Set();
     const panels = new Map();
     const extensions = new Map();
@@ -3390,6 +3525,15 @@
       refreshAll();
       return event;
     };
+    // Teaching help is shown only after the authenticated host confirms its raw event.
+    function persist(type, questionId, response) {
+      const event = emit(type, questionId, response);
+      if (!host) return Promise.resolve(event);
+      return new Promise((resolve,reject) => {
+        const timer = root.setTimeout(() => { persisted.delete(event.event_id); reject(new Error('Save confirmation timed out. Retry when the host is available.')); },15000);
+        persisted.set(event.event_id,{resolve,reject,timer});
+      });
+    }
     function mergeState(next) {
       if (Object.prototype.hasOwnProperty.call(next, 'supervision_live')) { liveLease = next.supervision_live || null; if (typeof next.host_now === 'number') clockOffset = next.host_now - Date.now(); }
       state = Object.assign({}, state, next);
@@ -3401,7 +3545,11 @@
         if (!current || current.signature === entry.signature) draftValues.delete(key);
         toHost('draft', {key, signature: entry.signature, value: null});
       }
-      for (const id of saved) { pending.delete(id); failed.delete(id); }
+      for (const id of saved) {
+        pending.delete(id); failed.delete(id);
+        const waiting = persisted.get(id);
+        if (waiting) { root.clearTimeout(waiting.timer); persisted.delete(id); waiting.resolve(next.events.find(e => e.event_id === id)); }
+      }
       // Saved events are authoritative; keep only local events still on their way to the host.
       localEvents = [...next.events, ...localEvents.filter(e => !saved.has(e.event_id))];
       // A tutor who is still writing a lecture adds steps to the board's script; the open board picks them up in place.
@@ -3446,6 +3594,9 @@
         if (data.status === 'audio' && data.wav && typeof data.wav.byteLength === 'number') waiting.resolve({wav: data.wav, seconds: data.seconds});
         else waiting.reject(new Error(String(data.status === 'error' && data.message || 'The live voice sent no audio.').slice(0, 300)));
       } else if (data.type === 'error') {
+        for (const [id,waiting] of persisted) { root.clearTimeout(waiting.timer); waiting.reject(new Error(String(data.message || 'Host rejected the save.'))); persisted.delete(id); }
+        const committed = new Set((state.events || []).map(e => e.event_id));
+        localEvents = localEvents.filter(e => committed.has(e.event_id) || !(e.type === 'pedagogy-help' || e.type === 'checkpoint' && typeof e.response === 'string' && e.response.startsWith('pedagogy-')));
         for (const id of pending.keys()) failed.add(id);
         pending.clear(); refreshAll();
         status.textContent = 'Progress could not be saved. Keep this page open and copy progress from the progress panel: ' + String(data.message || 'host rejected update').slice(0, 300);
@@ -4401,7 +4552,7 @@
       if (liveOn) liveState = 'unknown';
       liveVoiceListeners.add(next => { liveState = next; });
       staged = Stages.mount(mount, state.plan, {
-        doc, events: () => localEvents, emit, rich, drafts: draftStore,
+        doc, events: () => localEvents, savedEvents: () => host ? state.events : localEvents, persist, emit, rich, drafts: draftStore,
         canonicalAdvice: () => state.canonical_advice || null,
         learningPreferences: () => state.learning_preferences || null,
         requestPending: text => conversationRecords().some(r => r.prompt === text && !isAnswered(r)),

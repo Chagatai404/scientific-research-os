@@ -237,6 +237,8 @@
   function mount(container, plan, ctx) {
     const doc = ctx.doc;
     let current = plan;
+    const reservations = new Map();
+    const savedEvents = () => ctx.savedEvents ? ctx.savedEvents() : ctx.events();
     const reviews = () => (ctx.reviews ? ctx.reviews() : []);
     const reviewOf = id => activePlanReviews(ctx.events(), reviews()).find(r => r.question_id === id) || null;
     const REVIEW_LABEL = {correct: 'Correct', 'partially-correct': 'Partly correct', incorrect: 'Not quite', reviewed: 'Read'};
@@ -340,9 +342,10 @@
       if (!current[name]) { panel.textContent = ''; panel.append(el('p', {role: 'status', text: 'This check has not been prepared yet. You can study in another stage.'})); return; }
       const view = views[name] = views[name] || {viewing: null, signature: ''};
       const r = replay(current, name, ctx.events());
-      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, derived, shown]);
+      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
       if (signature === view.signature) return;
       view.signature = signature;
+      if (view.help) {view.help.destroy();view.help=null;}
       panel.textContent = '';
       const tree = current[name], questions = new Map(tree.questions.map(q => [q.id, q]));
       const focusId = view.viewing || r.current || (r.trail.length ? r.trail[r.trail.length - 1].id : null);
@@ -361,13 +364,27 @@
 
       if (!focusId) { panel.append(el('p', {text: 'There are no questions here.'})); return; }
       const question = questions.get(focusId), answered = r.trail.find(t => t.id === focusId);
-      if (answered) clearDraft(draftKey(name, question), draftSignature(question));
+      if (current.pedagogy && !savedEvents().some(e => e.type === 'plan-answer' && e.question_id === focusId || e.type === 'checkpoint' && typeof e.response === 'string' && e.response.startsWith('pedagogy-probe:' + focusId + ':'))) {
+        const reservation = reservations.get(focusId);
+        panel.append(el('p', {role:'status',text:reservation && reservation.error ? 'Question not opened: ' + reservation.error : 'Opening this question within the shared diagnostic budget…'}));
+        if (reservation && reservation.error) panel.append(button('Retry opening question',()=>{reservations.delete(focusId);view.signature='';treeView(name);}));
+        if (!reservation) {
+          reservations.set(focusId,{pending:true});
+          if (!ctx.persist) { reservations.set(focusId,{error:'Updated session runtime required.'}); view.signature=''; return; }
+          ctx.persist('checkpoint',null,'pedagogy-probe:' + focusId + ':' + (question.units || 1)).then(()=>{
+            reservations.delete(focusId); view.signature=''; treeView(name);
+          },error=>{reservations.set(focusId,{error:String(error.message || error)});view.signature='';treeView(name);});
+        }
+        return;
+      }
+      const socratic = ((current.pedagogy || {}).socratic || []).find(e => e.tree === name && e.question_id === focusId);
+      if (answered && view.revising !== focusId) clearDraft(draftKey(name, question), draftSignature(question));
       const card = el('article', {class: 'ros-qcard', 'data-kind': question.kind});
       const number = answered ? r.trail.indexOf(answered) + 1 : r.trail.length + 1;
       card.append(el('p', {class: 'ros-qcard-count', text: `Question ${number}`}), ctx.rich('h2', question.prompt));
       const feedback = el('div', {class: 'ros-qcard-feedback', role: 'status', 'aria-live': 'polite'});
 
-      if (answered) {
+      if (answered && view.revising !== focusId) {
         const savedAnswer = review(question, answered);
         card.append(savedAnswer);
         const tutor = answered.verdict === 'pending' ? reviewOf(focusId) : null;
@@ -382,7 +399,7 @@
         const verdictText = answered.verdict === 'correct' ? 'Correct.' : answered.verdict === 'wrong' ? 'Not quite.' : tutor ? 'Saved. The tutor has read your answer.' : 'Saved. The tutor reads your answer in the background; you can go on.';
         feedback.append(el('p', {class: 'ros-stage-verdict', 'data-verdict': answered.verdict, text: verdictText}));
         if (answered.feedback) feedback.append(ctx.rich('p', answered.feedback));
-        if (question.solution && answered.verdict !== 'pending') feedback.append(el('details', {class: 'ros-solution', open: answered.verdict !== 'correct'}, el('summary', {text: 'Why'}), ctx.rich('p', question.solution)));
+        if (!socratic && question.solution && answered.verdict !== 'pending') feedback.append(el('details', {class: 'ros-solution', open: answered.verdict !== 'correct'}, el('summary', {text: 'Why'}), ctx.rich('p', question.solution)));
         card.append(feedback);
         const row = el('div', {class: 'ros-qcard-actions'});
         if (last && r.current) row.append(button('Next question', goTo(null), {class: 'ros-primary'}));
@@ -394,7 +411,7 @@
         const pager = el('div', {class: 'ros-review-pages', hidden: true});
         const answerPage = button('Your answer', () => chooseReview(false));
         const feedbackPage = button('Feedback', () => chooseReview(true));
-        const explanation = question.solution && answered.verdict !== 'pending' ? ctx.rich('div', question.solution) : null;
+        const explanation = !socratic && question.solution && answered.verdict !== 'pending' ? ctx.rich('div', question.solution) : null;
         const explanationPage = explanation ? button('Explanation', () => chooseReview(false, true)) : null;
         if (explanation) { explanation.hidden = true; card.insertBefore(explanation, row); }
         const tutorBox = card.querySelector('.ros-agent-review');
@@ -424,6 +441,11 @@
       } else {
         card.append(inputFor(question, name, feedback), feedback);
       }
+      if (socratic && doc.defaultView.ResearchOSSocratic) {
+        const help = el('section',{class:'ros-socratic','aria-label':'Reasoning help'}); card.append(help);
+        view.help = doc.defaultView.ResearchOSSocratic.mount(help,socratic,question,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,
+          revise:()=>{view.revising=focusId;view.signature='';treeView(name);},pause:()=>show('handout')});
+      }
       panel.append(card);
     }
 
@@ -448,6 +470,7 @@
       if (ctx.emit('plan-answer', question.id, {answer, verdict: judged.verdict, tree: name}) === false) return;
       clearDraft(draftKey(name, question), draftSignature(question));
       views[name].viewing = question.id;
+      views[name].revising = false;
       render();
     }
 
