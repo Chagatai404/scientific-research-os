@@ -108,3 +108,9 @@ needs a prediction, conceptual contrast or derivation repair. Keep original type
 attempts, criterion review and assistance; never count a revealed solution or a
 correct guess as independent understanding. Offer direct explanation, revision
 and pause without locking the five stages or introducing additional services.
+
+Use the optional prepared explanation-level contract for intuitive/intermediate/
+formal course explanations when useful. Preserve one concept/segment identity,
+assumptions, precise source locators and simplification limits. Honor explicit
+prepared depth choices without forcing all three levels or awarding evidence for
+reading; unknown content stays unprepared and novel requests await the tutor.

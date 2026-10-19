@@ -647,6 +647,7 @@
       if (type === 'status' && ['error', 'invalid'].includes(data.status)) { switchLecture('text', true); return; }
       if (type === 'step') {
         lecture.stepId = data.step.id;
+        renderExplanation();
         if (!lecture.started) {
           lecture.started = true;
           const path = lecture.path.join(',');
@@ -695,7 +696,10 @@
       lecture.modeNote = el('p', {class: 'ros-stage-hint', role: 'status'});
       modes.append(lecture.textMode, lecture.boardMode);
       tools.append(modes, lecture.modeNote, lecture.videoBox, lecture.askButton, lecture.chips, lecture.composer, lecture.offer, lecture.next);
-      panels.lecture.append(lecture.host, tools);
+      lecture.surface = el('div',{class:'ros-lecture-surface'});
+      lecture.explanationsHost = el('div',{class:'ros-explanations-host'});
+      lecture.surface.append(lecture.explanationsHost,lecture.host);
+      panels.lecture.append(lecture.surface, tools);
       lecture.built = lectureChunks(current, lecture.path); lecture.k = 0;
       lecture.script = lecture.built.chunks.length ? chunkScript(lecture.built, 0) : composeScript(current, lecture.path);
       if (ctx.panes) ctx.panes.video.on(onVideoMessage);
@@ -705,10 +709,42 @@
       const mode = checkpoints(events, 'lecture-mode:').at(-1);
       switchLecture(mode === 'text' ? 'text' : 'board', false, true);
       renderChips();
+      renderExplanation();
       if (lecture.controller.preloadAcks) lecture.controller.preloadAcks(ACKS);   // short clips the live voice plays the moment a question is sent
       // The caption, the voice note and the controls change as the lecture plays; the board gives back or takes height as they do.
       const win = doc.defaultView;
       if (win && win.MutationObserver) new win.MutationObserver(() => win.requestAnimationFrame(fitLecture)).observe(shell, {childList: true, characterData: true, subtree: true});
+    }
+
+    function renderExplanation() {
+      if (!lecture.explanationsHost || !doc.defaultView.ResearchOSExplanations) return;
+      const entries = ((current.pedagogy || {}).explanations || []);
+      const anticipated = (current.anticipated || []).find(a => a.steps.some(step => step.id === lecture.stepId));
+      const segment = lecture.stepId ? current.segments.find(s => (s.script && s.script.steps || []).some(step => step.id === lecture.stepId) || anticipated && s.id === anticipated.segment) : current.segments.find(s => lecture.path.includes(s.id));
+      const entry = entries.find(e => segment && e.segment_id === segment.id);
+      const signature = JSON.stringify(entry || null);
+      if (lecture.explanationSignature === signature) { if (lecture.explanation) lecture.explanation.update(); return; }
+      const hadFocus = lecture.explanationsHost.contains(doc.activeElement);
+      if (lecture.explanation) lecture.explanation.destroy();
+      lecture.explanation = null; lecture.explanationSignature = signature;
+      lecture.explanationsHost.textContent = ''; lecture.surface.dataset.explanationsOpen = 'false';
+      if (!entry) {
+        if (entries.length) lecture.explanationsHost.append(el('p',{class:'ros-stage-hint',role:'status',tabindex:'-1',text:'Explanation levels are not prepared for this step. The original lesson remains available.'}));
+        if (hadFocus && lecture.explanationsHost.firstElementChild) lecture.explanationsHost.firstElementChild.focus();
+        return;
+      }
+      const origin = {section:'pedagogy-' + entry.id + '-v' + entry.version,title:(entry.segment_id + ': ' + entry.target).slice(0,200)};
+      lecture.explanationsHost.id = origin.section;
+      lecture.explanation = doc.defaultView.ResearchOSExplanations.mount(lecture.explanationsHost,entry,{doc,rich:ctx.rich,events:savedEvents,persist:ctx.persist,
+        depth:()=>ctx.preferences ? ctx.preferences().depth : null,
+        request:mode=>mode === 'counterexample' ? ctx.emit('open-question',null,'Please give a counterexample for ' + entry.target + ', explaining its assumptions and limits.',origin) : ctx.emit('explanation-request',null,mode,origin)});
+      const detail = lecture.explanationsHost.querySelector('details');
+      if (hadFocus && detail) { const summary=detail.querySelector('summary'); if(summary)summary.focus(); }
+      if (detail) detail.addEventListener('toggle',()=>{
+        lecture.surface.dataset.explanationsOpen=String(detail.open);
+        if (detail.open && lecture.controller && lecture.controller.pause) lecture.controller.pause();
+        fitLecture();
+      });
     }
 
     // Both presentations consume the same prepared steps and retain the same
@@ -775,7 +811,8 @@
       board.style.maxWidth = 'none';
       const tools = panels.lecture.querySelector('.ros-lecture-tools');
       const sideBySide = win.innerWidth >= 1000;
-      const hostHeight = panels.lecture.getBoundingClientRect().height - (!sideBySide && tools ? tools.getBoundingClientRect().height + 8 : 0);
+      const explanationHeight = lecture.explanationsHost && lecture.explanationsHost.childElementCount ? lecture.explanationsHost.getBoundingClientRect().height + 6 : 0;
+      const hostHeight = panels.lecture.getBoundingClientRect().height - (!sideBySide && tools ? tools.getBoundingClientRect().height + 8 : 0) - explanationHeight;
       // Only the frame changes size. Captions retain the column width, so their
       // wrapping cannot feed back into the size of the drawing.
       for (let pass = 0; pass < 2; pass++) {
@@ -992,10 +1029,11 @@
     return {
       get stage() { return shown; },
       refreshDrafts,
-      update(next) { current = next; title.textContent = next.title; adjustLecture(); render(); },
+      update(next) { current = next; title.textContent = next.title; adjustLecture(); renderExplanation(); render(); },
       destroy() {
         if (typeof unsubscribeDrafts === 'function') unsubscribeDrafts();
         if (advice) advice.destroy();
+        if (lecture.explanation) lecture.explanation.destroy();
         if (nativeReader) nativeReader.destroy();
         if (lecture.video && (lecture.video.phase === 'opening' || lecture.video.phase === 'playing') && ctx.panes) ctx.panes.video.close();
         if (lecture.controller && lecture.controller.destroy) lecture.controller.destroy();

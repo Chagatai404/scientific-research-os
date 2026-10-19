@@ -2,6 +2,11 @@
 
 ## Unreleased — P1 teaching behaviors
 
+- Prepared intuitive, intermediate and formal explanation levels retain assumptions,
+  simplification bridges and source locators. Initial depth preferences and saved
+  choices select only available content; requests keep entry/version/segment origin.
+  Opening/selection is acknowledged before display, with lecture progress retained.
+
 - Optional digest-bound Socratic reasoning help adds graduated hints, explicit
   solution reveal, raw-answer revisions and pause controls. Help is acknowledged
   before display, remains attributable after revision and never grants mastery.

@@ -128,6 +128,19 @@ class Persistence(unittest.TestCase):
         changed = deepcopy(self.plan); changed['pedagogy']['socratic'] = []
         self.reject_unchanged(lambda: hs.update_session(self.root, SESSION, plan=changed))
 
+    def test_unpresented_edits_need_new_versions_and_presented_levels_need_new_ids(self):
+        changed = deepcopy(self.plan)
+        entry = changed['pedagogy']['explanations'][0]
+        entry['levels']['intuitive']['text'] += ' A bounded supplementary explanation.'
+        self.reject_unchanged(lambda: hs.update_session(self.root,SESSION,plan=changed))
+        entry['version'] += 1
+        hs.update_session(self.root,SESSION,plan=changed)
+        self.write(dict(event_id='opened',type='checkpoint',question_id=None,
+            response='pedagogy-level:' + entry['id'] + ':2:intuitive'))
+        changed = deepcopy(changed)
+        changed['pedagogy']['explanations'][0]['version'] += 1
+        self.reject_unchanged(lambda: hs.update_session(self.root,SESSION,plan=changed))
+
     def test_level_selection_retains_events_and_freezes_presented_variant(self):
         self.answer()
         entry = self.plan['pedagogy']['explanations'][0]

@@ -25,3 +25,12 @@ only and retain their download-before-closing warning. Real Obsidian acceptance
 requires a separate authorized deployment and reload test; browser mocks do not
 establish actual app lifecycle or learner gains. See the P1 implementation plan
 for exact per-slice verification and remaining scope.
+
+Prepared explanation levels occupy the central Lecture surface while expanded;
+the original lesson resumes in place when collapsed. Opening and selection wait
+for save acknowledgement, with an honest fallback on failure/missing content.
+Saved choices override initial explicit depth preferences. New variants preserve
+assumptions, sources and their relation to the original segment. Requests include
+entry/version/segment provenance. Unpresented edits require a version increase;
+after presentation, retain the old entry and author a new ID. Reading levels and
+requesting an explanation never grant evidence or consume diagnostic units.

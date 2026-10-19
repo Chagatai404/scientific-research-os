@@ -1,0 +1,13 @@
+{
+  "patterns": [
+    "test_pedagogy*.py",
+    "test_p0_text_flow.py",
+    "test_adaptive_helper_bundles.py",
+    "test_release_documentation.py"
+  ],
+  "tests": 68,
+  "failures": 0,
+  "errors": 0,
+  "skipped": [],
+  "seconds": 66.404
+}

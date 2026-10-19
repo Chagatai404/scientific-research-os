@@ -164,6 +164,7 @@ def revision_problems(old, new, events):
     used.update(e['response'].split(':')[1] for e in events if e.get('type') == 'checkpoint' and isinstance(e.get('response'), str) and e['response'].startswith('pedagogy-level:'))
     entries = lambda p: {e['id']: e for family in ('socratic', 'explanations') for e in (p.get('pedagogy') or {}).get(family, [])}
     b, a = entries(old), entries(new)
+    problems.extend('changed pedagogy content requires a new version: ' + ident for ident in b.keys() & a.keys() if b[ident] != a[ident] and a[ident]['version'] <= b[ident]['version'])
     problems.extend('presented pedagogy entry must be retained: ' + ident for ident in used if b.get(ident) != a.get(ident))
     if issued and 'pedagogy' not in new:
         problems.append('cannot disable shared budget after issuing questions')

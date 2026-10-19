@@ -1221,6 +1221,7 @@
       liveVoiceListeners.add(next => { liveState = next; });
       staged = Stages.mount(mount, state.plan, {
         doc, events: () => localEvents, savedEvents: () => host ? state.events : localEvents, persist, emit, rich, drafts: draftStore,
+        preferences: () => state.learning_preferences && state.learning_preferences.preferences || {},
         canonicalAdvice: () => state.canonical_advice || null,
         learningPreferences: () => state.learning_preferences || null,
         requestPending: text => conversationRecords().some(r => r.prompt === text && !isAnswered(r)),

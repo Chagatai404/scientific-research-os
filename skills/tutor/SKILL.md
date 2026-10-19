@@ -399,3 +399,13 @@ learner request extends the initial budget. Preserve raw attempts and frozen
 content. A partial/ambiguous answer calls for review and a bounded revision, not
 an automatic loop of probes. The prepared behavior works offline; novel reasoning
 still awaits tutor review. No new service or specialist call is required.
+
+For an explicit explanation-level request or a depth-dependent knowledge gap,
+prepare `plan.pedagogy.explanations` variants bound to the same existing segment,
+target and digest. Supply source locators, assumptions and an honest bridge from
+simplification to formal treatment. Prefer the saved explicit depth only when its
+variant is prepared; leave missing levels visibly unavailable. The central Lecture
+view expands these levels without advancing the lesson or grading reading.
+Derivation, interpretation and counterexample requests retain entry/version and
+segment origin. A newly authored variant needs scientific checking under the
+existing protocols; the structural validator is not a correctness proof.

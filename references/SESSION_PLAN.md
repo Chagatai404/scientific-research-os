@@ -208,3 +208,9 @@ Wave 0 freezes the following interaction interfaces for P1 integration:
 P1a now enforces locked shared issuance and acknowledged help attribution.
 P1b level controls are a separate integration. Never infer scientific validation
 or evidence from metadata, reading or a presentation selection.
+
+Unpresented entry edits must increase their version. Once a help/level checkpoint
+presents an entry, retain it unchanged and add a new ID for new content. The first
+opening of prepared levels is acknowledged before display, including a preferred
+or restored level. Requests retain entry/version and segment in their origin so
+later tutor responses can identify the exact explanation even after navigation.

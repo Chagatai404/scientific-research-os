@@ -45,6 +45,11 @@ class AdaptiveHelperBundles(unittest.TestCase):
                         capture_output=True, text=True, encoding='utf-8', timeout=60)
                     self.assertEqual(result.returncode, 0, result.stderr)
                     return json.loads(result.stdout)
+                smoke = subprocess.run([sys.executable, '-S', '-B', '-c',
+                    'import sys;sys.path.insert(0,sys.argv[1]);import pedagogy_contract,pedagogy_budget,pedagogy_socratic,pedagogy_explanations,tutor_session;print("P1 imports OK")', str(scripts)],
+                    cwd=root, env={**os.environ,'PYTHONPATH':''},capture_output=True,text=True,timeout=60)
+                self.assertEqual(smoke.returncode,0,smoke.stderr)
+                self.assertIn('P1 imports OK',smoke.stdout)
                 saved = command('html_sessions.py', '--root', str(vault), 'preferences', SESSION, '--source', str(choices))
                 self.assertEqual(saved['preferences']['language'], 'tr')
                 self.assertNotIn('policy', saved)
