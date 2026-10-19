@@ -1,0 +1,89 @@
+{
+  "results": [
+    {
+      "gate": "node:html-host.test.js",
+      "status": "PASS",
+      "seconds": 7.0,
+      "tail": [
+        "HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions, live voice, lecture position, host-owned video and handout panes."
+      ]
+    },
+    {
+      "gate": "node:html-runtime-unit.js",
+      "status": "PASS",
+      "seconds": 0.6,
+      "tail": [
+        "HTML runtime unit and bundled KaTeX checks passed"
+      ]
+    },
+    {
+      "gate": "node:richtext-conformance.js",
+      "status": "PASS",
+      "seconds": 1.0,
+      "tail": [
+        "Rich text conformance passed: 68 corpus cases, spec, atomic math, DOM safety, pathological and random input, bundle freshness."
+      ]
+    },
+    {
+      "gate": "node:narration-unit.js",
+      "status": "PASS",
+      "seconds": 0.3,
+      "tail": [
+        "narration unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:board-unit.js",
+      "status": "PASS",
+      "seconds": 0.4,
+      "tail": [
+        "board unit tests passed (57 grammar cases, 15 layout cases)"
+      ]
+    },
+    {
+      "gate": "node:stages-unit.js",
+      "status": "PASS",
+      "seconds": 0.2,
+      "tail": [
+        "stages unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:drafts-unit.js",
+      "status": "PASS",
+      "seconds": 0.2,
+      "tail": [
+        "Draft signatures, prepared identity and value bounds passed"
+      ]
+    },
+    {
+      "gate": "node:html-drafts-host.test.js",
+      "status": "PASS",
+      "seconds": 0.5,
+      "tail": [
+        "Draft host: source binding, coalescing, hydration, bounded sidecar, identity, clear and evidence isolation passed."
+      ]
+    },
+    {
+      "gate": "browser:html-drafts-browser.cjs",
+      "status": "PASS",
+      "seconds": 49.2,
+      "tail": [
+        "Opaque-frame answer/question draft reload, invalidation, submission, denial and late hydration passed"
+      ]
+    },
+    {
+      "gate": "browser:html-drafts-runtime-browser.cjs",
+      "status": "PASS",
+      "seconds": 22.1,
+      "tail": [
+        "Actual runtime draft bridge: authenticated hydration, typing race, reload, acknowledgement/refusal and raw-event stability passed"
+      ]
+    }
+  ],
+  "counts": {
+    "PASS": 10,
+    "FAIL": 0,
+    "SKIPPED": 0
+  }
+}

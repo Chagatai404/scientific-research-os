@@ -11,8 +11,7 @@ remain. Click any stage without completing earlier stages. Prepared content is
 available immediately; an unprepared handout or check explains its status.
 The selected stage is saved independently of completion. Switching away pauses
 a playing lecture and retains its existing saved step and frozen path. Draft
-answers survive stage switches; unsent draft recovery after a full reload is
-still pending. Submitted answers and review provenance retain their old format.
+answers survive stage switches; host-backed unsent recovery is described below. Submitted answers and review provenance retain their old format.
 
 `html_sessions.py --root <vault> start <session> --holder <agent>` now defaults
 to text preparation and connects the tutor without starting voice workers.
@@ -152,3 +151,17 @@ Goal/time preferences, richer teaching behavior selection and automatic guarded
 lesson-content revision remain later slices; the advice does not pretend to have
 generated or applied a new curriculum. Existing review/promotion gates still own
 canonical evidence and human review of permanent knowledge.
+
+## P0d: unsent draft recovery
+
+The complete updated runtime and companion add a local `<session>.drafts.json`
+sidecar (schema 1, session identity, bounded content-signature/value entries).
+It contains unsent text only; do not import it as events or learning evidence.
+The companion writes it under the existing session lock with atomic replacement.
+Keep it private alongside the session and include it in any chosen session backup.
+Older runtimes ignore the sidecar. Rollback can retain it safely; removal discards
+unsent work, so first copy any text the learner still needs. Standalone exported
+pages preserve edits only while open, with the existing download warning.
+
+Actual installation/reload testing in the local Obsidian vault remains pending
+approval; repository checks use disposable vaults and isolated browser fixtures.

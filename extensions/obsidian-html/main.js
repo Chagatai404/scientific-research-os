@@ -20,6 +20,34 @@ const TAGS = new Set(('a abbr article aside b blockquote br button caption code 
 const ATTRS = new Set(('id class title alt role aria-label aria-labelledby aria-describedby aria-expanded aria-live aria-hidden tabindex type name value start min max step placeholder checked disabled selected for open rows cols scope colspan rowspan width height viewbox d x y x1 x2 y1 y2 cx cy r rx ry points fill stroke stroke-width transform xmlns').split(' '));
 
 function sibling(path) { return path.replace(/\.html$/i, '.state.json'); }
+// Unsent text belongs in a bounded sidecar, never in answers or knowledge evidence.
+function draftEntry(key, entry) {
+  return typeof key === 'string' && /^(answer:(probe|check):[A-Za-z0-9_-]{1,64}|lecture:question)$/.test(key) &&
+    entry && typeof entry === 'object' && Object.keys(entry).sort().join(',') === 'signature,value' &&
+    typeof entry.signature === 'string' && /^[a-f0-9]{32}$/.test(entry.signature) && typeof entry.value === 'string' && entry.value.length <= 4000;
+}
+function parseDrafts(raw, sessionId) {
+  if (typeof raw !== 'string' || Buffer.byteLength(raw, 'utf8') > 512 * 1024) throw new Error('Draft sidecar exceeds size limit.');
+  const data = JSON.parse(raw);
+  if (!data || data.schema !== 1 || data.session_id !== sessionId || !data.entries || Array.isArray(data.entries) || typeof data.entries !== 'object' || Object.keys(data.entries).length > 64 ||
+      Object.keys(data).sort().join(',') !== 'entries,schema,session_id' || !Object.entries(data.entries).every(([key, entry]) => draftEntry(key, entry))) throw new Error('Invalid session drafts.');
+  return data;
+}
+function draftPath(vault, sessionPath) {
+  if (!safeVaultPath(sessionPath) || !/\.html$/i.test(sessionPath) || !vault.adapter || typeof vault.adapter.getBasePath !== 'function') throw new Error('Draft storage requires a safe desktop session.');
+  const base = fs.realpathSync(vault.adapter.getBasePath());
+  const target = nodePath.resolve(base, sessionPath.replace(/\.html$/i, '.drafts.json'));
+  const same = (a, b) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b);
+  if (!target.startsWith(base + nodePath.sep) || !same(fs.realpathSync(nodePath.dirname(target)), nodePath.dirname(target)) ||
+      fs.existsSync(target) && !same(fs.realpathSync(target), target)) throw new Error('Unsafe draft storage location.');
+  return target;
+}
+function readDrafts(vault, sessionPath, sessionId) {
+  const target = draftPath(vault, sessionPath);
+  if (!fs.existsSync(target)) return {schema: 1, session_id: sessionId, entries: {}};
+  if (fs.statSync(target).size > 512 * 1024) throw new Error('Draft sidecar exceeds size limit.');
+  return parseDrafts(fs.readFileSync(target, 'utf8'), sessionId);
+}
 // Navigation is a validated host operation: the page asks, the host decides. Same syntax rule as scripts/rich_text.py and
 // the runtime (tests/fixtures/note-targets.json); the host never trusts the page's judgement of it.
 const NOTE_PATH_BAD = new RegExp('[\\u0000-\\u001f\\u007f-\\u009f\\ufeff\\u2028\\u2029\\\\\\\\:*?"<>|]');
@@ -600,7 +628,18 @@ class SessionHost extends Component {
   receive(message) {
     const data = message.data;
     if (!this.frame || message.source !== this.frame.contentWindow || !data || data.channel !== 'research-os' || data.token !== this.token || data.session_id !== this.state.session_id) return;
-    if (data.type === 'ready') { this.ready = true; return; }
+    if (data.type === 'ready') {
+      this.ready = true;
+      const token = this.token, sessionId = this.state.session_id;
+      const restore = () => {
+        try { this.reply(token, {type: 'drafts', entries: readDrafts(this.plugin.app.vault, this.path, sessionId).entries}); }
+        catch (_) { this.reply(token, {type: 'draft-error', message: 'Saved drafts could not be restored. Keep a copy before closing.'}); }
+      };
+      // A new iframe must hydrate after any authenticated edits from the prior view.
+      if (this.draftWriting) this.queue.then(restore, restore); else restore();
+      return;
+    }
+    if (data.type === 'draft') { this.saveDraft(data); return; }
     if (data.type === 'position') {
       // Remembered in memory only, so a reload (theme change, plugin refresh) returns the learner to where they were.
       if (typeof data.section === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(data.section) && Number.isFinite(data.offset) && Math.abs(data.offset) < 1e6) this.position = {section: data.section, offset: data.offset};
@@ -655,6 +694,37 @@ class SessionHost extends Component {
         this.reply(token, {type: 'state', state: pageState(this.state, this.lease || null)});
       } catch (error) { this.reply(token, {type: 'error', message: error.message}); }
       finally { this.writing = false; this.pending--; }
+    });
+  }
+  saveDraft(data) {
+    if (!draftEntry(data.key, {signature: data.signature, value: data.value === null ? '' : data.value})) return;
+    if (this.draftGeneration !== this.generation) { this.draftPending = new Map(); this.draftWriting = false; this.draftGeneration = this.generation; }
+    if (!this.draftPending.has(data.key) && this.draftPending.size >= 64) return;
+    this.draftPending.set(data.key, {signature: data.signature, value: data.value});
+    if (this.draftWriting) return;
+    this.draftWriting = true;
+    const token = this.token, sessionId = this.state.session_id, changes = this.draftPending;
+    this.queue = this.queue.then(async () => {
+      let release = null;
+      try {
+        release = await acquireLockWithRetry(this.plugin.app.vault, this.path, token);
+        const vault = this.plugin.app.vault, target = draftPath(vault, this.path);
+        const statePath = target.replace(/\.drafts\.json$/, '.state.json');
+        if (fs.realpathSync(statePath) !== statePath || parseState(fs.readFileSync(statePath, 'utf8')).session_id !== sessionId) throw new Error('Session identity changed.');
+        let saved;
+        try { saved = readDrafts(vault, this.path, sessionId); }
+        catch (_) { saved = {schema: 1, session_id: sessionId, entries: {}}; }
+        for (const [key, entry] of changes) {
+          if (entry.value === null) { if (saved.entries[key] && saved.entries[key].signature === entry.signature) delete saved.entries[key]; }
+          else saved.entries[key] = entry;
+        }
+        parseDrafts(JSON.stringify(saved), sessionId);
+        const temporary = target + '.' + crypto.randomBytes(12).toString('hex') + '.tmp';
+        try { fs.writeFileSync(temporary, JSON.stringify(saved), {flag: 'wx'}); fs.renameSync(temporary, target); }
+        finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
+        this.reply(token, {type: 'draft-saved'});
+      } catch (_) { this.reply(token, {type: 'draft-error', message: 'Draft changes could not be saved. Keep a copy before closing.'}); }
+      finally { changes.clear(); if (this.draftPending === changes) this.draftWriting = false; if (release) release(); }
     });
   }
   // ---- where the learner is in a lecture. The page reports it (validated here); the lecturer reads <session>.board-position.json to pace itself and to know where an

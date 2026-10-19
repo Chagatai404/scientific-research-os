@@ -276,7 +276,40 @@
 
     let derived = stageOf(plan, ctx.events()), shown = selectedStage(plan, ctx.events()), videoReturn = shown;
     const views = {};                         // per tree: what is on screen, so a refresh that changes nothing does not redraw (and lose a half-typed answer)
-    const drafts = new Map();
+    const drafts = new Map(), draftFields = new Map();
+    const Drafts = doc.defaultView.ResearchOSDrafts;
+    const draftSignature = value => Drafts ? Drafts.signature(value) : JSON.stringify(value);
+    const draftKey = (name, question) => 'answer:' + name + ':' + question.id;
+    const draftIdentity = (key, signature) => JSON.stringify([key, signature]);
+    function getDraft(key, signature) {
+      const id = draftIdentity(key, signature);
+      if (drafts.has(id)) return drafts.get(id);
+      try {
+        const value = ctx.drafts && ctx.drafts.get(key, signature);
+        if (typeof value === 'string' && value.length <= 4000) return value;
+      } catch (_) { /* Storage denial never blocks study or erases the input. */ }
+      return '';
+    }
+    function saveDraft(key, signature, value) {
+      value = String(value).slice(0, 4000);
+      drafts.set(draftIdentity(key, signature), value);
+      try { if (ctx.drafts) ctx.drafts.set(key, signature, value); } catch (_) { /* Keep the local input. */ }
+    }
+    function clearDraft(key, signature) {
+      // Keep a local tombstone so delayed host hydration cannot resurrect it.
+      const id = draftIdentity(key, signature);
+      if (drafts.get(id) === '') return;
+      drafts.set(id, '');
+      try { if (ctx.drafts) ctx.drafts.clear(key, signature); } catch (_) { /* The submitted event remains authoritative. */ }
+    }
+    function refreshDrafts() {
+      for (const [key, field] of draftFields) {
+        if (!field.form.isConnected || drafts.has(draftIdentity(key, field.signature))) continue;
+        field.restore(getDraft(key, field.signature));
+      }
+    }
+    let unsubscribeDrafts = null;
+    try { if (ctx.drafts && ctx.drafts.onChange) unsubscribeDrafts = ctx.drafts.onChange(refreshDrafts); } catch (_) { /* Local editing stays available. */ }
 
     // ------------------------------------------------------------------------------------------------- the stage bar
     function renderBar() {
@@ -307,7 +340,7 @@
       if (!current[name]) { panel.textContent = ''; panel.append(el('p', {role: 'status', text: 'This check has not been prepared yet. You can study in another stage.'})); return; }
       const view = views[name] = views[name] || {viewing: null, signature: ''};
       const r = replay(current, name, ctx.events());
-      const signature = JSON.stringify([r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, derived, shown]);
+      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, derived, shown]);
       if (signature === view.signature) return;
       view.signature = signature;
       panel.textContent = '';
@@ -328,6 +361,7 @@
 
       if (!focusId) { panel.append(el('p', {text: 'There are no questions here.'})); return; }
       const question = questions.get(focusId), answered = r.trail.find(t => t.id === focusId);
+      if (answered) clearDraft(draftKey(name, question), draftSignature(question));
       const card = el('article', {class: 'ros-qcard', 'data-kind': question.kind});
       const number = answered ? r.trail.indexOf(answered) + 1 : r.trail.length + 1;
       card.append(el('p', {class: 'ros-qcard-count', text: `Question ${number}`}), ctx.rich('h2', question.prompt));
@@ -411,8 +445,8 @@
 
     function submit(question, name, answer) {
       const judged = judge(question, answer);
-      ctx.emit('plan-answer', question.id, {answer, verdict: judged.verdict, tree: name});
-      drafts.delete(question.id);
+      if (ctx.emit('plan-answer', question.id, {answer, verdict: judged.verdict, tree: name}) === false) return;
+      clearDraft(draftKey(name, question), draftSignature(question));
       views[name].viewing = question.id;
       render();
     }
@@ -420,6 +454,7 @@
     function inputFor(question, name, feedback) {
       const form = el('form', {class: 'ros-qcard-form'});
       form.addEventListener('submit', event => event.preventDefault());
+      const key = draftKey(name, question), signature = draftSignature(question), initial = getDraft(key, signature);
       let send;
       if (question.kind === 'choice') {
         const group = el('div', {class: 'ros-picks', role: 'radiogroup', 'aria-label': 'Choose one answer'});
@@ -427,16 +462,20 @@
           const id = `ros-${name}-${question.id}-${option.id}`;
           const input = el('input', {type: 'radio', name: `ros-${name}-${question.id}`, value: option.id, id});
           const label = el('label', {for: id}); label.append(ctx.rich('span', option.text));
-          if (drafts.get(question.id) === option.id) input.checked = true;
-          input.addEventListener('change', () => { drafts.set(question.id, option.id); send.disabled = false; });
+          if (initial === option.id) input.checked = true;
+          input.addEventListener('change', () => { saveDraft(key, signature, option.id); send.disabled = false; });
           group.append(el('div', {class: 'ros-pick'}, input, label));
         }
-        send = button('Check my answer', () => { const chosen = form.querySelector('input:checked'); if (chosen) submit(question, name, chosen.value); }, {class: 'ros-primary', disabled: !drafts.has(question.id)});
+        send = button('Check my answer', () => { const chosen = form.querySelector('input:checked'); if (chosen) submit(question, name, chosen.value); }, {class: 'ros-primary', disabled: !group.querySelector('input:checked')});
         form.append(group, el('div', {class: 'ros-qcard-actions'}, send));
+        draftFields.set(key, {form, signature, restore(value) {
+          for (const input of group.querySelectorAll('input')) input.checked = input.value === value;
+          send.disabled = !group.querySelector('input:checked');
+        }});
       } else {
         const id = `ros-${name}-${question.id}-answer`, multi = question.kind === 'short';
-        const input = multi ? el('textarea', {id, rows: 4, maxlength: 4000, 'aria-label': 'Your answer'}) : el('input', {id, type: 'text', inputmode: 'decimal', autocomplete: 'off', 'aria-label': 'Your answer'});
-        input.value = drafts.get(question.id) || '';
+        const input = multi ? el('textarea', {id, rows: 4, maxlength: 4000, 'aria-label': 'Your answer'}) : el('input', {id, type: 'text', maxlength: 4000, inputmode: 'decimal', autocomplete: 'off', 'aria-label': 'Your answer'});
+        input.value = initial;
         const check = () => {
           const text = input.value.trim();
           if (multi) { if (text) submit(question, name, text); return; }
@@ -445,7 +484,7 @@
           submit(question, name, value);
         };
         send = button(multi ? 'Send my answer' : 'Check my answer', check, {class: 'ros-primary', disabled: !input.value.trim()});
-        input.addEventListener('input', () => { drafts.set(question.id, input.value); send.disabled = !input.value.trim(); });
+        input.addEventListener('input', () => { saveDraft(key, signature, input.value); send.disabled = !input.value.trim(); });
         input.addEventListener('keydown', event => { if (event.key === 'Enter' && (!multi || event.ctrlKey || event.metaKey)) { event.preventDefault(); check(); } });
         const actions = el('div', {class: 'ros-qcard-actions'}, send);
         form.append(input);
@@ -453,10 +492,11 @@
           const line = el('p', {class: 'ros-voice-line', role: 'status'});
           const talk = el('button', {type: 'button', class: 'ros-voice-talk', text: ctx.voice.idle, 'aria-pressed': 'false'});
           ctx.voice.bind({talk, line, row: null, target: () => input, idle: ctx.voice.idle, holding: ctx.voice.holding, checkText: 'Check the words, correct anything wrong, then send. Nothing is sent until you do.',
-            after: () => { drafts.set(question.id, input.value); send.disabled = !input.value.trim(); }});
+            after: () => { saveDraft(key, signature, input.value); send.disabled = !input.value.trim(); }});
           actions.prepend(talk); form.append(actions, line);
         } else form.append(actions);
         form.append(el('p', {class: 'ros-stage-hint', text: multi ? 'After you send it you go straight on; the tutor reads your answer in the background.' : 'Give a number.'}));
+        draftFields.set(key, {form, signature, restore(value) { input.value = value; send.disabled = !value.trim(); }});
       }
       return form;
     }
@@ -607,15 +647,19 @@
       lecture.chips = el('div', {class: 'ros-chips', role: 'group', 'aria-label': 'Questions the tutor expected'});
       lecture.composer = el('form', {class: 'ros-ask', hidden: true});
       lecture.input = el('textarea', {rows: 2, maxlength: 4000, 'aria-label': 'Your question'});
-      lecture.send = button('Send', sendQuestion, {class: 'ros-primary', disabled: true});
-      lecture.input.addEventListener('input', () => { lecture.send.disabled = !lecture.input.value.trim(); });
+      lecture.draftSignature = draftSignature({title: current.title, segments: current.segments});
+      lecture.input.value = getDraft('lecture:question', lecture.draftSignature);
+      lecture.send = button('Send', sendQuestion, {class: 'ros-primary', disabled: !lecture.input.value.trim()});
+      const saveQuestion = () => { saveDraft('lecture:question', lecture.draftSignature, lecture.input.value); lecture.send.disabled = !lecture.input.value.trim(); };
+      lecture.input.addEventListener('input', saveQuestion);
+      draftFields.set('lecture:question', {form: lecture.composer, signature: lecture.draftSignature, restore(value) { lecture.input.value = value; lecture.send.disabled = !value.trim(); }});
       lecture.input.addEventListener('keydown', event => { if (event.key === 'Escape') closeAsk(); else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); sendQuestion(); } });
       lecture.composer.addEventListener('submit', event => event.preventDefault());
       const row = el('div', {class: 'ros-ask-row'}, lecture.send, button('Cancel', closeAsk));
       if (ctx.voice) {
         const line = el('p', {class: 'ros-voice-line', role: 'status'});
         const talk = el('button', {type: 'button', class: 'ros-voice-talk', text: ctx.voice.idle, 'aria-pressed': 'false'});
-        ctx.voice.bind({talk, line, row: null, target: () => lecture.input, idle: ctx.voice.idle, holding: ctx.voice.holding, after: () => { lecture.send.disabled = !lecture.input.value.trim(); }});
+        ctx.voice.bind({talk, line, row: null, target: () => lecture.input, idle: ctx.voice.idle, holding: ctx.voice.holding, after: saveQuestion});
         row.prepend(talk); lecture.composer.append(lecture.input, row, line);
       } else lecture.composer.append(lecture.input, row);
       lecture.askButton = button('Ask a question', openAsk, {class: 'ros-ask-button'});
@@ -824,7 +868,7 @@
       pausedForAsk = false;
     }
     function closeAsk(hold) {
-      lecture.composer.hidden = true; lecture.askButton.hidden = false; lecture.input.value = ''; lecture.send.disabled = true;
+      lecture.composer.hidden = true; lecture.askButton.hidden = false;
       if (!hold) resumeAfterAsk();
       lecture.askButton.focus();
     }
@@ -833,7 +877,9 @@
     function sendQuestion() {
       const text = lecture.input.value.trim();
       if (!text) return;
-      ctx.emit('open-question', null, text);
+      if (ctx.emit('open-question', null, text) === false) return;
+      clearDraft('lecture:question', lecture.draftSignature);
+      lecture.input.value = ''; lecture.send.disabled = true;
       lecture.offer.textContent = '';
       for (const index of matchAnticipated(current, text, lecture.path, [...lecture.asked]).slice(0, 2)) {
         const item = current.anticipated[index];
@@ -922,8 +968,10 @@
 
     return {
       get stage() { return shown; },
+      refreshDrafts,
       update(next) { current = next; title.textContent = next.title; adjustLecture(); render(); },
       destroy() {
+        if (typeof unsubscribeDrafts === 'function') unsubscribeDrafts();
         if (advice) advice.destroy();
         if (nativeReader) nativeReader.destroy();
         if (lecture.video && (lecture.video.phase === 'opening' || lecture.video.phase === 'playing') && ctx.panes) ctx.panes.video.close();

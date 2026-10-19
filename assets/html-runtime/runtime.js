@@ -121,6 +121,27 @@
     const extensions = new Map();
     const boards = new Map();
     let staged = null;      // the staged view (stages.js) when the session has a plan; the reading page below is then built but never shown
+    const draftValues = new Map(), draftTouched = new Set(), draftClears = new Map();
+    const draftStore = {
+      get(key, signature) { const entry = draftValues.get(key); return entry && entry.signature === signature ? entry.value : null; },
+      set(key, signature, value) {
+        if (!root.ResearchOSDrafts || !root.ResearchOSDrafts.validValue(value)) return;
+        draftTouched.add(key); draftValues.set(key, {signature, value}); draftClears.delete(key);
+        if (host) toHost('draft', {key, signature, value});
+      },
+      clear(key, signature) {
+        draftTouched.add(key);
+        const parts = key.split(':');
+        const attempt = [...localEvents].reverse().find(event => key === 'lecture:question' ? event.type === 'open-question' :
+          event.type === 'plan-answer' && event.question_id === parts[2] && event.response && event.response.tree === parts[1]);
+        if (host && attempt && pending.has(attempt.event_id)) {
+          draftClears.set(key, {signature, event_id: attempt.event_id});
+          return; // Preserve the persisted draft until its raw submission is acknowledged.
+        }
+        const entry = draftValues.get(key); if (!entry || entry.signature === signature) draftValues.delete(key);
+        if (host) toHost('draft', {key, signature, value: null});
+      }
+    };
     // The tutor's live voice: the host (the Obsidian plugin, with a local voice worker) speaks each sentence when it is asked for, by id, and answers with audio
     // or an error. A standalone page has no host, so it has no live voice and its boards use the device voice, a recording, or captions.
     const speechPending = new Map();
@@ -176,6 +197,12 @@
       state = Object.assign({}, state, next);
       questions = new Map((state.questions || []).map(q => [q.id, q]));
       const saved = new Set(next.events.map(e => e.event_id));
+      for (const [key, entry] of draftClears) if (saved.has(entry.event_id)) {
+        draftClears.delete(key);
+        const current = draftValues.get(key);
+        if (!current || current.signature === entry.signature) draftValues.delete(key);
+        toHost('draft', {key, signature: entry.signature, value: null});
+      }
       for (const id of saved) { pending.delete(id); failed.delete(id); }
       // Saved events are authoritative; keep only local events still on their way to the host.
       localEvents = [...next.events, ...localEvents.filter(e => !saved.has(e.event_id))];
@@ -194,6 +221,13 @@
         activatePlannedSession();
         refreshAll();
         status.textContent = pending.size ? 'Saving…' : fresh.length ? 'Session updated.' : 'Progress saved.';
+      } else if (data.type === 'drafts') {
+        if (data.entries && typeof data.entries === 'object' && !Array.isArray(data.entries) && Object.keys(data.entries).length <= 64) {
+          for (const [key, entry] of Object.entries(data.entries)) if (!draftTouched.has(key) && entry && typeof entry.signature === 'string' && /^[a-f0-9]{32}$/.test(entry.signature) && typeof entry.value === 'string' && entry.value.length <= 4000) draftValues.set(key, entry);
+          if (staged && staged.refreshDrafts) staged.refreshDrafts();
+        }
+      } else if (data.type === 'draft-error') {
+        status.textContent = String(data.message || 'Drafts could not be saved. Keep a copy before closing.').slice(0, 200);
       } else if (data.type === 'supervision') {
         liveLease = data.live || null; if (typeof data.host_now === 'number') clockOffset = data.host_now - Date.now();
         refreshAll();
@@ -1169,7 +1203,7 @@
       if (liveOn) liveState = 'unknown';
       liveVoiceListeners.add(next => { liveState = next; });
       staged = Stages.mount(mount, state.plan, {
-        doc, events: () => localEvents, emit, rich,
+        doc, events: () => localEvents, emit, rich, drafts: draftStore,
         canonicalAdvice: () => state.canonical_advice || null,
         requestPending: text => conversationRecords().some(r => r.prompt === text && !isAnswered(r)),
         reviews: () => state.plan_reviews || [],     // the tutor's verdicts on written answers (a getter: the state is replaced as saves arrive)
