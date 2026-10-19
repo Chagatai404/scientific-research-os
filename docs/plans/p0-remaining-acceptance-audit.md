@@ -1,8 +1,7 @@
 # Remaining P0 acceptance audit — 19 October 2026
 
 Scope: the complete supplied adaptive-learning brief, reconciled with the current
-implementation record and repository at `b54e408`, plus the parallel remaining-P0
-work. This is an acceptance map, not a release declaration. VERSION remains 0.9.7.
+implementation record and repository at `b54e408`, plus the completed parallel P0 slices and final context-writer checks. This is an acceptance map, not a release declaration. VERSION remains 0.9.7.
 
 ## Mandatory core versus later work
 
@@ -17,6 +16,7 @@ work. This is an acceptance map, not a release declaration. VERSION remains 0.9.
 | Staged Check to canonical evidence handoff | Previously missing: ordinary tutor_gate proposal accepted only ordinary question/response history. New plan_evidence module projects an explicitly mapped written Check through the existing evidence gate without copying responses or writing a ledger. See contract below. |
 | Optional workers absent | New integrated browser removes board/voice globals, leaves PDF unbuilt, strips video segments, blocks every HTTP request, and has no audio/tablet/GPU/LaTeX service. Existing browser suites cover optional video transitions and board failures. |
 | Existing scientific integrity and retention | Real writer tests compare original ledger bytes and raw events. Proposal explicitly says retention not assessed. Human acceptance/promotion stays a separate workflow. |
+| Current context at changed teaching boundaries | Generic prose/questions/boards/resources/declarations and new tutor answers check bound context under the existing lock; 132 final integration tests and the real-writer browser flow pass. Historical/waived compatibility and raw submissions remain available. |
 | Actual desktop Obsidian installation | Pending explicit installation approval and real host verification. Offline sandbox Chromium cannot prove plugin lifecycle or actual vault behavior. |
 
 The brief places systematic Socratic hints, explanation levels, tiered practice,
@@ -111,7 +111,7 @@ regressions and parent integration run own narrow layouts; this new end-to-end
 fixture itself tests desktop only. Earlier transient startup failure during
 concurrent bundle work cleared in the final run; it is not hidden as a green run.
 
-Parallel preference/draft changes are committed and their dedicated gates pass. Final aggregate regression results are recorded in the main implementation plan. Repository implementation does not establish live Obsidian acceptance or source truth; the manual gates below remain explicit.
+Parallel preference/draft changes are committed and their dedicated gates pass. Final aggregate regression results are recorded in the main implementation plan, including 132 final Python tests and a fresh integrated browser pass. P0 repository implementation is complete within this offline scope. Repository implementation does not establish live Obsidian acceptance or source truth; the manual gates below remain explicit.
 
 Manual gates remain:
 

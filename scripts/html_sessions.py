@@ -1280,6 +1280,10 @@ def update_session(root, relative_md, text=None, **changes):
         if 'plan' in changes:
             import session_plan
             session_plan.check(changes['plan'])
+        teaching_changed = source != state['source_markdown'] or any(
+            name in changes and changes[name] != state.get(name, [])
+            for name in ('questions', 'widgets', 'teaching', 'resources'))
+        if 'plan' in changes or teaching_changed:
             _ensure_context(state)
         if 'plan' in changes and state.get('plan'):
             changed_answers = answered_plan_changes(state['plan'], changes['plan'], state['events'])
@@ -1430,6 +1434,7 @@ def answer_open_question(root, relative_md, question_id, answer):
             if record['answer'] == answer:
                 return state
             raise ValueError('Question already answered; existing answer preserved')
+        _ensure_context(state)
         record.update(answer=answer, status='answered', answered_at=_now())
         return _save(root, relative_md, state)
 
@@ -1480,6 +1485,8 @@ def declare_block(root, relative_md, block):
         problems = [i for i in tutor_gate.block_issues(prospective)[0] if i["severity"] == "error"]
         if problems:
             raise ValueError("Teaching block: " + "; ".join(i["message"] for i in problems))
+        if prospective['teaching'] != state.get('teaching', []):
+            _ensure_context(state)
         state["teaching"] = prospective["teaching"]
         state["updated_at"] = _now()
         return _save(root, relative_md, state)

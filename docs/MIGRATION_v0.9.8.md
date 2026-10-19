@@ -197,3 +197,14 @@ prompts. Generic plan writes also enforce current context and existing route/
 frozen-segment guards. Deliberate route-only changes retain the existing explicit
 review override. Rollback loses these safeguards, so retain state backups and
 avoid editing historical assessment meaning with older helpers.
+
+## P0f: changed teaching requires usable bound context
+
+Current bound sessions now check essential context before changed prose,
+questions, board content, teaching declarations, resources or new tutor answers
+are published. Repair unavailable essential sources before retrying; rejected
+writes preserve source/state/HTML. Historical and explicitly waived sessions
+remain readable and writable under their existing limited-context status.
+Metadata/navigation, raw learner submissions and idempotent saved answers are
+available while context needs repair. Linking a request to existing published
+explanation text introduces no teaching and remains available too.

@@ -1,0 +1,16 @@
+{
+  "tests": 132,
+  "failures": 0,
+  "errors": 0,
+  "skipped": [],
+  "seconds": 94.3,
+  "modules": [
+    "test_teaching_context_boundaries",
+    "test_context_enforcement",
+    "test_board_script",
+    "test_html_sessions",
+    "test_p0_text_flow",
+    "test_adaptive_helper_bundles",
+    "test_learning_advice"
+  ]
+}
