@@ -1,0 +1,14 @@
+{
+  "modules": [
+    "test_review_adaptation",
+    "test_session_plan",
+    "test_supervision",
+    "test_adaptive_context"
+  ],
+  "tests_run": 105,
+  "seconds": 42.27,
+  "failures": [],
+  "errors": [],
+  "skipped": [],
+  "successful": true
+}

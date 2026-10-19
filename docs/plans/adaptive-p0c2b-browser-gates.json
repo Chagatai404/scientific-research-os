@@ -1,0 +1,100 @@
+{
+  "results": [
+    {
+      "gate": "node:html-host.test.js",
+      "status": "PASS",
+      "seconds": 7.2,
+      "tail": [
+        "HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions, live voice, lecture position, host-owned video and handout panes."
+      ]
+    },
+    {
+      "gate": "node:html-runtime-unit.js",
+      "status": "PASS",
+      "seconds": 0.4,
+      "tail": [
+        "HTML runtime unit and bundled KaTeX checks passed"
+      ]
+    },
+    {
+      "gate": "node:richtext-conformance.js",
+      "status": "PASS",
+      "seconds": 1.1,
+      "tail": [
+        "Rich text conformance passed: 68 corpus cases, spec, atomic math, DOM safety, pathological and random input, bundle freshness."
+      ]
+    },
+    {
+      "gate": "node:narration-unit.js",
+      "status": "PASS",
+      "seconds": 0.2,
+      "tail": [
+        "narration unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:board-unit.js",
+      "status": "PASS",
+      "seconds": 0.2,
+      "tail": [
+        "board unit tests passed (57 grammar cases, 15 layout cases)"
+      ]
+    },
+    {
+      "gate": "node:stages-unit.js",
+      "status": "PASS",
+      "seconds": 0.1,
+      "tail": [
+        "stages unit tests passed"
+      ]
+    },
+    {
+      "gate": "browser:html-advice-browser.cjs",
+      "status": "PASS",
+      "seconds": 34.8,
+      "tail": [
+        "Study advice browser checks passed at desktop, tablet and phone sizes; screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-advice-pJK0tE"
+      ]
+    },
+    {
+      "gate": "browser:html-stages-browser.cjs",
+      "status": "PASS",
+      "seconds": 312.2,
+      "tail": [
+        "staged session browser tests passed"
+      ]
+    },
+    {
+      "gate": "browser:html-text-lecture-browser.cjs",
+      "status": "PASS",
+      "seconds": 41.8,
+      "tail": [
+        "Text lecture missing-board, typed question, reload and mode-switch checks passed; screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-text-lecture-5aXDqu"
+      ]
+    },
+    {
+      "gate": "browser:html-handout-browser.cjs",
+      "status": "PASS",
+      "seconds": 40.4,
+      "tail": [
+        "native handout browser checks passed; synthetic offline host timings: [{\"viewport\":{\"width\":1440,\"height\":900},\"first_readable_ms\":885},{\"viewport\":{\"width\":803,\"height\":680},\"first_readable_ms\":867},{\"viewport\":{\"width\":375,\"height\":740},\"first_readable_ms\":739}]",
+        "screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-handout-NDiask"
+      ]
+    }
+  ],
+  "counts": {
+    "PASS": 10,
+    "FAIL": 0,
+    "SKIPPED": 0
+  },
+  "scope": "Final targeted Node and offline Chromium acceptance, including live advice/reviews plus legacy staged-player, text lecture and native handout. Real Obsidian/device acceptance remains pending.",
+  "visual_qa": "Final dark desktop and phone screenshots inspected from ros-advice-hBm73L; bounds and readable page height also checked in Chromium.",
+  "resolved_during_slice": [
+    "Advice draft-preservation test narrowed its input locator to the active Check form.",
+    "Single-section advice hides the redundant section selector while retaining measured pagination."
+  ],
+  "final_additional_checks": [
+    "Completed-session advice opens Summary rather than restarting Check; shared Python/JavaScript case passed in a final 7-test Python run and stages-unit.js.",
+    "Rich-text conformance and bundle freshness passed again after terminal-stage advice change."
+  ]
+}

@@ -257,10 +257,25 @@ def _validate_plan_reviews(reviews, plan, events):
             raise ValueError("criteria_met has one true/false for each of the question's %d criteria" % len(criteria))
 
 
-def reviewed_results(results, reviews):
+def active_plan_reviews(events, reviews):
+    """Only a review of the latest actual attempt may pace current instruction.
+
+    Retain superseded reviews in storage. Contradictory criterion records cannot
+    establish a correct pacing result even in unvalidated projections.
+    """
+    latest = {e['question_id']: e['event_id'] for e in events if e.get('type') == 'plan-answer'}
+    selected = {}
+    for review in reviews:
+        if latest.get(review['question_id']) == review['response_event_id']:
+            selected[review['question_id']] = review
+    return [r for r in selected.values() if not (
+        r['verdict'] == 'correct' and 'criteria_met' in r and not all(r['criteria_met']))]
+
+
+def reviewed_results(results, reviews, events=None):
     """The results the lecture is chosen from: the page's probe results (question id -> correct/wrong/pending) with each written answer's pending result
     replaced by the tutor's latest verdict on it (see ``PLAN_REVIEW_RESULT``). Choice and numeric results are never touched. Mirrors Stages.reviewedResults."""
-    latest = {r["question_id"]: r for r in reviews}
+    latest = {r["question_id"]: r for r in (active_plan_reviews(events, reviews) if events is not None else reviews)}
     return {q: (PLAN_REVIEW_RESULT.get(latest[q]["verdict"], v) if v == "pending" and q in latest else v) for q, v in results.items()}
 
 
@@ -279,11 +294,81 @@ def plan_lecture(state):
     follows the probe results with the tutor's reviews applied, so a verdict on a written answer can still change a lecture that has not begun."""
     import session_plan
     plan, events = state["plan"], state["events"]
-    results = reviewed_results(session_plan.replay(plan, "probe", events)["results"], state.get("plan_reviews", []))
+    results = reviewed_results(session_plan.replay(plan, "probe", events)["results"], state.get("plan_reviews", []), events)
     recorded = recorded_lecture_path(events)
     known = {s["id"] for s in plan["segments"]}
     return {"results": results, "started": recorded is not None,
             "path": [s for s in recorded if s in known] if recorded is not None else session_plan.lecture_path(plan, results)}
+
+
+def session_adaptation(state):
+    """Attempt-bound teaching advice; never a canonical mastery projection.
+
+    Uses existing replay/repair rules. Advice does not switch stages, rewrite
+    questions, reroute a started lecture or expand the assessment budget.
+    """
+    import session_plan
+    base = {'adaptation_schema': 1, 'evidence': False}
+    plan, events = state.get('plan'), state['events']
+    if not plan:
+        return dict(base, action='prepare_lesson', stage='handout', reason='A prepared lesson is not available yet.')
+    active = active_plan_reviews(events, state.get('plan_reviews', []))
+    by_question = {r['question_id']: r for r in active}
+    lecture = plan_lecture(state)
+    pending, gaps = [], []
+    for tree in ('probe', 'check'):
+        replayed = session_plan.replay(plan, tree, events)
+        for answer in replayed['trail']:
+            review = by_question.get(answer['id'])
+            if answer['verdict'] == 'pending' and (review is None or review['verdict'] == 'reviewed'):
+                pending.append(answer['id'])
+            if review and review['verdict'] in {'incorrect', 'partially-correct'}:
+                gaps.append((tree, answer['id'], review))
+    if gaps:
+        tree, question, review = gaps[-1]
+        repairs = [s['id'] for s in plan['segments'] if s['role'] == 'repair'
+                   and question in s['plays_if']['wrong']]
+        available = [r for r in repairs if r in lecture['path']]
+        return dict(base, action='review_repair' if available else 'request_repair', stage='lecture' if available else 'handout',
+                    reason='The latest reviewed attempt has an unresolved gap. ' + (
+                        'The prepared lecture includes its repair.' if available else
+                        'Ask the tutor for a focused repair; the current lecture path stays intact.'),
+                    question_id=question, response_event_id=review['response_event_id'], tree=tree,
+                    verdict=review['verdict'], repair_segments=available, lecture_started=lecture['started'],
+                    pending_review=len(pending))
+    if pending:
+        return dict(base, action='await_review', stage='handout', pending_review=len(pending),
+                    reason='Written reasoning awaits a substantive review. You can keep studying; no learning credit is inferred.')
+    stage = session_plan.stage_of(plan, events)
+    return dict(base, action='continue', stage=stage,
+                reason='Continue the prepared lesson. Local results and reading pace study; they do not establish mastery.',
+                pending_review=0)
+
+
+def answered_plan_changes(old, new, events):
+    """Protect what answered questions actually asked/judged, even on rerouting.
+
+    Explicit pacing reroutes may change only next/on_correct/on_wrong and an
+    option's next. Prompt, criteria, keys, assumptions and solutions retain their
+    meaning; use a new question ID for a changed assessment.
+    """
+    def questions(plan):
+        if not isinstance(plan, dict):
+            return {}
+        return {(tree, q['id']): q for tree in ('probe', 'check')
+                for q in (plan.get(tree) or {}).get('questions', [])}
+    def semantics(question):
+        if question is None:
+            return None
+        value = {k: v for k, v in question.items() if k not in {'next', 'on_correct', 'on_wrong'}}
+        if isinstance(value.get('options'), list):
+            value['options'] = [{k: v for k, v in option.items() if k != 'next'} for option in value['options']]
+        return value
+    before, after = questions(old), questions(new)
+    answered = {(e.get('response', {}).get('tree'), e.get('question_id')) for e in events
+                if e.get('type') == 'plan-answer' and isinstance(e.get('response'), dict)}
+    return [f'{tree}/{qid}: answered question semantics changed; preserve it and add a new question ID'
+            for tree, qid in sorted(answered) if semantics(before.get((tree, qid))) != semantics(after.get((tree, qid)))]
 
 
 def plan_revision_problems(old, new, events):
@@ -344,7 +429,11 @@ def review_plan_answer(root, relative_md, question_id, verdict, feedback="", rev
             review["rationale"] = rationale
         before = plan_lecture(state)
         if revised_plan is not None:
+            _ensure_context(state)
             session_plan.check(revised_plan)
+            changed_answers = answered_plan_changes(plan, revised_plan, state['events'])
+            if changed_answers:
+                raise ValueError('The revised plan would move the learner; nothing was saved: ' + '; '.join(changed_answers))
             problems = plan_revision_problems(plan, revised_plan, state["events"])
             if problems and not allow_reroute:
                 raise ValueError("The revised plan would move the learner; nothing was saved: " + "; ".join(problems))
@@ -354,23 +443,31 @@ def review_plan_answer(root, relative_md, question_id, verdict, feedback="", rev
         if not reviews or same(reviews[-1]) != same(review):
             reviews.append(review)
         _validate_plan_reviews(reviews, state["plan"], state["events"])
+        import learning_advice
+        learning_advice.refresh_in_state(root, relative_md, state, require_usable=revised_plan is not None)
         state["updated_at"] = _now()
         saved = _save(root, relative_md, state)
     after = plan_lecture(saved)
     return {"session": str(relative_md), "question_id": question_id, "verdict": verdict, "stage": session_plan.stage_of(saved["plan"], saved["events"]),
             "lecture_started": after["started"], "lecture_path_before": before["path"], "lecture_path": after["path"], "plan_revised": revised_plan is not None,
-            "pending": pending_activity(saved)}
+            "pending": pending_activity(saved), "adaptation": session_adaptation(saved)}
 
 
 def _validate_context(context):
     """Optional binding to a context receipt; absent in historical sessions, never required to read one."""
     if not isinstance(context, dict):
         raise ValueError("Invalid session context")
+    if "preferences" in context:
+        import learning_preferences
+        learning_preferences.validate(context["preferences"])
     if context.get("waived") is True:
-        if set(context) - {"waived", "reason", "bound_at"} or not isinstance(context.get("reason"), str) or not context["reason"].strip():
+        if set(context) - {"waived", "reason", "bound_at", "preferences"} or not isinstance(context.get("reason"), str) or not context["reason"].strip():
             raise ValueError("A context waiver needs a reason")
         return
-    if set(context) - {"binding", "request", "bound_at", "refreshed_at"} or not isinstance(context.get("binding"), dict) \
+    if "advice" in context:
+        import learning_advice
+        learning_advice.validate(context["advice"])
+    if set(context) - {"binding", "request", "bound_at", "refreshed_at", "advice", "preferences"} or not isinstance(context.get("binding"), dict) \
             or not isinstance(context.get("request"), dict):
         raise ValueError("Invalid session context binding")
     binding = context["binding"]
@@ -1011,6 +1108,9 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
     header = '<header class="ros-session-header"><h1>' + html.escape(state['title']) + '</h1>' + subtitle_markup + '</header>'
     # The context binding holds local paths and is for agents, not the page or a shared export.
     page_state = {k: v for k, v in state.items() if k != "context"}
+    import learning_advice
+    page_state["canonical_advice"] = learning_advice.public(state)
+    page_state["learning_preferences"] = learning_advice.public_preferences(state)
     audio_urls = _audio_urls(state, runtime_prefix, standalone, audio_data)
     if audio_urls:
         page_state["audio_urls"] = audio_urls  # for the page only: the stored session never holds a resolved location
@@ -1038,7 +1138,9 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
 
 def render_bridge(state, relative_html):
     # Preserve the full note for existing Markdown-based graph/protocol readers.
-    return state["source_markdown"] + BRIDGE_MARKER + '\n```ros-session\n' + relative_html + '\n```\n'
+    readable = ((state.get('plan') or {}).get('handout') or {}).get('readable') or {}
+    link = '\nStudy handout: [[' + readable['note'] + ']]\n' if readable.get('note') else ''
+    return state["source_markdown"] + BRIDGE_MARKER + '\n```ros-session\n' + relative_html + '\n```\n' + link
 
 
 def _transaction_path(root, relative_md):
@@ -1175,6 +1277,21 @@ def update_session(root, relative_md, text=None, **changes):
             raise ValueError('Metadata contradicts source frontmatter; update the source explicitly')
         if 'lifecycle' in changes and front.get('status', changes['lifecycle']) != changes['lifecycle']:
             raise ValueError('Lifecycle contradicts source status; update the source explicitly')
+        if 'plan' in changes:
+            import session_plan
+            session_plan.check(changes['plan'])
+        teaching_changed = source != state['source_markdown'] or any(
+            name in changes and changes[name] != state.get(name, [])
+            for name in ('questions', 'widgets', 'teaching', 'resources'))
+        if 'plan' in changes or teaching_changed:
+            _ensure_context(state)
+        if 'plan' in changes and state.get('plan'):
+            changed_answers = answered_plan_changes(state['plan'], changes['plan'], state['events'])
+            if changed_answers:
+                raise ValueError('Answered assessment history must be preserved: ' + '; '.join(changed_answers))
+            problems = plan_revision_problems(state['plan'], changes['plan'], state['events'])
+            if problems:
+                raise ValueError('The revised plan would move the learner: ' + '; '.join(problems))
         state.update(changes)
         if "plan" in changes:
             records = _video_records(root, changes["plan"])
@@ -1223,10 +1340,18 @@ def _validate_video_records(records):
             raise ValueError("Invalid video record")
 
 
-def bind_context(receipt, request=None):
+def bind_context(receipt, request=None, preferences=None):
     """The durable form of a context receipt stored in a session (a binding, not the receipt)."""
     import context_kernel as ck
-    return {"binding": ck.summary(receipt), "request": request or receipt["request"], "bound_at": _now(), "refreshed_at": None}
+    import learning_advice
+    bound = {"binding": ck.summary(receipt), "request": request or receipt["request"], "bound_at": _now(), "refreshed_at": None}
+    advice = learning_advice.snapshot(receipt)
+    if advice is not None:
+        bound["advice"] = advice
+    if preferences is not None:
+        import learning_preferences
+        bound["preferences"] = learning_preferences.validate(preferences)
+    return bound
 
 
 def waive_context(reason):
@@ -1243,9 +1368,32 @@ def bind_session_context(root, relative_md, receipt):
     md, _, _ = paths(root, relative_md)
     with Lock(md.with_suffix(".session.lock")):
         state = load_session(root, relative_md)
-        state["context"] = bind_context(receipt)
+        state["context"] = bind_context(receipt, preferences=(state.get("context") or {}).get("preferences"))
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
+
+
+def set_learning_preferences(root, relative_md, preferences):
+    """Persist an explicit learner choice through the existing locked writer.
+
+    This changes presentation advice only. It does not reroute prepared lessons,
+    write canonical records or require an optional model/provider service.
+    """
+    import learning_preferences
+    value = learning_preferences.validate(preferences)
+    md, _, _ = paths(root, relative_md)
+    with Lock(md.with_suffix('.session.lock')):
+        state = load_session(root, relative_md)
+        bound = state.get('context')
+        if bound is None:
+            raise ValueError('Bind canonical context or explicitly waive it before saving learning preferences')
+        changed = bound.get('preferences', {}) != value
+        if changed:
+            state['context'] = dict(bound, preferences=value)
+            state['updated_at'] = _now()
+            _save(root, relative_md, state)
+        return {'session': str(relative_md), 'changed': changed, 'preferences': value}
+
 
 
 def _ensure_context(state):
@@ -1265,7 +1413,11 @@ def _ensure_context(state):
             raise
         receipt = ck.build(bound["request"])
         ck.require(receipt)
+        import learning_advice
         state["context"] = dict(bound, binding=ck.summary(receipt), refreshed_at=_now())
+        advice = learning_advice.snapshot(receipt)
+        if advice is not None:
+            state["context"]["advice"] = advice
 
 
 def answer_open_question(root, relative_md, question_id, answer):
@@ -1282,6 +1434,7 @@ def answer_open_question(root, relative_md, question_id, answer):
             if record['answer'] == answer:
                 return state
             raise ValueError('Question already answered; existing answer preserved')
+        _ensure_context(state)
         record.update(answer=answer, status='answered', answered_at=_now())
         return _save(root, relative_md, state)
 
@@ -1332,6 +1485,8 @@ def declare_block(root, relative_md, block):
         problems = [i for i in tutor_gate.block_issues(prospective)[0] if i["severity"] == "error"]
         if problems:
             raise ValueError("Teaching block: " + "; ".join(i["message"] for i in problems))
+        if prospective['teaching'] != state.get('teaching', []):
+            _ensure_context(state)
         state["teaching"] = prospective["teaching"]
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
@@ -1631,6 +1786,10 @@ def session_readiness(root, relative_md):
     plan = state.get('plan')
     if not plan:
         issues.append('SESSION_PLAN_MISSING: prepare and attach the lesson plan before starting; preserve existing answers')
+    elif (plan.get('handout') or {}).get('readable'):
+        # The validated native resource is self-contained in the plan. Optional
+        # PDF export or library availability cannot make that content unreadable.
+        pass
     elif (plan.get('handout') or {}).get('status') != 'built':
         issues.append('HANDOUT_NOT_BUILT: build the planned handout before calling the session ready')
     else:
@@ -1680,18 +1839,20 @@ def session_readiness(root, relative_md):
                 issues.append('COMPANION_DISABLED: enable the Research OS HTML Sessions companion')
         except (OSError, ValueError):
             issues.append('COMPANION_UNCONFIGURED: cannot verify the enabled companion')
-    return {'ready': not issues, 'issues': issues, 'desktop_verified': False}
+    return {'ready': not issues, 'issues': issues, 'desktop_verified': False,
+            'recommendation': session_recommendation(root, relative_md, state)}
 
 
-def start_session(root, relative_md, holder=None, provider="generic", timeout=None, voice=True, ensure=None):
-    """Get a session ready for the learner: the live voice and the speech worker running and warm, and the tutor connected.
+def start_session(root, relative_md, holder=None, provider="generic", timeout=None, voice=False, ensure=None):
+    """Start the prepared core and connect a tutor. Voice is an explicit enhancement.
 
-    ``ready`` is true only when every worker reports ready, so the agent never tells the learner a session is ready while a voice is still loading. A worker that
-    cannot start is reported with the end of its log; nothing is installed and nothing falls back silently. ``ensure`` replaces the worker launcher in tests."""
+    ``ready`` describes the core; ``voice_ready`` describes optional workers.
+    ``ensure`` replaces the worker launcher in tests. Voice failures retain text.
+    """
     _, _, data = paths(root, relative_md)
     if not data.exists():
         raise SystemExit(f"The session does not exist yet: {relative_md}")
-    result = {"session": str(relative_md), "voice": None, "lease": None,
+    result = {"session": str(relative_md), "voice": None, "voice_ready": False, "lease": None,
               "preflight": session_readiness(root, relative_md)}
     if not result['preflight']['ready']:
         result['ready'] = False
@@ -1705,20 +1866,41 @@ def start_session(root, relative_md, holder=None, provider="generic", timeout=No
     existing, _ = supervision.read_lease(root, relative_md)
     if existing and supervision.alive(existing) and existing['holder'] != holder:
         raise supervision.SupervisionError('LEASE_HELD', 'Another tutor is supervising this session; resolve ownership before starting workers')
+    import learning_advice
+    result["advice_refresh"] = learning_advice.refresh(root, relative_md)
+    snapshot = result['advice_refresh']['advice']
+    if snapshot and snapshot['status'] == 'blocked':
+        result['preflight']['ready'] = False
+        result['preflight']['issues'].append('CONTEXT_BLOCKED: essential context became unavailable during startup')
+        result['ready'] = False
+        return result
+    before = result['preflight'].get('recommendation') or {}
+    if snapshot and snapshot['receipt_id'] and before.get('receipt_id') != snapshot['receipt_id']:
+        result['preflight'] = session_readiness(root, relative_md)
+        if not result['preflight']['ready']:
+            result['ready'] = False
+            return result
     if voice:
         import voice as voice_module
         directory = Path(root) / VOICE_FOLDER
         run = ensure or voice_module.ensure_workers
         options = {} if timeout is None else {"timeout": float(timeout)}
-        result["voice"] = run(directory, voice_module.load_setup(directory), **options)
+        try:
+            result["voice"] = run(directory, voice_module.load_setup(directory), **options)
+        except (OSError, ValueError, RuntimeError) as exc:
+            result["voice"] = {"ready": False, "error": str(exc)}
         state = load_session(root, relative_md)
         if result['voice'].get('ready') and state.get('plan'):
             # Preparation belongs to startup, not to another learner request.
-            result['audio_prefetch'] = voice_module.prefetch(directory, voice_module.plan_sentences(state['plan']))
+            try:
+                result['audio_prefetch'] = voice_module.prefetch(directory, voice_module.plan_sentences(state['plan']))
+            except (OSError, ValueError, RuntimeError) as exc:
+                result['audio_prefetch'] = {"error": str(exc)}
     if holder:
         lease = supervision.heartbeat(root, relative_md, holder=holder, provider=provider, mode="working")
         result["lease"] = {"holder": lease["holder"], "expires_at": lease["expires_at"]}
-    result["ready"] = bool(result["voice"]["ready"]) if result["voice"] else True
+    result["voice_ready"] = bool(result["voice"] and result["voice"].get("ready"))
+    result["ready"] = True
     return result
 
 
@@ -1779,6 +1961,41 @@ def context_request(root, metadata, session_type=None, session=None, **overrides
     return request
 
 
+def planning_request(root, relative_md, state, **overrides):
+    """Preserve explicitly bound target/root/policy; refresh the evidence date.
+
+    Changing a target is explicit (`context --target ... --bind`), never inferred
+    from an answer, page selection or an incidental mention in lesson prose.
+    """
+    bound = (state or {}).get('context') or {}
+    request = dict(bound['request']) if bound.get('request') else context_request(
+        root, (state or {}).get('metadata', {}), (state or {}).get('type'), str(relative_md))
+    request.update(vault=str(Path(root).resolve()), session=str(relative_md), as_of=dt.date.today().isoformat())
+    request.update({key: value for key, value in overrides.items() if value is not None})
+    return request
+
+
+def session_recommendation(root, relative_md, state=None):
+    """Startup projection, cached by the context kernel; no session/ledger writes."""
+    import context_kernel as ck
+    import learning_preferences
+    state = state if state is not None else load_session(root, relative_md)
+    bound = state.get('context') or {}
+    if not bound or bound.get('waived'):
+        result = {'policy_revision': 1, 'status': 'limited', 'evidence': False,
+                'next': {'action': 'inspect_context'},
+                'rationale': 'Historical or explicitly waived context: bind a current canonical target before claiming personalized instruction.',
+                'adaptation': session_adaptation(state)}
+        return learning_preferences.recommend(result, bound.get('preferences'), result['adaptation'])
+    receipt, _, reused = ck.preflight(planning_request(root, relative_md, state))
+    ck.require(receipt)
+    result = dict(receipt['retrieval'].get('recommendation') or {
+        'status': 'limited', 'evidence': False, 'next': {'action': 'inspect_context'},
+        'rationale': 'This context workflow does not select tutoring actions.'},
+        receipt_id=receipt['receipt_id'], cached=reused, adaptation=session_adaptation(state))
+    return learning_preferences.recommend(result, bound.get('preferences'), result['adaptation'])
+
+
 def _adapter_lines(root, project_root=None):
     """Which optional Obsidian adapters the vault has, from its files alone. Detection never blocks or changes a session."""
     try:
@@ -1788,7 +2005,7 @@ def _adapter_lines(root, project_root=None):
         return ["Adapter detection was unavailable (" + type(exc).__name__ + "); use the built-in routes."]
 
 
-def session_context(root, relative_md, project_root=None, learning_root=None, as_of=None, library_root=None):
+def session_context(root, relative_md, project_root=None, learning_root=None, as_of=None, library_root=None, target=None):
     """Resume brief built on the context kernel; also works before the session exists (bootstrap).
 
     The HTML page is a view, not memory. Nothing here grades, accepts or edits a session; the only
@@ -1806,6 +2023,11 @@ def session_context(root, relative_md, project_root=None, learning_root=None, as
     mentioned = sorted(set(re.findall(r"\b(?:RQ|H|EXP|DEC)-\d{3,}\b", source)))
     request = context_request(root, metadata, session_type, str(relative_md), project_root=project_root,
                               learning_root=learning_root, library_root=library_root, as_of=as_of, records=mentioned or None)
+    if state is not None:
+        request = planning_request(root, relative_md, state, project_root=project_root, learning_root=learning_root,
+                                   library_root=library_root, as_of=as_of, target=target, records=mentioned or None)
+    elif target is not None:
+        request['target'] = target
     receipt, receipt_file, _ = ck.preflight(request)
     retrieval = receipt["retrieval"]
     learner, research = retrieval["learner"], retrieval["research"]
@@ -1817,7 +2039,13 @@ def session_context(root, relative_md, project_root=None, learning_root=None, as
              "pending": pending_activity(state) if state else [], "questions": [], "project": retrieval["project"],
              "research": None, "knowledge": None, "notes": [], "receipt": receipt,
              "receipt_file": str(receipt_file) if receipt_file else None, "blocked": receipt["outcome"] == "blocked",
-             "adapters": _adapter_lines(root, project_root), "at_risk": ck.at_risk(receipt)}
+             "adapters": _adapter_lines(root, project_root), "at_risk": ck.at_risk(receipt),
+             "recommendation": retrieval.get('recommendation'),
+             "adaptation": session_adaptation(state) if state else None}
+    if brief['recommendation'] is not None:
+        import learning_preferences
+        brief['recommendation'] = learning_preferences.recommend(brief['recommendation'],
+            ((state or {}).get('context') or {}).get('preferences'), brief['adaptation'])
     for q in (state["questions"] if state else []):
         responses = [e for e in state["events"] if e["type"] == "response" and e.get("question_id") == q["id"]]
         review = (q.get("reviews") or [None])[-1]
@@ -1891,7 +2119,20 @@ def render_context(brief):
         if receipt["outcome"] == "blocked":
             lines.append("- BLOCKED: essential context is unavailable (" + ", ".join(receipt["blocking"]) + "). Do not teach, post questions or edit this session until it is repaired.")
         lines += [f"- Limitation: {x}" for x in receipt["limitations"]] + [""]
-    lines += ["## Awaiting you", ""]
+    recommendation = brief.get('recommendation')
+    if recommendation:
+        lines += ['', '## Recommended next action', '',
+                  f"- {recommendation['next']['action']} ({recommendation['status']}): {recommendation['rationale']}",
+                  '- This is pacing advice, not a grade or a change to the current lesson.']
+        policy = recommendation.get('policy')
+        if policy and policy['preferences']:
+            lines += [f"- Explicit study preferences: {json.dumps(policy['preferences'], ensure_ascii=False)}",
+                      f"- Suggested presentation: {policy['action']}: {policy['reason']}"]
+    adaptation = brief.get('adaptation')
+    if adaptation:
+        lines += ['', '## Session pacing', '', f"- {adaptation['action']}: {adaptation['reason']}",
+                  '- A session review does not promote canonical evidence.']
+    lines += ["", "## Awaiting you", ""]
     for item in brief["pending"]:
         if item["kind"] == "response":
             lines.append(f"- Review `{item['question_id']}` ({item['question_kind']}, submission {item['attempt']} of {item['attempts']}, confidence {item['confidence']}, hints {item['hints_revealed']}): {json.dumps(item['response'], ensure_ascii=False)[:400]}")
@@ -2306,10 +2547,11 @@ def main():
     reviewing.add_argument("--allow-reroute", action="store_true", help="accept a revised plan that changes where answered questions lead, or drops a segment the lecture started with")
     reviewing.add_argument("--criteria-met", help="comma-separated true/false, one per criterion the question declares")
     reviewing.add_argument("--reviewed-by", help="who judged the answer"); reviewing.add_argument("--rationale", type=Path)
-    starting = sub.add_parser("start", help="Bring the voices up (detached, warmed) and connect the tutor; ready only when every worker reports ready")
+    starting = sub.add_parser("start", help="Connect the tutor and start the prepared text core; voice is optional")
     starting.add_argument("session"); starting.add_argument("--holder", help="a name for this agent: renews the supervision lease so the page says a tutor is connected")
     starting.add_argument("--provider", default="generic"); starting.add_argument("--timeout", type=float, help="seconds to wait for each worker (default 180)")
     starting.add_argument("--no-voice", action="store_true", help="only connect the tutor; start no voice worker")
+    starting.add_argument("--voice", action="store_true", help="also prepare optional voice workers (requires prior process approval)")
     position = sub.add_parser("board-position", help="Where the learner is in each lecture, as the Obsidian view last reported it")
     position.add_argument("session")
     review = sub.add_parser("review", help="Record the tutor verdict on the latest response; shown in place of 'Checking...'")
@@ -2346,8 +2588,14 @@ def main():
     resume = sub.add_parser("context", help="Resume brief: pending learner activity plus research and knowledge graph state")
     resume.add_argument("session"); resume.add_argument("--project-root", type=Path); resume.add_argument("--learning-root", type=Path)
     resume.add_argument("--library-root", type=Path)
+    resume.add_argument("--target", help="canonical concept:ID, capability:ID or project:ID; add --bind to persist the changed target")
     resume.add_argument("--as-of"); resume.add_argument("--json", action="store_true")
     resume.add_argument("--bind", action="store_true", help="store this context as the session's binding (adopts a historical session)")
+    advice = sub.add_parser("refresh-advice", help="Refresh the bounded presentation snapshot from current canonical context; preserves answers and prepared content")
+    advice.add_argument("session")
+    preferences = sub.add_parser("preferences", help="Save explicit learner preferences from JSON; empty object clears preferences, without changing evidence or content")
+    preferences.add_argument("session")
+    preferences.add_argument("--source", type=Path, required=True)
     recovery = sub.add_parser("recover"); recovery.add_argument("session"); recovery.add_argument("--apply", action="store_true")
     bridge = sub.add_parser("import"); bridge.add_argument("session"); bridge.add_argument("--apply", action="store_true")
     export = sub.add_parser("export"); export.add_argument("session"); export.add_argument("destination", type=Path)
@@ -2439,7 +2687,7 @@ def main():
                                     criteria_met=[x.strip().lower() == "true" for x in args.criteria_met.split(",")] if args.criteria_met else None,
                                     revised_plan=json.loads(args.revise_plan.read_text(encoding="utf-8-sig")) if args.revise_plan else None, allow_reroute=args.allow_reroute)
     elif args.command == "start":
-        result = start_session(root, args.session, args.holder, args.provider, args.timeout, voice=not args.no_voice)
+        result = start_session(root, args.session, args.holder, args.provider, args.timeout, voice=args.voice and not args.no_voice)
         if hasattr(sys.stdout, "reconfigure"):
             sys.stdout.reconfigure(encoding="utf-8")
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -2460,7 +2708,9 @@ def main():
     elif args.command == "wait":
         result = wait_for_activity(root, args.session, args.timeout, holder=args.holder, provider=args.provider, ttl=args.ttl)
     elif args.command == "context":
-        brief = session_context(root, args.session, args.project_root, args.learning_root, args.as_of, args.library_root)
+        import context_kernel as ck
+        brief = session_context(root, args.session, args.project_root, args.learning_root, args.as_of, args.library_root,
+                                target=ck.parse_target(args.target) if args.target else None)
         if args.bind:
             if brief["blocked"] or not brief["exists"]:
                 raise SystemExit("Cannot bind: " + ("essential context is blocked" if brief["blocked"] else "the session does not exist yet"))
@@ -2472,6 +2722,11 @@ def main():
         else:
             print(json.dumps(brief, ensure_ascii=False, indent=2))
         raise SystemExit(2 if brief["blocked"] else 0)
+    elif args.command == "refresh-advice":
+        import learning_advice
+        result = learning_advice.refresh(root, args.session)
+    elif args.command == "preferences":
+        result = set_learning_preferences(root, args.session, json.loads(args.source.read_text(encoding="utf-8-sig")))
     elif args.command == "recover":
         result = recover_session(root, args.session, args.apply)
     elif args.command == "import":

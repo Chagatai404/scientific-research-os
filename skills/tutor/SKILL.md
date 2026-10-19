@@ -248,24 +248,31 @@ part that teaches; `SESSION_PLAN.md` says how). You may use subagents and subpro
 the learner is in the probe.
 
 A request to start or continue tutoring authorizes this preparation automatically.
-Do not make the learner request the plan, handout, board, voice startup or live
-connection separately. On resume, inspect and preserve actual saved responses and
+Prepare the plan, handout and live tutor connection automatically. Voice and
+other optional services remain learner-selected enhancements under existing consent. On resume, inspect and preserve actual saved responses and
 reviews before choosing another diagnostic; a request to continue teaching is not
 permission to restart the assessment. `html_sessions.py start` refuses readiness
-when the plan, built handout or deployed renderer is missing or stale. Its
+when the plan, a readable native handout (or legacy built PDF), or deployed renderer is missing or stale. Its
 `desktop_verified: false` explicitly means that filesystem checks do not verify
 the learner's actual Obsidian display or speech playback.
 
-**The handout is a LaTeX PDF, not page text.** Write the body to a `.tex` file and run `python scripts/handout.py build --root <vault> --session <note> --body body.tex`: it
-lints, compiles, saves the PDF in the course or project library and records the status in the plan; `references/HANDOUT_PROTOCOL.md` says how to write it and what it may use.
+**Publish a native readable handout immediately.** From verified available sources
+and the learner's actual record, write `revision`, `sections` (titles and paragraphs),
+precise `sources` and optional suggested `focus` to readable.json. Run
+`python scripts/handout.py publish-readable --root <vault> --session <note> --content readable.json`.
+The helper versions the library resource, binds it to the existing plan and preserves
+learner edits. Do not wait for diagnostics, voice or a PDF compiler. Add diagnostic
+emphasis in a later readable revision without hiding the complete resource. Source
+inventory and drafting may overlap safely. Preserve assumptions, scientific checks
+and exact locators; neither source availability nor schema validity verifies truth.
+For an optional designed PDF, use the existing `handout.py build --body body.tex`;
+failure must leave native study usable. See `references/HANDOUT_PROTOCOL.md`.
 
 **The session lives in Obsidian. Never open a browser** (Chrome, Edge, the built-in browser pane, a `file://` page or a local server) to show, check or "verify"
 a session unless the researcher asks for it in that message. The learner already has the note open; `vault.py open` hands the address to Obsidian, never to a
 browser, and is only needed when they ask you to open something. Check your own work with `html_sessions.py` commands and the session state, not by looking at a page.
 
-Before the learner presses Start, bring the voices up and wait for them: `python scripts/html_sessions.py --root <vault> start <session> --holder <name>`
-(it runs `voice.py up`, which starts the live voice and the spoken-question worker detached so they outlive your shell, and returns only when both are ready or says
-which one is not and why). Do not tell the learner the session is ready before it reports `ready: true`.
+Start the core in text mode: `python scripts/html_sessions.py --root <vault> start <session> --holder <name>`. It connects the tutor without launching speech workers. Use `--voice` for explicitly requested narration only under the existing process approval. Inspect `voice_ready` separately from core `ready`; warming or failed voice must never block study. Learners may freely visit Quiz, Handout, Lecture, Video and Check; recommendations never lock navigation. Preserve unresolved evidence when the learner skips a stage.
 
 Setup:
 

@@ -1,5 +1,24 @@
 # Session plan (v0.9.7)
 
+## Adaptive core update (unreleased)
+
+Quiz / Handout / Lecture / Video / Check retain their order and presentation.
+Prepared stages are freely accessible, including Check before Quiz. The current
+recommendation is independent of permission and completion. Navigation saves a
+`view-stage:` checkpoint; it never supplies learning evidence. Leaving a playing
+lecture pauses it and saves its existing step checkpoint. Unprepared stages say
+so; no compulsory wizard is imposed. Draft answers survive stage switches (draft
+reload persistence remains a tracked follow-up).
+
+`html_sessions.py start` connects the tutor without launching speech workers.
+`--voice` explicitly requests optional workers under the existing process consent;
+`--no-voice` remains accepted. `ready` reports core readiness; `voice_ready`
+separately reports optional voice availability. Warming, failed or unavailable
+speech never disables stage navigation or lecture entry. A valid `handout.readable`
+resource now satisfies preparation without PDF compilation; legacy PDF-only plans
+retain their checked-export path. Native resource publication, bounds, revisions
+and source requirements are specified in `HANDOUT_PROTOCOL.md`.
+
 What a tutor decides before the learner sees anything, so the session moves without waiting for the agent between steps. It works with any agent that can write a JSON file and run a command. `TUTOR_PLANNING.md` still decides what is taught and in what order, `TUTORING_GATES.md` when a probe is due, `LIVE_LECTURE.md` how a lecture is given, and `RESOURCE_PROTOCOL.md` which outside material may be used. This file is the plan that ties them together.
 
 ## Why a plan
@@ -16,7 +35,7 @@ A plan is one JSON object (`plan_schema: 1`), checked by `python scripts/session
 | `probe` | a tree of questions: `start` and `questions`. Each question has an `id`, a `prompt`, the contract (`tests`, optionally `assumes`, `introduces`), a `solution` that explains the reasoning, and where it leads |
 | `segments` | the lecture, in pieces. `core` always plays; `repair` plays before a named core segment when any listed probe question was answered wrong; `extension` plays when all listed questions were answered right. A segment has a `script` (a board script), a `video`, or both (the script plays first) |
 | `anticipated` | questions the learner is likely to ask, each with `match` words and ready board `steps`, shown as buttons and answered at once |
-| `handout` | the detailed LaTeX document: `title`, `directory` inside the course or project library, `status` (planned, draft, built), `sections` |
+| `handout` | `title`, library `directory`, declared `sections`, optional native `readable` resource; `status` (planned, draft, built) retains the PDF export lifecycle |
 | `check` | the closing questions, a second tree with the same rules and its own budget |
 
 **Questions.** `choice` (one right option; every wrong option carries feedback that names the mistake it stands for, and may route elsewhere with `next`), `numeric` (a value and a tolerance, plus feedback for a wrong number), and `short` (a free response with the criteria the agent will judge against; it never blocks: the learner goes straight on and the agent reviews in the background). `on_correct` and `on_wrong` name the next question or `end`. Questions only move forward, every one must be reachable, and the units on the longest path must fit the budget. Hidden answer-position balancing still applies: `session_plan.py check` warns when every right answer sits in the same place.
@@ -81,3 +100,61 @@ A plan makes the common path instant. A question it did not anticipate still wai
 
 - `session_plan.py check` verifies structure: references, reachability, the budget, board scripts, paths. It does not judge whether the questions test what they claim, whether the feedback is right, or whether the lecture is good.
 - The handout builder is a later slice (`docs/plans/v0.9.7-focused-session-plan.md`). The handout button was verified against the recovered STAT303 session in Obsidian on 2026-10-18; the integrated Video tab also has real Obsidian playback evidence; failure and completion paths remain separately tested by scripted hosts.
+
+## Native text lecture
+
+Lecture keeps its existing central surface and question rail. **Text lesson**
+uses prepared step narration plus written prose/formula actions, paginated by the
+native reader; **Blackboard** keeps the drawing presentation. Missing, rejected or
+throwing board mounts fall back to text. Optional voice is not a prerequisite.
+Both modes use the same `lecture-path:` and `lecture-step:` checkpoints; text
+Previous step saves a backward move too. `lecture-mode:` saves presentation only,
+and `lecture-read:<step-id>:` checkpoints save text pages, never evidence.
+Anticipated answers are inserted into the same script; typed questions keep the
+existing pending tutor workflow. Reading completion merely offers Check.
+
+Drawing-only actions cannot be translated into a scientific explanation by the
+renderer. If no narration or writing is prepared, disclose the missing text
+alternative and direct the learner to Handout/the tutor. Authors must prepare a
+useful source-grounded textual explanation; this fallback is not automatic image
+interpretation or proof that every legacy lesson is accessible.
+
+## Review-driven session pacing
+
+A review can influence current instruction only when its `response_event_id`
+matches the latest actual attempt at that question. Historical and late reviews
+remain stored; they cannot approve, reject or supply feedback for a newer attempt.
+The stage renderer and Python planner use the same attempt-specific rule.
+`reviewed` alone leaves reasoning pending, and contradictory criterion data cannot
+produce a correct pacing result. Existing criteria and raw-answer contracts apply.
+
+`plan-review` returns an `adaptation` projection, also present in startup/resume
+advice. It distinguishes a prepared repair, a focused repair request when none is
+available on the current path, pending review, and ordinary continuation. This
+advice is not canonical evidence. A newly needed repair affects an unstarted
+lecture through existing segment rules; a started lecture retains its frozen path.
+Revised teaching in a review transaction requires current essential context and
+must still pass the existing answered-question/started-path revision guards.
+
+## Learner-facing Study advice
+
+The existing five stages remain unchanged. **Study advice** beside their controls
+opens a keyboard-accessible, paged view with two sources: **This session** (latest
+attempt-specific reviews) and **Recorded knowledge** (the bounded canonical
+recommendation, labeled with its context-check date). Reading advice awards no
+evidence. Stage selection is always an explicit learner click; a request to adapt
+a lesson or repair/refresh context uses the ordinary open-question queue.
+
+The canonical advice is a small optional `context.advice` snapshot, not another
+knowledge store. It is initialized from a real context receipt, refreshed at
+startup and plan-review boundaries, and can be refreshed with
+`html_sessions.py --root VAULT refresh-advice SESSION`. Refresh preserves raw
+answers, prior reviews, prepared questions, handout content and frozen paths.
+Unchanged receipts reuse the canonical retrieval; opening or paging advice does
+not scan the vault. Canonical evidence remains owned by existing reviewed writers.
+
+When essential context becomes unavailable, plain feedback can still be saved
+with a blocked advice notice, while revised teaching remains refused. A blocked
+snapshot never replaces the last usable context binding. Once records return,
+explicit refresh can recover. Older unbound/waived sessions show an honest missing
+context message, with a request to the tutor rather than fabricated knowledge.

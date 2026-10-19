@@ -1,0 +1,88 @@
+{
+  "results": [
+    {
+      "gate": "node:html-host.test.js",
+      "status": "PASS",
+      "seconds": 7.1,
+      "tail": [
+        "HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions, live voice, lecture position, host-owned video and handout panes."
+      ]
+    },
+    {
+      "gate": "node:html-runtime-unit.js",
+      "status": "PASS",
+      "seconds": 0.2,
+      "tail": [
+        "HTML runtime unit and bundled KaTeX checks passed"
+      ]
+    },
+    {
+      "gate": "node:richtext-conformance.js",
+      "status": "PASS",
+      "seconds": 0.9,
+      "tail": [
+        "Rich text conformance passed: 68 corpus cases, spec, atomic math, DOM safety, pathological and random input, bundle freshness."
+      ]
+    },
+    {
+      "gate": "node:narration-unit.js",
+      "status": "PASS",
+      "seconds": 0.1,
+      "tail": [
+        "narration unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:board-unit.js",
+      "status": "PASS",
+      "seconds": 0.2,
+      "tail": [
+        "board unit tests passed (57 grammar cases, 15 layout cases)"
+      ]
+    },
+    {
+      "gate": "node:stages-unit.js",
+      "status": "PASS",
+      "seconds": 0.1,
+      "tail": [
+        "stages unit tests passed"
+      ]
+    },
+    {
+      "gate": "browser:html-stages-browser.cjs",
+      "status": "PASS",
+      "seconds": 324.8,
+      "tail": [
+        "staged session browser tests passed"
+      ]
+    },
+    {
+      "gate": "browser:html-handout-browser.cjs",
+      "status": "PASS",
+      "seconds": 38.1,
+      "tail": [
+        "native handout browser checks passed; synthetic offline host timings: [{\"viewport\":{\"width\":1440,\"height\":900},\"first_readable_ms\":772},{\"viewport\":{\"width\":803,\"height\":680},\"first_readable_ms\":730},{\"viewport\":{\"width\":375,\"height\":740},\"first_readable_ms\":750}]",
+        "screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-handout-PL6p7u"
+      ]
+    },
+    {
+      "gate": "browser:html-text-lecture-browser.cjs",
+      "status": "PASS",
+      "seconds": 42.6,
+      "tail": [
+        "Text lecture missing-board, typed question, reload and mode-switch checks passed; screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-text-lecture-N1iAFo"
+      ]
+    }
+  ],
+  "counts": {
+    "PASS": 9,
+    "FAIL": 0,
+    "SKIPPED": 0
+  },
+  "scope": "P0b2 targeted final Node/native-text checks plus legacy staged-player and native-handout browser regressions; synthetic offline host, no live Obsidian acceptance.",
+  "resolved_during_slice": [
+    "New presentation controls initially reduced phone blackboard readability; compact responsive row fixes the existing regression assertion.",
+    "Text-flow acceptance exposed Continue to the check returning to unfinished Quiz; now directly selects prepared Check while keeping diagnostic history unchanged.",
+    "Browser assertions wait for asynchronous host save acknowledgment; responsive pagination comparisons use step identity rather than assuming identical page boundaries."
+  ]
+}

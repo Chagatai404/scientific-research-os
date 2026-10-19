@@ -194,3 +194,38 @@ scope. Explicit reviewed migration or new scoped attempts are needed for new cla
 Old sessions still work. The template adds optional conceptual/transfer/application
 prompts without changing section numbers or checkbox submission. Existing notes
 are not rewritten. Both providers receive the same helper and references on install.
+
+## Integrated startup/resume recommendation (adaptive core)
+
+Tutor/course context receipts include `retrieval.recommendation`, a compact
+projection of `tutor_plan.plan` over the same discovered canonical collection.
+`html_sessions.py start` returns it in `preflight.recommendation`; `context`
+returns it in JSON and prints its rationale in the resume brief. This is advisory
+pacing, not evidence, an automatic rewrite of a running plan or a second ledger.
+
+The projection names the existing action, state, scope/dimension/context, current
+prerequisites that need no automatic reteaching, and a plain rationale. Unknown
+or stale evidence calls for a short probe; learning/fragile evidence selects the
+existing repair action. Transfer and application remain distinct. Invalid records,
+ambiguous profiles or an oversized closure cannot produce optimistic skip claims.
+`status: limited` requires mapping/inspection/narrowing, while blocked essential
+context yields `repair_context` and preserves the existing refusal semantics.
+
+The kernel computes this once with its bounded retrieval and reuses fresh receipts.
+Changed canonical files, target, date or bounds invalidate reuse; a missing old
+projection is upgraded. Cached blocked receipts are rechecked so a repaired graph
+can recover. Page visits, raw answers and local correctness do not manufacture
+canonical evidence; existing reviewed-evidence writers still own that transition.
+
+A bound session retains its explicit target, learning root and workflow when
+resumed. Startup uses today's evidence date rather than freezing freshness at the
+binding date. Use `context --target concept:ID --bind` (or `capability:ID` /
+`project:ID`) to explicitly change the binding. Without `--bind` this previews the
+new target only. This does not rewrite prepared questions or a frozen lecture;
+use the existing guarded plan revision/branch workflow to act on the advice.
+Historical/unbound and explicitly waived sessions remain readable and report a
+limited recommendation at startup; they do not silently claim personalization.
+
+This slice does not yet automate reviewed-answer dispatch, goal/time preferences,
+lesson revision, or the learner-facing recommendation view. Those remain later
+adaptive-core slices, not completed integrations.

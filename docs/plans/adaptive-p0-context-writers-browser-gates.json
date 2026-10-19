@@ -1,0 +1,17 @@
+{
+  "results": [
+    {
+      "gate": "browser:html-p0-text-flow-browser.cjs",
+      "status": "PASS",
+      "seconds": 20.7,
+      "tail": [
+        "{\"status\":\"PASS\",\"timings\":{\"handout_ms\":755,\"local_choice_ms\":1362},\"requests\":0,\"screenshot\":\"C:\\\\Users\\\\ASUS\\\\AppData\\\\Local\\\\Temp\\\\ros-p0-flow-u22J7Z\\\\p0-text-flow.png\",\"limitations\":\"Scripted reviewer and sandbox host; actual Python persistence. Not live Obsidian or production latency.\"}"
+      ]
+    }
+  ],
+  "counts": {
+    "PASS": 1,
+    "FAIL": 0,
+    "SKIPPED": 0
+  }
+}

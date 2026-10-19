@@ -34,6 +34,7 @@ END = 'end'
 KINDS = ('choice', 'numeric', 'short')
 ROLES = ('core', 'repair', 'extension')
 HANDOUT_STATES = ('planned', 'draft', 'built')
+MAX_READABLE_BYTES = 120 * 1024
 DEFAULT_BUDGET, MAX_BUDGET = 5, 8
 MAX_QUESTIONS, MAX_SEGMENTS, MAX_ANTICIPATED, MAX_PROMPT, MAX_TEXT = 40, 40, 120, 2000, 1000
 WORDS_PER_MINUTE = 150                                             # for the length estimate only
@@ -241,6 +242,60 @@ def _safe_directory(value) -> bool:
     return all(p and p != '..' and not p.startswith('.') for p in value.split('/'))
 
 
+def readable_problems(value) -> list[str]:
+    """Portable native study content; validates structure, never scientific truth.
+
+    Paragraphs use the existing safe inline grammar. Sources are declared precise
+    references, not a claim that this validator accessed or verified them.
+    """
+    problems = []
+    if not isinstance(value, dict):
+        return ['handout.readable: must be an object']
+    if set(value) - {'revision', 'sections', 'sources', 'focus', 'note'}:
+        problems.append('handout.readable: unknown fields')
+    if type(value.get('revision')) is not int or not 1 <= value['revision'] <= 10000:
+        problems.append('handout.readable.revision: a positive whole number up to 10000')
+    if len(json.dumps(value, ensure_ascii=False).encode('utf-8')) > MAX_READABLE_BYTES:
+        problems.append('handout.readable: exceeds 120 KiB')
+    sections = value.get('sections')
+    if not isinstance(sections, list) or not 1 <= len(sections) <= 40:
+        problems.append('handout.readable.sections: 1 to 40 sections')
+        sections = []
+    titles = set()
+    for i, section in enumerate(sections):
+        where = f'handout.readable.sections[{i}]'
+        if not isinstance(section, dict) or set(section) - {'title', 'paragraphs', 'solution'}:
+            problems.append(where + ': title, paragraphs and optional solution only')
+            continue
+        title = section.get('title')
+        if not _text(title, 120) or '\n' in title:
+            problems.append(where + '.title: a one-line title up to 120 characters')
+        elif title in titles:
+            problems.append(where + '.title: duplicate section title')
+        else:
+            titles.add(title)
+        paragraphs = section.get('paragraphs')
+        if not isinstance(paragraphs, list) or not 1 <= len(paragraphs) <= 40 or not all(_text(p, 2000) for p in paragraphs):
+            problems.append(where + '.paragraphs: 1 to 40 nonempty paragraphs, up to 2000 characters each')
+        if 'solution' in section and type(section['solution']) is not bool:
+            problems.append(where + '.solution: a Boolean (solutions are hidden until requested)')
+    sources = value.get('sources')
+    if not isinstance(sources, list) or not 1 <= len(sources) <= 40:
+        problems.append('handout.readable.sources: 1 to 40 source records with precise locators')
+        sources = []
+    for i, source in enumerate(sources):
+        if (not isinstance(source, dict) or set(source) != {'title', 'reference', 'locator'}
+                or not all(_text(source.get(key), 500) and '\n' not in source[key] for key in ('title', 'reference', 'locator'))):
+            problems.append(f'handout.readable.sources[{i}]: one-line title, reference and locator required')
+    focus = value.get('focus', [])
+    if not isinstance(focus, list) or len(focus) > 12 or not all(_text(item, 300) for item in focus):
+        problems.append('handout.readable.focus: up to 12 short recommendations; never evidence')
+    note = value.get('note')
+    if note is not None and (not _safe_directory(note) or len(note) > 256 or not note.endswith('.md') or any(c in note for c in ':[]<>#|\r\n')):
+        problems.append('handout.readable.note: safe vault-relative Markdown path required')
+    return problems
+
+
 def validate(plan) -> list[str]:
     """Every problem found, each starting with where it is. An empty list means the plan is valid."""
     problems: list[str] = []
@@ -369,7 +424,7 @@ def validate(plan) -> list[str]:
             problems.append('handout: must be an object')
         else:
             for key in handout:
-                if key not in ('title', 'directory', 'status', 'sections'):
+                if key not in ('title', 'directory', 'status', 'sections', 'readable'):
                     problems.append(f"handout: unknown key '{key}'")
             _plain_title(handout.get('title'), 'handout.title', problems)
             if not _safe_directory(handout.get('directory')):
@@ -382,6 +437,8 @@ def validate(plan) -> list[str]:
             else:
                 for j, s in enumerate(sections):
                     _plain_title(s, f'handout.sections[{j}]', problems)
+            if 'readable' in handout:
+                problems.extend(readable_problems(handout['readable']))
     return problems
 
 

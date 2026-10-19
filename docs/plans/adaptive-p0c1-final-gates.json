@@ -1,0 +1,14 @@
+{
+  "modules": [
+    "test_adaptive_context",
+    "test_context_kernel",
+    "test_context_protocol",
+    "test_release_documentation"
+  ],
+  "tests_run": 55,
+  "seconds": 46.19,
+  "failures": [],
+  "errors": [],
+  "skipped": [],
+  "successful": true
+}

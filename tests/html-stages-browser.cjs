@@ -47,7 +47,7 @@ function hostPage(size, seeded = [], options = {}) {
   const hostInfo = JSON.stringify({token: 'tok', session_id: sessionId, state, voice: {speak: true, capable: true}, video_timeout_ms: videoTimeout}).replace(/</g, '\\u003c');
   const srcdoc = standalone.replace('<script type="application/json" id="ros-session-data">', '<script>' + INSTRUMENT + 'window.ROS_HOST=' + hostInfo + ';</script><script type="application/json" id="ros-session-data">');
   return {srcdoc, html: `<!doctype html><body style="margin:0"><iframe id="session" sandbox="allow-scripts" style="width:${size.width}px;height:${size.height}px;border:0"></iframe><script>
-    window.__events = ${JSON.stringify(seeded)}; window.__log = []; window.__tts = 'warming'; window.__heard = 'because a square is never negative';
+    window.__events = ${JSON.stringify(seeded)}; window.__log = []; window.__drafts = {}; window.__tts = 'warming'; window.__heard = 'because a square is never negative';
     // How the scripted host answers a video request: ended (opens, then the video ends), closed (the learner closes the tab), hold (opens and stays), error (the player refuses), silent (no answer).
     window.__videoMode = 'ended'; window.__handoutMode = 'ok'; window.__opened = [];
     const send = payload => document.getElementById('session').contentWindow.postMessage(Object.assign({channel: 'research-os', token: 'tok', session_id: ${JSON.stringify(sessionId)}}, payload), '*');
@@ -57,6 +57,16 @@ function hostPage(size, seeded = [], options = {}) {
       const frame = document.getElementById('session'), d = m.data;
       if (m.source !== frame.contentWindow || !d || d.token !== 'tok') return;
       window.__log.push({type: d.type, action: d.action, keys: Object.keys(d).sort().join(','), widget: d.widget, step: d.step, status: d.status});
+      if (d.type === 'ready') send({type:'drafts',entries:window.__drafts});
+      if (d.type === 'draft') {
+        if (Object.keys(d).sort().join(',') !== 'channel,key,session_id,signature,token,type,value' ||
+            typeof d.key !== 'string' || !/^(answer:(probe|check):[A-Za-z0-9_-]{1,64}|lecture:question)$/.test(d.key) ||
+            typeof d.signature !== 'string' || !/^[a-f0-9]{32}$/.test(d.signature) ||
+            !(d.value === null || typeof d.value === 'string' && d.value.length <= 4000)) throw new Error('Invalid draft protocol message');
+        if (d.value === null) { if (window.__drafts[d.key]?.signature === d.signature) delete window.__drafts[d.key]; }
+        else window.__drafts[d.key] = {signature:d.signature,value:d.value};
+        send({type:'draft-saved'});
+      }
       if (d.event) {
         window.__events.push(d.event);
         send({type: 'state', state: {events: window.__events.map(e => Object.assign({status: 'pending-review'}, e))}});
@@ -87,6 +97,7 @@ function hostPage(size, seeded = [], options = {}) {
   const browser = await chromium.launch({headless: true, executablePath: executable});
   const errors = [], requests = [];
   async function open(size = {width: 1280, height: 800}, seeded = [], options = {}) {
+    if (process.env.ROS_TEST_TRACE) console.log('opening', size, seeded.length);
     const context = await browser.newContext({viewport: size});
     const page = await context.newPage();
     page.on('pageerror', e => errors.push(e.message));
@@ -121,6 +132,29 @@ function hostPage(size, seeded = [], options = {}) {
   const stage = t => t.frame.locator('.ros-stages').getAttribute('data-stage');
   const primary = (t, text) => t.frame.getByRole('button', {name: text, exact: true});
   const bar = t => t.frame.locator('.ros-stagebar li button').allTextContents();
+
+  // Recommendation is not permission: Check and Handout open before any quiz.
+  // Navigating preserves the typed draft and emits no assessment attempt.
+  {
+    const t = await open();
+    await primary(t, 'Check').click();
+    assert.equal(await stage(t), 'check');
+    const focused = await t.frame.locator('.ros-stage-check h2').evaluate(e => ({ok: e === document.activeElement, tag: document.activeElement.tagName, name: document.activeElement.className, target: e.outerHTML.slice(0, 200)}));
+    assert.equal(focused.ok, true, 'stage navigation moves keyboard focus to the question: ' + JSON.stringify(focused));
+    const input = t.frame.locator('.ros-stage-check input[type="text"]');
+    await input.fill('36');
+    await primary(t, 'Handout').click();
+    assert.equal(await stage(t), 'handout');
+    assert.equal(await primary(t, 'Go to the lecture').isEnabled(), true);
+    await primary(t, 'Check').click();
+    assert.equal(await input.inputValue(), '36');
+    const saved = await t.events();
+    assert.equal(saved.filter(e => e.type === 'plan-answer').length, 0);
+    const resumed = await open(undefined, saved);
+    assert.equal(await stage(resumed), 'check', 'selected stage survives saved-state reload');
+    await resumed.page.close();
+    await t.page.close();
+  }
 
   // Long captions must not recursively shrink the board to a thumbnail.
   for (const size of [{width: 1440, height: 800}, {width: 1280, height: 640}, {width: 1024, height: 640}, {width: 768, height: 800}, {width: 375, height: 740}]) {
@@ -229,7 +263,7 @@ function hostPage(size, seeded = [], options = {}) {
     const visible = await t.frame.locator('body').innerText();
     assert(!visible.includes(built.lesson_text) && !visible.includes('Exact original Markdown') && !visible.includes('Contents'), 'only the stages are visible');
     assert.deepEqual(await bar(t), ['Quiz', 'Handout', 'Lecture', 'Video', 'Check']);
-    assert.deepEqual(await t.frame.locator('.ros-stagebar li button').evaluateAll(bs => bs.map(b => b.disabled)), [false, true, true, false, true], 'later stages wait');
+    assert.deepEqual(await t.frame.locator('.ros-stagebar li button').evaluateAll(bs => bs.map(b => b.disabled)), [false, false, false, false, false], 'stages are freely accessible');
     assert.deepEqual(await scrollbars(t), [], 'probe stage');
 
     // Question 1: a wrong option says what the mistake was, at once, with nothing sent to the tutor to wait for.
@@ -291,9 +325,9 @@ function hostPage(size, seeded = [], options = {}) {
     assert.equal(await stage(t), 'handout');
     assert((await t.frame.locator('.ros-handout').textContent()).includes('Variance and rescaling'));
     assert.equal(await t.frame.locator('.ros-handout li').count(), 6);
-    assert.deepEqual(await t.frame.locator('.ros-stagebar li').evaluateAll(items => items.map(i => i.dataset.state)), ['done', 'current', 'todo', 'available', 'todo']);
+    assert.deepEqual(await t.frame.locator('.ros-stagebar li').evaluateAll(items => items.map(i => i.dataset.state)), ['done', 'current', 'ready', 'ready', 'ready']);
     await t.page.waitForFunction(() => window.__log.some(m => m.type === 'speak' && m.action === 'status'));
-    assert.equal(await primary(t, 'Start the lecture').isDisabled(), true, 'the voice is still warming up');
+    assert.equal(await primary(t, 'Start the lecture').isDisabled(), false, 'warming voice never blocks the core');
     assert((await t.frame.locator('.ros-voice-state').textContent()).includes('warming up'));
     await t.page.evaluate(() => { window.__tts = 'ready'; });
     await t.frame.locator('.ros-voice-state', {hasText: 'voice is ready'}).waitFor({timeout: 8000});
@@ -354,7 +388,7 @@ function hostPage(size, seeded = [], options = {}) {
     await t.frame.locator('.ros-board[data-status="done"]').waitFor({timeout: 10000});
     await primary(t, 'Continue to the check').click();
     assert.equal(await stage(t), 'check');
-    assert.deepEqual(await t.frame.locator('.ros-stagebar li').evaluateAll(items => items.map(i => i.dataset.state)), ['done', 'done', 'done', 'available', 'current']);
+    assert.deepEqual(await t.frame.locator('.ros-stagebar li').evaluateAll(items => items.map(i => i.dataset.state)), ['done', 'unprepared', 'done', 'ready', 'current']);
     await t.frame.locator('.ros-qcard input[type="text"]').fill('36');
     await primary(t, 'Check my answer').click();
     assert.equal(await t.frame.locator('.ros-stage-check .ros-stage-verdict').textContent(), 'Correct.');
@@ -367,7 +401,8 @@ function hostPage(size, seeded = [], options = {}) {
 
     // Every message to the host carried only what the protocol allows.
     const log = await t.log();
-    for (const m of log) assert(['ready', 'speak', 'voice', 'board-position', 'video', undefined].includes(m.type) || m.keys.includes('event'), 'unexpected message ' + JSON.stringify(m));
+    for (const m of log) assert(['ready', 'speak', 'voice', 'board-position', 'video', 'draft', undefined].includes(m.type) || m.keys.includes('event'), 'unexpected message ' + JSON.stringify(m));
+    assert(log.filter(m => m.type === 'draft').every(m => m.keys === 'channel,key,session_id,signature,token,type,value'), 'draft transport stays separate from evidence events');
     // The staged lecture is not a declared widget: its position goes to the host under the reserved id, with only the fields the host validates.
     const positions = log.filter(m => m.type === 'board-position');
     assert(positions.length > 0 && positions.every(m => m.widget === 'plan-lecture' && /^[A-Za-z0-9_-]{1,64}$/.test(m.step) && m.keys === 'channel,count,index,session_id,status,step,token,type,widget'), 'the lecture position is reported as plan-lecture: ' + JSON.stringify(positions[0]));
@@ -383,7 +418,7 @@ function hostPage(size, seeded = [], options = {}) {
   {
     const t = await open({width: 1280, height: 800}, [answer('scale', 'b'), answer('twopoint', 1), answer('why', 'squares', 'probe')]);
     assert.equal(await stage(t), 'handout', 'the saved answers say the probe is finished');
-    assert.deepEqual(await t.frame.locator('.ros-stagebar li').evaluateAll(items => items.map(i => i.dataset.state)), ['done', 'current', 'todo', 'available', 'todo']);
+    assert.deepEqual(await t.frame.locator('.ros-stagebar li').evaluateAll(items => items.map(i => i.dataset.state)), ['done', 'current', 'ready', 'ready', 'ready']);
     await t.frame.locator('.ros-stagebar li button').nth(0).click();            // looking back at the probe is allowed
     assert.equal(await t.frame.locator('.ros-strip button').count(), 3);
     await t.page.close();
@@ -426,7 +461,7 @@ function hostPage(size, seeded = [], options = {}) {
     assert((await t.frame.locator('.ros-strip button').nth(2).getAttribute('aria-label')).includes('the tutor has reviewed it'));
     assert.deepEqual(await t.frame.locator('.ros-strip button').evaluateAll(bs => bs.map(b => b.dataset.verdict)), ['correct', 'correct', 'pending'], 'the page’s own verdicts are unchanged');
     assert.deepEqual(await scrollbars(t), [], 'a reviewed answer');
-    assert.equal((await t.events()).length, 3, 'a review sends nothing back');
+    assert.equal((await t.events()).filter(e => e.type === 'plan-answer').length, 3, 'a review creates no answers');
     assert.match(await t.frame.locator('.ros-supervision').innerText(), /Anything you submit is saved and waits for the tutor/, 'a reviewed answer is no longer waiting');
 
     // A revised plan with the tutor's verdict reaches a lecture that has not started: the repair is in it, and the path is recorded when the first step plays.

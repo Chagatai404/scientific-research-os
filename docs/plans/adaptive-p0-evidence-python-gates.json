@@ -1,0 +1,27 @@
+{
+  "tests": 160,
+  "failures": 0,
+  "errors": 0,
+  "skipped": [
+    {
+      "test": "test_handout.RealCompile.test_the_example_builds_a_pdf_without_problems_and_with_turkish_letters",
+      "reason": "xelatex is not installed"
+    },
+    {
+      "test": "test_handout.RealCompile.test_shell_escape_is_off",
+      "reason": "xelatex is not installed"
+    }
+  ],
+  "seconds": 163.382,
+  "modules": [
+    "test_p0_text_flow",
+    "test_session_plan",
+    "test_review_adaptation",
+    "test_native_handout",
+    "test_handout",
+    "test_context_enforcement",
+    "test_context_protocol",
+    "test_learning_preferences"
+  ],
+  "runner_note": "Unittest completed OK (skipped=2). Initial JSON serialization failed on skipped TestCase objects after the tests finished; this report records the captured test summary and explicit skip identities from the suite."
+}

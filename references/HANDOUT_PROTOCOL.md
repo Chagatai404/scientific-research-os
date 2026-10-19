@@ -1,16 +1,75 @@
 # Handout protocol (v0.9.7)
 
-The researcher's feedback was that text written on the page overlapped the live lecture and distracted from it. The page now carries only the board; everything a learner reads lives in one detailed, study-quality PDF, the **handout**, handed out after the initial probe and kept in the course or project library. It is modelled on good recitation notes: a title block, numbered sections, definition / rule / key-idea boxes, worked examples, a notation table, exercises with full solutions at the end, sources, and a wide margin for the learner's own notes.
+The handout is a reusable, self-contained study resource, available in its own
+Handout stage before the diagnostic. It never overlaps the lecture surface.
+The unreleased adaptive core supports native readable content independently of
+the optional designed LaTeX PDF. Existing PDF-only plans remain compatible.
+Prepare definitions, intuition, justified formal steps, examples, common mistakes,
+exercises and a solution appendix, with precise sources and explicit assumptions.
+Native content uses headings, short paragraphs and safe inline math; figures,
+tables and advanced page design remain available through the existing PDF export.
 
 A handout is teaching material, never learning evidence. What the learner can do without it is what the probe and the final check show.
 
 ## When
 
-1. **At plan time** the plan's `handout` object names the title, the directory and the sections (`SESSION_PLAN.md`, status `planned`). Draft the body from the sources and the learner's recorded state, ideally in a subagent while the probe runs.
-2. **Build a draft** (`--stage draft`) if the probe is still running. After the probe, add a short `gaps` section on what the probe found and build again with `--stage built`. The learner is handed the PDF at the Handout stage and reads it while the lecture's audio is prepared.
+1. **At plan time** inspect available sources and recorded knowledge, and draft
+   useful native content without waiting for diagnostics or speech workers.
+   Source inventory and drafting can overlap safely; unavailable material must
+   be disclosed, never fabricated. Prefer assigned course material where available.
+2. Publish the native resource immediately. After diagnostics, increment its
+   revision for focus recommendations or a gaps supplement; retain the complete
+   underlying resource. Export a PDF independently if desired. Compiler failure
+   must never make the native handout inaccessible.
 3. The handout is not a script of the lecture. It is what the learner studies from during and after it; the lecture does not repeat it line by line.
 
+## Native resource (unreleased)
+
+```
+python scripts/handout.py publish-readable --root <vault> --session <note> --content readable.json [--library DIR]
+```
+
+`handout.readable` is an additive plan-schema-1 field:
+
+```json
+{
+  "revision": 1,
+  "focus": ["Review the prerequisite only if needed; focus today on the derivation."],
+  "sections": [{"title": "Objective", "paragraphs": ["A complete, source-grounded explanation."]}],
+  "sources": [{"title": "Assigned text", "reference": "Reviewed source identity", "locator": "Exact section, page or equation"}]
+}
+```
+
+Bounded at 120 KiB: 1–40 sections, 1–40 paragraphs per section (up to 2000
+characters each), 1–40 precise source records, up to 12 focus recommendations.
+Titles are one line; paragraphs use the existing scientific inline grammar.
+Mark an appendix section `"solution": true` to require explicit reveal in the
+reader. Sources and assumptions must be scientifically checked under SOURCE_POLICY;
+schema validity is not verification of content or educational effectiveness.
+
+The publisher manages the vault-relative `note` link. Its content-addressed,
+revisioned Markdown resource lives in the existing declared library directory,
+links back to the session and is linked from the generated Markdown bridge.
+Publication holds the central session lock and a library lock; repeated identical
+publication reuses its artifact, while learner-edited notes are preserved in place
+and a fresh copy is versioned. A failed session projection leaves the complete
+library resource recoverable; retry publication or use ordinary session recovery
+if a projection journal exists. Never remove another writer's lock.
+
+The page offers section selection and responsive pages, preserving inline math
+and saved position on stage switches/reload. Revealing a solution records a
+presentation checkpoint, not a grade. Actual assistance must still be attributed
+when an assessed attempt uses that solution. Native publication never changes a
+capability, retention choice, research decision or permanent concept note.
+
+Legacy `handout.status` continues to describe PDF preparation (`planned`, `draft`,
+`built`). A valid native resource satisfies core readiness independently of that
+status; an existing PDF-only plan still uses its checked PDF. PDF status updates
+retain native content or replanning published while compilation was running.
+
 ## How to build
+
+The commands below build the optional PDF export; they do not gate native reading.
 
 ```
 python scripts/handout.py template                       # the environments, macros and packages a body may use

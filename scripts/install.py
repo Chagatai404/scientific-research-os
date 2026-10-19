@@ -46,7 +46,7 @@ GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
                  "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py", "library_index.py", "terms.py", "teaching_lint.py", "code_walkthrough.py", "resources.py", "diagram_spec.py", "animate.py", "fsrs_schedule.py", "notebook_coverage.py", "notebook_trace.py", "speech_text.py", "voice.py", "voice_adapter.py",
                  "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py",
-                 "context_kernel.py", "scientific_verify.py", "chembio_verify.py", "structure_verify.py", "rich_text.py", "board_script.py", "session_plan.py", "handout.py", "visual_assets.py", "tutor_gate.py", "supervision.py",
+                 "context_kernel.py", "learning_advice.py", "learning_preferences.py", "plan_evidence.py", "scientific_verify.py", "chembio_verify.py", "structure_verify.py", "rich_text.py", "board_script.py", "session_plan.py", "handout.py", "visual_assets.py", "tutor_gate.py", "supervision.py",
                  # tasks.py gates reconciliation on the library inventory receipt that scout.py produces.
                  "scout.py",
                  # Optional Obsidian adapters: detection, vault search, and generated cards/canvas (all degrade to built-in routes).
@@ -58,7 +58,7 @@ GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py",
 SESSION_HELPERS = ("html_sessions.py", "common.py", "research.py", "knowledge.py", "ontology.py",
                    "validate_evidence.py", "computational_manifest.py",
                    # The context kernel gates every session; this is its complete import closure.
-                   "context_kernel.py", "migrate_learning.py", "paper_library.py", "library_index.py", "terms.py", "resources.py", "visuals.py",
+                   "context_kernel.py", "learning_advice.py", "learning_preferences.py", "plan_evidence.py", "tutor_plan.py", "migrate_learning.py", "paper_library.py", "library_index.py", "terms.py", "resources.py", "visuals.py",
                    # Stdlib-only verification engine: every review workflow can execute its checks.
                    "scientific_verify.py", "chembio_verify.py", "structure_verify.py",
                    # The shared scientific inline grammar html_sessions renders with.

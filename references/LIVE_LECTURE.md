@@ -2,7 +2,12 @@
 
 How a tutor agent gives a lecture in real time on the blackboard, with the Kokoro voice, and takes written or spoken questions at any moment. It works with any agent that can run commands; nothing here names a model. `HTML_SESSION_PROTOCOL.md` owns sessions, `VOICE_PROTOCOL.md` owns the voices, `TUTORING_GATES.md` still decides when a teaching block may start and when a probe is due.
 
-## What the learner needs running (check, never assume)
+The blackboard and voice are optional enhancements. Ordinary `html_sessions.py start`
+connects the tutor in text mode; `--voice` requests optional workers under the existing
+process approval. Core readiness and `voice_ready` are separate. Warming or failed
+voice must never block Handout, Quiz, Lecture or Check.
+
+## What narrated playback needs running (check, never assume)
 
 | Piece | Check | Start (ask the researcher first; installing or starting a process is theirs to approve) |
 |---|---|---|
@@ -10,7 +15,14 @@ How a tutor agent gives a lecture in real time on the blackboard, with the Kokor
 | Live voice (the tutor speaks) | `python scripts/voice.py worker-status --dir <vault>/.research-os/voice --tts` exits 0 | `python scripts/voice.py tts-worker --env <kokoro env> --dir <vault>/.research-os/voice --voice model_dir=<Kokoro folder>` |
 | Spoken questions | `python scripts/voice.py worker-status --dir <vault>/.research-os/voice` exits 0 | `python scripts/voice.py worker --env <whisper env> --dir <vault>/.research-os/voice` |
 
-**Bring them up with one command, before the learner starts:** `python scripts/html_sessions.py --root <vault> start <session> --holder <name>` runs `voice.py up --dir <vault>/.research-os/voice`. It starts each missing worker **detached** from your shell, so it does not end with a single command (a worker survived its launcher in testing; why the voice used to read "off" between turns is not confirmed, and a worker may still end when the agent session itself ends, so run `start` at the beginning of every session), waits until each lease says `ready`, and prints `ready: true` only when both are. The first time, name the environments once with `voice.py up --dir <vault>/.research-os/voice --env <kokoro env> --env <whisper env> --voice model_dir=<Kokoro folder> --save`; later runs need no arguments. `voice.py up --check` starts nothing. Logs are in `<vault>/.research-os/voice/logs/`. Nothing is installed; a worker that cannot start is reported with the end of its log, and the lecture then offers captions or the device voice and says so.
+**Optional narrated playback:** after the learner requests voice and worker startup is
+approved, use `python scripts/html_sessions.py --root <vault> start <session> --holder <name> --voice`.
+It starts missing workers detached and reports `voice_ready` separately from core
+`ready`. Environments can be saved once with `voice.py up --dir <vault>/.research-os/voice
+--env <kokoro env> --env <whisper env> --voice model_dir=<Kokoro folder> --save`.
+`voice.py up --check` starts nothing. Failure leaves text/captions usable and reports
+why; never require worker startup before ordinary study. Logs remain under
+`<vault>/.research-os/voice/logs/`.
 
 **Never open a browser.** The session is in Obsidian, which the learner already has open. Do not open Chrome or any browser, a `file://` page or a local server to show, check or "verify" a lecture unless the researcher asks for that in the message. Verify with `board_script.py check`, `board-position` and the session state.
 

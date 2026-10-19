@@ -10,6 +10,11 @@ distribution file hashes and the official npm source; `KATEX-LICENSE.txt` retain
 the license. Rebuild with `python build.py /path/to/extracted/katex/package`.
 `runtime.js` and `theme.css` are editable Research OS sources.
 
+`reader.js` is the native handout reader: safe inline DOM, responsive pagination,
+source sections and explicit solution reveal. It stores only presentation checkpoints
+through the existing session bridge. Rebuild with `python build.py --refresh` after
+editing it or `stages.js`/`stages.css`; no external renderer or compiler is needed.
+
 The document uses `main#ros-session` and semantic `data-ros` attributes listed in
 `ResearchOS.VOCABULARY`. Question sections identify `data-question-id`; their
 controls are generated from structured questions. Supported kinds: `mcq`, `multi`,
@@ -97,3 +102,14 @@ Approved locally bundled extensions may call
 and receive no filesystem, parent, Node or network privilege. Remote scripts and
 arbitrary modules are not loaded. Extension failures retain a visible error.
 Mobile behavior remains unverified; responsive CSS alone is not verification.
+
+`stages.js` also provides a native Text lesson controller using the reader. It
+consumes the existing prepared board steps (`say`, `do.write`, `do.math`) without
+loading speech or drawing services, preserves lecture checkpoints when switching
+presentations, and exposes missing diagram descriptions explicitly. The existing
+Blackboard presentation remains available in the same three-column shell.
+
+`advice.js` supplies Study advice in the existing staged shell. It consumes the
+pure session-adaptation projection plus a bounded host-provided canonical snapshot.
+Opening it, switching advice sources or paging never creates assessment evidence.
+The dialog reuses the native reader; requests use ordinary open-question events.

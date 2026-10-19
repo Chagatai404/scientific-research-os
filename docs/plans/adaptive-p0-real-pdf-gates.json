@@ -1,0 +1,18 @@
+{
+  "command": "python -m unittest discover -s tests -p test_handout.py -v",
+  "tests": 28,
+  "failures": 0,
+  "errors": 0,
+  "skipped": [],
+  "seconds": 37.55,
+  "execution": "Approved execution with access to existing per-user MiKTeX installation",
+  "engine": "MiKTeX-XeTeX 4.16 (MiKTeX 25.12)",
+  "compiler_path": "C:/Users/ASUS/AppData/Local/Programs/MiKTeX/miktex/bin/x64/xelatex.exe",
+  "installation_performed": false,
+  "packages_installed": false,
+  "real_compile_tests": [
+    "test_shell_escape_is_off",
+    "test_the_example_builds_a_pdf_without_problems_and_with_turkish_letters"
+  ],
+  "correction": "Earlier restricted runs could not access the installed compiler. Their skipped results do not mean XeLaTeX was absent from the PC. No live Obsidian vault was modified."
+}

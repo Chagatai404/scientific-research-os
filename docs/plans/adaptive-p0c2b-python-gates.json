@@ -1,0 +1,19 @@
+{
+  "modules": [
+    "test_learning_advice",
+    "test_review_adaptation",
+    "test_session_start",
+    "test_html_sessions",
+    "test_adaptive_context",
+    "test_context_protocol",
+    "test_session_plan",
+    "test_release_documentation",
+    "test_native_handout"
+  ],
+  "tests_run": 199,
+  "seconds": 114.54,
+  "failures": [],
+  "errors": [],
+  "skipped": [],
+  "successful": true
+}

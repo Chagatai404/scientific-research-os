@@ -1,0 +1,14 @@
+{
+  "modules": [
+    "test_learning_advice",
+    "test_session_start",
+    "test_context_protocol",
+    "test_release_documentation"
+  ],
+  "tests_run": 40,
+  "seconds": 66.58,
+  "failures": [],
+  "errors": [],
+  "skipped": [],
+  "successful": true
+}

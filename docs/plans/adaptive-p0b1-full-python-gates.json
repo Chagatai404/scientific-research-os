@@ -1,0 +1,66 @@
+{
+  "scope": "Full Python discovery with loopback-listener fixtures skipped pending approval",
+  "tests_run": 1550,
+  "seconds": 1852.02,
+  "failures": [],
+  "errors": [],
+  "skipped": [
+    {
+      "test": "test_a_real_scene_renders_and_registers (test_animate.RealManimGX.test_a_real_scene_renders_and_registers)",
+      "reason": "set RESEARCH_OS_TEST_MANIMGX_ENV to a ManimGX virtual environment to render for real"
+    },
+    {
+      "test": "test_shell_escape_is_off (test_handout.RealCompile.test_shell_escape_is_off)",
+      "reason": "xelatex is not installed"
+    },
+    {
+      "test": "test_the_example_builds_a_pdf_without_problems_and_with_turkish_letters (test_handout.RealCompile.test_the_example_builds_a_pdf_without_problems_and_with_turkish_letters)",
+      "reason": "xelatex is not installed"
+    },
+    {
+      "test": "test_a_real_notebook_runs_in_a_scratch_copy_and_the_repository_is_untouched (test_notebook_trace.Real.test_a_real_notebook_runs_in_a_scratch_copy_and_the_repository_is_untouched)",
+      "reason": "set RESEARCH_OS_TEST_NOTEBOOK_REPO to a git repo with a uv lockfile and a notebook to run one for real"
+    },
+    {
+      "test": "test_a_documented_answer_is_normalised_and_confined_to_the_vault (test_obsidian_integrations.OmnisearchBridgeTests.test_a_documented_answer_is_normalised_and_confined_to_the_vault)",
+      "reason": "Temporary loopback listener requires explicit approval; not started"
+    },
+    {
+      "test": "test_an_oversized_answer_is_refused (test_obsidian_integrations.OmnisearchBridgeTests.test_an_oversized_answer_is_refused)",
+      "reason": "Temporary loopback listener requires explicit approval; not started"
+    },
+    {
+      "test": "test_find_uses_omnisearch_when_it_answers_and_falls_back_with_a_reason_when_it_does_not (test_obsidian_integrations.OmnisearchBridgeTests.test_find_uses_omnisearch_when_it_answers_and_falls_back_with_a_reason_when_it_does_not)",
+      "reason": "Temporary loopback listener requires explicit approval; not started"
+    },
+    {
+      "test": "test_exact_interval_agrees_with_scipy (test_scientific_verify.NumericalBuildingBlocks.test_exact_interval_agrees_with_scipy)",
+      "reason": "scipy not installed"
+    },
+    {
+      "test": "test_high_precision_clears_a_cancellation_artifact_with_evidence (test_scientific_verify.OptionalToolsNeverDecideCorrectness.test_high_precision_clears_a_cancellation_artifact_with_evidence)",
+      "reason": "mpmath not installed"
+    },
+    {
+      "test": "test_high_precision_resolves_the_cancellation_limit (test_scientific_verify.OptionalToolsNeverDecideCorrectness.test_high_precision_resolves_the_cancellation_limit)",
+      "reason": "mpmath not installed"
+    },
+    {
+      "test": "test_symbolic_simplification_is_evidence_not_proof (test_scientific_verify.OptionalToolsNeverDecideCorrectness.test_symbolic_simplification_is_evidence_not_proof)",
+      "reason": "sympy not installed"
+    },
+    {
+      "test": "test_installed_excalidraw_adapter_is_used (test_v09_baseline.LiveEnvironmentBaseline.test_installed_excalidraw_adapter_is_used)",
+      "reason": "live-verification: complaint 4 (Excalidraw/Obsidian plugins used after the HTML move) needs a desktop Obsidian with the plugin enabled; mock adapter tests land in Slices 4 and 9"
+    },
+    {
+      "test": "test_live_provider_behaviour (test_v09_baseline.LiveEnvironmentBaseline.test_live_provider_behaviour)",
+      "reason": "live-verification: complaints 7 (agents omitting graph context), 10 (tutor introducing unestablished concepts) and 11 (probing quality) need live provider sessions; Slices 1 and 6 add executable enforcement and simulated-learner tests instead"
+    },
+    {
+      "test": "test_open_question_panel_is_persistent_not_bottom_mounted (test_v09_baseline.LiveEnvironmentBaseline.test_open_question_panel_is_persistent_not_bottom_mounted)",
+      "reason": "live-verification: complaint 5 is reproduced in real Chromium (open-question form is child 32 of 34, below the questions, widgets and original-Markdown block); the browser assertion lands in Slice 5"
+    }
+  ],
+  "successful": true
+}

@@ -28,6 +28,16 @@ for (const c of cases.replay) {
 }
 for (const c of cases.stages) assert.equal(S.stageOf(plan, events(c.events)), c.expect, c.name);
 
+// A recommendation never locks prepared material or creates evidence of completion.
+assert.equal(S.stageStatus(plan, [], 'check'), 'ready');
+assert.equal(S.stageStatus(plan, [], 'probe'), 'suggested');
+assert.equal(S.stageStatus(plan, [], 'handout'), 'unprepared');
+assert.equal(S.selectedStage(plan, events(['view-stage:check'])), 'check');
+assert.equal(S.stageOf(plan, events(['view-stage:check'])), 'probe');
+assert.equal(S.selectedStage(plan, events(['view-stage:untrusted'])), 'probe');
+assert.equal(S.stageStatus({...plan, check: undefined}, [], 'check'), 'unprepared');
+assert.equal(S.stageStatus({...plan, segments: []}, [], 'video'), 'unavailable');
+
 // The lecture is the chosen segments' steps in order; a segment's video is not a board step (it plays in the host's video pane, see lectureChunks).
 const script = S.composeScript(plan, ['spread', 'scale-repair', 'scale', 'see-it']);
 assert.deepEqual(script.steps.map(s => s.id), ['sp1', 'sp2', 'sp3', 'rp1', 'rp2', 'rp3', 'sc1', 'sc2']);
@@ -64,5 +74,18 @@ assert.equal(S.parseNumber('0.5'), 0.5);
 assert.equal(S.parseNumber(' 1,5 '), 1.5);
 assert.equal(S.parseNumber('-2e3'), -2000);
 for (const bad of ['', 'abc', '1 2', '0x10', 'Infinity', '--1']) assert(Number.isNaN(S.parseNumber(bad)), bad);
+
+// Attempt identity and review-driven pacing mirror the central Python writer.
+{
+  const plan = JSON.parse(fs.readFileSync(path.join(__dirname, '../examples/session-plan-variance.json'), 'utf8'));
+  plan.segments[1].plays_if = {wrong: ['why']}; plan.segments[3].plays_if = {correct: ['why']};
+  const cases = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/adaptation-cases.json'), 'utf8')).cases;
+  for (const c of cases) {
+    const advice = S.sessionAdaptation(plan, c.events, c.reviews);
+    for (const [key, value] of Object.entries(c.expect)) assert.deepEqual(advice[key], value, c.name + ': ' + key);
+    assert.deepEqual(S.lectureFor(plan, c.events, c.reviews).path, c.path, c.name);
+    assert.equal(advice.evidence, false);
+  }
+}
 
 console.log('stages unit tests passed');

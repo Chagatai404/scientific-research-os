@@ -1,0 +1,9 @@
+{
+  "tests": 1,
+  "failures": 0,
+  "errors": 0,
+  "skipped": [],
+  "seconds": 11.319,
+  "command": "python -m unittest discover -s tests -p test_adaptive_helper_bundles.py -v",
+  "verified": "Both session and graph installed helper catalogs execute real preferences save and staged evidence proposal using -S -B with empty PYTHONPATH from outside the repository."
+}

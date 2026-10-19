@@ -1,0 +1,26 @@
+{
+  "modules": [
+    "test_native_handout",
+    "test_session_plan",
+    "test_handout",
+    "test_session_start",
+    "test_html_sessions",
+    "test_release_gates",
+    "test_release_documentation"
+  ],
+  "tests_run": 191,
+  "seconds": 108.61,
+  "failures": [],
+  "errors": [],
+  "skipped": [
+    {
+      "test": "test_shell_escape_is_off (test_handout.RealCompile.test_shell_escape_is_off)",
+      "reason": "xelatex is not installed"
+    },
+    {
+      "test": "test_the_example_builds_a_pdf_without_problems_and_with_turkish_letters (test_handout.RealCompile.test_the_example_builds_a_pdf_without_problems_and_with_turkish_letters)",
+      "reason": "xelatex is not installed"
+    }
+  ],
+  "successful": true
+}

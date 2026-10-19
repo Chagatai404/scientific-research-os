@@ -1,0 +1,17 @@
+{
+  "results": [
+    {
+      "gate": "browser:html-stages-browser.cjs",
+      "status": "PASS",
+      "seconds": 296.9,
+      "tail": [
+        "staged session browser tests passed"
+      ]
+    }
+  ],
+  "counts": {
+    "PASS": 1,
+    "FAIL": 0,
+    "SKIPPED": 0
+  }
+}

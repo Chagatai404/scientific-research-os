@@ -11,7 +11,6 @@
   'use strict';
   const END = 'end';
   const STAGES = [['probe', 'Quiz'], ['handout', 'Handout'], ['lecture', 'Lecture'], ['video', 'Video'], ['check', 'Check']];
-  const indexOf = id => STAGES.findIndex(([s]) => s === id);
 
   // ----------------------------------------------------------------------------------------------------------------- logic (mirrors scripts/session_plan.py)
   function judge(question, answer) {
@@ -46,9 +45,15 @@
   // by the review_effects cases in tests/fixtures/supervision-cases.json). A partly correct answer leaves a gap, so it plays a repair and does not satisfy an
   // extension; "reviewed" carries no judgement. Choice and numeric results are never touched. The latest review of a question wins.
   const REVIEW_RESULT = {correct: 'correct', 'partially-correct': 'wrong', incorrect: 'wrong'};
-  function reviewedResults(results, reviews) {
+  function activePlanReviews(events, reviews) {
+    const latest = new Map((events || []).filter(e => e.type === 'plan-answer').map(e => [e.question_id, e.event_id]));
+    const selected = new Map();
+    for (const review of reviews || []) if (latest.get(review.question_id) === review.response_event_id) selected.set(review.question_id, review);
+    return [...selected.values()].filter(r => !(r.verdict === 'correct' && r.criteria_met && !r.criteria_met.every(Boolean)));
+  }
+  function reviewedResults(results, reviews, events) {
     const latest = new Map();
-    for (const review of reviews || []) latest.set(review.question_id, review);
+    for (const review of events ? activePlanReviews(events, reviews) : reviews || []) latest.set(review.question_id, review);
     const out = {};
     for (const [id, verdict] of Object.entries(results)) out[id] = verdict === 'pending' && latest.has(id) && REVIEW_RESULT[latest.get(id).verdict] ? REVIEW_RESULT[latest.get(id).verdict] : verdict;
     return out;
@@ -62,7 +67,7 @@
   }
   // What the lecture plays now: the recorded path once started, otherwise the one the probe results (with the tutor's reviews) choose.
   function lectureFor(plan, events, reviews) {
-    const results = reviewedResults(replay(plan, 'probe', events).results, reviews), recorded = recordedPath(events), known = new Set(plan.segments.map(s => s.id));
+    const results = reviewedResults(replay(plan, 'probe', events).results, reviews, events), recorded = recordedPath(events), known = new Set(plan.segments.map(s => s.id));
     return {results, started: recorded !== null, path: recorded !== null ? recorded.filter(id => known.has(id)) : lecturePath(plan, results)};
   }
   // The step a reloaded lecture waits at: the last "lecture-step:" checkpoint whose step is in the script (a step added by an answered question is not).
@@ -172,6 +177,51 @@
     return 'done';
   }
 
+  // A local teaching recommendation, not a grade. Mirrors session_adaptation in
+  // html_sessions.py and uses only reviews of the latest actual attempts.
+  function sessionAdaptation(plan, events, reviews) {
+    const base = {adaptation_schema: 1, evidence: false};
+    if (!plan) return {...base, action: 'prepare_lesson', stage: 'handout', reason: 'A prepared lesson is not available yet.'};
+    const active = new Map(activePlanReviews(events, reviews).map(r => [r.question_id, r]));
+    const lecture = lectureFor(plan, events, reviews), pending = [], gaps = [];
+    for (const tree of ['probe', 'check']) for (const answer of replay(plan, tree, events).trail) {
+      const review = active.get(answer.id);
+      if (answer.verdict === 'pending' && (!review || review.verdict === 'reviewed')) pending.push(answer.id);
+      if (review && ['incorrect', 'partially-correct'].includes(review.verdict)) gaps.push({tree, question: answer.id, review});
+    }
+    if (gaps.length) {
+      const {tree, question, review} = gaps.at(-1);
+      const repairs = plan.segments.filter(s => s.role === 'repair' && s.plays_if.wrong.includes(question)).map(s => s.id);
+      const available = repairs.filter(id => lecture.path.includes(id));
+      return {...base, action: available.length ? 'review_repair' : 'request_repair', stage: available.length ? 'lecture' : 'handout',
+        reason: 'The latest reviewed attempt has an unresolved gap. ' + (available.length ? 'The prepared lecture includes its repair.' : 'Ask the tutor for a focused repair; the current lecture path stays intact.'),
+        question_id: question, response_event_id: review.response_event_id, tree, verdict: review.verdict,
+        repair_segments: available, lecture_started: lecture.started, pending_review: pending.length};
+    }
+    if (pending.length) return {...base, action: 'await_review', stage: 'handout', pending_review: pending.length,
+      reason: 'Written reasoning awaits a substantive review. You can keep studying; no learning credit is inferred.'};
+    const stage = stageOf(plan, events);
+    return {...base, action: 'continue', stage,
+      reason: 'Continue the prepared lesson. Local results and reading pace study; they do not establish mastery.', pending_review: 0};
+  }
+
+  // Recommended progress and the learner's selected view are separate. Visiting
+  // a stage neither completes it nor creates assessment evidence.
+  function selectedStage(plan, events) {
+    const visits = checkpoints(events, 'view-stage:');
+    const last = visits[visits.length - 1];
+    return STAGES.some(([id]) => id === last) || last === 'done' ? last : stageOf(plan, events);
+  }
+
+  function stageStatus(plan, events, id) {
+    if (id === 'video') return plan.segments.some(s => s.video) ? 'ready' : 'unavailable';
+    if (id === 'handout' && (!plan.handout || plan.handout.status !== 'built' && !plan.handout.readable)) return 'unprepared';
+    if (id === 'check' && !plan.check) return 'unprepared';
+    if ((id === 'probe' || id === 'check') && replay(plan, id, events).done) return 'completed';
+    if (id === 'lecture' && marks(events).has('check')) return 'completed';
+    return stageOf(plan, events) === id ? 'suggested' : 'ready';
+  }
+
   function parseNumber(text) {
     const cleaned = String(text).trim().replace(',', '.');
     return cleaned !== '' && /^[-+]?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(cleaned) ? Number(cleaned) : NaN;
@@ -188,10 +238,10 @@
     const doc = ctx.doc;
     let current = plan;
     const reviews = () => (ctx.reviews ? ctx.reviews() : []);
-    const reviewOf = id => { const all = reviews().filter(r => r.question_id === id); return all.length ? all[all.length - 1] : null; };
+    const reviewOf = id => activePlanReviews(ctx.events(), reviews()).find(r => r.question_id === id) || null;
     const REVIEW_LABEL = {correct: 'Correct', 'partially-correct': 'Partly correct', incorrect: 'Not quite', reviewed: 'Read'};
     // Pending written answers become the tutor's verdict once there is one; everything else keeps the page's own result.
-    const effective = t => (t.verdict === 'pending' ? reviewedResults({[t.id]: 'pending'}, reviews())[t.id] : t.verdict);
+    const effective = t => (t.verdict === 'pending' ? reviewedResults({[t.id]: 'pending'}, reviews(), ctx.events())[t.id] : t.verdict);
     const el = (tag, attrs, ...children) => {
       const node = doc.createElement(tag);
       for (const [key, value] of Object.entries(attrs || {})) {
@@ -211,40 +261,86 @@
     const footer = el('div', {class: 'ros-stages-footer'});
     shell.append(el('header', {class: 'ros-stages-head'}, title, bar), body, footer);
     container.prepend(shell);
+    let advice = null;
+    if (doc.defaultView.ResearchOSAdvice && doc.defaultView.ResearchOSReader) {
+      const opener = button('Study advice', () => {}, {class: 'ros-advice-launcher'});
+      bar.append(opener);
+      advice = doc.defaultView.ResearchOSAdvice.mount(opener, {doc, container: shell, rich: ctx.rich, emit: ctx.emit, show,
+        sessionAdvice: () => sessionAdaptation(current, ctx.events(), reviews()),
+        canonicalAdvice: ctx.canonicalAdvice, learningPreferences: ctx.learningPreferences, requestPending: ctx.requestPending});
+    }
     if (ctx.footer) ctx.footer(footer);
 
     const panels = {};
     for (const id of [...STAGES.map(([s]) => s), 'done']) { panels[id] = el('section', {class: 'ros-stage ros-stage-' + id, 'data-stage': id, hidden: true}); body.append(panels[id]); }
 
-    let derived = stageOf(plan, ctx.events()), shown = derived, videoReturn = derived;
+    let derived = stageOf(plan, ctx.events()), shown = selectedStage(plan, ctx.events()), videoReturn = shown;
     const views = {};                         // per tree: what is on screen, so a refresh that changes nothing does not redraw (and lose a half-typed answer)
-    const drafts = new Map();
+    const drafts = new Map(), draftFields = new Map();
+    const Drafts = doc.defaultView.ResearchOSDrafts;
+    const draftSignature = value => Drafts ? Drafts.signature(value) : JSON.stringify(value);
+    const draftKey = (name, question) => 'answer:' + name + ':' + question.id;
+    const draftIdentity = (key, signature) => JSON.stringify([key, signature]);
+    function getDraft(key, signature) {
+      const id = draftIdentity(key, signature);
+      if (drafts.has(id)) return drafts.get(id);
+      try {
+        const value = ctx.drafts && ctx.drafts.get(key, signature);
+        if (typeof value === 'string' && value.length <= 4000) return value;
+      } catch (_) { /* Storage denial never blocks study or erases the input. */ }
+      return '';
+    }
+    function saveDraft(key, signature, value) {
+      value = String(value).slice(0, 4000);
+      drafts.set(draftIdentity(key, signature), value);
+      try { if (ctx.drafts) ctx.drafts.set(key, signature, value); } catch (_) { /* Keep the local input. */ }
+    }
+    function clearDraft(key, signature) {
+      // Keep a local tombstone so delayed host hydration cannot resurrect it.
+      const id = draftIdentity(key, signature);
+      if (drafts.get(id) === '') return;
+      drafts.set(id, '');
+      try { if (ctx.drafts) ctx.drafts.clear(key, signature); } catch (_) { /* The submitted event remains authoritative. */ }
+    }
+    function refreshDrafts() {
+      for (const [key, field] of draftFields) {
+        if (!field.form.isConnected || drafts.has(draftIdentity(key, field.signature))) continue;
+        field.restore(getDraft(key, field.signature));
+      }
+    }
+    let unsubscribeDrafts = null;
+    try { if (ctx.drafts && ctx.drafts.onChange) unsubscribeDrafts = ctx.drafts.onChange(refreshDrafts); } catch (_) { /* Local editing stays available. */ }
 
     // ------------------------------------------------------------------------------------------------- the stage bar
     function renderBar() {
       barList.textContent = '';
-      const reached = derived === 'done' ? STAGES.length : indexOf(derived);
-      STAGES.forEach(([id, label], index) => {
-        const state = id === shown ? 'current' : id === 'video' ? 'available' : index <= reached ? 'done' : 'todo';
-        const link = button(label, () => show(id), {'aria-current': shown === id ? 'step' : undefined, disabled: state === 'todo'});
-        barList.append(el('li', {'data-state': state}, link));
+      STAGES.forEach(([id, label]) => {
+        const availability = stageStatus(current, ctx.events(), id);
+        const state = id === shown ? 'current' : availability === 'completed' ? 'done' : availability;
+        const link = button(label, () => show(id), {'aria-current': shown === id ? 'step' : undefined,
+          'aria-description': availability, title: availability});
+        barList.append(el('li', {'data-state': state, 'data-availability': availability}, link));
       });
     }
     function show(id) {
-      if (id !== 'video' && id !== 'done' && derived !== 'done' && indexOf(id) > indexOf(derived)) return;
+      if (!panels[id]) return;
+      if (shown === 'lecture' && id !== 'lecture' && lecture.controller && lecture.controller.status === 'playing') { lecture.controller.pause(); sendStep(true); }
       if (shown === 'video' && id !== 'video' && ctx.panes) { if (selectedVideo) ctx.panes.video.close(); selectedVideo = null; }
       if (id === 'video' && shown !== 'video') videoReturn = shown;
-      if (id === 'video' && lecture.controller && lecture.controller.status === 'playing') lecture.controller.pause();
       shown = id;
+      if (selectedStage(current, ctx.events()) !== id) ctx.emit('checkpoint', null, 'view-stage:' + id);
       render();
+      const destination = panels[id].querySelector('h2') || panels[id].querySelector('[role="status"], button, textarea, input');
+      if (destination) { if (!destination.matches('button, textarea, input')) destination.tabIndex = -1; destination.focus({preventScroll: true}); }
     }
 
     // ------------------------------------------------------------------------------------------------- questions (probe and check)
     function treeView(name) {
       const panel = panels[name];
+      if (!current[name]) { panel.textContent = ''; panel.append(el('p', {role: 'status', text: 'This check has not been prepared yet. You can study in another stage.'})); return; }
       const view = views[name] = views[name] || {viewing: null, signature: ''};
       const r = replay(current, name, ctx.events());
-      const signature = JSON.stringify([r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, derived, shown]);
+      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, derived, shown]);
       if (signature === view.signature) return;
       view.signature = signature;
       panel.textContent = '';
@@ -265,6 +361,7 @@
 
       if (!focusId) { panel.append(el('p', {text: 'There are no questions here.'})); return; }
       const question = questions.get(focusId), answered = r.trail.find(t => t.id === focusId);
+      if (answered) clearDraft(draftKey(name, question), draftSignature(question));
       const card = el('article', {class: 'ros-qcard', 'data-kind': question.kind});
       const number = answered ? r.trail.indexOf(answered) + 1 : r.trail.length + 1;
       card.append(el('p', {class: 'ros-qcard-count', text: `Question ${number}`}), ctx.rich('h2', question.prompt));
@@ -348,8 +445,8 @@
 
     function submit(question, name, answer) {
       const judged = judge(question, answer);
-      ctx.emit('plan-answer', question.id, {answer, verdict: judged.verdict, tree: name});
-      drafts.delete(question.id);
+      if (ctx.emit('plan-answer', question.id, {answer, verdict: judged.verdict, tree: name}) === false) return;
+      clearDraft(draftKey(name, question), draftSignature(question));
       views[name].viewing = question.id;
       render();
     }
@@ -357,6 +454,7 @@
     function inputFor(question, name, feedback) {
       const form = el('form', {class: 'ros-qcard-form'});
       form.addEventListener('submit', event => event.preventDefault());
+      const key = draftKey(name, question), signature = draftSignature(question), initial = getDraft(key, signature);
       let send;
       if (question.kind === 'choice') {
         const group = el('div', {class: 'ros-picks', role: 'radiogroup', 'aria-label': 'Choose one answer'});
@@ -364,16 +462,20 @@
           const id = `ros-${name}-${question.id}-${option.id}`;
           const input = el('input', {type: 'radio', name: `ros-${name}-${question.id}`, value: option.id, id});
           const label = el('label', {for: id}); label.append(ctx.rich('span', option.text));
-          if (drafts.get(question.id) === option.id) input.checked = true;
-          input.addEventListener('change', () => { drafts.set(question.id, option.id); send.disabled = false; });
+          if (initial === option.id) input.checked = true;
+          input.addEventListener('change', () => { saveDraft(key, signature, option.id); send.disabled = false; });
           group.append(el('div', {class: 'ros-pick'}, input, label));
         }
-        send = button('Check my answer', () => { const chosen = form.querySelector('input:checked'); if (chosen) submit(question, name, chosen.value); }, {class: 'ros-primary', disabled: !drafts.has(question.id)});
+        send = button('Check my answer', () => { const chosen = form.querySelector('input:checked'); if (chosen) submit(question, name, chosen.value); }, {class: 'ros-primary', disabled: !group.querySelector('input:checked')});
         form.append(group, el('div', {class: 'ros-qcard-actions'}, send));
+        draftFields.set(key, {form, signature, restore(value) {
+          for (const input of group.querySelectorAll('input')) input.checked = input.value === value;
+          send.disabled = !group.querySelector('input:checked');
+        }});
       } else {
         const id = `ros-${name}-${question.id}-answer`, multi = question.kind === 'short';
-        const input = multi ? el('textarea', {id, rows: 4, maxlength: 4000, 'aria-label': 'Your answer'}) : el('input', {id, type: 'text', inputmode: 'decimal', autocomplete: 'off', 'aria-label': 'Your answer'});
-        input.value = drafts.get(question.id) || '';
+        const input = multi ? el('textarea', {id, rows: 4, maxlength: 4000, 'aria-label': 'Your answer'}) : el('input', {id, type: 'text', maxlength: 4000, inputmode: 'decimal', autocomplete: 'off', 'aria-label': 'Your answer'});
+        input.value = initial;
         const check = () => {
           const text = input.value.trim();
           if (multi) { if (text) submit(question, name, text); return; }
@@ -382,7 +484,7 @@
           submit(question, name, value);
         };
         send = button(multi ? 'Send my answer' : 'Check my answer', check, {class: 'ros-primary', disabled: !input.value.trim()});
-        input.addEventListener('input', () => { drafts.set(question.id, input.value); send.disabled = !input.value.trim(); });
+        input.addEventListener('input', () => { saveDraft(key, signature, input.value); send.disabled = !input.value.trim(); });
         input.addEventListener('keydown', event => { if (event.key === 'Enter' && (!multi || event.ctrlKey || event.metaKey)) { event.preventDefault(); check(); } });
         const actions = el('div', {class: 'ros-qcard-actions'}, send);
         form.append(input);
@@ -390,10 +492,11 @@
           const line = el('p', {class: 'ros-voice-line', role: 'status'});
           const talk = el('button', {type: 'button', class: 'ros-voice-talk', text: ctx.voice.idle, 'aria-pressed': 'false'});
           ctx.voice.bind({talk, line, row: null, target: () => input, idle: ctx.voice.idle, holding: ctx.voice.holding, checkText: 'Check the words, correct anything wrong, then send. Nothing is sent until you do.',
-            after: () => { drafts.set(question.id, input.value); send.disabled = !input.value.trim(); }});
+            after: () => { saveDraft(key, signature, input.value); send.disabled = !input.value.trim(); }});
           actions.prepend(talk); form.append(actions, line);
         } else form.append(actions);
         form.append(el('p', {class: 'ros-stage-hint', text: multi ? 'After you send it you go straight on; the tutor reads your answer in the background.' : 'Give a number.'}));
+        draftFields.set(key, {form, signature, restore(value) { input.value = value; send.disabled = !value.trim(); }});
       }
       return form;
     }
@@ -405,14 +508,29 @@
 
     // ------------------------------------------------------------------------------------------------- handout
     let handoutNote = {text: '', problem: false};      // what the host last said about opening the PDF
+    let nativeReader = null;
     function openHandout() { handoutNote = {text: 'Opening the handout…', problem: false}; ctx.panes.handout.open(); renderHandout(); }
     function renderHandout() {
       const panel = panels.handout;
       const handout = current.handout, voiceState = ctx.liveVoice ? ctx.liveVoice.state() : 'none';
-      const signature = JSON.stringify([handout, voiceState, derived, shown, handoutNote]);
+      const signature = JSON.stringify([handout, handout && handout.readable ? null : voiceState, derived, shown, handoutNote]);
       if (panel.dataset.signature === signature) return;
+      if (nativeReader) { nativeReader.destroy(); nativeReader = null; }
       panel.dataset.signature = signature; panel.textContent = '';
       const card = el('article', {class: 'ros-handout'});
+      if (handout && handout.readable && doc.defaultView.ResearchOSReader) {
+        card.classList.add('ros-native-handout');
+        card.append(el('h2', {text: handout.title}));
+        const host = el('div', {class: 'ros-reader-host'});
+        const actions = el('div', {class: 'ros-reader-actions'});
+        if (handout.status === 'built' && ctx.panes) actions.append(button('Open the handout', openHandout));
+        if (handout.readable.note) actions.append(ctx.rich('p', '[[' + handout.readable.note + '|Library copy]]'));
+        actions.append(button(derived === 'handout' ? 'Start the lecture' : 'Go to the lecture', startLecture));
+        card.append(host, actions, el('p', {class: 'ros-stage-hint', role: 'status', text: handoutNote.text || 'Readable now · revision ' + handout.readable.revision + (handout.status === 'built' ? ' · PDF available' : ' · PDF export optional')}));
+        panel.append(card);
+        nativeReader = doc.defaultView.ResearchOSReader.mount(host, handout.readable, {doc, rich: ctx.rich, events: ctx.events, emit: ctx.emit});
+        return;
+      }
       if (handout) {
         card.append(el('h2', {text: handout.title}));
         card.append(el('p', {class: 'ros-handout-status', text: {planned: 'The tutor is preparing this document.', draft: 'A draft is ready; the tutor is finishing it.', built: 'Ready.'}[handout.status || 'planned']}));
@@ -423,9 +541,9 @@
       const warming = voiceState === 'warming';
       const actions = el('div', {class: 'ros-qcard-actions'});
       if (handout && handout.status === 'built' && ctx.panes) actions.append(button('Open the handout', openHandout, {class: 'ros-handout-open'}));
-      actions.append(button(derived === 'handout' ? 'Start the lecture' : 'Go to the lecture', startLecture, {class: 'ros-primary', disabled: warming}));
+      actions.append(button(derived === 'handout' ? 'Start the lecture' : 'Go to the lecture', startLecture, {class: 'ros-primary'}));
       card.append(actions, el('p', {class: 'ros-handout-note', role: 'status', 'data-problem': handoutNote.problem ? 'true' : undefined, text: handoutNote.text}));
-      card.append(el('p', {class: 'ros-voice-state', role: 'status', text: voiceState === 'ready' || voiceState === 'busy' ? 'The tutor’s voice is ready.' : warming ? 'The tutor’s voice is warming up. You can start in a moment.'
+      card.append(el('p', {class: 'ros-voice-state', role: 'status', text: voiceState === 'ready' || voiceState === 'busy' ? 'The tutor’s voice is ready.' : warming ? 'The tutor’s voice is warming up. You can start with text or captions now.'
         : voiceState === 'none' ? '' : 'The tutor’s voice is not running, so the lecture will use your device voice or captions.'}));
       panel.append(card);
     }
@@ -491,11 +609,11 @@
     // ------------------------------------------------------------------------------------------------- lecture: the board, a way to ask, nothing else
     const lecture = {host: null, controller: null, stepId: '', asked: new Set(), path: [], script: null, built: null, k: 0, prompted: -1, video: null, videoBox: null, started: false, lastSent: '', sentAt: 0, timer: null};
     // The lecture position is recorded as checkpoints so a reload resumes: "lecture-path:" (the segments, once, at the first step) and "lecture-step:" (the step
-    // reached, only when it is further than any recorded and at most one every few seconds; a pause, the end or leaving the page sends the latest at once).
+    // reached, at most one every few seconds during playback; text navigation also saves backward moves; a pause, the end or leaving the page sends the latest at once).
     const STEP_EVERY_MS = 6000;
     function sendStep(force) {
       const id = lecture.stepId, steps = lecture.script ? lecture.script.steps : [];
-      if (!lecture.started || !id || id === lecture.lastSent || steps.findIndex(s => s.id === id) <= steps.findIndex(s => s.id === lecture.lastSent)) return;
+      if (!lecture.started || !id || id === lecture.lastSent || !steps.some(s => s.id === id)) return;
       const win = doc.defaultView, wait = lecture.sentAt + STEP_EVERY_MS - Date.now();
       if (!force && wait > 0 && win) { if (!lecture.timer) lecture.timer = win.setTimeout(() => { lecture.timer = null; sendStep(true); }, wait); return; }
       if (lecture.timer && win) { win.clearTimeout(lecture.timer); lecture.timer = null; }
@@ -503,6 +621,7 @@
       ctx.emit('checkpoint', null, 'lecture-step:' + id);
     }
     function onLectureEvent(type, data) {
+      if (type === 'status' && ['error', 'invalid'].includes(data.status)) { switchLecture('text', true); return; }
       if (type === 'step') {
         lecture.stepId = data.step.id;
         if (!lecture.started) {
@@ -528,40 +647,103 @@
       lecture.chips = el('div', {class: 'ros-chips', role: 'group', 'aria-label': 'Questions the tutor expected'});
       lecture.composer = el('form', {class: 'ros-ask', hidden: true});
       lecture.input = el('textarea', {rows: 2, maxlength: 4000, 'aria-label': 'Your question'});
-      lecture.send = button('Send', sendQuestion, {class: 'ros-primary', disabled: true});
-      lecture.input.addEventListener('input', () => { lecture.send.disabled = !lecture.input.value.trim(); });
+      lecture.draftSignature = draftSignature({title: current.title, segments: current.segments});
+      lecture.input.value = getDraft('lecture:question', lecture.draftSignature);
+      lecture.send = button('Send', sendQuestion, {class: 'ros-primary', disabled: !lecture.input.value.trim()});
+      const saveQuestion = () => { saveDraft('lecture:question', lecture.draftSignature, lecture.input.value); lecture.send.disabled = !lecture.input.value.trim(); };
+      lecture.input.addEventListener('input', saveQuestion);
+      draftFields.set('lecture:question', {form: lecture.composer, signature: lecture.draftSignature, restore(value) { lecture.input.value = value; lecture.send.disabled = !value.trim(); }});
       lecture.input.addEventListener('keydown', event => { if (event.key === 'Escape') closeAsk(); else if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); sendQuestion(); } });
       lecture.composer.addEventListener('submit', event => event.preventDefault());
       const row = el('div', {class: 'ros-ask-row'}, lecture.send, button('Cancel', closeAsk));
       if (ctx.voice) {
         const line = el('p', {class: 'ros-voice-line', role: 'status'});
         const talk = el('button', {type: 'button', class: 'ros-voice-talk', text: ctx.voice.idle, 'aria-pressed': 'false'});
-        ctx.voice.bind({talk, line, row: null, target: () => lecture.input, idle: ctx.voice.idle, holding: ctx.voice.holding, after: () => { lecture.send.disabled = !lecture.input.value.trim(); }});
+        ctx.voice.bind({talk, line, row: null, target: () => lecture.input, idle: ctx.voice.idle, holding: ctx.voice.holding, after: saveQuestion});
         row.prepend(talk); lecture.composer.append(lecture.input, row, line);
       } else lecture.composer.append(lecture.input, row);
       lecture.askButton = button('Ask a question', openAsk, {class: 'ros-ask-button'});
       lecture.offer = el('div', {class: 'ros-offer', role: 'status'});
       lecture.next = button(current.check ? 'Continue to the check' : 'Finish', endLecture, {class: 'ros-primary', hidden: true});
       lecture.videoBox = el('section', {class: 'ros-video-card', hidden: true, 'aria-label': 'Video'});
-      tools.append(lecture.videoBox, lecture.askButton, lecture.chips, lecture.composer, lecture.offer, lecture.next);
+      const modes = el('div', {class: 'ros-lecture-modes', role: 'group', 'aria-label': 'Lecture presentation'});
+      lecture.textMode = button('Text lesson', () => switchLecture('text'));
+      lecture.boardMode = button('Blackboard', () => switchLecture('board'));
+      lecture.modeNote = el('p', {class: 'ros-stage-hint', role: 'status'});
+      modes.append(lecture.textMode, lecture.boardMode);
+      tools.append(modes, lecture.modeNote, lecture.videoBox, lecture.askButton, lecture.chips, lecture.composer, lecture.offer, lecture.next);
       panels.lecture.append(lecture.host, tools);
       lecture.built = lectureChunks(current, lecture.path); lecture.k = 0;
       lecture.script = lecture.built.chunks.length ? chunkScript(lecture.built, 0) : composeScript(current, lecture.path);
       if (ctx.panes) ctx.panes.video.on(onVideoMessage);
       const resumeAt = lecture.started ? resumeStep(lecture.script, events) : null;
       if (resumeAt) lecture.lastSent = resumeAt;
-      lecture.controller = ctx.mountBoard(lecture.host, lecture.script, onLectureEvent, resumeAt || undefined);
+      lecture.stepId = resumeAt || '';
+      const mode = checkpoints(events, 'lecture-mode:').at(-1);
+      switchLecture(mode === 'text' ? 'text' : 'board', false, true);
       renderChips();
       if (lecture.controller.preloadAcks) lecture.controller.preloadAcks(ACKS);   // short clips the live voice plays the moment a question is sent
       // The caption, the voice note and the controls change as the lecture plays; the board gives back or takes height as they do.
       const win = doc.defaultView;
       if (win && win.MutationObserver) new win.MutationObserver(() => win.requestAnimationFrame(fitLecture)).observe(shell, {childList: true, characterData: true, subtree: true});
     }
+
+    // Both presentations consume the same prepared steps and retain the same
+    // path, raw questions and position. No speech or drawing package is used here.
+    function textLecture(startAt) {
+      let script = lecture.script, index = Math.max(0, script.steps.findIndex(s => s.id === startAt)), status = 'paused', reader = null;
+      const card = el('article', {class: 'ros-text-lesson'}), host = el('div', {class: 'ros-reader-host'});
+      const previous = button('Previous step', () => { if (index > 0) { index--; paint(true); } });
+      const next = button('Next step', () => {
+        if (index + 1 < script.steps.length) { index++; paint(true); }
+        else { status = script.open ? 'waiting' : 'done'; onLectureEvent('status', {status}); }
+      });
+      card.append(host, el('div', {class: 'ros-reader-actions'}, previous, next)); lecture.host.append(card);
+      function paint(record) {
+        if (reader) reader.destroy();
+        const step = script.steps[index];
+        previous.disabled = index === 0;
+        next.textContent = index + 1 < script.steps.length ? 'Next step' : script.open ? 'Continue' : 'Finish reading';
+        const paragraphs = step ? [step.say, ...(step.do || []).flatMap(a => a.op === 'write' ? [a.text] : a.op === 'math' ? ['$$' + a.tex + '$$'] : [])].filter(Boolean) : [];
+        if (!paragraphs.length) paragraphs.push('This step has no prepared text description. Consult the handout or ask the tutor; drawing-only actions require Blackboard.');
+        reader = doc.defaultView.ResearchOSReader.mount(host, {revision: 1, sections: [{title: 'Step ' + (index + 1) + ' of ' + script.steps.length, paragraphs}], sources: []},
+          {doc, rich: ctx.rich, events: ctx.events, emit: ctx.emit, prefix: 'lecture-read:' + (step ? step.id : 'empty') + ':', label: 'Lesson section'});
+        if (step && record) { onLectureEvent('step', {step}); sendStep(true); }
+        lecture.next.hidden = true;
+      }
+      paint(true);
+      return {get status() { return status; }, pause() {}, resume() {}, start() {},
+        layout() { reader.layout(); },
+        update(nextScript) { const id = script.steps[index] && script.steps[index].id; script = nextScript; index = Math.max(0, script.steps.findIndex(s => s.id === id)); status = 'paused'; paint(false); return {ok: true}; },
+        destroy() { if (reader) reader.destroy(); card.remove(); }};
+    }
+    function switchLecture(mode, failed = false, initial = false) {
+      if (!lecture.host) return;
+      if (lecture.controller) { if (lecture.controller.pause) lecture.controller.pause(); sendStep(true); lecture.controller.destroy(); }
+      lecture.host.textContent = ''; lecture.controller = null;
+      if (mode === 'board') {
+        try {
+          lecture.controller = ctx.mountBoard(lecture.host, lecture.script, onLectureEvent, lecture.stepId || undefined);
+          if (!lecture.controller || ['invalid', 'error'].includes(lecture.controller.status)) throw new Error('Board unavailable');
+        } catch (_) {
+          if (lecture.controller && lecture.controller.destroy) lecture.controller.destroy();
+          lecture.host.textContent = ''; mode = 'text'; failed = true;
+        }
+      }
+      if (mode === 'text') lecture.controller = textLecture(lecture.stepId);
+      lecture.mode = mode;
+      lecture.textMode.setAttribute('aria-pressed', String(mode === 'text'));
+      lecture.boardMode.setAttribute('aria-pressed', String(mode === 'board'));
+      lecture.modeNote.textContent = failed ? 'Blackboard unavailable. Continue with the prepared text lesson.' : mode === 'text' ? 'Read at your own pace. Drawing-only content needs Blackboard or a handout alternative.' : '';
+      if (!initial || failed) ctx.emit('checkpoint', null, 'lecture-mode:' + mode);
+      fitLecture();
+    }
     // Fit from stable chrome, never from the caption's height. Measuring the
     // entire shell creates a feedback loop: a narrow caption wraps, steals more
     // height and makes the board narrower again. Paginate supporting text and
     // size only the drawing frame to keep controls inside the viewport.
     function fitLecture() {
+      if (lecture.mode === 'text') return; // the reader observes its own available size
       const board = lecture.host && lecture.host.querySelector('.ros-board'), surface = board && board.querySelector('.ros-board-surface'), frame = board && board.querySelector('.ros-board-frame');
       const win = doc.defaultView;
       if (!surface || !frame || !win || shown !== 'lecture') return;
@@ -686,7 +868,7 @@
       pausedForAsk = false;
     }
     function closeAsk(hold) {
-      lecture.composer.hidden = true; lecture.askButton.hidden = false; lecture.input.value = ''; lecture.send.disabled = true;
+      lecture.composer.hidden = true; lecture.askButton.hidden = false;
       if (!hold) resumeAfterAsk();
       lecture.askButton.focus();
     }
@@ -695,7 +877,9 @@
     function sendQuestion() {
       const text = lecture.input.value.trim();
       if (!text) return;
-      ctx.emit('open-question', null, text);
+      if (ctx.emit('open-question', null, text) === false) return;
+      clearDraft('lecture:question', lecture.draftSignature);
+      lecture.input.value = ''; lecture.send.disabled = true;
       lecture.offer.textContent = '';
       for (const index of matchAnticipated(current, text, lecture.path, [...lecture.asked]).slice(0, 2)) {
         const item = current.anticipated[index];
@@ -709,7 +893,7 @@
     function endLecture() {
       ctx.emit('checkpoint', null, 'stage:check');
       derived = stageOf(current, ctx.events());
-      show(derived);
+      show(current.check ? 'check' : 'done');
     }
 
     // ------------------------------------------------------------------------------------------------- done
@@ -730,6 +914,7 @@
       derived = stageOf(current, ctx.events());
       for (const id of Object.keys(panels)) panels[id].hidden = id !== shown;
       renderBar();
+      if (advice) advice.refresh();
       if (shown === 'probe') treeView('probe');
       else if (shown === 'handout') renderHandout();
       else if (shown === 'lecture') {
@@ -744,6 +929,7 @@
       else if (shown === 'check') treeView('check');
       else if (shown === 'done') renderDone();
       shell.dataset.stage = shown;
+      if (shown === 'handout' && nativeReader) nativeReader.layout();
     }
     if (ctx.liveVoice) {
       let previousVoice = ctx.liveVoice.state();
@@ -782,8 +968,12 @@
 
     return {
       get stage() { return shown; },
+      refreshDrafts,
       update(next) { current = next; title.textContent = next.title; adjustLecture(); render(); },
       destroy() {
+        if (typeof unsubscribeDrafts === 'function') unsubscribeDrafts();
+        if (advice) advice.destroy();
+        if (nativeReader) nativeReader.destroy();
         if (lecture.video && (lecture.video.phase === 'opening' || lecture.video.phase === 'playing') && ctx.panes) ctx.panes.video.close();
         if (lecture.controller && lecture.controller.destroy) lecture.controller.destroy();
         shell.remove();
@@ -791,5 +981,5 @@
     };
   }
 
-  return {END, STAGES, ACKS, judge, lecturePath, composeScript, lectureChunks, chunkScript, replay, stageOf, marks, parseNumber, tokens, matchAnticipated, mount, reviewedResults, recordedPath, lectureFor, resumeStep};
+  return {END, STAGES, ACKS, judge, lecturePath, composeScript, lectureChunks, chunkScript, replay, stageOf, selectedStage, stageStatus, marks, parseNumber, tokens, matchAnticipated, mount, reviewedResults, recordedPath, lectureFor, resumeStep, activePlanReviews, sessionAdaptation};
 });

@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased — adaptive learning core
+
+- Study advice exposes attempt-specific and canonical recommendations beside the
+  existing stage controls, with explicit navigation and pending tutor requests.
+  Context snapshots refresh at startup/review boundaries without exposing private
+  paths or altering raw work; missing context is reported honestly.
+
+- Review-driven pacing applies only to the latest actual answer attempt; old or
+  late reviews cannot approve newer pending reasoning. Session advice identifies
+  prepared repairs while preserving started lecture paths and canonical evidence.
+
+- Tutor/course context receipts and startup/resume briefs include bounded canonical
+  next-action recommendations with rationales, independent of optional services.
+  Bound target/root/policy survive resume; explicit target rebinding is supported.
+
+- Lecture offers a paged text presentation from the same prepared steps and
+  switches to it when Blackboard cannot mount. Mode changes and reload retain
+  the frozen path, step, typed questions and pending assessments.
+
+- Native handouts open before diagnostics and PDF export, with source locators,
+  responsive pages, explicit solution reveal and saved reading position.
+- Native publication versions reusable library notes and preserves human edits;
+  optional PDF completion retains newer native content and plan changes.
+
+- Prepared session stages can be visited in any order; navigation records the
+  selected view independently of diagnostic progress and pauses a playing lecture.
+- Session startup defaults to text. Optional `--voice` readiness is reported
+  separately, and warming or failed speech no longer blocks lecture entry.
+- Existing evidence, stage identities, board styling and review gates are preserved.
+
 ## 0.9.7 - 2026-10-18 - Planned Sessions and Reliable Startup
 
 - Prepared probe trees, lecture segments, anticipated answers, PDF handouts and

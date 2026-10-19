@@ -1,0 +1,20 @@
+{
+  "modules": [
+    "test_adaptive_context",
+    "test_tutor_plan",
+    "test_context_kernel",
+    "test_context_enforcement",
+    "test_context_protocol",
+    "test_context_parity",
+    "test_session_start",
+    "test_html_sessions",
+    "test_native_handout",
+    "test_release_documentation"
+  ],
+  "tests_run": 195,
+  "seconds": 266.52,
+  "failures": [],
+  "errors": [],
+  "skipped": [],
+  "successful": true
+}

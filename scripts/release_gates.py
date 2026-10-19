@@ -24,8 +24,8 @@ CHROME_CANDIDATES = (
 BROWSER_TESTS = ('html-runtime-browser.js', 'html-browser-e2e.cjs', 'html-components-browser.cjs',
                  'html-design-browser.cjs', 'html-gallery-browser.cjs', 'html-navigation-browser.cjs',
                  'html-tutor-browser.cjs', 'html-richtext-browser.cjs', 'html-visuals-browser.cjs', 'html-workspace-browser.cjs',
-                 'html-supervision-browser.cjs', 'html-narration-browser.cjs', 'html-board-browser.cjs', 'html-stages-browser.cjs', 'html-voice-browser.cjs', 'html-live-voice-browser.cjs', 'html-scenarios-browser.cjs', 'html-visual-parity.cjs')
-NODE_TESTS = ('html-host.test.js', 'html-runtime-unit.js', 'richtext-conformance.js', 'narration-unit.js', 'board-unit.js', 'stages-unit.js')
+                 'html-supervision-browser.cjs', 'html-narration-browser.cjs', 'html-board-browser.cjs', 'html-stages-browser.cjs', 'html-handout-browser.cjs', 'html-text-lecture-browser.cjs', 'html-advice-browser.cjs', 'html-drafts-browser.cjs', 'html-drafts-runtime-browser.cjs', 'html-preferences-browser.cjs', 'html-p0-text-flow-browser.cjs', 'html-voice-browser.cjs', 'html-live-voice-browser.cjs', 'html-scenarios-browser.cjs', 'html-visual-parity.cjs')
+NODE_TESTS = ('html-host.test.js', 'html-runtime-unit.js', 'richtext-conformance.js', 'narration-unit.js', 'board-unit.js', 'stages-unit.js', 'drafts-unit.js', 'html-drafts-host.test.js')
 SESSION_INPUT_TESTS = {'html-navigation-browser.cjs'}
 # Needs material the repository cannot supply; reported as SKIPPED, never as passed.
 EXTERNAL_INPUT_TESTS = {'html-visual-parity.cjs': 'requires the externally supplied recitation reference page and the one historical session whose content its later assertions describe '
@@ -108,6 +108,10 @@ def gates(only=None):
 
 
 def main(argv=None):
+    # Failure details may include Unicode source text even on a legacy Windows
+    # console. Reporting must finish (and persist JSON) after a failing gate.
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--only', action='append', help='substring filter on gate names (repeatable)')
     parser.add_argument('--strict', action='store_true', help='treat SKIPPED gates as failures')

@@ -66,15 +66,23 @@ record does not establish is taught, probed or branched to first, never assumed.
 ask the learner to name helpers, reconnect the tutor, or request each capability.
 Read `references/SESSION_PLAN.md` and `references/HANDOUT_PROTOCOL.md`. Prepare a
 complete plan (probe tree, core/repair/extension lecture segments, anticipated
-answers and closing checks), attach it with `html_sessions.py plan`, and build the
-LaTeX PDF handout. On resume, preserve every original answer and review, reuse
+answers and closing checks), attach it with `html_sessions.py plan`, and immediately
+publish a source-grounded native handout with `handout.py publish-readable --root
+<vault> --session <note> --content readable.json`. Use the existing learner record
+for suggested focus; keep the complete resource accessible. Source inventory and
+drafting may overlap, but never fabricate unavailable material or precise locators.
+Diagnostics may add a new readable revision; optional PDF compilation must not
+block study. On resume, preserve every original answer and review, reuse
 relevant existing diagnostic results with explicit provenance, and respect a
 request to continue teaching rather than repeat probes. A course-map node with
 unknown mastery does not erase actual saved answers.
 
 Run `html_sessions.py --root <vault> start <session> --holder <agent-id>` before
 calling it ready. Startup checks the plan, handout, deployed runtime and companion,
-then warms the voices and connects a tutor lease. A failed check is preparation
+then connects a tutor lease in text mode. Voice is optional: use `--voice` only
+when requested and process startup is approved; inspect `voice_ready` separately
+from core `ready`. Never block Handout, Quiz, Lecture or Check on voice warming
+or failure. A failed core check is preparation
 work for the agent, not an instruction for the learner to debug. Back up files
 before an explicitly authorized rollout; never bypass a conflict by substituting
 an unrelated runtime. The preflight reports `desktop_verified: false`: validate

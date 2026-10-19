@@ -286,6 +286,48 @@ def plan(collection: k.Collection, scope: str, value: str, *, focus=(), foundati
                                  if seeds else {'action': 'map_concepts', 'note': 'No explicit concept mapping; identify a narrow target before teaching.'})}
 
 
+def recommendation(collection, scope, value, *, as_of=None, context=None, limit=60):
+    """Compact pacing projection over the one canonical planner, never evidence.
+
+    Refuse to infer skip decisions from invalid or oversized prerequisite closures.
+    The full plan remains available through the existing command when inspection
+    or an explicit profile choice is needed.
+    """
+    base = {'policy_revision': 1, 'evidence': False, 'target': {'kind': scope, 'id': value}}
+    if collection.diagnostics:
+        return dict(base, status='limited', next={'action': 'inspect_context'},
+                    rationale='Canonical learning records have validation diagnostics; resolve them before selecting or skipping instruction.')
+    try:
+        result = plan(collection, scope, value, as_of=as_of, context=context)
+    except ValueError as exc:
+        return dict(base, status='limited', next={'action': 'map_concepts'}, rationale=str(exc)[:500])
+    concepts = result.get('concepts', [])
+    closure = set(result.get('capability_closure', [])) | {c['concept'] for c in concepts}
+    if (len(closure) > limit or len(json.dumps(result['next'], ensure_ascii=False)) > 8000
+            or len(result['next'].get('capabilities', [])) > limit):
+        return dict(base, status='limited', next={'action': 'narrow_target'},
+                    rationale=f'The prerequisite closure exceeds the {limit}-node budget; narrow the target before choosing instruction.')
+    step = result['next']
+    action_name = step['action']
+    subject = step.get('concept') or step.get('capability') or value
+    state = step.get('state', 'unknown')
+    if action_name == 'complete':
+        why = 'Current evidence satisfies the selected requirements; advance without automatic reteaching.'
+    elif action_name == 'choose_capability':
+        why = f'{subject} has multiple capability profiles; choose the intended scope before planning.'
+    elif action_name.endswith('repair'):
+        why = f'{subject} has {state} evidence in {step.get("scope", "the selected scope")}/{step.get("dimension", "profile")}; repair this gap before advancing.'
+    elif action_name.endswith('probe'):
+        why = f'{subject} lacks sufficient current evidence in {step.get("scope", "the selected scope")}/{step.get("dimension", "profile")}; use a brief diagnostic before reteaching. Stale evidence does not prove forgetting.'
+    elif action_name == 'project_application':
+        why = f'General prerequisites are sufficient; check application in {step.get("context") or "the selected context"} separately.'
+    else:
+        why = step.get('note') or 'Inspect the selected canonical profile before choosing instruction.'
+    skip = [c['concept'] for c in concepts if c['role'] == 'prerequisite' and all(x['sufficient'] for x in c['checks'])]
+    return dict(base, status='ready', next=step, rationale=why, current_prerequisites=skip,
+                mode=result['mode'], as_of=result['as_of'], closure_size=len(closure))
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, required=True)
