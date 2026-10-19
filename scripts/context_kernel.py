@@ -528,6 +528,8 @@ def build(request):
         import terms
         closure = {n['id'] for n in retrieval['learner']['nodes']} | ({req['target']['id']} if req['target'] else set())
         retrieval['learner']['student'] = terms.brief(ctx['vault'], closure)
+    if req['workflow'] in {'tutor', 'course-study'}:
+        retrieval['recommendation'] = _recommendation(req, collection)
     if registry is not None and records and sources['research']['status'] == 'ok':
         retrieval['research'] = _research_view(req, registry, records, retrieval['learner'])
     if payload['library'] is not None:
@@ -550,6 +552,21 @@ def build(request):
         retrieval['sessions'] = payload['sessions'][:req['limits']['max_sessions']]
     mode = 'resume' if retrieval['session']['exists'] else 'bootstrap' if (session_path or req['project']) else 'standalone'
     return _finish(req, mode, ordered, retrieval)
+
+
+def _recommendation(req, collection):
+    """Reuse the already discovered graph; never scan or write another ledger."""
+    target = req['target']
+    if not target or target['kind'] not in {'concept', 'capability', 'project'}:
+        target = {'kind': 'project', 'id': req['project_id']} if req['project_id'] else None
+    if collection is None or target is None:
+        return {'policy_revision': 1, 'status': 'limited', 'evidence': False,
+                'next': {'action': 'inspect_context' if collection is None else 'map_concepts'},
+                'rationale': 'Canonical learning context is unavailable.' if collection is None else 'Select a canonical target; no remembered mastery is inferred.'}
+    import tutor_plan
+    return tutor_plan.recommendation(collection, target['kind'], target['id'],
+                                     context=req['project_id'], as_of=date.fromisoformat(req['as_of']),
+                                     limit=req['limits']['max_nodes'])
 
 
 def _finish(req, mode, sources, retrieval):
@@ -581,6 +598,12 @@ def _finish(req, mode, sources, retrieval):
         if part and part.get('truncated'):
             limitations.append(f'{name} retrieval is a bounded subgraph: {part["truncated"]}')
     outcome = 'blocked' if blocked else 'degraded' if degraded else 'ready'
+    recommendation = retrieval.get('recommendation')
+    if recommendation:
+        recommendation['context_outcome'] = outcome
+        if blocked:
+            recommendation.update(status='blocked', next={'action': 'repair_context'}, current_prerequisites=[],
+                                  rationale='Essential context is unavailable; repair it before teaching or assessment.')
     receipt = {'receipt_schema': RECEIPT_SCHEMA, 'workflow': req['workflow'], 'mode': mode, 'outcome': outcome,
                'request': req, 'sources': sources, 'retrieval': retrieval, 'limitations': limitations,
                'blocking': [s['name'] for s in blocked], 'consumer': req['consumer'],
@@ -717,7 +740,14 @@ def preflight(request, *, write=True, reuse=True):
     if reuse and destination and destination.is_file():
         try:
             cached = load(destination)
-            if check_fresh(cached)['fresh']:
+            projection = cached['retrieval'].get('recommendation')
+            policy_current = req['workflow'] not in {'tutor', 'course-study'} or (projection or {}).get('policy_revision') == 1
+            # Missing/invalid/unreadable sources have no reliable fingerprint;
+            # recheck on the next explicit preflight so repaired graphs recover.
+            failed_source = cached['outcome'] == 'blocked' or any(
+                s['name'] == 'learning' and s['status'] in BROKEN and not s.get('fingerprint')
+                for s in cached['sources'])
+            if policy_current and not failed_source and check_fresh(cached)['fresh']:
                 return cached, destination, True
         except ContextError:
             pass

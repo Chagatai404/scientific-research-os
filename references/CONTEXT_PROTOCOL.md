@@ -122,3 +122,15 @@ Stage 3 (independent literature discovery) is deliberately **not** given project
 
 It proves which records were consulted and that they have not changed. It cannot prove a
 model read or understood the receipt; the gated actions above are what make skipping it fail.
+
+## Tutor recommendation projection
+
+Tutor and course-study receipts now include `retrieval.recommendation` from the
+existing canonical planner, computed without a second discovery pass. It carries
+`policy_revision`, `status`, `evidence: false`, `next` and `rationale`; successful
+projections also list current prerequisite concepts and the evaluation date.
+It inherits the receipt's context outcome. A blocked receipt cannot recommend
+instruction. Missing policy projections are rebuilt by preflight; receipts with
+failed essential sources are retried to detect repair. Existing receipt/binding
+schemas remain readable, and the projection is covered by the receipt digest.
+A cached recommendation is not permission to ignore stale canonical fingerprints.

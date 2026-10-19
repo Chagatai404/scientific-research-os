@@ -1686,7 +1686,8 @@ def session_readiness(root, relative_md):
                 issues.append('COMPANION_DISABLED: enable the Research OS HTML Sessions companion')
         except (OSError, ValueError):
             issues.append('COMPANION_UNCONFIGURED: cannot verify the enabled companion')
-    return {'ready': not issues, 'issues': issues, 'desktop_verified': False}
+    return {'ready': not issues, 'issues': issues, 'desktop_verified': False,
+            'recommendation': session_recommendation(root, relative_md, state)}
 
 
 def start_session(root, relative_md, holder=None, provider="generic", timeout=None, voice=False, ensure=None):
@@ -1793,6 +1794,37 @@ def context_request(root, metadata, session_type=None, session=None, **overrides
     return request
 
 
+def planning_request(root, relative_md, state, **overrides):
+    """Preserve explicitly bound target/root/policy; refresh the evidence date.
+
+    Changing a target is explicit (`context --target ... --bind`), never inferred
+    from an answer, page selection or an incidental mention in lesson prose.
+    """
+    bound = (state or {}).get('context') or {}
+    request = dict(bound['request']) if bound.get('request') else context_request(
+        root, (state or {}).get('metadata', {}), (state or {}).get('type'), str(relative_md))
+    request.update(vault=str(Path(root).resolve()), session=str(relative_md), as_of=dt.date.today().isoformat())
+    request.update({key: value for key, value in overrides.items() if value is not None})
+    return request
+
+
+def session_recommendation(root, relative_md, state=None):
+    """Startup projection, cached by the context kernel; no session/ledger writes."""
+    import context_kernel as ck
+    state = state if state is not None else load_session(root, relative_md)
+    bound = state.get('context') or {}
+    if not bound or bound.get('waived'):
+        return {'policy_revision': 1, 'status': 'limited', 'evidence': False,
+                'next': {'action': 'inspect_context'},
+                'rationale': 'Historical or explicitly waived context: bind a current canonical target before claiming personalized instruction.'}
+    receipt, _, reused = ck.preflight(planning_request(root, relative_md, state))
+    ck.require(receipt)
+    return dict(receipt['retrieval'].get('recommendation') or {
+        'status': 'limited', 'evidence': False, 'next': {'action': 'inspect_context'},
+        'rationale': 'This context workflow does not select tutoring actions.'},
+        receipt_id=receipt['receipt_id'], cached=reused)
+
+
 def _adapter_lines(root, project_root=None):
     """Which optional Obsidian adapters the vault has, from its files alone. Detection never blocks or changes a session."""
     try:
@@ -1802,7 +1834,7 @@ def _adapter_lines(root, project_root=None):
         return ["Adapter detection was unavailable (" + type(exc).__name__ + "); use the built-in routes."]
 
 
-def session_context(root, relative_md, project_root=None, learning_root=None, as_of=None, library_root=None):
+def session_context(root, relative_md, project_root=None, learning_root=None, as_of=None, library_root=None, target=None):
     """Resume brief built on the context kernel; also works before the session exists (bootstrap).
 
     The HTML page is a view, not memory. Nothing here grades, accepts or edits a session; the only
@@ -1820,6 +1852,11 @@ def session_context(root, relative_md, project_root=None, learning_root=None, as
     mentioned = sorted(set(re.findall(r"\b(?:RQ|H|EXP|DEC)-\d{3,}\b", source)))
     request = context_request(root, metadata, session_type, str(relative_md), project_root=project_root,
                               learning_root=learning_root, library_root=library_root, as_of=as_of, records=mentioned or None)
+    if state is not None:
+        request = planning_request(root, relative_md, state, project_root=project_root, learning_root=learning_root,
+                                   library_root=library_root, as_of=as_of, target=target, records=mentioned or None)
+    elif target is not None:
+        request['target'] = target
     receipt, receipt_file, _ = ck.preflight(request)
     retrieval = receipt["retrieval"]
     learner, research = retrieval["learner"], retrieval["research"]
@@ -1831,7 +1868,8 @@ def session_context(root, relative_md, project_root=None, learning_root=None, as
              "pending": pending_activity(state) if state else [], "questions": [], "project": retrieval["project"],
              "research": None, "knowledge": None, "notes": [], "receipt": receipt,
              "receipt_file": str(receipt_file) if receipt_file else None, "blocked": receipt["outcome"] == "blocked",
-             "adapters": _adapter_lines(root, project_root), "at_risk": ck.at_risk(receipt)}
+             "adapters": _adapter_lines(root, project_root), "at_risk": ck.at_risk(receipt),
+             "recommendation": retrieval.get('recommendation')}
     for q in (state["questions"] if state else []):
         responses = [e for e in state["events"] if e["type"] == "response" and e.get("question_id") == q["id"]]
         review = (q.get("reviews") or [None])[-1]
@@ -1905,7 +1943,12 @@ def render_context(brief):
         if receipt["outcome"] == "blocked":
             lines.append("- BLOCKED: essential context is unavailable (" + ", ".join(receipt["blocking"]) + "). Do not teach, post questions or edit this session until it is repaired.")
         lines += [f"- Limitation: {x}" for x in receipt["limitations"]] + [""]
-    lines += ["## Awaiting you", ""]
+    recommendation = brief.get('recommendation')
+    if recommendation:
+        lines += ['', '## Recommended next action', '',
+                  f"- {recommendation['next']['action']} ({recommendation['status']}): {recommendation['rationale']}",
+                  '- This is pacing advice, not a grade or a change to the current lesson.']
+    lines += ["", "## Awaiting you", ""]
     for item in brief["pending"]:
         if item["kind"] == "response":
             lines.append(f"- Review `{item['question_id']}` ({item['question_kind']}, submission {item['attempt']} of {item['attempts']}, confidence {item['confidence']}, hints {item['hints_revealed']}): {json.dumps(item['response'], ensure_ascii=False)[:400]}")
@@ -2361,6 +2404,7 @@ def main():
     resume = sub.add_parser("context", help="Resume brief: pending learner activity plus research and knowledge graph state")
     resume.add_argument("session"); resume.add_argument("--project-root", type=Path); resume.add_argument("--learning-root", type=Path)
     resume.add_argument("--library-root", type=Path)
+    resume.add_argument("--target", help="canonical concept:ID, capability:ID or project:ID; add --bind to persist the changed target")
     resume.add_argument("--as-of"); resume.add_argument("--json", action="store_true")
     resume.add_argument("--bind", action="store_true", help="store this context as the session's binding (adopts a historical session)")
     recovery = sub.add_parser("recover"); recovery.add_argument("session"); recovery.add_argument("--apply", action="store_true")
@@ -2475,7 +2519,9 @@ def main():
     elif args.command == "wait":
         result = wait_for_activity(root, args.session, args.timeout, holder=args.holder, provider=args.provider, ttl=args.ttl)
     elif args.command == "context":
-        brief = session_context(root, args.session, args.project_root, args.learning_root, args.as_of, args.library_root)
+        import context_kernel as ck
+        brief = session_context(root, args.session, args.project_root, args.learning_root, args.as_of, args.library_root,
+                                target=ck.parse_target(args.target) if args.target else None)
         if args.bind:
             if brief["blocked"] or not brief["exists"]:
                 raise SystemExit("Cannot bind: " + ("essential context is blocked" if brief["blocked"] else "the session does not exist yet"))

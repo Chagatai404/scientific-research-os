@@ -58,7 +58,7 @@ GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py",
 SESSION_HELPERS = ("html_sessions.py", "common.py", "research.py", "knowledge.py", "ontology.py",
                    "validate_evidence.py", "computational_manifest.py",
                    # The context kernel gates every session; this is its complete import closure.
-                   "context_kernel.py", "migrate_learning.py", "paper_library.py", "library_index.py", "terms.py", "resources.py", "visuals.py",
+                   "context_kernel.py", "tutor_plan.py", "migrate_learning.py", "paper_library.py", "library_index.py", "terms.py", "resources.py", "visuals.py",
                    # Stdlib-only verification engine: every review workflow can execute its checks.
                    "scientific_verify.py", "chembio_verify.py", "structure_verify.py",
                    # The shared scientific inline grammar html_sessions renders with.

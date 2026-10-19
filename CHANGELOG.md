@@ -2,6 +2,10 @@
 
 ## Unreleased — adaptive learning core
 
+- Tutor/course context receipts and startup/resume briefs include bounded canonical
+  next-action recommendations with rationales, independent of optional services.
+  Bound target/root/policy survive resume; explicit target rebinding is supported.
+
 - Lecture offers a paged text presentation from the same prepared steps and
   switches to it when Blackboard cannot mount. Mode changes and reload retain
   the frozen path, step, typed questions and pending assessments.
