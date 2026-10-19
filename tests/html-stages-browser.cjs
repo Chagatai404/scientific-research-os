@@ -47,7 +47,7 @@ function hostPage(size, seeded = [], options = {}) {
   const hostInfo = JSON.stringify({token: 'tok', session_id: sessionId, state, voice: {speak: true, capable: true}, video_timeout_ms: videoTimeout}).replace(/</g, '\\u003c');
   const srcdoc = standalone.replace('<script type="application/json" id="ros-session-data">', '<script>' + INSTRUMENT + 'window.ROS_HOST=' + hostInfo + ';</script><script type="application/json" id="ros-session-data">');
   return {srcdoc, html: `<!doctype html><body style="margin:0"><iframe id="session" sandbox="allow-scripts" style="width:${size.width}px;height:${size.height}px;border:0"></iframe><script>
-    window.__events = ${JSON.stringify(seeded)}; window.__log = []; window.__tts = 'warming'; window.__heard = 'because a square is never negative';
+    window.__events = ${JSON.stringify(seeded)}; window.__log = []; window.__drafts = {}; window.__tts = 'warming'; window.__heard = 'because a square is never negative';
     // How the scripted host answers a video request: ended (opens, then the video ends), closed (the learner closes the tab), hold (opens and stays), error (the player refuses), silent (no answer).
     window.__videoMode = 'ended'; window.__handoutMode = 'ok'; window.__opened = [];
     const send = payload => document.getElementById('session').contentWindow.postMessage(Object.assign({channel: 'research-os', token: 'tok', session_id: ${JSON.stringify(sessionId)}}, payload), '*');
@@ -57,6 +57,16 @@ function hostPage(size, seeded = [], options = {}) {
       const frame = document.getElementById('session'), d = m.data;
       if (m.source !== frame.contentWindow || !d || d.token !== 'tok') return;
       window.__log.push({type: d.type, action: d.action, keys: Object.keys(d).sort().join(','), widget: d.widget, step: d.step, status: d.status});
+      if (d.type === 'ready') send({type:'drafts',entries:window.__drafts});
+      if (d.type === 'draft') {
+        if (Object.keys(d).sort().join(',') !== 'channel,key,session_id,signature,token,type,value' ||
+            typeof d.key !== 'string' || !/^(answer:(probe|check):[A-Za-z0-9_-]{1,64}|lecture:question)$/.test(d.key) ||
+            typeof d.signature !== 'string' || !/^[a-f0-9]{32}$/.test(d.signature) ||
+            !(d.value === null || typeof d.value === 'string' && d.value.length <= 4000)) throw new Error('Invalid draft protocol message');
+        if (d.value === null) { if (window.__drafts[d.key]?.signature === d.signature) delete window.__drafts[d.key]; }
+        else window.__drafts[d.key] = {signature:d.signature,value:d.value};
+        send({type:'draft-saved'});
+      }
       if (d.event) {
         window.__events.push(d.event);
         send({type: 'state', state: {events: window.__events.map(e => Object.assign({status: 'pending-review'}, e))}});
@@ -391,7 +401,8 @@ function hostPage(size, seeded = [], options = {}) {
 
     // Every message to the host carried only what the protocol allows.
     const log = await t.log();
-    for (const m of log) assert(['ready', 'speak', 'voice', 'board-position', 'video', undefined].includes(m.type) || m.keys.includes('event'), 'unexpected message ' + JSON.stringify(m));
+    for (const m of log) assert(['ready', 'speak', 'voice', 'board-position', 'video', 'draft', undefined].includes(m.type) || m.keys.includes('event'), 'unexpected message ' + JSON.stringify(m));
+    assert(log.filter(m => m.type === 'draft').every(m => m.keys === 'channel,key,session_id,signature,token,type,value'), 'draft transport stays separate from evidence events');
     // The staged lecture is not a declared widget: its position goes to the host under the reserved id, with only the fields the host validates.
     const positions = log.filter(m => m.type === 'board-position');
     assert(positions.length > 0 && positions.every(m => m.widget === 'plan-lecture' && /^[A-Za-z0-9_-]{1,64}$/.test(m.step) && m.keys === 'channel,count,index,session_id,status,step,token,type,widget'), 'the lecture position is reported as plan-lecture: ' + JSON.stringify(positions[0]));

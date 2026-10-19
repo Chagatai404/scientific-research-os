@@ -1,0 +1,17 @@
+{
+  "tests": 157,
+  "failures": 1,
+  "errors": 0,
+  "skipped": [],
+  "seconds": 641.8,
+  "modules": [
+    "test_learning_preferences",
+    "test_learning_advice",
+    "test_adaptive_context",
+    "test_session_start",
+    "test_html_sessions",
+    "test_install",
+    "test_release_gates",
+    "test_release_documentation"
+  ]
+}

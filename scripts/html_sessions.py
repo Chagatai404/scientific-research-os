@@ -345,6 +345,32 @@ def session_adaptation(state):
                 pending_review=0)
 
 
+def answered_plan_changes(old, new, events):
+    """Protect what answered questions actually asked/judged, even on rerouting.
+
+    Explicit pacing reroutes may change only next/on_correct/on_wrong and an
+    option's next. Prompt, criteria, keys, assumptions and solutions retain their
+    meaning; use a new question ID for a changed assessment.
+    """
+    def questions(plan):
+        if not isinstance(plan, dict):
+            return {}
+        return {(tree, q['id']): q for tree in ('probe', 'check')
+                for q in (plan.get(tree) or {}).get('questions', [])}
+    def semantics(question):
+        if question is None:
+            return None
+        value = {k: v for k, v in question.items() if k not in {'next', 'on_correct', 'on_wrong'}}
+        if isinstance(value.get('options'), list):
+            value['options'] = [{k: v for k, v in option.items() if k != 'next'} for option in value['options']]
+        return value
+    before, after = questions(old), questions(new)
+    answered = {(e.get('response', {}).get('tree'), e.get('question_id')) for e in events
+                if e.get('type') == 'plan-answer' and isinstance(e.get('response'), dict)}
+    return [f'{tree}/{qid}: answered question semantics changed; preserve it and add a new question ID'
+            for tree, qid in sorted(answered) if semantics(before.get((tree, qid))) != semantics(after.get((tree, qid)))]
+
+
 def plan_revision_problems(old, new, events):
     """Why replacing the plan ``old`` by ``new`` would move a learner who has already answered: the questions answered must be judged the same and lead where
     they led (which also keeps a finished tree finished, so the stage never moves backwards), and the segments the lecture was started with must still exist.
@@ -405,6 +431,9 @@ def review_plan_answer(root, relative_md, question_id, verdict, feedback="", rev
         if revised_plan is not None:
             _ensure_context(state)
             session_plan.check(revised_plan)
+            changed_answers = answered_plan_changes(plan, revised_plan, state['events'])
+            if changed_answers:
+                raise ValueError('The revised plan would move the learner; nothing was saved: ' + '; '.join(changed_answers))
             problems = plan_revision_problems(plan, revised_plan, state["events"])
             if problems and not allow_reroute:
                 raise ValueError("The revised plan would move the learner; nothing was saved: " + "; ".join(problems))
@@ -1248,6 +1277,17 @@ def update_session(root, relative_md, text=None, **changes):
             raise ValueError('Metadata contradicts source frontmatter; update the source explicitly')
         if 'lifecycle' in changes and front.get('status', changes['lifecycle']) != changes['lifecycle']:
             raise ValueError('Lifecycle contradicts source status; update the source explicitly')
+        if 'plan' in changes:
+            import session_plan
+            session_plan.check(changes['plan'])
+            _ensure_context(state)
+        if 'plan' in changes and state.get('plan'):
+            changed_answers = answered_plan_changes(state['plan'], changes['plan'], state['events'])
+            if changed_answers:
+                raise ValueError('Answered assessment history must be preserved: ' + '; '.join(changed_answers))
+            problems = plan_revision_problems(state['plan'], changes['plan'], state['events'])
+            if problems:
+                raise ValueError('The revised plan would move the learner: ' + '; '.join(problems))
         state.update(changes)
         if "plan" in changes:
             records = _video_records(root, changes["plan"])

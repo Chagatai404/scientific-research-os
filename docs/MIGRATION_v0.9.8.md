@@ -147,8 +147,8 @@ host updates expose advice without context paths. These local checks remain
 PENDING; automated browser acceptance uses an offline scripted host. The styling
 was inspected in dark desktop/phone screenshots, not deployed to the live vault.
 
-Goal/time preferences, richer teaching behavior selection and automatic guarded
-lesson-content revision remain later slices; the advice does not pretend to have
+Explicit goal/time preferences are described below. Richer teaching behavior
+selection and automatic guarded lesson-content revision remain later slices; the advice does not pretend to have
 generated or applied a new curriculum. Existing review/promotion gates still own
 canonical evidence and human review of permanent knowledge.
 
@@ -180,3 +180,20 @@ Install complete helper/runtime/companion bundles together after approval.
 Older strict helper validators may reject this optional field; before rolling
 back, back up the state and remove only `context.preferences`. Retain all raw
 events, reviews, context bindings and canonical knowledge records.
+
+## P0e: explicit staged Check proposals and historical fidelity
+
+`plan_evidence.py --root <vault> --session <session.md> --question <id>
+--mapping <reviewed-mapping.json> --learning-root <records>` prints an explicit
+read-only proposal through the existing evidence gate. See the exact mapping
+contract and manual review requirements in
+[the P0 acceptance audit](plans/p0-remaining-acceptance-audit.md).
+It never writes knowledge, grants retention or promotes permanent notes.
+
+Plan updates now refuse changes to already answered question semantics, even
+with `allow_reroute`. Add a new question ID for a changed assessment. Existing
+records are preserved; this adds no bulk migration and does not reconstruct old
+prompts. Generic plan writes also enforce current context and existing route/
+frozen-segment guards. Deliberate route-only changes retain the existing explicit
+review override. Rollback loses these safeguards, so retain state backups and
+avoid editing historical assessment meaning with older helpers.

@@ -494,12 +494,12 @@ class WrittenAnswers(unittest.TestCase):
     def test_a_revised_plan_replaces_the_plan_in_the_same_save(self):
         self.written()
         revised = mutated(with_why_repair)
-        question(revised, 'twopoint')['prompt'] = 'Reworded: what is the variance of two values 1 and 3?'
+        question(revised, 'again', 'check')['prompt'] = 'Reworded: what is Var(2X-7) if Var(X)=9?'
         revised['title'] = 'Variance, second try'
         done = self.review('partially-correct', 'Half of it.', revised_plan=revised)
         state = self.load()
         self.assertEqual((state['plan']['title'], len(state['plan_reviews']), done['plan_revised']), ('Variance, second try', 1, True))
-        self.assertIn('Reworded', question(state['plan'], 'twopoint')['prompt'])
+        self.assertIn('Reworded', question(state['plan'], 'again', 'check')['prompt'])
 
     def test_a_revision_that_would_move_the_learner_is_refused_and_the_review_with_it(self):
         self.written()
@@ -514,8 +514,8 @@ class WrittenAnswers(unittest.TestCase):
             self.review('incorrect', 'x', revised_plan=moved)
         self.assertNotIn('plan_reviews', self.load())                          # nothing was saved
         self.assertEqual(question(self.load()['plan'], 'scale')['options'], question(mutated(with_why_repair), 'scale')['options'])
-        done = self.review('incorrect', 'x', revised_plan=moved, allow_reroute=True)       # a deliberate decision
-        self.assertTrue(done['plan_revised'])
+        with self.assertRaisesRegex(ValueError, 'answered question semantics'):
+            self.review('incorrect', 'x', revised_plan=moved, allow_reroute=True)  # cannot rewrite an old answer key
 
     def test_a_revision_may_not_drop_a_segment_the_lecture_started_with(self):
         self.written()

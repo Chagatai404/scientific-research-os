@@ -1,0 +1,50 @@
+{
+  "results": [
+    {
+      "gate": "browser:html-stages-browser.cjs",
+      "status": "FAIL",
+      "seconds": 167.5,
+      "tail": [
+        "AssertionError [ERR_ASSERTION]: unexpected message {\"type\":\"draft\",\"keys\":\"channel,key,session_id,signature,token,type,value\"}",
+        "    at C:\\Users\\ASUS\\.codex\\worktrees\\a81d\\scientific-research-os\\tests\\html-stages-browser.cjs:394:26 {",
+        "  generatedMessage: false,",
+        "  code: 'ERR_ASSERTION',",
+        "  actual: false,",
+        "  expected: true,",
+        "  operator: '==',",
+        "  diff: 'simple'",
+        "}"
+      ]
+    },
+    {
+      "gate": "browser:html-handout-browser.cjs",
+      "status": "PASS",
+      "seconds": 53.2,
+      "tail": [
+        "native handout browser checks passed; synthetic offline host timings: [{\"viewport\":{\"width\":1440,\"height\":900},\"first_readable_ms\":981},{\"viewport\":{\"width\":803,\"height\":680},\"first_readable_ms\":1131},{\"viewport\":{\"width\":375,\"height\":740},\"first_readable_ms\":935}]",
+        "screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-handout-pQyfn3"
+      ]
+    },
+    {
+      "gate": "browser:html-text-lecture-browser.cjs",
+      "status": "PASS",
+      "seconds": 43.2,
+      "tail": [
+        "Text lecture missing-board, typed question, reload and mode-switch checks passed; screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-text-lecture-G6jdEz"
+      ]
+    },
+    {
+      "gate": "browser:html-p0-text-flow-browser.cjs",
+      "status": "PASS",
+      "seconds": 18.9,
+      "tail": [
+        "{\"status\":\"PASS\",\"timings\":{\"handout_ms\":722,\"local_choice_ms\":1177},\"requests\":0,\"screenshot\":\"C:\\\\Users\\\\ASUS\\\\AppData\\\\Local\\\\Temp\\\\ros-p0-flow-rQglkI\\\\p0-text-flow.png\",\"limitations\":\"Scripted reviewer and sandbox host; actual Python persistence. Not live Obsidian or production latency.\"}"
+      ]
+    }
+  ],
+  "counts": {
+    "PASS": 3,
+    "FAIL": 1,
+    "SKIPPED": 0
+  }
+}
