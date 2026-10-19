@@ -102,3 +102,9 @@ Approved locally bundled extensions may call
 and receive no filesystem, parent, Node or network privilege. Remote scripts and
 arbitrary modules are not loaded. Extension failures retain a visible error.
 Mobile behavior remains unverified; responsive CSS alone is not verification.
+
+`stages.js` also provides a native Text lesson controller using the reader. It
+consumes the existing prepared board steps (`say`, `do.write`, `do.math`) without
+loading speech or drawing services, preserves lecture checkpoints when switching
+presentations, and exposes missing diagram descriptions explicitly. The existing
+Blackboard presentation remains available in the same three-column shell.

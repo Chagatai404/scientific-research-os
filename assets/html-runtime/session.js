@@ -2005,7 +2005,7 @@
   }
 
   function mount(container, resource, ctx) {
-    const doc = ctx.doc, win = doc.defaultView, prefix = 'handout-read:' + resource.revision + ':';
+    const doc = ctx.doc, win = doc.defaultView, prefix = ctx.prefix || 'handout-read:' + resource.revision + ':';
     const saved = (ctx.events() || []).filter(e => e.type === 'checkpoint' && typeof e.response === 'string' && e.response.startsWith(prefix));
     let cursor = saved.length ? Number(saved[saved.length - 1].response.slice(prefix.length)) : 0;
     const revealed = new Set((ctx.events() || []).filter(e => e.type === 'checkpoint' && typeof e.response === 'string'
@@ -2016,7 +2016,7 @@
     const sections = [];
     if (resource.focus && resource.focus.length) sections.push({title: 'Suggested focus', paragraphs: resource.focus});
     sections.push(...resource.sections);
-    sections.push({title: 'Sources', paragraphs: resource.sources.map(s => s.title + ' — ' + s.reference + '; ' + s.locator)});
+    if (resource.sources.length) sections.push({title: 'Sources', paragraphs: resource.sources.map(s => s.title + ' — ' + s.reference + '; ' + s.locator)});
     const items = [];
     let paragraphId = 0;
     sections.forEach((section, index) => {
@@ -2027,7 +2027,7 @@
     });
     cursor = Number.isInteger(cursor) && cursor >= 0 && cursor < items.length ? cursor : 0;
     const shell = el('div', undefined, 'ros-reader');
-    const choose = el('select'); choose.setAttribute('aria-label', 'Handout section');
+    const choose = el('select'); choose.setAttribute('aria-label', ctx.label || 'Handout section');
     sections.forEach((s, i) => { const o = el('option', s.title); o.value = String(i); choose.append(o); });
     const heading = el('h3');
     const content = el('div', undefined, 'ros-reader-page'); content.setAttribute('aria-live', 'polite');
@@ -2634,11 +2634,11 @@
     // ------------------------------------------------------------------------------------------------- lecture: the board, a way to ask, nothing else
     const lecture = {host: null, controller: null, stepId: '', asked: new Set(), path: [], script: null, built: null, k: 0, prompted: -1, video: null, videoBox: null, started: false, lastSent: '', sentAt: 0, timer: null};
     // The lecture position is recorded as checkpoints so a reload resumes: "lecture-path:" (the segments, once, at the first step) and "lecture-step:" (the step
-    // reached, only when it is further than any recorded and at most one every few seconds; a pause, the end or leaving the page sends the latest at once).
+    // reached, at most one every few seconds during playback; text navigation also saves backward moves; a pause, the end or leaving the page sends the latest at once).
     const STEP_EVERY_MS = 6000;
     function sendStep(force) {
       const id = lecture.stepId, steps = lecture.script ? lecture.script.steps : [];
-      if (!lecture.started || !id || id === lecture.lastSent || steps.findIndex(s => s.id === id) <= steps.findIndex(s => s.id === lecture.lastSent)) return;
+      if (!lecture.started || !id || id === lecture.lastSent || !steps.some(s => s.id === id)) return;
       const win = doc.defaultView, wait = lecture.sentAt + STEP_EVERY_MS - Date.now();
       if (!force && wait > 0 && win) { if (!lecture.timer) lecture.timer = win.setTimeout(() => { lecture.timer = null; sendStep(true); }, wait); return; }
       if (lecture.timer && win) { win.clearTimeout(lecture.timer); lecture.timer = null; }
@@ -2646,6 +2646,7 @@
       ctx.emit('checkpoint', null, 'lecture-step:' + id);
     }
     function onLectureEvent(type, data) {
+      if (type === 'status' && ['error', 'invalid'].includes(data.status)) { switchLecture('text', true); return; }
       if (type === 'step') {
         lecture.stepId = data.step.id;
         if (!lecture.started) {
@@ -2686,25 +2687,84 @@
       lecture.offer = el('div', {class: 'ros-offer', role: 'status'});
       lecture.next = button(current.check ? 'Continue to the check' : 'Finish', endLecture, {class: 'ros-primary', hidden: true});
       lecture.videoBox = el('section', {class: 'ros-video-card', hidden: true, 'aria-label': 'Video'});
-      tools.append(lecture.videoBox, lecture.askButton, lecture.chips, lecture.composer, lecture.offer, lecture.next);
+      const modes = el('div', {class: 'ros-lecture-modes', role: 'group', 'aria-label': 'Lecture presentation'});
+      lecture.textMode = button('Text lesson', () => switchLecture('text'));
+      lecture.boardMode = button('Blackboard', () => switchLecture('board'));
+      lecture.modeNote = el('p', {class: 'ros-stage-hint', role: 'status'});
+      modes.append(lecture.textMode, lecture.boardMode);
+      tools.append(modes, lecture.modeNote, lecture.videoBox, lecture.askButton, lecture.chips, lecture.composer, lecture.offer, lecture.next);
       panels.lecture.append(lecture.host, tools);
       lecture.built = lectureChunks(current, lecture.path); lecture.k = 0;
       lecture.script = lecture.built.chunks.length ? chunkScript(lecture.built, 0) : composeScript(current, lecture.path);
       if (ctx.panes) ctx.panes.video.on(onVideoMessage);
       const resumeAt = lecture.started ? resumeStep(lecture.script, events) : null;
       if (resumeAt) lecture.lastSent = resumeAt;
-      lecture.controller = ctx.mountBoard(lecture.host, lecture.script, onLectureEvent, resumeAt || undefined);
+      lecture.stepId = resumeAt || '';
+      const mode = checkpoints(events, 'lecture-mode:').at(-1);
+      switchLecture(mode === 'text' ? 'text' : 'board', false, true);
       renderChips();
       if (lecture.controller.preloadAcks) lecture.controller.preloadAcks(ACKS);   // short clips the live voice plays the moment a question is sent
       // The caption, the voice note and the controls change as the lecture plays; the board gives back or takes height as they do.
       const win = doc.defaultView;
       if (win && win.MutationObserver) new win.MutationObserver(() => win.requestAnimationFrame(fitLecture)).observe(shell, {childList: true, characterData: true, subtree: true});
     }
+
+    // Both presentations consume the same prepared steps and retain the same
+    // path, raw questions and position. No speech or drawing package is used here.
+    function textLecture(startAt) {
+      let script = lecture.script, index = Math.max(0, script.steps.findIndex(s => s.id === startAt)), status = 'paused', reader = null;
+      const card = el('article', {class: 'ros-text-lesson'}), host = el('div', {class: 'ros-reader-host'});
+      const previous = button('Previous step', () => { if (index > 0) { index--; paint(true); } });
+      const next = button('Next step', () => {
+        if (index + 1 < script.steps.length) { index++; paint(true); }
+        else { status = script.open ? 'waiting' : 'done'; onLectureEvent('status', {status}); }
+      });
+      card.append(host, el('div', {class: 'ros-reader-actions'}, previous, next)); lecture.host.append(card);
+      function paint(record) {
+        if (reader) reader.destroy();
+        const step = script.steps[index];
+        previous.disabled = index === 0;
+        next.textContent = index + 1 < script.steps.length ? 'Next step' : script.open ? 'Continue' : 'Finish reading';
+        const paragraphs = step ? [step.say, ...(step.do || []).flatMap(a => a.op === 'write' ? [a.text] : a.op === 'math' ? ['$$' + a.tex + '$$'] : [])].filter(Boolean) : [];
+        if (!paragraphs.length) paragraphs.push('This step has no prepared text description. Consult the handout or ask the tutor; drawing-only actions require Blackboard.');
+        reader = doc.defaultView.ResearchOSReader.mount(host, {revision: 1, sections: [{title: 'Step ' + (index + 1) + ' of ' + script.steps.length, paragraphs}], sources: []},
+          {doc, rich: ctx.rich, events: ctx.events, emit: ctx.emit, prefix: 'lecture-read:' + (step ? step.id : 'empty') + ':', label: 'Lesson section'});
+        if (step && record) { onLectureEvent('step', {step}); sendStep(true); }
+        lecture.next.hidden = true;
+      }
+      paint(true);
+      return {get status() { return status; }, pause() {}, resume() {}, start() {},
+        layout() { reader.layout(); },
+        update(nextScript) { const id = script.steps[index] && script.steps[index].id; script = nextScript; index = Math.max(0, script.steps.findIndex(s => s.id === id)); status = 'paused'; paint(false); return {ok: true}; },
+        destroy() { if (reader) reader.destroy(); card.remove(); }};
+    }
+    function switchLecture(mode, failed = false, initial = false) {
+      if (!lecture.host) return;
+      if (lecture.controller) { if (lecture.controller.pause) lecture.controller.pause(); sendStep(true); lecture.controller.destroy(); }
+      lecture.host.textContent = ''; lecture.controller = null;
+      if (mode === 'board') {
+        try {
+          lecture.controller = ctx.mountBoard(lecture.host, lecture.script, onLectureEvent, lecture.stepId || undefined);
+          if (!lecture.controller || ['invalid', 'error'].includes(lecture.controller.status)) throw new Error('Board unavailable');
+        } catch (_) {
+          if (lecture.controller && lecture.controller.destroy) lecture.controller.destroy();
+          lecture.host.textContent = ''; mode = 'text'; failed = true;
+        }
+      }
+      if (mode === 'text') lecture.controller = textLecture(lecture.stepId);
+      lecture.mode = mode;
+      lecture.textMode.setAttribute('aria-pressed', String(mode === 'text'));
+      lecture.boardMode.setAttribute('aria-pressed', String(mode === 'board'));
+      lecture.modeNote.textContent = failed ? 'Blackboard unavailable. Continue with the prepared text lesson.' : mode === 'text' ? 'Read at your own pace. Drawing-only content needs Blackboard or a handout alternative.' : '';
+      if (!initial || failed) ctx.emit('checkpoint', null, 'lecture-mode:' + mode);
+      fitLecture();
+    }
     // Fit from stable chrome, never from the caption's height. Measuring the
     // entire shell creates a feedback loop: a narrow caption wraps, steals more
     // height and makes the board narrower again. Paginate supporting text and
     // size only the drawing frame to keep controls inside the viewport.
     function fitLecture() {
+      if (lecture.mode === 'text') return; // the reader observes its own available size
       const board = lecture.host && lecture.host.querySelector('.ros-board'), surface = board && board.querySelector('.ros-board-surface'), frame = board && board.querySelector('.ros-board-frame');
       const win = doc.defaultView;
       if (!surface || !frame || !win || shown !== 'lecture') return;
@@ -2852,7 +2912,7 @@
     function endLecture() {
       ctx.emit('checkpoint', null, 'stage:check');
       derived = stageOf(current, ctx.events());
-      show(derived);
+      show(current.check ? 'check' : 'done');
     }
 
     // ------------------------------------------------------------------------------------------------- done

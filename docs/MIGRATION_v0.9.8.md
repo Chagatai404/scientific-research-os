@@ -95,5 +95,12 @@ With explicit approval, use a disposable session in the actual Obsidian host:
 
 Real tablet stylus, LAN/TLS/pairing and handwriting assessment remain unimplemented
 P2 work. No bridge, listener, firewall change, cloud upload or private-data transfer
-is introduced by these slices. Board-independent text teaching and integrated
-adaptive refresh remain later slices in the plan.
+is introduced by these slices. Integrated adaptive refresh remains a later slice.
+
+Lecture now supports Text lesson / Blackboard using the same prepared steps and
+checkpoint history. Test switching in both directions, backward step navigation,
+page/reload recovery, typed questions, and video skip followed by Check in the
+approved disposable Obsidian session. Verify a missing board runtime gives text
+without changing raw answers. Drawing-only legacy steps require an authored text
+alternative; the renderer reports that limitation. These new behaviors have only
+synthetic-host browser acceptance until the local checks are performed.

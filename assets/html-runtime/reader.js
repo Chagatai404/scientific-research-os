@@ -34,7 +34,7 @@
   }
 
   function mount(container, resource, ctx) {
-    const doc = ctx.doc, win = doc.defaultView, prefix = 'handout-read:' + resource.revision + ':';
+    const doc = ctx.doc, win = doc.defaultView, prefix = ctx.prefix || 'handout-read:' + resource.revision + ':';
     const saved = (ctx.events() || []).filter(e => e.type === 'checkpoint' && typeof e.response === 'string' && e.response.startsWith(prefix));
     let cursor = saved.length ? Number(saved[saved.length - 1].response.slice(prefix.length)) : 0;
     const revealed = new Set((ctx.events() || []).filter(e => e.type === 'checkpoint' && typeof e.response === 'string'
@@ -45,7 +45,7 @@
     const sections = [];
     if (resource.focus && resource.focus.length) sections.push({title: 'Suggested focus', paragraphs: resource.focus});
     sections.push(...resource.sections);
-    sections.push({title: 'Sources', paragraphs: resource.sources.map(s => s.title + ' — ' + s.reference + '; ' + s.locator)});
+    if (resource.sources.length) sections.push({title: 'Sources', paragraphs: resource.sources.map(s => s.title + ' — ' + s.reference + '; ' + s.locator)});
     const items = [];
     let paragraphId = 0;
     sections.forEach((section, index) => {
@@ -56,7 +56,7 @@
     });
     cursor = Number.isInteger(cursor) && cursor >= 0 && cursor < items.length ? cursor : 0;
     const shell = el('div', undefined, 'ros-reader');
-    const choose = el('select'); choose.setAttribute('aria-label', 'Handout section');
+    const choose = el('select'); choose.setAttribute('aria-label', ctx.label || 'Handout section');
     sections.forEach((s, i) => { const o = el('option', s.title); o.value = String(i); choose.append(o); });
     const heading = el('h3');
     const content = el('div', undefined, 'ros-reader-page'); content.setAttribute('aria-live', 'polite');

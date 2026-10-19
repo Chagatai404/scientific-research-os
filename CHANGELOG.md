@@ -2,6 +2,10 @@
 
 ## Unreleased — adaptive learning core
 
+- Lecture offers a paged text presentation from the same prepared steps and
+  switches to it when Blackboard cannot mount. Mode changes and reload retain
+  the frozen path, step, typed questions and pending assessments.
+
 - Native handouts open before diagnostics and PDF export, with source locators,
   responsive pages, explicit solution reveal and saved reading position.
 - Native publication versions reusable library notes and preserves human edits;

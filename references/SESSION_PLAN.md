@@ -100,3 +100,21 @@ A plan makes the common path instant. A question it did not anticipate still wai
 
 - `session_plan.py check` verifies structure: references, reachability, the budget, board scripts, paths. It does not judge whether the questions test what they claim, whether the feedback is right, or whether the lecture is good.
 - The handout builder is a later slice (`docs/plans/v0.9.7-focused-session-plan.md`). The handout button was verified against the recovered STAT303 session in Obsidian on 2026-10-18; the integrated Video tab also has real Obsidian playback evidence; failure and completion paths remain separately tested by scripted hosts.
+
+## Native text lecture
+
+Lecture keeps its existing central surface and question rail. **Text lesson**
+uses prepared step narration plus written prose/formula actions, paginated by the
+native reader; **Blackboard** keeps the drawing presentation. Missing, rejected or
+throwing board mounts fall back to text. Optional voice is not a prerequisite.
+Both modes use the same `lecture-path:` and `lecture-step:` checkpoints; text
+Previous step saves a backward move too. `lecture-mode:` saves presentation only,
+and `lecture-read:<step-id>:` checkpoints save text pages, never evidence.
+Anticipated answers are inserted into the same script; typed questions keep the
+existing pending tutor workflow. Reading completion merely offers Check.
+
+Drawing-only actions cannot be translated into a scientific explanation by the
+renderer. If no narration or writing is prepared, disclose the missing text
+alternative and direct the learner to Handout/the tutor. Authors must prepare a
+useful source-grounded textual explanation; this fallback is not automatic image
+interpretation or proof that every legacy lesson is accessible.
