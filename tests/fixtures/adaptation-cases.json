@@ -488,6 +488,87 @@
         "scale",
         "see-it"
       ]
+    },
+    {
+      "name": "completed lesson opens summary",
+      "events": [
+        {
+          "event_id": "scale-1",
+          "type": "plan-answer",
+          "question_id": "scale",
+          "response": {
+            "tree": "probe",
+            "answer": "b",
+            "verdict": "correct"
+          }
+        },
+        {
+          "event_id": "two-1",
+          "type": "plan-answer",
+          "question_id": "twopoint",
+          "response": {
+            "tree": "probe",
+            "answer": 1,
+            "verdict": "correct"
+          }
+        },
+        {
+          "event_id": "why-1",
+          "type": "plan-answer",
+          "question_id": "why",
+          "response": {
+            "tree": "probe",
+            "answer": "Original reasoning why-1",
+            "verdict": "pending"
+          }
+        },
+        {
+          "event_id": "lecture-done",
+          "type": "checkpoint",
+          "question_id": null,
+          "response": "stage:lecture"
+        },
+        {
+          "event_id": "check-done",
+          "type": "checkpoint",
+          "question_id": null,
+          "response": "stage:check"
+        },
+        {
+          "event_id": "check-answer",
+          "type": "plan-answer",
+          "question_id": "again",
+          "response": {
+            "tree": "check",
+            "answer": 36,
+            "verdict": "correct"
+          }
+        }
+      ],
+      "reviews": [
+        {
+          "question_id": "why",
+          "response_event_id": "why-1",
+          "verdict": "correct",
+          "feedback": "Recorded feedback",
+          "reviewed_at": "2026-10-19T08:00:00Z",
+          "criteria_met": [
+            true,
+            true
+          ]
+        }
+      ],
+      "expect": {
+        "action": "continue",
+        "stage": "done",
+        "pending_review": 0
+      },
+      "path": [
+        "spread",
+        "scale",
+        "see-it",
+        "moment-form"
+      ]
     }
   ]
 }

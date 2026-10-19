@@ -125,3 +125,30 @@ Real Obsidian acceptance remains pending: in an approved disposable session, run
 startup/resume, compare the recommendation to the canonical scoped evidence, change
 a target explicitly, and confirm the current lesson/raw answers stay intact. No
 live-vault operation was executed for this slice.
+
+## Study advice and review-driven refresh
+
+Install the complete backed-up runtime, Python helper bundle and companion together
+when local deployment is approved. The new `learning_advice.py` helper must travel
+with `html_sessions.py`; `advice.js` is bundled into `session.js`. The companion
+projects only validated advice and continues stripping agent-only context paths.
+No listener, private upload or extra provider is required.
+
+Old bindings remain readable without `context.advice`. New bindings may contain
+this bounded optional presentation field. If rolling back to older Python tooling,
+restore backed-up state or remove only `context.advice` from the backed-up working
+copy first; older strict binding validators do not recognize it. Preserve all raw
+events, reviews, source Markdown and plan content. No bulk migration is performed.
+
+In an approved disposable Obsidian session, verify Study advice at the real pane
+size; pending and partial-review advice; explicit navigation; refresh/adaptation
+requests while disconnected and after reconnecting; latest-attempt feedback;
+reload, draft preservation and a running lecture's frozen path. Check that actual
+host updates expose advice without context paths. These local checks remain
+PENDING; automated browser acceptance uses an offline scripted host. The styling
+was inspected in dark desktop/phone screenshots, not deployed to the live vault.
+
+Goal/time preferences, richer teaching behavior selection and automatic guarded
+lesson-content revision remain later slices; the advice does not pretend to have
+generated or applied a new curriculum. Existing review/promotion gates still own
+canonical evidence and human review of permanent knowledge.

@@ -134,3 +134,12 @@ instruction. Missing policy projections are rebuilt by preflight; receipts with
 failed essential sources are retried to detect repair. Existing receipt/binding
 schemas remain readable, and the projection is covered by the receipt digest.
 A cached recommendation is not permission to ignore stale canonical fingerprints.
+
+The optional session binding field `advice` is a bounded presentation snapshot:
+`advice_schema: 1`, `evidence: false`, status, context outcome, action, rationale
+(`reason`, at most 600 Unicode characters), evaluation date and receipt identity.
+No source paths, requests or full retrieved graph enter this projection. Python
+exports and the Obsidian companion expose only the validated `canonical_advice`
+projection to the sandbox; omission/withdrawal clears the old view. This snapshot
+is not a second ledger and is never used to grant learning credit or filesystem
+permissions. Stale advice is labeled as the last context check, not live mastery.

@@ -2,6 +2,11 @@
 
 ## Unreleased — adaptive learning core
 
+- Study advice exposes attempt-specific and canonical recommendations beside the
+  existing stage controls, with explicit navigation and pending tutor requests.
+  Context snapshots refresh at startup/review boundaries without exposing private
+  paths or altering raw work; missing context is reported honestly.
+
 - Review-driven pacing applies only to the latest actual answer attempt; old or
   late reviews cannot approve newer pending reasoning. Session advice identifies
   prepared repairs while preserving started lecture paths and canonical evidence.

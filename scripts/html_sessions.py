@@ -340,7 +340,7 @@ def session_adaptation(state):
         return dict(base, action='await_review', stage='handout', pending_review=len(pending),
                     reason='Written reasoning awaits a substantive review. You can keep studying; no learning credit is inferred.')
     stage = session_plan.stage_of(plan, events)
-    return dict(base, action='continue', stage='check' if stage == 'done' else stage,
+    return dict(base, action='continue', stage=stage,
                 reason='Continue the prepared lesson. Local results and reading pace study; they do not establish mastery.',
                 pending_review=0)
 
@@ -414,6 +414,8 @@ def review_plan_answer(root, relative_md, question_id, verdict, feedback="", rev
         if not reviews or same(reviews[-1]) != same(review):
             reviews.append(review)
         _validate_plan_reviews(reviews, state["plan"], state["events"])
+        import learning_advice
+        learning_advice.refresh_in_state(root, relative_md, state, require_usable=revised_plan is not None)
         state["updated_at"] = _now()
         saved = _save(root, relative_md, state)
     after = plan_lecture(saved)
@@ -430,7 +432,10 @@ def _validate_context(context):
         if set(context) - {"waived", "reason", "bound_at"} or not isinstance(context.get("reason"), str) or not context["reason"].strip():
             raise ValueError("A context waiver needs a reason")
         return
-    if set(context) - {"binding", "request", "bound_at", "refreshed_at"} or not isinstance(context.get("binding"), dict) \
+    if "advice" in context:
+        import learning_advice
+        learning_advice.validate(context["advice"])
+    if set(context) - {"binding", "request", "bound_at", "refreshed_at", "advice"} or not isinstance(context.get("binding"), dict) \
             or not isinstance(context.get("request"), dict):
         raise ValueError("Invalid session context binding")
     binding = context["binding"]
@@ -1071,6 +1076,8 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
     header = '<header class="ros-session-header"><h1>' + html.escape(state['title']) + '</h1>' + subtitle_markup + '</header>'
     # The context binding holds local paths and is for agents, not the page or a shared export.
     page_state = {k: v for k, v in state.items() if k != "context"}
+    import learning_advice
+    page_state["canonical_advice"] = learning_advice.public(state)
     audio_urls = _audio_urls(state, runtime_prefix, standalone, audio_data)
     if audio_urls:
         page_state["audio_urls"] = audio_urls  # for the page only: the stored session never holds a resolved location
@@ -1288,7 +1295,12 @@ def _validate_video_records(records):
 def bind_context(receipt, request=None):
     """The durable form of a context receipt stored in a session (a binding, not the receipt)."""
     import context_kernel as ck
-    return {"binding": ck.summary(receipt), "request": request or receipt["request"], "bound_at": _now(), "refreshed_at": None}
+    import learning_advice
+    bound = {"binding": ck.summary(receipt), "request": request or receipt["request"], "bound_at": _now(), "refreshed_at": None}
+    advice = learning_advice.snapshot(receipt)
+    if advice is not None:
+        bound["advice"] = advice
+    return bound
 
 
 def waive_context(reason):
@@ -1327,7 +1339,11 @@ def _ensure_context(state):
             raise
         receipt = ck.build(bound["request"])
         ck.require(receipt)
+        import learning_advice
         state["context"] = dict(bound, binding=ck.summary(receipt), refreshed_at=_now())
+        advice = learning_advice.snapshot(receipt)
+        if advice is not None:
+            state["context"]["advice"] = advice
 
 
 def answer_open_question(root, relative_md, question_id, answer):
@@ -1773,6 +1789,20 @@ def start_session(root, relative_md, holder=None, provider="generic", timeout=No
     existing, _ = supervision.read_lease(root, relative_md)
     if existing and supervision.alive(existing) and existing['holder'] != holder:
         raise supervision.SupervisionError('LEASE_HELD', 'Another tutor is supervising this session; resolve ownership before starting workers')
+    import learning_advice
+    result["advice_refresh"] = learning_advice.refresh(root, relative_md)
+    snapshot = result['advice_refresh']['advice']
+    if snapshot and snapshot['status'] == 'blocked':
+        result['preflight']['ready'] = False
+        result['preflight']['issues'].append('CONTEXT_BLOCKED: essential context became unavailable during startup')
+        result['ready'] = False
+        return result
+    before = result['preflight'].get('recommendation') or {}
+    if snapshot and snapshot['receipt_id'] and before.get('receipt_id') != snapshot['receipt_id']:
+        result['preflight'] = session_readiness(root, relative_md)
+        if not result['preflight']['ready']:
+            result['ready'] = False
+            return result
     if voice:
         import voice as voice_module
         directory = Path(root) / VOICE_FOLDER
@@ -2473,6 +2503,8 @@ def main():
     resume.add_argument("--target", help="canonical concept:ID, capability:ID or project:ID; add --bind to persist the changed target")
     resume.add_argument("--as-of"); resume.add_argument("--json", action="store_true")
     resume.add_argument("--bind", action="store_true", help="store this context as the session's binding (adopts a historical session)")
+    advice = sub.add_parser("refresh-advice", help="Refresh the bounded presentation snapshot from current canonical context; preserves answers and prepared content")
+    advice.add_argument("session")
     recovery = sub.add_parser("recover"); recovery.add_argument("session"); recovery.add_argument("--apply", action="store_true")
     bridge = sub.add_parser("import"); bridge.add_argument("session"); bridge.add_argument("--apply", action="store_true")
     export = sub.add_parser("export"); export.add_argument("session"); export.add_argument("destination", type=Path)
@@ -2599,6 +2631,9 @@ def main():
         else:
             print(json.dumps(brief, ensure_ascii=False, indent=2))
         raise SystemExit(2 if brief["blocked"] else 0)
+    elif args.command == "refresh-advice":
+        import learning_advice
+        result = learning_advice.refresh(root, args.session)
     elif args.command == "recover":
         result = recover_session(root, args.session, args.apply)
     elif args.command == "import":

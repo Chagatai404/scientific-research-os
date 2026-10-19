@@ -722,3 +722,15 @@ assert(!html.includes('title":"</script>'));
   fs.rmdirSync(vaultRoot);
   console.log('HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions, live voice, lecture position, host-owned video and handout panes.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
+
+// Canonical advice is the only bounded context projection allowed into the sandbox.
+{
+  const advice = {advice_schema:1,evidence:false,status:'ready',context_outcome:'ready',action:'conceptual_probe',reason:'Check the target reasoning.',as_of:'2026-10-19',receipt_id:'a'.repeat(32)};
+  const privateState = {...base, context:{request:{vault:'C:/private/path'},advice}};
+  assert.equal(JSON.stringify(pageState(privateState).canonical_advice),JSON.stringify(advice));
+  assert(!JSON.stringify(pageState(privateState)).includes('C:/private/path'));
+  for(const [key,value] of [['evidence',true],['as_of','2026-02-30'],['private_path','secret'],['receipt_id',null],['context_outcome','blocked']]) {
+    assert.equal(pageState({...base,context:{advice:{...advice,[key]:value}}}).canonical_advice,null,key);
+  }
+  assert.equal(pageState(base).canonical_advice,null,'withdrawal clears old advice');
+}

@@ -135,3 +135,26 @@ advice is not canonical evidence. A newly needed repair affects an unstarted
 lecture through existing segment rules; a started lecture retains its frozen path.
 Revised teaching in a review transaction requires current essential context and
 must still pass the existing answered-question/started-path revision guards.
+
+## Learner-facing Study advice
+
+The existing five stages remain unchanged. **Study advice** beside their controls
+opens a keyboard-accessible, paged view with two sources: **This session** (latest
+attempt-specific reviews) and **Recorded knowledge** (the bounded canonical
+recommendation, labeled with its context-check date). Reading advice awards no
+evidence. Stage selection is always an explicit learner click; a request to adapt
+a lesson or repair/refresh context uses the ordinary open-question queue.
+
+The canonical advice is a small optional `context.advice` snapshot, not another
+knowledge store. It is initialized from a real context receipt, refreshed at
+startup and plan-review boundaries, and can be refreshed with
+`html_sessions.py --root VAULT refresh-advice SESSION`. Refresh preserves raw
+answers, prior reviews, prepared questions, handout content and frozen paths.
+Unchanged receipts reuse the canonical retrieval; opening or paging advice does
+not scan the vault. Canonical evidence remains owned by existing reviewed writers.
+
+When essential context becomes unavailable, plain feedback can still be saved
+with a blocked advice notice, while revised teaching remains refused. A blocked
+snapshot never replaces the last usable context binding. Once records return,
+explicit refresh can recover. Older unbound/waived sessions show an honest missing
+context message, with a request to the tutor rather than fabricated knowledge.

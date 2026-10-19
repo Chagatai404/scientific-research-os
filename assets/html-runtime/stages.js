@@ -201,7 +201,7 @@
     if (pending.length) return {...base, action: 'await_review', stage: 'handout', pending_review: pending.length,
       reason: 'Written reasoning awaits a substantive review. You can keep studying; no learning credit is inferred.'};
     const stage = stageOf(plan, events);
-    return {...base, action: 'continue', stage: stage === 'done' ? 'check' : stage,
+    return {...base, action: 'continue', stage,
       reason: 'Continue the prepared lesson. Local results and reading pace study; they do not establish mastery.', pending_review: 0};
   }
 
@@ -261,6 +261,14 @@
     const footer = el('div', {class: 'ros-stages-footer'});
     shell.append(el('header', {class: 'ros-stages-head'}, title, bar), body, footer);
     container.prepend(shell);
+    let advice = null;
+    if (doc.defaultView.ResearchOSAdvice && doc.defaultView.ResearchOSReader) {
+      const opener = button('Study advice', () => {}, {class: 'ros-advice-launcher'});
+      bar.append(opener);
+      advice = doc.defaultView.ResearchOSAdvice.mount(opener, {doc, container: shell, rich: ctx.rich, emit: ctx.emit, show,
+        sessionAdvice: () => sessionAdaptation(current, ctx.events(), reviews()),
+        canonicalAdvice: ctx.canonicalAdvice, requestPending: ctx.requestPending});
+    }
     if (ctx.footer) ctx.footer(footer);
 
     const panels = {};
@@ -860,6 +868,7 @@
       derived = stageOf(current, ctx.events());
       for (const id of Object.keys(panels)) panels[id].hidden = id !== shown;
       renderBar();
+      if (advice) advice.refresh();
       if (shown === 'probe') treeView('probe');
       else if (shown === 'handout') renderHandout();
       else if (shown === 'lecture') {
@@ -915,6 +924,7 @@
       get stage() { return shown; },
       update(next) { current = next; title.textContent = next.title; adjustLecture(); render(); },
       destroy() {
+        if (advice) advice.destroy();
         if (nativeReader) nativeReader.destroy();
         if (lecture.video && (lecture.video.phase === 'opening' || lecture.video.phase === 'playing') && ctx.panes) ctx.panes.video.close();
         if (lecture.controller && lecture.controller.destroy) lecture.controller.destroy();

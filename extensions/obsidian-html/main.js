@@ -390,10 +390,26 @@ function parseLease(text) {
 // What the page is shown. The lease and the host's clock ride along so the page can tell "waiting" from "disconnected" without trusting its own.
 function pageState(state, live = null) {
   const visible = Object.assign({}, state); delete visible.context;
+  visible.canonical_advice = adviceSnapshot(state.context && state.context.advice);
   visible.supervision_live = live; visible.host_now = Date.now();
   // Always present, so a decision that was withdrawn clears on the page instead of lingering through a merge.
   if (!('supervision' in visible)) visible.supervision = null;
   return visible;
+}
+// Only this bounded presentation projection crosses the context/privacy boundary.
+function adviceSnapshot(value) {
+  const fields = ['advice_schema', 'evidence', 'status', 'context_outcome', 'action', 'reason', 'as_of', 'receipt_id'];
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length !== fields.length || fields.some(k => !(k in value))
+      || value.advice_schema !== 1 || value.evidence !== false || !['ready', 'limited', 'blocked'].includes(value.status)
+      || !['ready', 'degraded', 'blocked'].includes(value.context_outcome) || typeof value.action !== 'string' || !/^[a-z_]{1,60}$/.test(value.action)
+      || typeof value.reason !== 'string' || !value.reason.length || [...value.reason].length > 600
+      || typeof value.as_of !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.as_of) || !Number.isFinite(Date.parse(value.as_of))
+      || new Date(value.as_of).toISOString().slice(0, 10) !== value.as_of
+      || !(value.receipt_id === null || typeof value.receipt_id === 'string' && /^[0-9a-f]{32}$/.test(value.receipt_id))
+      || value.status === 'ready' && value.receipt_id === null
+      || (value.context_outcome === 'blocked') !== (value.status === 'blocked')
+      || value.status === 'blocked' && value.action !== 'repair_context') return null;
+  return Object.fromEntries(fields.map(k => [k, value[k]]));
 }
 // What the page may say about the voice worker, from its lease file (the same rule as voice.py lease_state): never "listening" unless it beat recently.
 function voiceWorkerState(text, nowSeconds) {

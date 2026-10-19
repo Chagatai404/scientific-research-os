@@ -108,3 +108,8 @@ consumes the existing prepared board steps (`say`, `do.write`, `do.math`) withou
 loading speech or drawing services, preserves lecture checkpoints when switching
 presentations, and exposes missing diagram descriptions explicitly. The existing
 Blackboard presentation remains available in the same three-column shell.
+
+`advice.js` supplies Study advice in the existing staged shell. It consumes the
+pure session-adaptation projection plus a bounded host-provided canonical snapshot.
+Opening it, switching advice sources or paging never creates assessment evidence.
+The dialog reuses the native reader; requests use ordinary open-question events.

@@ -164,3 +164,15 @@ body.ros-staged .ros-side-panel,body.ros-staged .ros-panel-toggle,body.ros-stage
 @media(max-width:999px){.ros-stage-lecture .ros-lecture-board{flex:1;min-height:0}.ros-lecture-modes{width:auto;gap:4px}.ros-lecture-modes button{font-size:12px;padding:4px 6px}.ros-ask-button{font-size:13px;padding:5px 8px}}
 
 .ros-lecture-tools>.ros-stage-hint:empty{display:none}
+
+/* Advice is an explicit action beside existing stage navigation, never a new stage. */
+.ros-stagebar{display:flex;align-items:flex-start;gap:6px}.ros-stagebar ol{flex:1;min-width:0}
+.ros-stagebar>.ros-advice-launcher{font-size:12px;line-height:1.2;min-height:32px;padding:6px;max-width:64px;white-space:normal;align-self:center}
+@media(min-width:1100px){.ros-stagebar{flex-direction:column}.ros-stagebar ol{flex:none;width:100%}.ros-stagebar>.ros-advice-launcher{max-width:none;width:100%;margin-top:auto}}
+.ros-advice-dialog{box-sizing:border-box;width:min(660px,calc(100vw - 24px));height:min(560px,calc(100vh - 24px));max-height:calc(100vh - 24px);padding:16px;border:1px solid var(--ros-border);border-radius:12px;background:var(--ros-surface,#202e27);color:var(--ros-text,#eee);overflow:visible}
+.ros-advice-dialog[open]{display:flex;flex-direction:column;gap:10px}.ros-advice-dialog::backdrop{background:rgba(0,0,0,.65)}
+.ros-advice-dialog h2{font-size:22px;margin:0}.ros-advice-selectors{display:flex;gap:8px;flex-wrap:wrap}.ros-advice-selectors button,.ros-advice-dialog>.ros-reader-actions button{font-size:13px;padding:6px 8px;min-height:34px}
+.ros-advice-selectors [aria-pressed="true"]{outline:2px solid var(--ros-accent)}
+.ros-advice-note,.ros-advice-status{font-size:13px;line-height:1.3;margin:0}.ros-advice-status:empty{display:none}
+.ros-advice-dialog .ros-reader h3{font-size:18px}.ros-advice-dialog .ros-reader-page p{font-size:16px;line-height:1.4}
+@media(max-width:640px){.ros-advice-dialog{padding:12px;gap:8px}.ros-advice-dialog .ros-reader-actions{gap:6px}}

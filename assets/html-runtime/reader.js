@@ -57,6 +57,7 @@
     cursor = Number.isInteger(cursor) && cursor >= 0 && cursor < items.length ? cursor : 0;
     const shell = el('div', undefined, 'ros-reader');
     const choose = el('select'); choose.setAttribute('aria-label', ctx.label || 'Handout section');
+    choose.hidden = !!ctx.hideSelector;
     sections.forEach((s, i) => { const o = el('option', s.title); o.value = String(i); choose.append(o); });
     const heading = el('h3');
     const content = el('div', undefined, 'ros-reader-page'); content.setAttribute('aria-live', 'polite');
