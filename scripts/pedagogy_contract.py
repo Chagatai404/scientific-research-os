@@ -26,15 +26,15 @@ def validate(plan):
     if value is None and 'pedagogy' not in plan:
         return []
     problems = []
-    if not isinstance(value, dict) or set(value) - {'schema', 'socratic', 'explanations'} or type(value.get('schema')) is not int or value.get('schema') != 1:
-        return ['pedagogy: schema 1 object with socratic/explanations only required']
+    if not isinstance(value, dict) or set(value) - {'schema', 'socratic', 'explanations', 'practice'} or type(value.get('schema')) is not int or value.get('schema') != 1:
+        return ['pedagogy: schema 1 object with known teaching families required']
     try:
         if len(json.dumps(value, ensure_ascii=False, allow_nan=False).encode('utf-8')) > MAX_BYTES:
             problems.append('pedagogy: content exceeds 120 KiB')
     except (ValueError, TypeError):
         return ['pedagogy: finite JSON content required']
     seen = set()
-    for family in ('socratic', 'explanations'):
+    for family in ('socratic', 'explanations', 'practice'):
         entries = value.get(family, [])
         if not isinstance(entries, list) or len(entries) > 40:
             problems.append('pedagogy.' + family + ': at most 40 entries')
@@ -44,6 +44,20 @@ def validate(plan):
             at = 'pedagogy.' + family
             if not isinstance(entry, dict):
                 problems.append(at + ': entry must be an object'); continue
+            if family == 'practice':
+                import pedagogy_practice
+                problems.extend(pedagogy_practice.validate(entry, plan))
+                ident = entry.get('id')
+                if not isinstance(ident, str) or ident in seen:
+                    problems.append(at + ': unique bounded entry id required')
+                else:
+                    seen.add(ident)
+                key = (entry.get('tree'), entry.get('question_id'))
+                if not all(isinstance(v, str) for v in key) or key in bound:
+                    problems.append(at + ': each prepared question may have only one practice entry')
+                else:
+                    bound.add(key)
+                continue
             common = {'id', 'target', 'version', 'sources'}
             specific = {'tree', 'question_id', 'question_sha256', 'hints'} if family == 'socratic' else {'segment_id', 'segment_sha256', 'levels'}
             if set(entry) != common | specific:
@@ -145,6 +159,11 @@ def validate_event(event, state, historical=False):
         entry = next((e for e in meta.get('explanations', []) if e['id'] == fields[1]), None)
         if entry is None or fields[2] != str(entry['version']) or fields[3] not in entry['levels']:
             raise ValueError('Explanation selection must bind a prepared level')
+    elif event.get('type') == 'checkpoint' and isinstance(response, str) and response.startswith('pedagogy-practice:'):
+        fields = response.split(':')
+        entry = next((e for e in meta.get('practice', []) if len(fields) == 3 and e['id'] == fields[1]), None)
+        if entry is None or event.get('question_id') is not None or fields[2] != str(entry['version']):
+            raise ValueError('Practice selection must bind a prepared entry and version')
     elif event.get('type') == 'plan-answer' and meta and not historical:
         import pedagogy_budget
         question = next((q for tree in ('probe', 'check') for q in (plan.get(tree) or {}).get('questions', []) if q['id'] == event.get('question_id') and tree == event.get('response', {}).get('tree')), None)
@@ -161,8 +180,8 @@ def revision_problems(old, new, events):
     before, after = questions(old), questions(new)
     problems = ['issued question semantics must be retained: ' + qid for qid in issued if before.get(qid) != after.get(qid)]
     used = {e.get('response', {}).get('entry_id') for e in events if e.get('type') == 'pedagogy-help' and isinstance(e.get('response'), dict)}
-    used.update(e['response'].split(':')[1] for e in events if e.get('type') == 'checkpoint' and isinstance(e.get('response'), str) and e['response'].startswith('pedagogy-level:'))
-    entries = lambda p: {e['id']: e for family in ('socratic', 'explanations') for e in (p.get('pedagogy') or {}).get(family, [])}
+    used.update(e['response'].split(':')[1] for e in events if e.get('type') == 'checkpoint' and isinstance(e.get('response'), str) and e['response'].startswith(('pedagogy-level:', 'pedagogy-practice:')))
+    entries = lambda p: {e['id']: e for family in ('socratic', 'explanations', 'practice') for e in (p.get('pedagogy') or {}).get(family, [])}
     b, a = entries(old), entries(new)
     problems.extend('changed pedagogy content requires a new version: ' + ident for ident in b.keys() & a.keys() if b[ident] != a[ident] and a[ident]['version'] <= b[ident]['version'])
     problems.extend('presented pedagogy entry must be retained: ' + ident for ident in used if b.get(ident) != a.get(ident))

@@ -2,6 +2,12 @@
 
 ## Unreleased — P1 teaching behaviors
 
+- Optional tiered practice selects existing Quiz/Check cards, including off-route
+  items, with committed selection and shared-budget issuance before display.
+  Raw revisions, drafts and actual-attempt reviews remain intact. Physical-unit
+  labels disclose the limits of local numeric checking; written alternatives
+  remain available to the tutor for substantive review.
+
 - Prepared intuitive, intermediate and formal explanation levels retain assumptions,
   simplification bridges and source locators. Initial depth preferences and saved
   choices select only available content; requests keep entry/version/segment origin.

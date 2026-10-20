@@ -34,3 +34,18 @@ assumptions, sources and their relation to the original segment. Requests includ
 entry/version/segment provenance. Unpresented edits require a version increase;
 after presentation, retain the old entry and author a new ID. Reading levels and
 requesting an explanation never grant evidence or consume diagnostic units.
+
+
+P1c adds optional prepared practice metadata and acknowledged selection checkpoints.
+The existing Quiz/Check cards, diagnostic counter, drafts, raw attempts and review
+writer remain authoritative. Selecting off-route practice does not rewrite the
+routed lesson history. Numeric answer units are visible labels with an explicit
+semantic-check limitation; only numeric tolerances are locally keyed. Written
+alternatives remain tutor rubric metadata and do not become early learner hints.
+Advanced items remain available explicitly. Current canonical advice may also
+recommend them when its bounded target/scope/dimension exactly match the prepared
+plan; old, stale or unrelated snapshots keep conservative selection. The optional
+`target`/`next` advice fields preserve legacy eight-field snapshots and derive only
+from the existing planner. Prerequisite-subject advice cannot authorize advancement
+on the target; block/project targets need an explicit concept/capability binding. Physical/live app checks and scientific content vetting remain
+separate from synthetic browser/structural tests.

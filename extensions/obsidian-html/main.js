@@ -229,6 +229,10 @@ function validatePedagogyEvent(event,state) {
     const budget = pedagogyBudget(state);
     if (!budget.issued.includes(qid) && budget.used + (q.units || 1) > budget.limit) throw new Error('Diagnostic budget exhausted across questions and branches.');
   }
+  if (event.type === 'checkpoint' && typeof r === 'string' && r.startsWith('pedagogy-practice:')) {
+    const parts = r.split(':'), entry = meta && (meta.practice || []).find(e => e.id === parts[1]);
+    if (parts.length !== 3 || !entry || event.question_id != null || parts[2] !== String(entry.version)) throw new Error('Unknown prepared practice selection.');
+  }
   if (event.type === 'checkpoint' && typeof r === 'string' && r.startsWith('pedagogy-level:')) {
     const parts = r.split(':'), entry = meta && (meta.explanations || []).find(e => e.id === parts[1]);
     if (parts.length !== 4 || !entry || event.question_id != null || parts[2] !== String(entry.version) || !Object.hasOwn(entry.levels,parts[3])) throw new Error('Unknown prepared explanation level.');
@@ -503,7 +507,7 @@ function preferenceSnapshot(value) {
 // Only this bounded presentation projection crosses the context/privacy boundary.
 function adviceSnapshot(value) {
   const fields = ['advice_schema', 'evidence', 'status', 'context_outcome', 'action', 'reason', 'as_of', 'receipt_id'];
-  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length !== fields.length || fields.some(k => !(k in value))
+  if (!value || typeof value !== 'object' || Array.isArray(value) || ![fields.length,fields.length+2].includes(Object.keys(value).length) || Object.keys(value).some(k=>!fields.includes(k)&&!['target','next'].includes(k)) || fields.some(k => !(k in value))
       || value.advice_schema !== 1 || value.evidence !== false || !['ready', 'limited', 'blocked'].includes(value.status)
       || !['ready', 'degraded', 'blocked'].includes(value.context_outcome) || typeof value.action !== 'string' || !/^[a-z_]{1,60}$/.test(value.action)
       || typeof value.reason !== 'string' || !value.reason.length || [...value.reason].length > 600
@@ -513,6 +517,10 @@ function adviceSnapshot(value) {
       || value.status === 'ready' && value.receipt_id === null
       || (value.context_outcome === 'blocked') !== (value.status === 'blocked')
       || value.status === 'blocked' && value.action !== 'repair_context') return null;
+  if ('target' in value || 'next' in value) {
+    if (typeof value.target !== 'string' || !value.target.length || [...value.target].length > 300 || /[\x00-\x1f\x7f]/.test(value.target) || !value.next || Object.keys(value.next).sort().join(',') !== 'dimension,scope' || !['conceptual','transfer','project_application'].includes(value.next.scope) || !['recognition','explanation','derivation','transfer','application'].includes(value.next.dimension)) return null;
+    fields.push('target','next');
+  }
   return Object.fromEntries(fields.map(k => [k, value[k]]));
 }
 // What the page may say about the voice worker, from its lease file (the same rule as voice.py lease_state): never "listening" unless it beat recently.

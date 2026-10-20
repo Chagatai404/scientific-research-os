@@ -24,6 +24,14 @@ const help = (changes = {}, id = 'help') => ({event_id: id, type: 'pedagogy-help
   entry_id: 'hints', version: 1, tree: 'probe', question_sha256: 'a'.repeat(64), level: 1, prior_response_event_id: null, ...changes}});
 const tests = [];
 function test(name, run) { tests.push({name, run}); }
+test('practice selection binds exact prepared id/version without spending', () => {
+  const s=state();s.plan.pedagogy.practice=[{id:'tier',version:1}];
+  const event={event_id:'choose',type:'checkpoint',question_id:null,response:'pedagogy-practice:tier:1'};
+  assert.equal(validateEvent(event,s).response,event.response);
+  for(const response of ['pedagogy-practice:tier:01','pedagogy-practice:tier:2','pedagogy-practice:missing:1','pedagogy-practice:tier:1:extra'])assert.throws(()=>validateEvent({...event,response},s),/practice/);
+  assert.throws(()=>validateEvent({...event,question_id:'parent'},s));
+  assert.equal(pedagogyBudget({...s,events:[event]}).used,0);
+});
 test('current question cost and tree are checked', () => {
   assert.throws(() => validateEvent(reserve('parent', 1), state()), /cost/);
   assert.throws(() => validateEvent(answer('wrong-tree', 'parent', 'check'), state()), /tree/);

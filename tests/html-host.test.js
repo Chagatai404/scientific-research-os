@@ -728,6 +728,9 @@ assert(!html.includes('title":"</script>'));
   const advice = {advice_schema:1,evidence:false,status:'ready',context_outcome:'ready',action:'conceptual_probe',reason:'Check the target reasoning.',as_of:'2026-10-19',receipt_id:'a'.repeat(32)};
   const privateState = {...base, context:{request:{vault:'C:/private/path'},advice}};
   assert.equal(JSON.stringify(pageState(privateState).canonical_advice),JSON.stringify(advice));
+  const scoped={...advice,target:'box-counting',next:{scope:'transfer',dimension:'transfer'}};
+  assert.equal(JSON.stringify(pageState({...base,context:{advice:scoped}}).canonical_advice),JSON.stringify(scoped));
+  for(const bad of [{...scoped,next:{...scoped.next,private_path:'secret'}},{...scoped,target:[]},{...scoped,next:{scope:'transfer',dimension:'invented'}}])assert.equal(pageState({...base,context:{advice:bad}}).canonical_advice,null);
   assert(!JSON.stringify(pageState(privateState)).includes('C:/private/path'));
   for(const [key,value] of [['evidence',true],['as_of','2026-02-30'],['private_path','secret'],['receipt_id',null],['context_outcome','blocked']]) {
     assert.equal(pageState({...base,context:{advice:{...advice,[key]:value}}}).canonical_advice,null,key);

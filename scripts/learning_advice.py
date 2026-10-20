@@ -7,7 +7,7 @@ FIELDS={'advice_schema','evidence','status','context_outcome','action','reason',
 
 
 def validate(value):
-    if not isinstance(value,dict) or set(value)!=FIELDS or type(value['advice_schema']) is not int or value['advice_schema']!=1 or value['evidence'] is not False:
+    if not isinstance(value,dict) or set(value) not in (FIELDS, FIELDS | {'target', 'next'}) or type(value['advice_schema']) is not int or value['advice_schema']!=1 or value['evidence'] is not False:
         raise ValueError('Invalid canonical advice snapshot')
     if (not isinstance(value['status'],str) or value['status'] not in {'ready','limited','blocked'}
             or not isinstance(value['context_outcome'],str) or value['context_outcome'] not in {'ready','degraded','blocked'}):
@@ -24,15 +24,33 @@ def validate(value):
         raise ValueError('Ready advice requires a canonical context receipt')
     if (value['context_outcome']=='blocked') != (value['status']=='blocked') or value['status']=='blocked' and value['action']!='repair_context':
         raise ValueError('Blocked context cannot suggest instruction')
+    if 'target' in value:
+        target, step = value['target'], value['next']
+        if (not isinstance(target, str) or not 1 <= len(target) <= 300 or re.search(r'[\x00-\x1f\x7f]', target)
+                or not isinstance(step, dict) or set(step) != {'scope', 'dimension'}
+                or not isinstance(step.get('scope'),str) or not isinstance(step.get('dimension'),str)
+                or step.get('scope') not in {'conceptual', 'transfer', 'project_application'}
+                or step.get('dimension') not in {'recognition', 'explanation', 'derivation', 'transfer', 'application'}):
+            raise ValueError('Invalid bounded practice advice binding')
     return value
 
 
 def snapshot(receipt):
     recommendation=receipt['retrieval'].get('recommendation')
     if not recommendation: return None
-    return validate({'advice_schema':1,'evidence':False,'status':recommendation['status'],
+    result = {'advice_schema':1,'evidence':False,'status':recommendation['status'],
                      'context_outcome':receipt['outcome'],'action':recommendation['next']['action'],
-                     'reason':recommendation['rationale'][:600],'as_of':receipt['as_of'],'receipt_id':receipt['receipt_id']})
+                     'reason':recommendation['rationale'][:600],'as_of':receipt['as_of'],'receipt_id':receipt['receipt_id']}
+    target, step = recommendation.get('target'), recommendation.get('next')
+    if (recommendation['status'] == 'ready' and receipt['outcome'] == 'ready' and isinstance(target,dict)
+            and isinstance(target.get('id'),str) and isinstance(step,dict)
+            and ((target.get('kind') == 'concept' and step.get('concept') == target['id'])
+                 or (target.get('kind') == 'capability' and step.get('capability') == target['id']))
+            and isinstance(step.get('scope'),str) and isinstance(step.get('dimension'),str)
+            and step.get('scope') in {'conceptual','transfer','project_application'}
+            and step.get('dimension') in {'recognition','explanation','derivation','transfer','application'}):
+        result.update(target=target['id'],next={key:step[key] for key in ('scope','dimension')})
+    return validate(result)
 
 
 def public(state):

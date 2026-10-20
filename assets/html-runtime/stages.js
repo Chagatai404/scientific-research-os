@@ -342,10 +342,19 @@
       if (!current[name]) { panel.textContent = ''; panel.append(el('p', {role: 'status', text: 'This check has not been prepared yet. You can study in another stage.'})); return; }
       const view = views[name] = views[name] || {viewing: null, signature: ''};
       const r = replay(current, name, ctx.events());
-      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
+      const practiceEntries = ((current.pedagogy || {}).practice || []).filter(e => e.tree === name);
+      if (!view.restoredPractice) {
+        view.restoredPractice = true;
+        for (const event of savedEvents()) {
+          const entry = practiceEntries.find(e => event.type === 'checkpoint' && event.response === 'pedagogy-practice:' + e.id + ':' + e.version);
+          if (entry) view.viewing = entry.question_id;
+        }
+      }
+      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, reviews(), practiceEntries, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
       if (signature === view.signature) return;
       view.signature = signature;
       if (view.help) {view.help.destroy();view.help=null;}
+      if (view.practice) {view.practice.destroy();view.practice=null;}
       panel.textContent = '';
       const tree = current[name], questions = new Map(tree.questions.map(q => [q.id, q]));
       const focusId = view.viewing || r.current || (r.trail.length ? r.trail[r.trail.length - 1].id : null);
@@ -361,9 +370,26 @@
         strip.append(el('li', null, button(String(n), goTo(null), {'aria-label': `Question ${n}, to answer`, 'data-verdict': 'open', 'aria-current': focusId === r.current ? 'step' : undefined})));
       }
       panel.append(strip);
+      if (practiceEntries.length && doc.defaultView.ResearchOSPractice) {
+        const host = el('div', {class:'ros-practice'}); panel.append(host);
+        view.practice = doc.defaultView.ResearchOSPractice.mount(host,practiceEntries,current,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,
+          options:()=>{
+            const advice = ctx.canonicalAdvice ? ctx.canonicalAdvice() : null;
+            const today = new Date().toISOString().slice(0,10); // Snapshot freshness, not a second evidence policy.
+            const step = advice && advice.next;
+            const canonical = advice && advice.advice_schema===1 && advice.evidence===false && typeof advice.receipt_id==='string' && /^[0-9a-f]{32}$/.test(advice.receipt_id) && advice.status==='ready' && advice.context_outcome==='ready' && advice.as_of===today && advice.target===current.target && step && Object.keys(step).sort().join(',')==='dimension,scope' && ['conceptual','transfer','project_application'].includes(step.scope) && ['recognition','explanation','derivation','transfer','application'].includes(step.dimension) ? advice : null;
+            return {canonical,preferences:ctx.learningPreferences ? ctx.learningPreferences() : null};
+          },
+          choose:qid=>{if(questions.has(qid)){view.viewing=qid;view.signature='';treeView(name);}}});
+      }
 
       if (!focusId) { panel.append(el('p', {text: 'There are no questions here.'})); return; }
-      const question = questions.get(focusId), answered = r.trail.find(t => t.id === focusId);
+      const question = questions.get(focusId);
+      if (!question) {view.viewing=null;view.signature='';treeView(name);return;}
+      // Off-route practice uses its latest actual attempt without rewriting routes.
+      const raw = ctx.events().filter(e=>e.type==='plan-answer' && e.question_id===focusId && e.response && e.response.tree===name).at(-1);
+      const answered = raw ? {id:focusId,answer:raw.response.answer,...judge(question,raw.response.answer)} : null;
+      const practice = practiceEntries.find(e=>e.question_id===focusId);
       if (current.pedagogy && !savedEvents().some(e => e.type === 'plan-answer' && e.question_id === focusId || e.type === 'checkpoint' && typeof e.response === 'string' && e.response.startsWith('pedagogy-probe:' + focusId + ':'))) {
         const reservation = reservations.get(focusId);
         panel.append(el('p', {role:'status',text:reservation && reservation.error ? 'Question not opened: ' + reservation.error : 'Opening this question within the shared diagnostic budget…'}));
@@ -380,8 +406,10 @@
       const socratic = ((current.pedagogy || {}).socratic || []).find(e => e.tree === name && e.question_id === focusId);
       if (answered && view.revising !== focusId) clearDraft(draftKey(name, question), draftSignature(question));
       const card = el('article', {class: 'ros-qcard', 'data-kind': question.kind});
-      const number = answered ? r.trail.indexOf(answered) + 1 : r.trail.length + 1;
+      const routeIndex = r.trail.findIndex(t=>t.id===focusId);
+      const number = routeIndex >= 0 ? routeIndex + 1 : r.trail.length + 1;
       card.append(el('p', {class: 'ros-qcard-count', text: `Question ${number}`}), ctx.rich('h2', question.prompt));
+      if (practice && practice.answer_unit) card.append(el('p',{class:'ros-stage-hint',text:'Answer unit: '+practice.answer_unit+'. Numeric matching does not verify units or reasoning.'}));
       const feedback = el('div', {class: 'ros-qcard-feedback', role: 'status', 'aria-live': 'polite'});
 
       if (answered && view.revising !== focusId) {
@@ -395,7 +423,7 @@
           if (tutor.feedback) box.append(ctx.rich('p', tutor.feedback));
           card.append(box);
         }
-        const last = r.trail[r.trail.length - 1].id === focusId;
+        const last = !!r.trail.length && r.trail[r.trail.length - 1].id === focusId;
         const verdictText = answered.verdict === 'correct' ? 'Correct.' : answered.verdict === 'wrong' ? 'Not quite.' : tutor ? 'Saved. The tutor has read your answer.' : 'Saved. The tutor reads your answer in the background; you can go on.';
         feedback.append(el('p', {class: 'ros-stage-verdict', 'data-verdict': answered.verdict, text: verdictText}));
         if (answered.feedback) feedback.append(ctx.rich('p', answered.feedback));
@@ -404,6 +432,7 @@
         const row = el('div', {class: 'ros-qcard-actions'});
         if (last && r.current) row.append(button('Next question', goTo(null), {class: 'ros-primary'}));
         else if (!last) row.append(button('Back to the latest question', goTo(null)));
+        if (practice) row.append(button('Revise this answer',()=>{view.revising=focusId;view.signature='';treeView(name);}));
         if (last && r.done) row.append(button(name === 'probe' ? 'Continue to your handout' : 'Finish', () => finishTree(name), {class: 'ros-primary'}));
         card.append(row);
         // Feedback and the complete saved answer use separate pages when both

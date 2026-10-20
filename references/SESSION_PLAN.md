@@ -162,7 +162,7 @@ context message, with a request to the tutor rather than fabricated knowledge.
 ## Optional P1 pedagogy contract (schema 1)
 
 `plan.pedagogy` is optional; legacy plans need no migration. It has exactly
-`schema: 1` plus optional `socratic` and `explanations` arrays (at most 40 each,
+`schema: 1` plus optional `socratic`, `explanations` and `practice` arrays (at most 40 each,
 120 KiB UTF-8 in total). `pedagogy_contract.validate` checks these after the base
 plan validates. Structural acceptance does not verify scientific content.
 
@@ -214,3 +214,32 @@ presents an entry, retain it unchanged and add a new ID for new content. The fir
 opening of prepared levels is acknowledged before display, including a preferred
 or restored level. Requests retain entry/version and segment in their origin so
 later tutor responses can identify the exact explanation even after navigation.
+
+
+P1c practice entries additionally carry exactly `tree`, `question_id`,
+`question_sha256`, `tier` (beginner/intermediate/advanced), `dimension`
+(recognition/explanation/derivation/transfer/application), `answer_unit` (literal
+physical unit label, at most 80 characters; empty means dimensionless),
+`alternatives` (1..8 legitimate approaches, at most 1000 characters each), and
+boolean `independent`. Existing questions own the prompt, key, tolerance, solution
+and criteria. Advanced and independent transfer eligibility require a written
+question with at least two criteria; eligibility never proves novelty or learning.
+Alternatives travel to the tutor's pending-written-review brief, not a premature
+learner answer reveal. Numeric matching checks the numeric component only; units
+and semantic alternatives need authored written reasoning and substantive review.
+
+Practice selection uses checkpoint `pedagogy-practice:<entry-id>:<version>`, with
+null question ID, and waits for committed acknowledgement. It reserves no probe by
+itself: the existing question issuance gate must acknowledge before presentation.
+Selection can open an existing off-route card; raw attempts, revisions and reviews
+remain in the existing event stream without rerouting history. Presented practice
+entries freeze like other pedagogy entries. Restore the active card separately
+from recommending the next suitable unanswered item; recommendation never forces
+navigation. Full trusted canonical recommendations may guide the pure selector.
+A bounded optional canonical advice pair `target` / `next: {scope,dimension}`
+is derived from the current canonical recommendation only when its actual next
+subject matches that concept/capability target. The browser uses it only for the
+exact prepared plan target and current UTC snapshot day. Old snapshots, prerequisite
+subjects, blocked/stale/malformed advice and block/project targets do not authorize
+advanced selection; explicit learner tier choices remain available. Snapshot date
+validation does not replace canonical evidence freshness policy.
