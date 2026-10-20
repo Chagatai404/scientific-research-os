@@ -2,6 +2,12 @@
 
 ## Unreleased — P1 teaching behaviors
 
+- Prepared source comparisons bind unchanged raw learner summaries and exact
+  supplied snapshots/locators. Claim-specific revision challenges distinguish
+  omissions, misconceptions, unsupported snapshot claims and emphasis. Feedback
+  and optional explicit synthesis are acknowledged assistance; revisions retain
+  originals and unavailable sources refuse invented comparison content.
+
 - Optional tiered practice selects existing Quiz/Check cards, including off-route
   items, with committed selection and shared-budget issuance before display.
   Raw revisions, drafts and actual-attempt reviews remain intact. Physical-unit

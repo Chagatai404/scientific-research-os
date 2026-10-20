@@ -539,6 +539,11 @@ def validate_state(state):
     if "plan" in state:
         import session_plan  # the plan an agent wrote before the session; the page runs it, so it is checked with the same rules
         session_plan.check(state["plan"])
+        import pedagogy_source_comparison
+        for entry in (state['plan'].get('pedagogy') or {}).get('comparisons', []):
+            problems = pedagogy_source_comparison.validate(entry,state['plan'],state)
+            if problems:
+                raise ValueError('; '.join(problems))
         plan_ids = frozenset(q["id"] for tree in ("probe", "check") for q in (state["plan"].get(tree) or {}).get("questions", []))
     if "video_records" in state:
         _validate_video_records(state["video_records"])

@@ -236,7 +236,7 @@
      {status, resource, title, message} back. video: opened | ended | closed | error. handout: opened | error. */
   function mount(container, plan, ctx) {
     const doc = ctx.doc;
-    let current = plan;
+    let current = plan, disposed = false;
     const reservations = new Map();
     const savedEvents = () => ctx.savedEvents ? ctx.savedEvents() : ctx.events();
     const reviews = () => (ctx.reviews ? ctx.reviews() : []);
@@ -325,6 +325,7 @@
       });
     }
     function show(id) {
+      if (disposed) return;
       if (!panels[id]) return;
       if (shown === 'lecture' && id !== 'lecture' && lecture.controller && lecture.controller.status === 'playing') { lecture.controller.pause(); sendStep(true); }
       if (shown === 'video' && id !== 'video' && ctx.panes) { if (selectedVideo) ctx.panes.video.close(); selectedVideo = null; }
@@ -338,6 +339,7 @@
 
     // ------------------------------------------------------------------------------------------------- questions (probe and check)
     function treeView(name) {
+      if (disposed) return;
       const panel = panels[name];
       if (!current[name]) { panel.textContent = ''; panel.append(el('p', {role: 'status', text: 'This check has not been prepared yet. You can study in another stage.'})); return; }
       const view = views[name] = views[name] || {viewing: null, signature: ''};
@@ -350,11 +352,13 @@
           if (entry) view.viewing = entry.question_id;
         }
       }
-      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, reviews(), practiceEntries, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
+      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, reviews(), practiceEntries, (current.pedagogy || {}).comparisons, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
       if (signature === view.signature) return;
       view.signature = signature;
       if (view.help) {view.help.destroy();view.help=null;}
       if (view.practice) {view.practice.destroy();view.practice=null;}
+      if (view.comparison) {view.comparison.destroy();view.comparison=null;}
+      panel.dataset.comparisonOpen='false';
       panel.textContent = '';
       const tree = current[name], questions = new Map(tree.questions.map(q => [q.id, q]));
       const focusId = view.viewing || r.current || (r.trail.length ? r.trail[r.trail.length - 1].id : null);
@@ -381,6 +385,23 @@
             return {canonical,preferences:ctx.learningPreferences ? ctx.learningPreferences() : null};
           },
           choose:qid=>{if(questions.has(qid)){view.viewing=qid;view.signature='';treeView(name);}}});
+      }
+
+      const comparisons = ((current.pedagogy || {}).comparisons || []);
+      if (comparisons.length && doc.defaultView.ResearchOSSourceComparison) {
+        const host=el('div',{class:'ros-comparison-host'});panel.append(host);
+        const entry=comparisons.find(e=>e.id===view.comparisonId) || comparisons.find(e=>e.question_id===focusId) || comparisons[0];
+        view.comparisonId=entry.id;
+        if(comparisons.length>1){
+          const select=el('select',{'aria-label':'Prepared summary comparison'});
+          for(const item of comparisons)select.append(el('option',{value:item.id,text:item.question_id+' — '+item.summary_event_id}));
+          select.value=entry.id;select.addEventListener('change',()=>{view.comparisonId=select.value;view.signature='';treeView(name);});host.append(select);
+        }
+        view.comparison=doc.defaultView.ResearchOSSourceComparison.mount(host,entry,{doc,rich:ctx.rich,events:savedEvents,persist:ctx.persist,
+          revise:()=>{const destination=views[entry.tree]=views[entry.tree] || {};destination.viewing=entry.question_id;destination.revising=entry.question_id;destination.signature='';show(entry.tree);},
+          request:message=>{if(!ctx.requestPending || !ctx.requestPending(message))ctx.emit('open-question',null,message);}});
+        const detail=host.querySelector('details');
+        detail.addEventListener('toggle',()=>{panel.dataset.comparisonOpen=String(detail.open);});
       }
 
       if (!focusId) { panel.append(el('p', {text: 'There are no questions here.'})); return; }
@@ -1058,8 +1079,10 @@
     return {
       get stage() { return shown; },
       refreshDrafts,
-      update(next) { current = next; title.textContent = next.title; adjustLecture(); renderExplanation(); render(); },
+      update(next) { if(disposed)return;current = next; title.textContent = next.title; adjustLecture(); renderExplanation(); render(); },
       destroy() {
+        disposed = true;
+        for (const view of Object.values(views)) for (const key of ['help','practice','comparison']) if(view[key]) {view[key].destroy();view[key]=null;}
         if (typeof unsubscribeDrafts === 'function') unsubscribeDrafts();
         if (advice) advice.destroy();
         if (lecture.explanation) lecture.explanation.destroy();

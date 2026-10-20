@@ -233,6 +233,12 @@ function validatePedagogyEvent(event,state) {
     const parts = r.split(':'), entry = meta && (meta.practice || []).find(e => e.id === parts[1]);
     if (parts.length !== 3 || !entry || event.question_id != null || parts[2] !== String(entry.version)) throw new Error('Unknown prepared practice selection.');
   }
+  if (event.type === 'checkpoint' && typeof r === 'string' && /^(pedagogy-comparison|pedagogy-comparison-synthesis):/.test(r)) {
+    const parts=r.split(':'),entry=meta && (meta.comparisons || []).find(e=>e.id===parts[1]);
+    const matches=entry && (state.events || []).filter(e=>e.event_id===entry.summary_event_id);
+    const raw=matches && matches[0];
+    if(parts.length!==3 || !entry || event.question_id!=null || parts[2]!==String(entry.version) || matches.length!==1 || raw.type!=='plan-answer' || raw.question_id!==entry.question_id || !raw.response || raw.response.tree!==entry.tree || raw.response.answer!==entry.summary || entry.source.access==='unavailable')throw new Error('Comparison requires the unchanged actual summary and available synthesis.');
+  }
   if (event.type === 'checkpoint' && typeof r === 'string' && r.startsWith('pedagogy-level:')) {
     const parts = r.split(':'), entry = meta && (meta.explanations || []).find(e => e.id === parts[1]);
     if (parts.length !== 4 || !entry || event.question_id != null || parts[2] !== String(entry.version) || !Object.hasOwn(entry.levels,parts[3])) throw new Error('Unknown prepared explanation level.');

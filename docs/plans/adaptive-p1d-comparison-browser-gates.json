@@ -1,0 +1,9 @@
+{
+  "command": "node tests/html-source-comparison-browser.cjs",
+  "exit_code": 0,
+  "seconds": 119.7175895,
+  "stdout": "Source comparison viewport 1440 started/passed; 375 started/passed. Source comparison actual-bundle ACK/rejection/synthesis, raw revision/history, draft reload, missing sources and geometry acceptance passed; screenshots C:/Users/ASUS/.agent-hub/tmp/ros-source-comparison-Hcx8Rq",
+  "stderr": "",
+  "reported_by": "p1_explanations, dedicated browser execution owner",
+  "playwright": "C:/Users/ASUS/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright"
+}

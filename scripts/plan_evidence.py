@@ -46,7 +46,7 @@ def _potential_prior_help(events, answer):
     when = _timestamp(answer.get('created_at'))
     result = []
     for position, event in enumerate(events):
-        appendix = event.get('type') == 'checkpoint' and isinstance(event.get('response'), str) and event['response'].startswith('handout-solution:')
+        appendix = event.get('type') == 'checkpoint' and isinstance(event.get('response'), str) and event['response'].startswith(('handout-solution:', 'pedagogy-comparison:', 'pedagogy-comparison-synthesis:'))
         if event.get('type') not in {'hint', 'solution', 'explanation-request', 'pedagogy-help'} and not appendix:
             continue
         helped_at = _timestamp(event.get('created_at'))
@@ -121,11 +121,11 @@ def propose(state, question_id, mapping, collection):
         # Revealed native-handout appendices cannot be passed off as independent
         # work. Conservatively count any prior appendix reveal as open notes.
         if any(e['type'] == 'checkpoint' and isinstance(e.get('response'), str)
-               and e['response'].startswith('handout-solution:') for e in preceding):
+               and e['response'].startswith(('handout-solution:', 'pedagogy-comparison-synthesis:')) for e in preceding):
             assistance = 'open-notes'
         if any(e['type'] == 'solution' or e['type'] == 'pedagogy-help' and e.get('response', {}).get('level') == 'solution' for e in preceding):
             assistance = 'open-notes'
-        if assistance == 'none' and any(e['type'] in {'hint', 'explanation-request', 'pedagogy-help'} for e in preceding):
+        if assistance == 'none' and any(e['type'] in {'hint', 'explanation-request', 'pedagogy-help'} or e['type'] == 'checkpoint' and isinstance(e.get('response'),str) and e['response'].startswith('pedagogy-comparison:') for e in preceding):
             assistance = 'hinted'
         if assistance != 'none':
             events.append(dict(type='solution' if assistance == 'open-notes' else 'hint',

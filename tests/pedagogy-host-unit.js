@@ -24,6 +24,17 @@ const help = (changes = {}, id = 'help') => ({event_id: id, type: 'pedagogy-help
   entry_id: 'hints', version: 1, tree: 'probe', question_sha256: 'a'.repeat(64), level: 1, prior_response_event_id: null, ...changes}});
 const tests = [];
 function test(name, run) { tests.push({name, run}); }
+test('comparison binds original actual summary and synthesis availability', () => {
+  const s=state(),raw=answer('original','parent','probe','The unchanged raw summary.');s.events=[raw];
+  s.plan.pedagogy.comparisons=[{id:'source-feedback',version:1,tree:'probe',question_id:'parent',summary_event_id:'original',summary:raw.response.answer,source:{access:'excerpt'}}];
+  const event={event_id:'show',type:'checkpoint',question_id:null,response:'pedagogy-comparison:source-feedback:1'};
+  assert.equal(validateEvent(event,s).response,event.response);
+  assert.equal(validateEvent({...event,response:'pedagogy-comparison-synthesis:source-feedback:1'},s).type,'checkpoint');
+  for(const response of ['pedagogy-comparison:source-feedback:2','pedagogy-comparison:missing:1','pedagogy-comparison:source-feedback:01','pedagogy-comparison:source-feedback:1:extra'])assert.throws(()=>validateEvent({...event,response},s),/Comparison/);
+  const missing=clone(s);missing.events=[];assert.throws(()=>validateEvent(event,missing),/Comparison/);
+  const changed=clone(s);changed.events[0].response.answer+=' changed';assert.throws(()=>validateEvent(event,changed),/Comparison/);
+  const unavailable=clone(s);unavailable.plan.pedagogy.comparisons[0].source.access='unavailable';assert.throws(()=>validateEvent(event,unavailable),/Comparison/);assert.throws(()=>validateEvent({...event,response:'pedagogy-comparison-synthesis:source-feedback:1'},unavailable),/Comparison/);
+});
 test('practice selection binds exact prepared id/version without spending', () => {
   const s=state();s.plan.pedagogy.practice=[{id:'tier',version:1}];
   const event={event_id:'choose',type:'checkpoint',question_id:null,response:'pedagogy-practice:tier:1'};

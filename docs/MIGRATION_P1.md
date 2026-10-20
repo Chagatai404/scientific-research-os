@@ -49,3 +49,17 @@ plan; old, stale or unrelated snapshots keep conservative selection. The optiona
 from the existing planner. Prerequisite-subject advice cannot authorize advancement
 on the target; block/project targets need an explicit concept/capability binding. Physical/live app checks and scientific content vetting remain
 separate from synthetic browser/structural tests.
+
+
+P1d source comparisons require the updated complete helper, host and runtime
+bundles. Supplied source text/hash/locators and prepared claims bind an unchanged
+actual summary event. Feedback remains attributed to that historical attempt when
+a later revision exists. A new checkpoint records feedback assistance before
+presentation; synthesis is a separate explicit acknowledged reveal. Unavailable
+source/unbound-attempt refusals do not record help, and an unavailable source
+cannot accept either assistance checkpoint. Older strict
+helpers do not understand these optional fields/checkpoints. Keep newer sessions
+with their matching helpers or read pre-upgrade backups; never strip raw work or
+assistance for compatibility. The central Quiz/Check surface switches between the
+prepared comparison and its original card while preserving the existing frame.
+No external source is fetched or independently vetted by these structural checks.

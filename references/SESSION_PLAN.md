@@ -162,7 +162,7 @@ context message, with a request to the tutor rather than fabricated knowledge.
 ## Optional P1 pedagogy contract (schema 1)
 
 `plan.pedagogy` is optional; legacy plans need no migration. It has exactly
-`schema: 1` plus optional `socratic`, `explanations` and `practice` arrays (at most 40 each,
+`schema: 1` plus optional `socratic`, `explanations`, `practice` and `comparisons` arrays (at most 40 each,
 120 KiB UTF-8 in total). `pedagogy_contract.validate` checks these after the base
 plan validates. Structural acceptance does not verify scientific content.
 
@@ -243,3 +243,40 @@ exact prepared plan target and current UTC snapshot day. Old snapshots, prerequi
 subjects, blocked/stale/malformed advice and block/project targets do not authorize
 advanced selection; explicit learner tier choices remain available. Snapshot date
 validation does not replace canonical evidence freshness policy.
+
+
+P1d `comparisons` entries add exactly `tree`, `question_id`, `question_sha256`,
+`summary_event_id`, `summary_sha256`, `summary`, `source`, `claims`, `synthesis`,
+and `prepared_by` to the common identity/source fields. The original question must
+be short, the summary at most 4000 characters, and its digest uses the same JSON
+digest rule. Trusted state publication binds it to one unchanged actual raw answer
+event for that question/tree; an unrelated/newer attempt cannot silently replace it.
+One entry per question/tree/summary event is allowed. Presented feedback freezes;
+a new learner revision and prepared comparison remain separate records.
+
+`source` is exactly `{id,locator,access,text,sha256}`. Access is `excerpt`, `full`
+or `unavailable`; the first two declare a supplied snapshot, not external retrieval
+or independent verification. Text is at most 16000 characters with a SHA-256 over
+its exact UTF-8 bytes. Unavailable text/synthesis are empty and claims absent.
+The source identity/locator must match a declared source. Up to 12 claims contain
+exactly `{kind,learner_quote,source_quote,locator,feedback,revision_prompt}`. Kinds
+are correct/omitted/misconception/unsupported/emphasis. Quotes occur verbatim in
+the bound original summary and supplied snapshot. Omitted points use a related
+learner anchor; unsupported means unsupported within the supplied snapshot.
+Substring matching proves structural grounding, not scientific classification.
+Attribution `prepared_by` and an explicit revision challenge remain visible.
+
+Opening feedback records checkpoint `pedagogy-comparison:<id>:<version>` before
+presentation. Explicit optional synthesis records
+`pedagogy-comparison-synthesis:<id>:<version>` before display; unavailable sources
+cannot record either assistance checkpoint or reveal synthesis. Their refusal and
+request-source notice opens without a help event, so missing sources do not falsely
+label later work assisted. Both saved checkpoints use null question IDs and exact
+prepared bindings.
+Default feedback asks for a raw revision; an explicit direct explanation request
+may reveal the prepared synthesis immediately as recorded assistance. Opening
+comparison feedback counts as hinted for subsequent evidence proposals; synthesis
+counts as open notes under existing append-order/timestamp rules. Truly later
+help does not retroactively downgrade an earlier attempt. Neither checkpoint
+awards evidence or spends a new assessment probe. Revision reuses the original
+question/card, draft sidecar and raw answer stream, including cross-stage return.
