@@ -1,33 +1,21 @@
 """One-way importers from the old runtime's files into a record. Each is idempotent: importing the same source twice
 adds nothing, and importing it after it changed adds only what changed.
 
-The learning importer reads Markdown learning records through ``scripts/knowledge.py``'s own parser, so validation
-and diagnostics are exactly those of the old runtime. That parser is retired with the old runtime at M6; by then every
-record has been imported and new facts are written as events.
+The importers read old notes through the old runtime's own parsers (kept in ``ros.lib``), so validation and diagnostics
+are exactly those of the old runtime.
 """
 from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
-import sys
 
 from .store import Record, event_id
-
-SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
-
-
-def _knowledge():
-    if str(SCRIPTS) not in sys.path:
-        sys.path.insert(0, str(SCRIPTS))
-    import knowledge
-    return knowledge
-
 
 def learning_records(rec: Record, root: Path | str) -> dict:
     """Import every tracked learning record under ``root``: a capability node per record, its scopes and
     prerequisites as edges, and each retrieval row as a ``retrieval`` event. Returns counts and the parser's
     diagnostics."""
-    knowledge = _knowledge()
+    from .lib import knowledge
     root = Path(root).resolve()
     collection = knowledge.discover(root, date.max)
     nodes, edges, events = {}, {}, []
@@ -307,13 +295,11 @@ def research_records(rec: Record, root: Path | str, evidence: Path | str | None 
     record a node carrying its status fields and diagnostics, each resolved relation an edge, each referenced
     EvidenceAtom a ``claim`` node it cites, each code reference a ``code-symbol`` that implements it, and each learning
     dependency a ``requires`` edge to the capability."""
-    knowledge = _knowledge()  # puts scripts/ on the path
-    import research
+    from .lib import research
     root = Path(root).resolve()
     reg = research.validate(root)
     research.enrich(reg, root, Path(evidence) if evidence else None, as_of=date.max,
                     graphify=Path(graphify) if graphify else None)
-    del knowledge
     by_path: dict[str, list] = {}
     for d in reg.diagnostics:
         by_path.setdefault(d.path, []).append(d)

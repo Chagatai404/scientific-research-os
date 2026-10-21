@@ -5,9 +5,10 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'scripts'))
-import library_index as li
-import paper_library as lib
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ros.lib import library_index as li
+from ros.lib import paper_library as lib
 from test_ontology import AS_OF
 from test_paper_library import paper
 
@@ -95,10 +96,10 @@ class LibraryIndexTests(unittest.TestCase):
         good, bad = self.base / 'good.md', self.base / 'bad.md'
         good.write_text('- Smith et al. 2020, no identifier\n', encoding='utf-8')
         bad.write_text('- Smith et al. 2020\n', encoding='utf-8')
-        script = str(ROOT / 'scripts/library_index.py')
-        ok = subprocess.run([sys.executable, '-S', '-B', script, 'lint', str(good)], capture_output=True, text=True, cwd=self.base)
+        script = '-m', 'ros.lib.library_index'
+        ok = subprocess.run([sys.executable, '-S', '-B', *script, 'lint', str(good)], capture_output=True, text=True, cwd=self.base)
         self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
-        failed = subprocess.run([sys.executable, '-S', '-B', script, 'lint', str(bad)], capture_output=True, text=True, cwd=self.base)
+        failed = subprocess.run([sys.executable, '-S', '-B', *script, 'lint', str(bad)], capture_output=True, text=True, cwd=self.base)
         self.assertEqual(failed.returncode, 1)
 
 

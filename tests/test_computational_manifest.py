@@ -5,8 +5,9 @@ import json
 import subprocess
 import unittest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
-import computational_manifest as manifest
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ros.lib import computational_manifest as manifest
 
 
 class ManifestTests(unittest.TestCase):
@@ -17,7 +18,7 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(record["declared"], json.loads((path.parent / "declared-ml.json").read_text(encoding="utf-8")))
         self.assertTrue(record["declared"]["example_only"])
         self.assertIsNone(record["observed"]["git"]["commit"])
-        result = subprocess.run([sys.executable, "-S", "-B", str(root / "scripts/computational_manifest.py"), str(path)],
+        result = subprocess.run([sys.executable, "-S", "-B", '-m', 'ros.lib.computational_manifest', str(path)],
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(manifest.loads(result.stdout), record)

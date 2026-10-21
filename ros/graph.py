@@ -12,7 +12,7 @@ Conventions the importers and writers follow (see ``ros.store`` for the files th
 * Claim support is ``X --supports--> claim`` or ``X --invalidates--> claim``. Code is ``code-symbol:<path> --implements-->
   <node>``; symbols imported from Graphify are ``code-symbol:<path>#<label> --part-of--> code-symbol:<path>``.
 
-The readiness rules are those of ``scripts/knowledge.py`` (schema 1 to 3), kept identical so the two agree on the
+The readiness rules are those of ``ros.lib.knowledge`` (schema 1 to 3), kept identical so the two agree on the
 same history until the old runtime is retired. Everything here only reads; nothing writes except ``import_graphify``.
 """
 from __future__ import annotations

@@ -2,10 +2,13 @@
 from copy import deepcopy
 import json
 from pathlib import Path
+import sys
 import unittest
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from test_evidence_validation import candidate, reviewed
-import validate_evidence as ev
+from ros.lib import validate_evidence as ev
 
 FIXTURES = Path(__file__).parent / "fixtures/evidence"
 

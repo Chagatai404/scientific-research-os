@@ -9,10 +9,11 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'scripts'))
-import paper_access as pa
-import paper_library as papers
-import literature_check as lc
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ros.lib import paper_access as pa
+from ros.lib import paper_library as papers
+from ros.lib import literature_check as lc
 from literature_fixture import atom, reviewed, paper, claim, write
 
 PDF = b'%PDF-1.4\nSynthetic test document; no scientific evidence.\n%%EOF\n'
@@ -206,7 +207,7 @@ class AccessTests(unittest.TestCase):
         path = self.base / 'request.json'
         self.value['result']['cookies'] = 'fixture-secret'
         path.write_text(json.dumps(self.value))
-        result = subprocess.run([sys.executable, '-S', '-B', str(ROOT / 'scripts/paper_access.py'),
+        result = subprocess.run([sys.executable, '-S', '-B', '-m', 'ros.lib.paper_access',
                                  '--root', str(self.library), '--inbox', str(self.inbox), '--input', str(path), '--apply'],
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 1)

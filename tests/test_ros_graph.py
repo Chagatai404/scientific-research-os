@@ -11,10 +11,10 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(ROOT / "tests"))
 
-import knowledge  # noqa: E402
+from ros.lib import knowledge  # noqa: E402
 from ros import graph, importers  # noqa: E402
 from ros.store import Record  # noqa: E402
 

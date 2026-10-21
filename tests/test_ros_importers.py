@@ -10,7 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ros import importers  # noqa: E402
 from ros.store import Record, validate_item  # noqa: E402
@@ -105,7 +105,7 @@ if __name__ == "__main__":
 
 class ResearchImportTests(Fixture):
     def frontier_pairs(self, root):
-        import research
+        from ros.lib import research
         reg = research.validate(root)
         old = sorted((x["id"], x["transition"]) for x in research.frontier(reg))
         importers.research_records(self.rec, root)

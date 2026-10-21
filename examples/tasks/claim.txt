@@ -1,1 +1,0 @@
-Synthetic atomic claim: this fixture has an observable to check.

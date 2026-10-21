@@ -71,6 +71,8 @@ TOOLS: dict[str, Tool] = {}
 
 def tool(name: str, help: str, writes: bool = False, human: bool = False, **params: Param):
     def wrap(fn):
+        if name in TOOLS:
+            raise RuntimeError(f"tool {name} is declared twice")
         TOOLS[name] = Tool(name, fn, help, params, writes or human, human)
         return fn
     return wrap
@@ -417,9 +419,9 @@ def claims(rec, project=None, as_of=None):
     return rsc.claims(rec, project, as_of=_day(as_of))
 
 
-@tool("claim", "One claim's audit status: verdict per step, missing steps, ownership, assurance met.",
+@tool("claim_status", "One claim's audit status: verdict per step, missing steps, ownership, assurance met.",
       claim=P("string", "claim id", True))
-def claim(rec, claim):
+def claim_status(rec, claim):
     return rsc.status(rec, claim)
 
 

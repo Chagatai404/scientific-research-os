@@ -6,8 +6,9 @@ import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'scripts'))
-import knowledge
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ros.lib import knowledge
 
 
 class QueryTests(unittest.TestCase):
@@ -21,7 +22,7 @@ class QueryTests(unittest.TestCase):
         self.assertEqual(len(knowledge.query(collection, 'capability', 'demo.shower-profile', False)['nodes']), 1)
 
     def test_json_cli_and_missing_capability(self):
-        args = [sys.executable, '-S', str(ROOT / 'scripts/knowledge.py'), '--root', str(ROOT / 'examples/learning'),
+        args = [sys.executable, '-S', '-m', 'ros.lib.knowledge', '--root', str(ROOT / 'examples/learning'),
                 '--capability', 'probability.density', '--dependencies', '--json', '--as-of', '2026-09-29']
         result = subprocess.run(args, capture_output=True, text=True, encoding='utf-8')
         self.assertEqual(result.returncode, 0, result.stderr)

@@ -239,7 +239,7 @@ def open_tasks(rec: Record, bundle: str, clips: bool = False) -> list[str]:
 
 def render_voice(rec: Record, bundle: str, provider: str = "kokoro", envs: list[str] | None = None,
                  voices: dict | None = None) -> dict:
-    """Speak every segment that has text and no audio, with a local engine through ``scripts/voice.py``. Segments
+    """Speak every segment that has text and no audio, with a local engine through ``ros.lib.voice``. Segments
     that fail stay without audio and are reported; the gate keeps the bundle unready until they have it."""
     voice = _script("voice")
     d, plan = bundle_dir(rec, bundle), load_plan(rec, bundle)
@@ -261,7 +261,7 @@ def render_voice(rec: Record, bundle: str, provider: str = "kokoro", envs: list[
 
 
 def render_animation(rec: Record, bundle: str, node: str, spec: str, envs: list[str] | None = None) -> dict:
-    """Render a node's Manim scene through ``scripts/animate.py`` and attach the video, poster and key-frame strip.
+    """Render a node's Manim scene through ``ros.lib.animate`` and attach the video, poster and key-frame strip.
     ``spec`` is the animation spec's path inside the bundle. The key frames still have to be looked at."""
     animate = _script("animate")
     d, plan = bundle_dir(rec, bundle), load_plan(rec, bundle)
@@ -399,11 +399,7 @@ def _sha(path: Path) -> str:
 
 def _script(name: str):
     import importlib
-    import sys
-    scripts = Path(__file__).resolve().parents[1] / "scripts"
-    if str(scripts) not in sys.path:
-        sys.path.insert(0, str(scripts))
-    return importlib.import_module(name)
+    return importlib.import_module(f"ros.lib.{name}")
 
 
 def _speech_text():
