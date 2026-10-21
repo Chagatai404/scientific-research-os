@@ -77,7 +77,7 @@ class TerminalTests(Fixture):
 class LogTests(Fixture):
     def test_log_shows_questions_answers_asks_and_replies(self):
         items = ladder(self.rec, 2)
-        lesson = api.start(self.rec, CAP, "Log test")["lesson"]
+        lesson = api.start(self.rec, CAP, title="Log test")["lesson"]
         api.teach(self.rec, lesson, CAP, "visual", "A picture of spread.")
         api.answer(self.rec, lesson, items[1], 1)
         api.answer(self.rec, lesson, items[2], 5)

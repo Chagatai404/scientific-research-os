@@ -53,7 +53,8 @@ def parser() -> argparse.ArgumentParser:
     add("projects", help="list records")
     add("tools", help="list tools")
     s = add("learn", help="a lesson in the terminal")
-    s.add_argument("scope", help="capability:x, course:y, concept:z ...")
+    s.add_argument("scope", nargs="?", help="capability:x, course:y, concept:z ... (default: the bundle's goal)")
+    s.add_argument("--bundle", help="a prepared bundle; the lesson starts only when it is ready")
     s.add_argument("--title")
     add("mcp", help="serve tools over stdio (MCP)")
     s = add("serve", help="the localhost portal")
@@ -100,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         rec = Record(root)
         try:
             if args.command == "learn":
-                return learn(rec, args.scope, args.title)
+                return learn(rec, args.scope, args.title, bundle=args.bundle)
             if args.command == "serve":
                 from . import serve
                 return serve.run(rec, args.port, args.open)
@@ -123,10 +124,11 @@ def main(argv: list[str] | None = None) -> int:
 HELP = "Type your answer. ? for a hint, !text to ask the tutor, ~mode for another explanation, q to stop."
 
 
-def learn(rec: Record, scope: str, title: str | None = None, read=input, write=print) -> int:
-    started = api.start(rec, scope, title)
+def learn(rec: Record, scope: str | None, title: str | None = None, read=input, write=print,
+          bundle: str | None = None) -> int:
+    started = api.start(rec, scope=scope, bundle=bundle, title=title)
     lesson, step = started["lesson"], started["next"]
-    write(f"Lesson {lesson} on {scope}. {HELP}")
+    write(f"Lesson {lesson} on {scope or bundle}. {HELP}")
     while True:
         action = step["action"]
         write(f"\n[{action}] {step.get('reason', '')}")
