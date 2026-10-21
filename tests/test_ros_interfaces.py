@@ -146,6 +146,23 @@ class McpTests(Fixture):
         self.assertTrue(replies[3]["result"]["isError"])
         self.assertEqual(replies[4]["error"]["code"], -32601)
 
+    def test_the_mcp_process_can_serve_the_portal_too(self):
+        import http.client
+        import socket
+        ladder(self.rec, 1)
+        self.rec.close()
+        os.environ["ROS_HOME"] = str(self.home)
+        self.addCleanup(os.environ.pop, "ROS_HOME", None)
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        out = io.StringIO()
+        mcp.serve("demo", io.StringIO('{"jsonrpc":"2.0","id":1,"method":"ping"}\n'), out, portal=port)
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        c.request("GET", "/api/status", headers={"Host": f"127.0.0.1:{port}"})
+        self.assertEqual(json.loads(c.getresponse().read())["result"]["items"], 1)
+        c.close()
+
     def test_garbage_does_not_end_the_session(self):
         os.environ["ROS_HOME"] = str(self.home)
         self.addCleanup(os.environ.pop, "ROS_HOME", None)

@@ -79,9 +79,15 @@ def _error(mid, code: int, message: str) -> dict:
     return {"jsonrpc": "2.0", "id": mid, "error": {"code": code, "message": message}}
 
 
-def serve(project: str | None = None, stdin=None, stdout=None) -> int:
+def serve(project: str | None = None, stdin=None, stdout=None, portal: int | None = None) -> int:
+    """Answer requests until stdin closes. With ``portal``, the same process also serves the project's portal on that
+    port, so the agent and the browser share one writer (calls are serialized by ``api.LOCK``)."""
     stdin, stdout = stdin or sys.stdin, stdout or sys.stdout
     server = Server(project)
+    if portal is not None:
+        from . import serve as portal_server
+        portal_server.start(server.record(None), portal)
+        sys.stderr.write(f"research-os portal: http://127.0.0.1:{portal}/\n")
     for line in stdin:
         line = line.strip()
         if not line:

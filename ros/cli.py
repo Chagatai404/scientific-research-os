@@ -58,7 +58,8 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("scope", nargs="?", help="capability:x, course:y, concept:z ... (default: the bundle's goal)")
     s.add_argument("--bundle", help="a prepared bundle; the lesson starts only when it is ready")
     s.add_argument("--title")
-    add("mcp", help="serve tools over stdio (MCP)")
+    s = add("mcp", help="serve tools over stdio (MCP)")
+    s.add_argument("--portal", type=int, metavar="PORT", help="also serve the portal for this project on PORT")
     s = add("migrate", help="import a whole vault into the record and check every answer arrived")
     s.add_argument("vault", help="the Obsidian vault (or any folder of old notes and sessions)")
     s.add_argument("--research-root", help="where research records live, if not in the vault")
@@ -115,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if out.get("installed", True) else 4
         if args.command == "mcp":
             from . import mcp
-            return mcp.serve(args.project)
+            return mcp.serve(args.project, portal=args.portal)
         root = home.resolve(args.project)
         rec = Record(root)
         try:
