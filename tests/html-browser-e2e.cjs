@@ -39,7 +39,7 @@ async function main() {
       window.rosHost.onload();
     },{plugin,runtime,css,state,content});
     const iframe=page.frameLocator('iframe.ros-html-frame');
-    await iframe.getByText('Answers save automatically.',{exact:false}).waitFor();
+    await iframe.getByText('Awaiting response').first().waitFor();
     assert.equal(await page.locator('iframe.ros-html-frame').getAttribute('sandbox'),'allow-scripts');
     assert.equal(await page.locator('#outside').textContent(),'Host intact');
     assert.equal(await page.evaluate(()=>window.pwned),undefined);
@@ -71,14 +71,14 @@ if(!(await iframe.locator('.ros-side-panel').isVisible()))await iframe.locator('
     await iframe.getByText('Progress saved.',{exact:false}).waitFor();
     // Recreate the view from persisted vault JSON: browser page memory is discarded.
     await page.evaluate(()=>{window.rosHost.onunload();window.rosHost=new window.rosHelpers.SessionHost(window.rosHost.plugin,document.getElementById('mount'),'fixture.html');window.rosHost.onload();});
-    await iframe.getByText('Answers save automatically.',{exact:false}).waitFor();
+    await iframe.getByText('Awaiting response').first().waitFor();
     const persisted=await page.evaluate(()=>JSON.parse(window.rosFiles['fixture.state.json']));
     assert.equal(persisted.events.filter(e=>e.type==='response').length,2);
     assert(persisted.events.every(e=>e.status==='pending-review'));
     assert.equal(persisted.open_questions[0].prompt,'Why is the variance finite?');
     assert(!Object.hasOwn(persisted,'mastery'));
     await page.evaluate(()=>{document.body.className='theme-dark';return window.rosHost.reload();});
-    await iframe.getByText('Answers save automatically.',{exact:false}).waitFor();
+    await iframe.getByText('Awaiting response').first().waitFor();
     assert.equal(await iframe.locator('body').getAttribute('class'),'theme-dark');
     assert.equal(await iframe.locator('html').getAttribute('data-theme'),'dark');
     assert(await iframe.locator('svg').count()>0,'SVG demonstration present');

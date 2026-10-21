@@ -1,4 +1,4 @@
-# P1 teaching behaviors (unreleased)
+# P1 teaching behaviors (merged to main, not yet version-tagged)
 
 P0 remains the released 0.9.8 baseline. P1 changes require the complete updated
 helper, runtime and companion bundles together; no live installation is implied.

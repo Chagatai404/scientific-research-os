@@ -128,8 +128,9 @@ function hostPage() {
     await t.frame.locator('.ros-board select').nth(1).selectOption('1.25');
     await t.frame.locator('.ros-board-play').click();
     await t.frame.locator('.ros-board-voice-note[data-problem="true"]').waitFor({timeout: 20000});
-    const note = await t.frame.locator('.ros-board-voice-note').textContent();
-    assert.match(note, /live voice is not available \(The live voice is not running/); assert.match(note, /caption voice instead/);
+    const noteBox = t.frame.locator('.ros-board-voice-note');
+    assert.match(await noteBox.textContent(), /Voice interrupted/); assert.match(await noteBox.getAttribute('title'), /The live voice is not running/);
+    assert.equal(await t.frame.getByRole('button', {name: 'Retry voice'}).count(), 1, 'the retry action is offered');
     await done(t);
     assert.deepEqual(await t.plays(), [], 'nothing was played');
     assert.equal(await t.frame.locator('.ros-board-caption').textContent(), 'Third.', 'the lecture still finished');
