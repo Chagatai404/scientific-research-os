@@ -1,7 +1,7 @@
 # Remaining P0 acceptance audit — 19 October 2026
 
 Scope: the complete supplied adaptive-learning brief, reconciled with the current
-implementation record and repository at `b54e408`, plus the completed parallel P0 slices and final context-writer checks. This is an acceptance map, not a release declaration. VERSION remains 0.9.7.
+implementation record and repository at `b54e408`, plus the completed parallel P0 slices and final context-writer checks. This is an acceptance map, not a release declaration. VERSION was 0.9.7 when this audit was written; it is now 0.9.8.
 
 ## Mandatory core versus later work
 

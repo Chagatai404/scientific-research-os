@@ -825,3 +825,15 @@ body.ros-staged .ros-side-panel,body.ros-staged .ros-panel-toggle,body.ros-stage
 }
 @media(min-width:1100px){.ros-stagebar>.ros-advice-launcher,.ros-teaching-roles,.ros-teaching-roles>button{box-sizing:border-box;width:100%}}
 .ros-roles-dialog{height:min(640px,calc(100vh - 24px))}
+
+.ros-ask-launcher{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font:600 12px/1.15 var(--ros-font-ui,Arial,sans-serif);border-radius:10px}
+.ros-ask-launcher::before{content:"?"/"";font-size:18px}
+.ros-ask-dialog textarea{width:100%;box-sizing:border-box;min-height:7em;font:16px/1.4 var(--ros-font-body,inherit);background:var(--ros-bg);color:inherit;border:1px solid var(--ros-border);border-radius:8px;padding:8px}
+@media(max-width:1099px){.ros-ask-launcher{flex:none;white-space:nowrap;min-height:36px;padding:4px 10px;flex-direction:row;gap:6px}.ros-ask-launcher::before{font-size:14px}}
+@media(min-width:1100px){.ros-stagebar>.ros-ask-launcher{grid-column:3;grid-row:2;align-self:start;margin-top:76px;width:100%;box-sizing:border-box;min-height:64px;padding:8px 4px}.ros-teaching-roles{margin-top:152px}}
+/* Compact tool launchers so the tab row stays on one line (the accessible names stay in the button text). */
+@media(max-width:1099px){.ros-advice-launcher,.ros-ask-launcher,.ros-teaching-roles>button{min-height:32px;padding:2px 8px;font-size:12px}.ros-stagebar{flex-wrap:nowrap}.ros-stagebar ol{flex:1 1 auto;min-width:0}}
+@media(max-width:640px){.ros-advice-launcher,.ros-ask-launcher,.ros-teaching-roles>button{font-size:0;gap:0;min-width:36px;padding:2px 6px}.ros-advice-launcher::before,.ros-ask-launcher::before,.ros-teaching-roles>button::before{font-size:16px}.ros-stagebar ol button{padding:4px 6px;font-size:12px}}
+@media(max-width:640px){.ros-stagebar{flex-wrap:wrap;gap:4px}.ros-stagebar ol{flex:1 1 100%;display:flex;gap:4px}.ros-stagebar ol li{flex:1 1 0;min-width:0}.ros-stagebar ol button{width:100%;min-width:0}.ros-advice-launcher,.ros-ask-launcher,.ros-teaching-roles{flex:1 1 0}.ros-teaching-roles>button{width:100%}}
+@media(max-width:640px){.ros-stagebar>.ros-advice-launcher,.ros-stagebar>.ros-ask-launcher{font-size:0;gap:0;max-width:none;padding:2px 6px;min-height:32px}}
+@media(max-width:900px){.ros-stagebar>.ros-advice-launcher,.ros-stagebar>.ros-ask-launcher,.ros-teaching-roles>button{font-size:0;gap:0;min-width:36px;max-width:none;padding:2px 8px;min-height:32px}.ros-advice-launcher::before,.ros-ask-launcher::before,.ros-teaching-roles>button::before{font-size:16px}}

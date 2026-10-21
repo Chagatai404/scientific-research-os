@@ -8,7 +8,6 @@ import argparse
 from datetime import date
 import json
 from pathlib import Path
-import sys
 import knowledge as k
 
 

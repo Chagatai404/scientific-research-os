@@ -3053,6 +3053,160 @@
 });
 
 ;
+/* Pure prepared snapshot lineage. Resolution never authorizes content display. */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  else root.ResearchOSPreparedVersions = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  'use strict';
+  const families = ['socratic','explanations','practice','comparisons','terms','bloom','analogies','critiques'];
+  const unique = new Set(['socratic','explanations','practice','comparisons']);
+  const object = x => !!x && typeof x === 'object' && !Array.isArray(x);
+  const text = (x,n) => typeof x === 'string' && !!x.trim() && Array.from(x).length <= n && !/[\x00-\x08\x0b-\x1f\x7f]/.test(x);
+  const copy = x => JSON.parse(JSON.stringify(x));
+  const equal = (a,b) => {
+    if (a === b) return true;
+    if (Array.isArray(a) && Array.isArray(b)) return a.length === b.length && a.every((v,i) => equal(v,b[i]));
+    if (!object(a) || !object(b)) return false;
+    const keys = Object.keys(a); return keys.length === Object.keys(b).length && keys.every(k => Object.hasOwn(b,k) && equal(a[k],b[k]));
+  };
+  function entryBinding(family,e) {
+    if (!object(e)) return null;
+    let v;
+    if (['socratic','practice'].includes(family)) v = [e.tree,e.question_id,e.question_sha256];
+    else if (['explanations','analogies'].includes(family)) v = [e.segment_id,e.segment_sha256];
+    else if (family === 'comparisons') v = [e.tree,e.question_id,e.question_sha256,e.summary_event_id,e.summary_sha256,e.source?.id];
+    else if (family === 'critiques') v = [e.tree,e.question_id,e.question_sha256,e.answer_event_id,e.answer_sha256,e.work_kind,e.source?.id];
+    else if (family === 'terms') v = [e.source?.id];
+    else if (family === 'bloom') v = ['challenge-set'];
+    return v && v.every(x => text(x,400)) ? v : null;
+  }
+  function duplicateKey(f,e) {
+    if (['socratic','practice'].includes(f)) return [e.tree,e.question_id];
+    if (f === 'explanations') return [e.segment_id];
+    return [e.tree,e.question_id,e.summary_event_id,e.source.id];
+  }
+  function scan(plan) {
+    const g = {entries:new Map(),outgoing:new Map(),incoming:new Map(),links:[],order:[]}, errors = [];
+    const fail = s => errors.push('revisions: '+s);
+    if (!object(plan)) return [g,['revisions: plan must be an object']];
+    if (!Object.hasOwn(plan,'pedagogy')) return [g,[]];
+    const m = plan.pedagogy;
+    if (!object(m) || m.schema !== 1) return [g,['revisions: schema 1 pedagogy object required']];
+    try {
+      const json = JSON.stringify(m,(_k,v) => {if (typeof v === 'number' && !Number.isFinite(v) || typeof v === 'undefined' || typeof v === 'function' || typeof v === 'symbol') throw Error(); return v;});
+      if (new TextEncoder().encode(json).length > 120*1024) return [g,['revisions: prepared metadata exceeds 120 KiB']];
+    } catch (_) {return [g,['revisions: bounded finite JSON required']];}
+    for (const f of families) {
+      const entries = Object.hasOwn(m,f) ? m[f] : [];
+      if (!Array.isArray(entries) || entries.length > 40) {fail('each family has at most forty entries'); continue;}
+      for (const e of entries) {
+        if (!object(e)) {fail('prepared entry must be an object'); continue;}
+        if (typeof e.id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(e.id) || g.entries.has(e.id)) {fail('globally unique safe entry identities required'); continue;}
+        if (!Number.isInteger(e.version) || e.version < 1 || e.version > 1000000) {fail('strict positive bounded integer entry versions required'); continue;}
+        if (!text(e.target,300) || e.target !== plan.target) {fail('exact nonempty plan target required'); continue;}
+        if (!entryBinding(f,e)) {fail('exact underlying prepared-object binding required'); continue;}
+        g.entries.set(e.id,[f,e]); g.order.push(e.id);
+      }
+    }
+    const links = Object.hasOwn(m,'revisions') ? m.revisions : [];
+    if (!Array.isArray(links) || links.length > 80) return [g,errors.concat('revisions: at most eighty exact links required')];
+    for (const l of links) {
+      if (!object(l) || !equal(Object.keys(l).sort(),['new_id','new_version','old_id','old_version'])) {fail('exact old/new identity and version link required'); continue;}
+      if (typeof l.old_id !== 'string' || typeof l.new_id !== 'string' || l.old_id === l.new_id || !g.entries.has(l.old_id) || !g.entries.has(l.new_id)) {fail('distinct existing globally unique endpoints required'); continue;}
+      const [f,a] = g.entries.get(l.old_id), [nf,b] = g.entries.get(l.new_id);
+      if (!Number.isInteger(l.old_version) || !Number.isInteger(l.new_version) || l.old_version !== a.version || l.new_version !== b.version || l.new_version <= l.old_version) {fail('exact strictly increasing integer endpoint versions required'); continue;}
+      if (f !== nf || a.target !== b.target || !equal(entryBinding(f,a),entryBinding(nf,b))) {fail('endpoints must share family, target and exact underlying binding'); continue;}
+      if (g.outgoing.has(l.old_id) || g.incoming.has(l.new_id)) {fail('nonbranching chains prohibit duplicate edges, forks and merges'); continue;}
+      g.outgoing.set(l.old_id,l.new_id); g.incoming.set(l.new_id,l.old_id); g.links.push(l);
+    }
+    for (const id of g.order) {
+      const seen = new Set(); let c=id;
+      while (g.outgoing.has(c)) {if (seen.has(c)) {fail('cycles are prohibited'); break;} seen.add(c); c=g.outgoing.get(c);}
+    }
+    const groups = new Map();
+    for (const id of g.order) {const [f,e]=g.entries.get(id); if (unique.has(f)) {const key=JSON.stringify([f,duplicateKey(f,e)]); if (!groups.has(key)) groups.set(key,[]); groups.get(key).push(id);}}
+    for (const members of groups.values()) {
+      if (members.length < 2) continue;
+      const roots=members.filter(id => !g.incoming.has(id)), seen=new Set(); let c=roots.length === 1 ? roots[0] : null;
+      while (c !== null && c !== undefined && !seen.has(c)) {seen.add(c); c=g.outgoing.get(c);}
+      if (roots.length !== 1 || seen.size !== members.length || !members.every(id => seen.has(id))) fail('duplicate prepared binding requires one connected explicit chain');
+    }
+    return [g,errors];
+  }
+  function chain(g,id) {while (g.incoming.has(id)) id=g.incoming.get(id); const out=[id]; while (g.outgoing.has(id)) {id=g.outgoing.get(id); out.push(id);} return out;}
+  function validateRevisions(plan) {return scan(plan)[1];}
+  function currentEntries(plan,family) {
+    const [g,errors]=scan(plan), out=[], seen=new Set(); if (errors.length || !families.includes(family)) return out;
+    for (const id of g.order) if (g.entries.get(id)[0] === family) {const leaf=chain(g,id).at(-1); if (!seen.has(leaf)) {out.push(copy(g.entries.get(leaf)[1])); seen.add(leaf);}}
+    return out;
+  }
+  function lineage(plan,id) {const [g,e]=scan(plan); return e.length || typeof id !== 'string' || !g.entries.has(id) ? [] : chain(g,id).map(k => copy(g.entries.get(k)[1]));}
+  function selectedEvent(g,event) {
+    if (!object(event)) return null;
+    const r=event.response;
+    if (event.type === 'pedagogy-help' && object(r)) {
+      if (!equal(Object.keys(r).sort(),['entry_id','level','prior_response_event_id','question_sha256','tree','version'])) return null;
+      const pair=g.entries.get(r.entry_id); if (!pair || pair[0] !== 'socratic') return null;
+      const e=pair[1]; return Number.isInteger(r.version) && r.version === e.version && event.question_id === e.question_id && r.tree === e.tree && r.question_sha256 === e.question_sha256 && (r.level === 'solution' || Number.isInteger(r.level) && Array.isArray(e.hints) && r.level >= 1 && r.level <= e.hints.length) ? e.id : null;
+    }
+    if (event.type !== 'checkpoint' || event.question_id != null || typeof r !== 'string' || r.length > 256) return null;
+    const parts=r.split(':'); if (![3,4].includes(parts.length)) return null;
+    const pair=g.entries.get(parts[1]); if (!pair || parts[2] !== String(pair[1].version)) return null;
+    const [f,e]=pair;
+    if (parts[0] === 'pedagogy-level' && f === 'explanations' && parts.length === 4 && object(e.levels) && Object.hasOwn(e.levels,parts[3])) return e.id;
+    if (parts[0] === 'pedagogy-bloom' && f === 'bloom' && parts.length === 4 && (parts[3] === 'all' || Array.isArray(e.challenges) && e.challenges.some(c => object(c) && c.level === parts[3]))) return e.id;
+    const prefixes=new Map([['pedagogy-practice','practice'],['pedagogy-comparison','comparisons'],['pedagogy-comparison-synthesis','comparisons'],['pedagogy-terms','terms'],['pedagogy-analogy','analogies'],['pedagogy-editor','critiques']]);
+    return parts.length === 3 && prefixes.get(parts[0]) === f ? e.id : null;
+  }
+  function resolveEntry(plan,family,binding,events=[],requestedId=null,activeId=null) {
+    requestedId=typeof requestedId === 'string' ? requestedId : null;
+    const empty={current:null,selected:null,history:[],update_available:false,unavailable:requestedId}, [g,errors]=scan(plan);
+    if (errors.length || !families.includes(family) || !Array.isArray(binding) || !binding.every(v => typeof v === 'string')) return empty;
+    const candidates=g.order.filter(id => g.entries.get(id)[0] === family && equal(entryBinding(family,g.entries.get(id)[1]),binding)); if (!candidates.length) return empty;
+    let chosen=candidates.includes(requestedId) ? requestedId : candidates.includes(activeId) ? activeId : null;
+    if (chosen === null) for (const e of Array.isArray(events) && events.length <= 10000 ? events : []) {const id=selectedEvent(g,e); if (candidates.includes(id)) chosen=id;}
+    if (chosen === null) chosen=chain(g,candidates[0]).at(-1);
+    const ids=chain(g,chosen), leaf=ids.at(-1);
+    return {current:copy(g.entries.get(leaf)[1]),selected:copy(g.entries.get(chosen)[1]),history:ids.slice(0,-1).map(id => copy(g.entries.get(id)[1])),update_available:chosen !== leaf,unavailable:requestedId !== null && !candidates.includes(requestedId) ? requestedId : null};
+  }
+  function revisionProblems(oldPlan,newPlan,events=[]) {
+    const [a,ae]=scan(oldPlan), [b,be]=scan(newPlan); if (ae.length || be.length) return ['revisions: invalid old or new revision graph',...ae,...be];
+    const problems=[], frozen=new Set();
+    for (const link of a.links) {if (!b.links.some(l => equal(l,link))) problems.push('revisions: published link must be retained exactly'); frozen.add(link.old_id); frozen.add(link.new_id);}
+    for (const event of Array.isArray(events) && events.length <= 10000 ? events : []) {const id=selectedEvent(a,event); if (id !== null) frozen.add(id);}
+    for (const id of [...frozen].sort()) if (!equal(a.entries.get(id),b.entries.get(id))) problems.push('revisions: immutable historical/selected snapshot must be retained: '+id);
+    return problems;
+  }
+  function practiceForAttempt(plan,events,responseEventId) {
+    // Trusted Python publication owns full question digest verification. This
+    // synchronous lookup consumes that immutable plan, never an authoring draft.
+    const empty={entry:null,version:null,selection_event_id:null,recorded:false},[g,errors]=scan(plan);
+    if(errors.length||!text(responseEventId,200)||!Array.isArray(events)||events.length>10000)return empty;
+    const seen=new Set();let index=null;
+    for(let i=0;i<events.length;i++){
+      const event=events[i];if(!object(event)||!text(event.event_id,200)||!text(event.type,100)||seen.has(event.event_id))return empty;
+      seen.add(event.event_id);if(event.event_id===responseEventId)index=i;
+    }
+    if(index===null)return empty;
+    const answer=events[index],response=answer.response;
+    if(answer.type!=='plan-answer'||!object(response)||!Object.hasOwn(response,'answer'))return empty;
+    const tree=response.tree,qid=answer.question_id;
+    if(!['probe','check'].includes(tree)||!text(qid,200))return empty;
+    const questions=object(plan[tree])?plan[tree].questions:null;
+    if(!Array.isArray(questions)||questions.length>1000||questions.some(q=>!object(q))||questions.filter(q=>q.id===qid).length!==1)return empty;
+    let selected=empty;
+    for(const event of events.slice(0,index)){
+      const id=selectedEvent(g,event),pair=g.entries.get(id);
+      if(pair&&pair[0]==='practice'&&pair[1].tree===tree&&pair[1].question_id===qid)selected={entry:id,version:pair[1].version,selection_event_id:event.event_id,recorded:true};
+    }
+    return selected;
+  }
+  return {entryBinding,validateRevisions,currentEntries,lineage,resolveEntry,revisionProblems,practiceForAttempt};
+});
+
+;
 /* Research OS staged session: runs a session plan (scripts/session_plan.py) as Quiz, Handout, Lecture, Video and Check environments.
    The logic (judging an answer, choosing the next question, choosing the lecture segments) mirrors session_plan.py and is pinned by tests/fixtures/plan-cases.json;
    the view shows one thing at a time, so nothing inside it scrolls and the questions never sink to the bottom of a page.
@@ -3326,6 +3480,29 @@
         sessionAdvice: () => sessionAdaptation(current, ctx.events(), reviews()),
         canonicalAdvice: ctx.canonicalAdvice, learningPreferences: ctx.learningPreferences, requestPending: ctx.requestPending});
     }
+    // Asking the tutor is available in every stage from the tool rail; the question is saved and waits for the tutor's own answer.
+    {
+      const askDialog = el('dialog', {class: 'ros-advice-dialog ros-ask-dialog', 'aria-label': 'Ask the tutor'});
+      const askInput = el('textarea', {rows: '5', 'aria-label': 'Your question for the tutor', maxlength: '2000'});
+      const askStatus = el('p', {class: 'ros-advice-status', role: 'status'});
+      const askSend = button('Send', () => {
+        const text = askInput.value.trim();
+        if (!text) return;
+        if (ctx.emit('open-question', null, text) === false) { askStatus.textContent = 'The question could not be saved. Your text is kept; try again.'; return; }
+        askInput.value = ''; askSend.disabled = true;
+        askStatus.textContent = 'Question saved. The tutor will answer in this session.';
+      }, {class: 'ros-primary', disabled: true});
+      askInput.addEventListener('input', () => { askSend.disabled = !askInput.value.trim(); askStatus.textContent = ''; });
+      askInput.addEventListener('keydown', event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); askSend.click(); } });
+      askDialog.append(el('h2', {text: 'Ask the tutor'}), el('p', {class: 'ros-advice-note', text: 'Your question is saved with this session and waits for the tutor. It does not change your answers or progress.'}), askInput, askStatus,
+        el('div', {class: 'ros-reader-actions'}, askSend, button('Close', () => askDialog.close())));
+      const askOpener = button('Ask the tutor', () => {
+        // In a running lecture the lecture's own composer is used (it pauses playback and offers prepared answers).
+        if (shown === 'lecture' && lecture && lecture.askButton && !lecture.askButton.hidden) { lecture.askButton.click(); return; }
+        askDialog.showModal(); askInput.focus();
+      }, {class: 'ros-ask-launcher'});
+      bar.append(askOpener); shell.append(askDialog);
+    }
     if (ctx.footer) ctx.footer(footer);
 
     const panels = {};
@@ -3408,7 +3585,21 @@
       if (!current[name]) { panel.textContent = ''; panel.append(el('p', {role: 'status', text: 'This check has not been prepared yet. You can study in another stage.'})); return; }
       const view = views[name] = views[name] || {viewing: null, signature: ''};
       const r = replay(current, name, ctx.events());
-      const practiceEntries = ((current.pedagogy || {}).practice || []).filter(e => e.tree === name);
+      const versions = doc.defaultView.ResearchOSPreparedVersions;
+      // One resolved entry per prepared object: the last committed assignment wins, otherwise the chain leaf.
+      const pickPerBinding = (family, list) => {
+        if (!versions) return list;
+        const seen = new Set(), out = [];
+        for (const item of list) {
+          const binding = versions.entryBinding(family, item), key = JSON.stringify(binding);
+          if (!binding) { out.push(item); continue; }
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push(versions.resolveEntry(current, family, binding, savedEvents()).selected || item);
+        }
+        return out;
+      };
+      const practiceEntries = pickPerBinding('practice', ((current.pedagogy || {}).practice || []).filter(e => e.tree === name));
       if (!view.restoredPractice) {
         view.restoredPractice = true;
         for (const event of savedEvents()) {
@@ -3416,7 +3607,7 @@
           if (entry) view.viewing = entry.question_id;
         }
       }
-      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, reviews(), practiceEntries, (current.pedagogy || {}).comparisons, (current.pedagogy || {}).bloom, (current.pedagogy || {}).analogies, (current.pedagogy || {}).critiques, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
+      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, reviews(), practiceEntries, (current.pedagogy || {}).comparisons, (current.pedagogy || {}).bloom, (current.pedagogy || {}).analogies, (current.pedagogy || {}).critiques, (current.pedagogy || {}).revisions, view.versionStatus, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
       if (signature === view.signature) return;
       view.signature = signature;
       if (view.help) {view.help.destroy();view.help=null;}
@@ -3475,11 +3666,43 @@
           request:text=>{if(!ctx.requestPending || !ctx.requestPending(text))ctx.emit('open-question',null,text);}});
       }
 
-      const comparisons = ((current.pedagogy || {}).comparisons || []);
+      let comparisons = ((current.pedagogy || {}).comparisons || []);
+      if (versions && comparisons.length) {
+        // A mounted or saved historical snapshot stays selected until the learner acknowledges a switch.
+        view.comparisonActive = view.comparisonActive || {}; view.comparisonRequest = view.comparisonRequest || {};
+        const picked = [], seenLanes = new Set();
+        for (const item of comparisons) {
+          const binding = versions.entryBinding('comparisons', item), key = JSON.stringify(binding);
+          if (!binding || seenLanes.has(key)) continue;
+          seenLanes.add(key);
+          const result = versions.resolveEntry(current, 'comparisons', binding, savedEvents(), view.comparisonRequest[key] || null, view.comparisonActive[key] || null);
+          if (result.selected) { view.comparisonActive[key] = result.selected.id; picked.push(result.selected); } else picked.push(item);
+        }
+        if (picked.length) comparisons = picked;
+      }
       if (comparisons.length && doc.defaultView.ResearchOSSourceComparison) {
         const host=el('div',{class:'ros-comparison-host'});panel.append(host);
         const entry=comparisons.find(e=>e.id===view.comparisonId) || comparisons.find(e=>e.question_id===focusId) || comparisons[0];
         view.comparisonId=entry.id;
+        const lane = versions ? JSON.stringify(versions.entryBinding('comparisons', entry)) : null, lineage = lane && versions.lineage(current, entry.id);
+        if (lineage && lineage.length > 1) {
+          const versionSelect = el('select', {'aria-label': 'Comparison version'});
+          lineage.forEach((item, index) => versionSelect.append(el('option', {value: item.id, text: 'Version ' + item.version + (index === lineage.length - 1 ? ' (current)' : ' (earlier)')})));
+          versionSelect.value = entry.id;
+          versionSelect.addEventListener('change', async () => {
+            const target = lineage.find(item => item.id === versionSelect.value), response = 'pedagogy-comparison:' + target.id + ':' + target.version;
+            versionSelect.disabled = true;
+            try {
+              const saved = await ctx.persist('checkpoint', null, response);
+              if (!(saved && saved.type === 'checkpoint' && saved.response === response && savedEvents().some(e => e === saved || saved.event_id && e.event_id === saved.event_id))) throw new Error('not acknowledged');
+              view.comparisonRequest[lane] = target.id; view.comparisonActive[lane] = target.id; view.comparisonId = target.id; view.versionStatus = '';
+            } catch (_) { view.versionStatus = 'Could not save the version choice; the earlier comparison is retained.'; }
+            view.signature = ''; treeView(name);
+          });
+          host.append(versionSelect);
+          if (entry.id !== lineage[lineage.length - 1].id) host.append(el('p', {class: 'ros-stage-hint', role: 'status', text: 'A newer comparison is available; this earlier version stays until you choose it.'}));
+          if (view.versionStatus) host.append(el('p', {class: 'ros-stage-hint', role: 'status', text: view.versionStatus}));
+        }
         if(comparisons.length>1){
           const select=el('select',{'aria-label':'Prepared summary comparison'});
           for(const item of comparisons)select.append(el('option',{value:item.id,text:item.question_id+' — '+item.summary_event_id}));
@@ -3506,13 +3729,15 @@
         if (!reservation) {
           reservations.set(focusId,{pending:true});
           if (!ctx.persist) { reservations.set(focusId,{error:'Updated session runtime required.'}); view.signature=''; return; }
-          ctx.persist('checkpoint',null,'pedagogy-probe:' + focusId + ':' + (question.units || 1)).then(()=>{
+          const variants = ((current.pedagogy || {}).practice || []).filter(e => e.tree === name && e.question_id === focusId);
+          const unassigned = variants.length > 1 && practice && !savedEvents().some(e => e.type === 'checkpoint' && typeof e.response === 'string' && variants.some(v => e.response === 'pedagogy-practice:' + v.id + ':' + v.version));
+          (unassigned ? ctx.persist('checkpoint',null,'pedagogy-practice:' + practice.id + ':' + practice.version) : Promise.resolve()).then(()=>ctx.persist('checkpoint',null,'pedagogy-probe:' + focusId + ':' + (question.units || 1))).then(()=>{
             reservations.delete(focusId); view.signature=''; treeView(name);
           },error=>{reservations.set(focusId,{error:String(error.message || error)});view.signature='';treeView(name);});
         }
         return;
       }
-      const socratic = ((current.pedagogy || {}).socratic || []).find(e => e.tree === name && e.question_id === focusId);
+      const socratic = pickPerBinding('socratic', ((current.pedagogy || {}).socratic || []).filter(e => e.tree === name && e.question_id === focusId))[0];
       if (answered && view.revising !== focusId) clearDraft(draftKey(name, question), draftSignature(question));
       const card = el('article', {class: 'ros-qcard', 'data-kind': question.kind});
       const routeIndex = r.trail.findIndex(t=>t.id===focusId);
@@ -3907,8 +4132,16 @@
       if (!lecture.explanationsHost || !doc.defaultView.ResearchOSExplanations) return;
       const entries = ((current.pedagogy || {}).explanations || []);
       const segment = lectureSegment();
-      const entry = entries.find(e => segment && e.segment_id === segment.id);
-      const signature = JSON.stringify(entry || null);
+      let entry = entries.find(e => segment && e.segment_id === segment.id), history = null;
+      const versions = doc.defaultView.ResearchOSPreparedVersions;
+      if (entry && versions) {
+        // The mounted entry wins over background pushes; a saved presentation restores it after reload.
+        const result = versions.resolveEntry(current, 'explanations', versions.entryBinding('explanations', entry), savedEvents(), lecture.requestedExplanationId || null, lecture.activeExplanationId || null);
+        if (result.selected) entry = result.selected;
+        history = versions.lineage(current, entry.id);
+      }
+      lecture.activeExplanationId = entry ? entry.id : null;
+      const signature = JSON.stringify([entry || null, history && history.map(item => item.id), lecture.explanationVersionStatus || '']);
       if (lecture.explanationSignature === signature) { if (lecture.explanation) lecture.explanation.update(); return; }
       const hadFocus = lecture.explanationsHost.contains(doc.activeElement);
       if (lecture.explanation) lecture.explanation.destroy();
@@ -3924,6 +4157,27 @@
       lecture.explanation = doc.defaultView.ResearchOSExplanations.mount(lecture.explanationsHost,entry,{doc,rich:ctx.rich,events:savedEvents,persist:ctx.persist,
         depth:()=>ctx.preferences ? ctx.preferences().depth : null,
         request:mode=>mode === 'counterexample' ? ctx.emit('open-question',null,'Please give a counterexample for ' + entry.target + ', explaining its assumptions and limits.',origin) : ctx.emit('explanation-request',null,mode,origin)});
+      if (history && history.length > 1) {
+        const versionSelect = el('select', {'aria-label': 'Explanation version'});
+        history.forEach((item, index) => versionSelect.append(el('option', {value: item.id, text: 'Version ' + item.version + (index === history.length - 1 ? ' (current)' : ' (earlier)')})));
+        versionSelect.value = entry.id;
+        versionSelect.addEventListener('change', async () => {
+          const target = history.find(item => item.id === versionSelect.value), depth = ctx.preferences ? ctx.preferences().depth : null;
+          const level = (target.levels && target.levels[depth]) ? depth : ['intuitive', 'intermediate', 'formal'].find(l => target.levels && target.levels[l]);
+          const response = 'pedagogy-level:' + target.id + ':' + target.version + ':' + level;
+          versionSelect.disabled = true;
+          try {
+            const saved = await ctx.persist('checkpoint', null, response);
+            if (!(saved && saved.type === 'checkpoint' && saved.response === response && savedEvents().some(e => e === saved || saved.event_id && e.event_id === saved.event_id))) throw new Error('not acknowledged');
+            lecture.requestedExplanationId = target.id; lecture.explanationVersionStatus = '';
+          } catch (_) { lecture.explanationVersionStatus = 'Could not save the version choice; the earlier explanation is retained.'; }
+          lecture.explanationSignature = ''; renderExplanation();
+        });
+        lecture.explanationsHost.prepend(versionSelect);
+        const note = entry.id !== history[history.length - 1].id ? 'A newer explanation is available; this earlier version stays until you choose it.' : '';
+        const message = lecture.explanationVersionStatus || note;
+        if (message) versionSelect.after(el('p', {class: 'ros-stage-hint', role: 'status', text: message}));
+      }
       const detail = lecture.explanationsHost.querySelector('details');
       if (hadFocus && detail) { const summary=detail.querySelector('summary'); if(summary)summary.focus(); }
       if (detail) detail.addEventListener('toggle',()=>{

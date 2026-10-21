@@ -7,6 +7,8 @@ import hashlib
 import json
 import re
 
+import pedagogy_revisions
+
 MAX_BYTES = 120 * 1024
 LEVELS = ('intuitive', 'intermediate', 'formal')
 HINT_KINDS = ('cue', 'structure', 'partial-step')
@@ -26,7 +28,7 @@ def validate(plan):
     if value is None and 'pedagogy' not in plan:
         return []
     problems = []
-    if not isinstance(value, dict) or set(value) - {'schema', 'socratic', 'explanations', 'practice', 'comparisons', 'terms', 'bloom', 'analogies', 'critiques'} or type(value.get('schema')) is not int or value.get('schema') != 1:
+    if not isinstance(value, dict) or set(value) - {'schema', 'socratic', 'explanations', 'practice', 'comparisons', 'terms', 'bloom', 'analogies', 'critiques', 'revisions'} or type(value.get('schema')) is not int or value.get('schema') != 1:
         return ['pedagogy: schema 1 object with known teaching families required']
     try:
         if len(json.dumps(value, ensure_ascii=False, allow_nan=False).encode('utf-8')) > MAX_BYTES:
@@ -34,6 +36,10 @@ def validate(plan):
     except (ValueError, TypeError):
         return ['pedagogy: finite JSON content required']
     seen = set()
+    # Entries joined by an explicit revision link are history of one prepared object; the helper
+    # validates the chain itself (same binding, monotonic versions, no branches or cycles).
+    links = value.get('revisions') if isinstance(value.get('revisions'), list) else []
+    linked = {link.get(side) for link in links if isinstance(link, dict) for side in ('old_id', 'new_id')}
     for family in ('socratic', 'explanations', 'practice', 'comparisons', 'terms', 'bloom', 'analogies', 'critiques'):
         entries = value.get(family, [])
         if not isinstance(entries, list) or len(entries) > 40:
@@ -66,7 +72,7 @@ def validate(plan):
                 key = (entry.get('id'),) if family in ('terms','bloom','analogies') else (entry.get('tree'), entry.get('question_id'))
                 if family in ('comparisons','critiques'):
                     key += (entry.get('summary_event_id' if family=='comparisons' else 'answer_event_id'),)
-                if not all(isinstance(v, str) for v in key) or key in bound:
+                if not all(isinstance(v, str) for v in key) or key in bound and not (family in pedagogy_revisions.UNIQUE_BINDINGS and ident in linked):
                     problems.append(at + ': each prepared object may have only one family entry')
                 else:
                     bound.add(key)
@@ -123,10 +129,11 @@ def validate(plan):
                         assumptions = variant.get('assumptions')
                         if not isinstance(assumptions, list) or not 1 <= len(assumptions) <= 12 or not all(text(a, 500) for a in assumptions):
                             problems.append(at + ': explicit bounded assumptions required')
-            if key is None or key in bound:
+            if key is None or key in bound and ident not in linked:
                 problems.append(at + ': each prepared object may have only one entry')
             else:
                 bound.add(key)
+    problems.extend(pedagogy_revisions.validate_revisions(plan))
     return problems
 
 
@@ -164,6 +171,10 @@ def validate_event(event, state, historical=False):
         if not historical:
             if units != questions[qid].get('units', 1):
                 raise ValueError('Issuance cost must match the prepared question')
+            variants = [e['id'] for e in meta.get('practice', []) if e.get('question_id') == qid]
+            if len(variants) > 1 and not any(e.get('type') == 'checkpoint' and isinstance(e.get('response'), str) and
+                    e['response'].startswith('pedagogy-practice:') and e['response'].split(':')[1] in variants for e in state.get('events', [])):
+                raise ValueError('A committed practice assignment must precede issuing a question with revised variants')
             budget.assert_can_issue(state, qid)
     elif event.get('type') == 'checkpoint' and isinstance(response, str) and response.startswith('pedagogy-level:'):
         fields = response.split(':')
@@ -240,4 +251,5 @@ def revision_problems(old, new, events):
     problems.extend('presented pedagogy entry must be retained: ' + ident for ident in used if b.get(ident) != a.get(ident))
     if issued and 'pedagogy' not in new:
         problems.append('cannot disable shared budget after issuing questions')
+    problems.extend(pedagogy_revisions.revision_problems(old, new, events))
     return problems

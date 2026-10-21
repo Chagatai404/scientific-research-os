@@ -4,7 +4,7 @@ Canonical advice remains authoritative. Presentations and local pacing never
 award learning evidence, execute learner code or approve scientific conclusions.
 """
 from copy import deepcopy
-from datetime import date, datetime, timezone
+from datetime import date
 import json
 
 import learning_advice

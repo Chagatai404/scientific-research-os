@@ -2,6 +2,21 @@
 
 ## Unreleased — P1 teaching behaviors
 
+- Revision compatibility gate (R1-R3). `pedagogy.revisions` (at most 80 exact
+  edges) lets a new ID revise an already presented explanation, comparison,
+  practice or Socratic entry: the presented snapshot and links are immutable and
+  append-only, duplicates are accepted only as one connected chain. Explanation and
+  comparison readers keep a mounted or saved earlier version, offer a version
+  selector and switch only after an acknowledged checkpoint (a refused save keeps
+  the earlier entry). Practice attribution resolves to the last committed
+  assignment before the actual answer; unrecorded legacy association stays unknown,
+  and a question with revised practice variants needs a committed assignment before
+  it is issued. Critiques stay one per actual answer event. A new comparison source
+  ID is a separate lane, not a revision.
+
+- "Ask the tutor" is a tool-rail control in every stage (in Lecture it opens the
+  lecture's own composer). The question is saved and waits for the tutor.
+
 - Deterministic ALTER role selector (Advisor, Librarian, Tutor, Editor, Roommate)
   over existing canonical advice, preferences, prepared content and actual attempts.
   Pending written work precedes stale advice; currency uses the host-local day.
