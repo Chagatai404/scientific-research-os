@@ -134,6 +134,14 @@ async function main() {
       await page.waitForSelector('main h1');
       for (const w of WIDTHS) { await page.setViewportSize({width: w, height: 900}); await layout(page, `${view} @${w}`); }
     }
+    await page.goto(server.url + '#research', {waitUntil: 'domcontentloaded'});
+    await page.waitForSelector('form[data-human="approve"]', {timeout: 5000})
+      .catch(async () => { throw new Error('no approval form; the page shows: ' + (await page.locator('main').innerText())); });
+    const approval = page.locator('form[data-human="approve"]');
+    await approval.getByLabel('Your name').fill('Researcher');
+    await approval.getByRole('button', {name: 'Record'}).click();
+    await page.getByText('Recorded.').waitFor();
+    await page.locator('form[data-human="approve"]').waitFor({state: 'detached', timeout: 5000});  // gone from the queue
     const katex = await page.evaluate(() => typeof window.katex);
     assert.equal(katex, 'object', 'KaTeX did not load');
     assert.deepEqual(errors, [], 'console errors: ' + errors.join('; '));

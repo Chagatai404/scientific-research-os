@@ -91,11 +91,27 @@
           <div id="node-detail" aria-live="polite"></div></section>`);
     },
     async research() {
-      const r = await api("research");
+      const q = await api("queue");
       const claims = await api("claims").catch(() => []);
+      const form = (x) => {
+        if (x.kind === "approve" || x.kind === "approval-required") return `<form class="row" data-human="approve" data-subject="${esc(x.subject)}">
+          <label>Your name<input type="text" name="by" required></label>
+          <select name="decision" aria-label="Decision"><option value="approved">Approve</option><option value="changes-requested">Ask for changes</option><option value="rejected">Reject</option></select>
+          <button type="submit" class="primary">Record</button></form>`;
+        if (x.kind === "commitment" || x.kind === "defend") return "";
+        const outcomes = x.subject.startsWith("claim:") ? ["accepted", "revise", "rejected", "retracted"] : ["accepted", "rejected"];
+        return `<form data-human="decide" data-subject="${esc(x.subject)}">
+          <label>Rationale<textarea name="rationale" required></textarea></label>
+          <div class="row"><label>Your name<input type="text" name="by" required></label>
+          <select name="outcome" aria-label="Outcome">${outcomes.map((o) => `<option>${o}</option>`).join("")}</select>
+          <button type="submit" class="primary">Decide</button></div></form>`;
+      };
+      const label = { approve: "Approve the plan", decide: "Decide", defend: "Defend before deciding", commitment: "Open commitment",
+        proposal: "Proposed change", "human-decision-required": "Decide", "approval-required": "Approve the plan" };
       h(`<h1>Research</h1>
-        <section class="card"><h2>Decision queue</h2>${r.length ? `<ul>${r.map((x) => `<li><strong>${esc(x.id)}</strong>: ${esc(x.transition.replace(/-/g, " "))}</li>`).join("")}</ul>` : `<p class="muted">Nothing is waiting.</p>`}</section>
-        <section class="card"><h2>Claims</h2>${claims.length ? `<div class="table-wrap"><table><thead><tr><th>Claim</th><th>Verdict</th><th>Owned</th></tr></thead><tbody>${claims.map((c) => `<tr><td>${inline(c.text || c.id)}</td><td>${esc(c.verdict || c.status || "")}</td><td>${c.owned ? "yes" : "not yet"}</td></tr>`).join("")}</tbody></table></div>` : `<p class="muted">No claims recorded.</p>`}</section>`);
+        <section class="card"><h2>Decision queue</h2>${q.length ? q.map((x) => `<div class="card"><p><strong>${esc(label[x.kind] || x.kind)}</strong> · ${esc(x.subject)}</p><p>${inline(x.text || "")}</p>
+          ${x.kind === "defend" ? `<button class="primary" data-start-scope="${esc(x.subject)}">Practise the defence</button>` : form(x)}</div>`).join("") : `<p class="muted">Nothing is waiting for you.</p>`}</section>
+        <section class="card"><h2>Claims</h2>${claims.length ? `<div class="table-wrap"><table><thead><tr><th>Claim</th><th>Verdict</th><th>Ownership</th></tr></thead><tbody>${claims.map((c) => `<tr><td>${inline(c.text || c.id)}</td><td>${esc(c.verdict)}${c.missing.length ? ` <span class="muted">(missing ${esc(c.missing.join(", "))})</span>` : ""}</td><td>${esc(c.ownership)}</td></tr>`).join("")}</tbody></table></div>` : `<p class="muted">No claims recorded.</p>`}</section>`);
     },
     async library() {
       const rows = await api("library");
@@ -237,7 +253,16 @@
   function advance(next) { Object.assign(state, { step: next, segment: 0, result: null }); renderStep(); }
 
   // ---- events --------------------------------------------------------------------------------------------------
-  document.addEventListener("submit", (ev) => { ev.preventDefault(); if (ev.target.matches("[data-step]")) submitStep(ev.target); });
+  document.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const f = ev.target;
+    if (f.matches("[data-step]")) return submitStep(f);
+    if (f.dataset.human) {
+      const args = Object.fromEntries(new FormData(f));
+      try { await api(f.dataset.human, { subject: f.dataset.subject, ...args }, true); say("Recorded."); route(); }
+      catch (e) { say(e.message); }
+    }
+  });
   document.addEventListener("click", async (ev) => {
     const t = ev.target.closest("button, a, [data-node]");
     if (!t) return;

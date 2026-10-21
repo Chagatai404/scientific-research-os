@@ -321,8 +321,10 @@ def queue(rec: Record, as_of: date | None = None) -> list[dict]:
         if p["id"] not in decided:
             out.append({"kind": "proposal", "subject": p["id"], "text": p["data"]["change"]})
     from .graph import research_frontier
+    listed = {x["subject"] for x in out}
     for f in research_frontier(rec):
-        if f["transition"] in ("human-decision-required", "approval-required"):
+        if f["transition"] in ("human-decision-required", "approval-required") and f["id"] not in listed \
+                and f["id"] not in decided and f["id"] not in approved:
             out.append({"kind": f["transition"], "subject": f["id"], "text": (rec.node(f["id"]) or {}).get("title")})
     return out
 

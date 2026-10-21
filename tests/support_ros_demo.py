@@ -12,7 +12,7 @@ import wave
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from ros import prepare  # noqa: E402
+from ros import prepare, research  # noqa: E402
 from ros.store import Record  # noqa: E402
 
 GOAL, BASE = "capability:variance", "capability:mean"
@@ -76,6 +76,12 @@ def build(root: Path) -> tuple[Record, str]:
          "items": {"check": [check]}}]
     plan["items"] = {"probe": probe, "close": [close], "transfer": [transfer], "review": []}
     prepare.save_plan(rec, bundle, plan)
+    rec.put_node("experiment:EXP-1", "experiment", title="Fit the width ratio at 50 GeV", status="planned",
+                 authorization="awaiting")
+    research.add_claim(rec, "width", "Proton showers are about 10% wider than pion showers.", "stat-demo",
+                       author="agent:builder", assurance="internal")
+    research.record_verdict(rec, "claim:width", "numbers", "PASS", "agent:auditor")
+    research.record_verdict(rec, "claim:width", "result-claim", "PASS", "agent:auditor")
     manifest = prepare.check(rec, bundle)
     if not manifest["ready"]:
         raise SystemExit("demo bundle is not ready: " + "; ".join(manifest["missing"]))
