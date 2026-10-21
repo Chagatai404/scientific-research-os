@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from ros import tasks  # noqa: E402
-from ros.learn import policy, probe, schedule, tutor  # noqa: E402
+from ros.learn import evidence, fsrs, policy, probe, schedule, tutor  # noqa: E402
 from ros.store import Record  # noqa: E402
 
 CAP = "capability:var"
@@ -37,21 +37,21 @@ class ScheduleTests(Fixture):
     def test_golden_values(self):
         golden = json.loads((ROOT / "tests" / "fixtures" / "fsrs-golden.json").read_text(encoding="utf-8"))
         for case in golden["cases"]:
-            p, card, d0 = tuple(case["parameters"]), schedule.Card(), date(2026, 1, 1)
+            p, card, d0 = tuple(case["parameters"]), fsrs.Card(), date(2026, 1, 1)
             for r in case["reviews"]:
-                card = schedule.review(card, r["rating"], d0 + timedelta(days=r["day"]), p)
+                card = fsrs.review(card, r["rating"], d0 + timedelta(days=r["day"]), p)
                 self.assertAlmostEqual(card.stability, r["stability"], places=3)
                 self.assertAlmostEqual(card.difficulty, r["difficulty"], places=3)
-                self.assertEqual(schedule.interval_days(card.stability, case["desired_retention"], p), r["interval"])
+                self.assertEqual(fsrs.interval_days(card.stability, case["desired_retention"], p), r["interval"])
 
     def test_grades_become_reviews_of_item_and_capability_and_help_lowers_rating(self):
         items = self.ladder()
         tutor.answer(self.rec, "L1", items[1], 1)
         tutor.hint(self.rec, "L1", items[2])
         tutor.answer(self.rec, "L1", items[2], 2)
-        revs = schedule.reviews(self.rec, date(2100, 1, 1))
-        self.assertEqual([r for _, r in revs[items[1]]], [schedule.GOOD])
-        self.assertEqual([r for _, r in revs[items[2]]], [schedule.HARD])
+        revs = evidence.of(self.rec).key_reviews
+        self.assertEqual([r for _, _, r in revs[items[1]]], [fsrs.GOOD])
+        self.assertEqual([r for _, _, r in revs[items[2]]], [fsrs.HARD])
         self.assertEqual(len(revs[CAP]), 2)
         self.assertTrue(schedule.due(self.rec, date.today() + timedelta(days=400)))
 

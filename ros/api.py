@@ -59,7 +59,7 @@ class Tool:
                 raise ValueError(f"{self.name}: {k} must be {p.type}")
             if p.enum and args.get(k) is not None and args[k] not in p.enum:
                 raise ValueError(f"{self.name}: {k} must be one of {list(p.enum)}")
-        with LOCK:
+        with LOCK, rec.reading():
             return self.fn(rec, **{k: v for k, v in args.items() if v is not None})
 
 

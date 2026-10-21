@@ -132,16 +132,24 @@ class Capability:
         return self.assessment.state in {"demonstrated", "retained"} and self.assessment.review is not None
 
 
+def _assess(node: dict, rows: list[dict], as_of: date) -> tuple[Assessment, dict]:
+    schema = node.get("schema", 1)
+    mastery = dimensions(rows, schema, as_of) if schema in (2, 3) else {}
+    if mastery:
+        a = profile(mastery[node["learning_scope"]], node.get("required_dimensions") or [])
+    else:
+        a = assess(rows, node.get("initial_state", "unknown"), as_of)
+    _stale(a, as_of)
+    return a, mastery
+
+
 class Learning:
     """Every capability in a record, assessed as of one day. Build once per query; it reads the index once."""
 
     def __init__(self, rec: Record, as_of: date | None = None):
         self.as_of = as_of or date.today()
-        retrievals: dict[str, list[dict]] = {}
-        for ev in rec.events(type="retrieval"):
-            retrievals.setdefault(ev["subject"], []).append(ev["data"])
-        for cap, rows in answer_rows(rec).items():
-            retrievals.setdefault(cap, []).extend(rows)
+        from .learn import evidence
+        ev, kinds = evidence.of(rec), evidence.kinds(rec)
         requires: dict[str, list[str]] = {}
         for e in rec.edges(type="requires"):
             requires.setdefault(e["src"], []).append(e["dst"])
@@ -150,14 +158,8 @@ class Learning:
             self.members.setdefault(e["dst"], set()).add(e["src"])
         self.caps: dict[str, Capability] = {}
         for n in rec.nodes(type="capability"):
-            rows = sorted(retrievals.get(n["id"], []), key=lambda r: r["day"])  # stable: same-day rows keep log order
-            schema = n.get("schema", 1)
-            mastery = dimensions(rows, schema, self.as_of) if schema in (2, 3) else {}
-            if mastery:
-                a = profile(mastery[n["learning_scope"]], n.get("required_dimensions") or [])
-            else:
-                a = assess(rows, n.get("initial_state", "unknown"), self.as_of)
-            _stale(a, self.as_of)
+            rows = ev.rows(n["id"], kinds)
+            a, mastery = ev.assessed(n["id"], self.as_of, n, lambda: _assess(n, rows, self.as_of))
             self.caps[n["id"]] = Capability(n["id"], n, sorted(requires.get(n["id"], [])), rows, a, mastery)
         self.ready = self._ready()
 
@@ -235,57 +237,6 @@ class Learning:
         return out
 
 
-# ---- answers as evidence ------------------------------------------------------------------------------------------
-ITEM_METHOD = {"choice": "mcq", "numeric": "computation", "free": "explanation"}
-METHOD_DIMENSION = {"mcq": "recognition", "computation": "application", "explanation": "explanation"}
-
-
-def answer_rows(rec: Record) -> dict[str, list[dict]]:
-    """Graded answers as retrieval rows on each capability their item tests, so lessons move capability states the
-    same way recorded retrievals do. A choice answer is recognition (it never alone makes a capability demonstrated);
-    a hint or revealed solution before it makes it assisted; the next review is the FSRS due day after it."""
-    from .learn import schedule
-    helped, attempts = set(), {}
-    for e in rec.events(types=("hint", "reveal", "attempt")):
-        lesson = e["data"].get("lesson")
-        if e["type"] in ("hint", "reveal"):
-            helped.add((lesson, e["subject"]))
-        elif e["type"] == "attempt":
-            attempts[e["id"]] = (lesson, e["subject"], (lesson, e["subject"]) in helped)
-    about: dict[str, set[str]] = {}
-    for e in rec.edges(type="about"):
-        about.setdefault(e["dst"], set()).add(e["src"])
-    latest: dict[str, dict] = {}
-    for g in rec.events(type="grade"):
-        if g["data"].get("attempt") in attempts:
-            latest[g["data"]["attempt"]] = g
-    out: dict[str, list[dict]] = {}
-    cards: dict[str, schedule.Card] = {}
-    passed_on: dict[str, str] = {}
-    for g in sorted(latest.values(), key=lambda g: g["ts"]):
-        lesson, item_id, was_helped = attempts[g["data"]["attempt"]]
-        item = rec.item(item_id) or {}
-        caps = {c for c in item.get("concepts", []) if c.startswith("capability:")}
-        caps |= {cap for c in item.get("concepts", []) for cap in about.get(c, ())}
-        verdict, day = g["data"].get("verdict"), g["ts"][:10]
-        method = ITEM_METHOD.get(item.get("kind"), "explanation")
-        for cap in caps:
-            rating = schedule.rating_for_grade(verdict, was_helped)
-            if rating is not None:
-                cards[cap] = schedule.review(cards.get(cap, schedule.Card()), rating, date.fromisoformat(day))
-            due = schedule.due_date(cards[cap]) if cap in cards else None
-            timing = "delayed" if passed_on.get(cap, day) < day else "same-session"
-            out.setdefault(cap, []).append({
-                "day": day, "period": cap, "timing": timing, "method": method,
-                "outcome": {"correct": "pass", "partially-correct": "partial"}.get(verdict, "fail"),
-                "assistance": "hinted" if was_helped else "none", "evidence": g["id"],
-                "review": due.isoformat() if due else None, "scope": "conceptual",
-                "dimension": METHOD_DIMENSION[method], "context": "", "source": "answer"})
-            if verdict == "correct" and not was_helped:
-                passed_on.setdefault(cap, day)
-    return out
-
-
 # ---- research ----------------------------------------------------------------------------------------------------
 def support(rec: Record, node: str) -> dict:
     """What supports or invalidates a node, with each source's current node data when it has one."""
@@ -334,20 +285,29 @@ def import_graphify(rec: Record, graph_json: Path | str, repo_root: Path | str |
     return len(edges)
 
 
-def history(rec: Record, lesson: str | None = None, item: str | None = None) -> list[dict]:
-    """Every answer, oldest first, with the question it answered and the tutor's latest grade of it (or ``None``
-    while ungraded). A question that was later edited is shown as it was when answered."""
+def history(rec: Record, lesson: str | None = None, item: str | None = None, limit: int | None = None) -> list[dict]:
+    """Answers, oldest first (the newest ``limit`` of them when given), each with the question it answered and the
+    tutor's latest grade of it (``None`` while ungraded). A question later edited is shown as it was answered."""
+    current = rec.current_items()
+    if item:
+        wanted = current.get(item, item)
+        versions = [h for h, cur in current.items() if cur == wanted] or [item]
+        attempts = [a for h in versions for a in rec.events(type="attempt", subject=h, lesson=lesson)]
+        attempts.sort(key=lambda a: a["ts"])
+        attempts = attempts[-limit:] if limit else attempts
+    else:
+        attempts = rec.events(type="attempt", lesson=lesson, limit=limit)
+    if not attempts:
+        return []
+    wanted = {a["id"] for a in attempts}
     grades: dict[str, dict] = {}
-    for g in rec.events(type="grade"):
-        if g["data"].get("attempt"):
+    for g in rec.events(type="grade", since=min(a["ts"] for a in attempts)):  # a grade never precedes its answer
+        if g["data"].get("attempt") in wanted:
             grades[g["data"]["attempt"]] = g
+    items = rec.items_by_id()
     out = []
-    for a in rec.events(type="attempt"):
-        if lesson and a["data"].get("lesson") != lesson:
-            continue
-        if item and rec.current_item(a["subject"]) != rec.current_item(item):
-            continue
-        q = rec.item(a["subject"]) or {}
+    for a in attempts:
+        q = items.get(a["subject"], {})
         g = grades.get(a["id"])
         out.append({"id": a["id"], "ts": a["ts"], "lesson": a["data"].get("lesson"), "item": a["subject"],
                     "prompt": q.get("prompt"), "kind": q.get("kind"), "response": a["data"].get("response"),

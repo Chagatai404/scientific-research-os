@@ -27,10 +27,11 @@ def status(rec, as_of=None):
             "research": len(graph.research_frontier(rec)), "problems": rec.problems}
 
 
-@tool("history", "Every answer with its question and grade, oldest first.",
-      lesson=P("string", "only this lesson"), item=P("string", "only this item (any version)"))
-def history(rec, lesson=None, item=None):
-    return graph.history(rec, lesson, item)
+@tool("history", "Answers with their question and grade, oldest first: the newest 200 unless limit says otherwise.",
+      lesson=P("string", "only this lesson"), item=P("string", "only this item (any version)"),
+      limit=P("integer", "how many of the newest answers (default 200; 0 for all)"))
+def history(rec, lesson=None, item=None, limit=200):
+    return graph.history(rec, lesson, item, limit or None)
 
 
 @tool("item", "One item. Hidden fields (key, rubric, explanation) only with reveal=true, for tutors and authors.",

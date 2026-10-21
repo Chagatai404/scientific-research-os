@@ -207,6 +207,10 @@ class Record:
         self.problems: list[str] = []
         self._db: sqlite3.Connection | None = None
         self._seen: tuple = ((), "")  # log sizes and items stamp the index has consumed, kept in memory for sync()
+        self._generation = 0  # bumped whenever the index changes; derived views are cached per generation
+        self._derived: dict[str, tuple[int, object]] = {}
+        self._folds: dict[str, list] = {}  # name -> [index epoch, last seq folded, state]
+        self._held = 0  # inside reading(): already synced, nested reads skip the check
 
     # ---- writing -------------------------------------------------------------------------------------------
     def append(self, type: str, subject: str, data: dict | None = None, *, actor: str = "system",
@@ -249,6 +253,7 @@ class Record:
         db = self.index()
         with db:
             self._index_item(h, {**item, "id": h})
+        self._generation += 1
         return h
 
     def put_node(self, id: str, type: str, **data) -> None:
@@ -311,6 +316,7 @@ class Record:
         if not db.execute("SELECT 1 FROM sqlite_master WHERE name='meta'").fetchone():
             db.executescript(_SCHEMA)
             db.execute("INSERT INTO meta VALUES('schema', ?)", (str(SCHEMA_VERSION),))
+            db.execute("INSERT INTO meta VALUES('epoch', ?)", (uuid.uuid4().hex,))  # new on every rebuild
             db.commit()
         if self._meta("schema") != str(SCHEMA_VERSION) or not all(
                 self._prefix_ok(name, path) for name, path in self._logs()):
@@ -319,6 +325,7 @@ class Record:
             self.index()
             return
         found: list[str] = []
+        self._generation += 1
         with db:
             self._consume("events", self.events_path, self._index_event, found)
             self._consume("nodes", self.nodes_path, self._index_node, found)
@@ -336,9 +343,11 @@ class Record:
 
     def sync(self) -> None:
         """Refresh only if a log grew or the items folder changed since the index last read them. Costs four
-        stat calls and no query, so every read can afford it."""
+        stat calls and no query, so every read can afford it; inside ``reading()`` it is done once."""
         if self._db is None:
             self.index()
+            return
+        if self._held:
             return
         sizes = tuple(path.stat().st_size if path.exists() else 0 for _, path in self._logs())
         if sizes != self._seen[0] or self._items_stamp() != self._seen[1]:
@@ -348,6 +357,48 @@ class Record:
                 self._seen = (sizes, self._items_stamp())
                 return
             self.refresh()
+
+    @contextmanager
+    def reading(self):
+        """One consistent view for a whole operation: sync once, then every read inside uses the index as it is.
+        The record's own writes still update the index as they happen."""
+        self.sync()
+        self._held += 1
+        try:
+            yield self
+        finally:
+            self._held -= 1
+
+    def derived(self, name: str, build):
+        """``build(self)``, computed once per state of the index and reused until anything is written or read in
+        from the files. For views derived from the whole record (the answer log, every item by id)."""
+        self.sync()
+        hit = self._derived.get(name)
+        if hit and hit[0] == self._generation:
+            return hit[1]
+        value = build(self)
+        self._derived[name] = (self._generation, value)
+        return value
+
+    def fold(self, name: str, types: tuple[str, ...], init, step):
+        """An incremental view: ``step(state, event)`` is applied to each event of ``types`` in the order the record
+        received them, starting from ``init()``. Later calls apply only events added since, so the cost of a write
+        does not grow with the history. Rebuilding the index starts the view again from ``init()``."""
+        self.sync()
+        epoch = self._meta("epoch")
+        cur = self._folds.get(name)
+        if cur is None or cur[0] != epoch:
+            cur = [epoch, 0, init()]
+        rows = self.index().execute(
+            f"SELECT * FROM events WHERE seq>? AND type IN ({','.join('?' * len(types))}) ORDER BY seq",
+            (cur[1], *types))
+        for r in rows:
+            ev = _event_row(r)
+            ev["_seq"] = r["seq"]  # the order the record received it, for views that need a tiebreak
+            step(cur[2], ev)
+            cur[1] = r["seq"]
+        self._folds[name] = cur
+        return cur[2]
 
     def _only_torn_tail(self, name: str, path: Path, size: int) -> bool:
         """A file larger than what was consumed only by an unfinished last line needs no refresh."""
@@ -458,9 +509,11 @@ class Record:
 
     # ---- reading -------------------------------------------------------------------------------------------
     def events(self, type: str | None = None, subject: str | None = None, since: str | None = None,
-               lesson: str | None = None, types: tuple[str, ...] | list[str] | None = None) -> list[dict]:
+               lesson: str | None = None, types: tuple[str, ...] | list[str] | None = None,
+               limit: int | None = None) -> list[dict]:
         """Events in time order. ``type`` matches a type and its dotted subtypes ("lesson" matches "lesson.start");
-        ``types`` matches any of several exact types; ``lesson`` keeps one lesson's events (indexed)."""
+        ``types`` matches any of several exact types; ``lesson`` keeps one lesson's events (indexed); ``limit`` keeps
+        the newest ``limit`` of them (still returned oldest first)."""
         self.sync()
         sql, args = "SELECT * FROM events WHERE 1=1", []
         if type is not None:
@@ -478,6 +531,9 @@ class Record:
         if since is not None:
             sql += " AND ts>=?"
             args.append(since)
+        if limit is not None:
+            rows = self.index().execute(sql + " ORDER BY ts DESC, seq DESC LIMIT ?", (*args, int(limit))).fetchall()
+            return [_event_row(r) for r in reversed(rows)]
         sql += " ORDER BY ts, seq"
         return [_event_row(r) for r in self.index().execute(sql, args)]
 
@@ -500,6 +556,28 @@ class Record:
                 "SELECT i.data FROM items i JOIN item_concepts c ON c.item=i.id WHERE c.concept=? "
                 "ORDER BY i.difficulty, i.id", (concept,))
         return [json.loads(r[0]) for r in rows]
+
+    def items_by_id(self) -> dict[str, dict]:
+        """Every item by hash, read in one query and cached until the index changes."""
+        return self.derived("items_by_id", lambda r: {row[0]: json.loads(row[1]) for row in
+                                                       r.index().execute("SELECT id, data FROM items")})
+
+    def current_items(self) -> dict[str, str]:
+        """Each item's newest version (following ``supersedes``), for every item, cached until the index changes."""
+        def build(r):
+            newer = {}
+            for h, it in sorted(r.items_by_id().items()):
+                if it.get("supersedes") and it["supersedes"] not in newer:
+                    newer[it["supersedes"]] = h
+            out = {}
+            for h in r.items_by_id():
+                seen, cur = {h}, h
+                while cur in newer and newer[cur] not in seen:
+                    cur = newer[cur]
+                    seen.add(cur)
+                out[h] = cur
+            return out
+        return self.derived("current_items", build)
 
     def current_item(self, h: str) -> str:
         """Follow ``supersedes`` forward to the newest version of an item."""
