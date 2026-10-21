@@ -97,8 +97,11 @@ class ApiTests(Fixture):
         self.assertNotIn("explanation", shown)
         self.assertEqual(shown["hints"], 1)
         self.assertEqual(api.TOOLS["item"].call(self.rec, {"id": items[1], "reveal": True})["answer"], 1)
-        nxt = api.start(self.rec, CAP)["next"]
-        self.assertNotIn("answer", nxt["question"])
+        started = api.start(self.rec, CAP)
+        self.assertNotIn("answer", started["next"]["question"])
+        api.next_step(self.rec, started["lesson"])
+        logged = self.rec.events(type="policy", subject=started["lesson"])
+        self.assertEqual([e["data"]["action"] for e in logged], ["probe"])  # logged once per change
 
     def test_arguments_are_checked(self):
         with self.assertRaises(ValueError):

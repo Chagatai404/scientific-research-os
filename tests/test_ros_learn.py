@@ -78,6 +78,12 @@ class TutorTests(Fixture):
         self.assertEqual(tasks.tasks(self.rec, kind="grade"), [])
         self.assertEqual(probe.outcomes(self.rec, "L1")[0]["verdict"], "partially-correct")
 
+    def test_dont_know_is_a_miss_without_a_grader(self):
+        h = self.rec.put_item({"kind": "free", "prompt": "Why?", "explanation": "Because."})
+        out = tutor.answer(self.rec, "L", h, tutor.DONT_KNOW)
+        self.assertEqual((out["verdict"], out["explanation"]), ("incorrect", "Because."))
+        self.assertEqual(tasks.tasks(self.rec, kind="grade"), [])
+
     def test_hints_then_reveal(self):
         h = self.rec.put_item({"kind": "free", "prompt": "P", "hints": ["one", "two"], "explanation": "E"})
         self.assertEqual([tutor.hint(self.rec, "L", h).get("hint") for _ in range(2)], ["one", "two"])

@@ -175,6 +175,11 @@ def log(rec, lesson):
 # ---- the lesson loop ----------------------------------------------------------------------------------------------
 def _next(rec, lesson, scope, as_of=None):
     d = policy.decide(rec, lesson, scope, _day(as_of))
+    # The decision is logged (once per change) so the policy can be audited and tuned; the learner never sees it.
+    logged = rec.events(type="policy", subject=lesson)
+    entry = {k: d[k] for k in ("action", "reason", "item", "capability", "mode") if d.get(k) is not None}
+    if not logged or {k: v for k, v in logged[-1]["data"].items() if k != "lesson"} != entry:
+        rec.append("policy", lesson, {"lesson": lesson, **entry})
     if d.get("item"):
         d["question"] = present(rec.item(d["item"]))
     if d.get("capability"):
@@ -217,11 +222,15 @@ def next_step(rec, lesson, scope=None, as_of=None):
     return _next(rec, lesson, scope or (rec.node(lesson) or {}).get("scope", ""), as_of)
 
 
-@tool("answer", "Answer an item. Choice and numeric answers are checked now; free answers wait for a grade.",
+@tool("answer", "Answer an item. Choice and numeric answers are checked now; free answers wait for a grade. "
+      "dont_know=true instead of a response says \"I don't know\" (a miss, never a guess).",
       writes=True, lesson=P("string", "lesson id", True), item=P("string", "item hash", True),
-      response=P("any", "the answer: option index or text, a number, or free text", True))
-def answer(rec, lesson, item, response):
-    out = tutor.answer(rec, lesson, item, response)
+      response=P("any", "the answer: option index or text, a number, or free text"),
+      dont_know=P("boolean", "the learner does not know"))
+def answer(rec, lesson, item, response=None, dont_know=False):
+    if response is None and not dont_know:
+        raise ValueError("answer needs a response or dont_know=true")
+    out = tutor.answer(rec, lesson, item, tutor.DONT_KNOW if dont_know else response)
     out["next"] = next_step(rec, lesson)
     return out
 

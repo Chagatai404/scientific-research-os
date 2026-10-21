@@ -11,6 +11,7 @@ from ..store import Record
 from .. import tasks
 
 VERDICTS = ("correct", "partially-correct", "incorrect")
+DONT_KNOW = object()  # the "I don't know" answer
 
 
 def check(item: dict, response) -> str | None:
@@ -50,6 +51,13 @@ def answer(rec: Record, lesson: str, item_id: str, response, actor: str = "learn
     item = rec.item(item_id)
     if item is None:
         raise KeyError(f"no item {item_id}")
+    if response is DONT_KNOW:
+        # Saying so is better than guessing: it counts as a miss, needs no grader, and shows the explanation.
+        attempt = rec.append("attempt", item_id, {"lesson": lesson, "response": None, "dont_know": True}, actor=actor)
+        rec.append("grade", item_id, {"lesson": lesson, "attempt": attempt["id"], "verdict": "incorrect"},
+                   actor="checker")
+        return {"attempt": attempt["id"], "item": item_id, "verdict": "incorrect", "dont_know": True,
+                "explanation": item.get("explanation")}
     attempt = rec.append("attempt", item_id, {"lesson": lesson, "response": response}, actor=actor)
     verdict = check(item, response)
     out = {"attempt": attempt["id"], "item": item_id, "verdict": verdict or "pending"}

@@ -121,7 +121,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 # ---- the terminal lesson --------------------------------------------------------------------------------------------
-HELP = "Type your answer. ? for a hint, !text to ask the tutor, ~mode for another explanation, q to stop."
+HELP = ("Type your answer. ? for a hint, - for I don't know, !text to ask the tutor, ~mode for another explanation, "
+        "q to stop.")
 
 
 def learn(rec: Record, scope: str | None, title: str | None = None, read=input, write=print,
@@ -172,10 +173,13 @@ def learn(rec: Record, scope: str | None, title: str | None = None, read=input, 
                 continue
             if text:
                 break
-        response = text
-        if q.get("kind") == "choice" and len(text) == 1 and text.isalpha():
-            response = ord(text.lower()) - 97
-        out = api.answer(rec, lesson, step["item"], response)
+        if text == "-":
+            out = api.answer(rec, lesson, step["item"], dont_know=True)
+        else:
+            response = text
+            if q.get("kind") == "choice" and len(text) == 1 and text.isalpha():
+                response = ord(text.lower()) - 97
+            out = api.answer(rec, lesson, step["item"], response)
         verdict = out["verdict"]
         write({"correct": "Correct.", "incorrect": "Not yet.", "pending": "Saved; your tutor will grade it."}
               .get(verdict, verdict))
