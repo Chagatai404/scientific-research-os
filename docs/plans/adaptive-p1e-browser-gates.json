@@ -1,0 +1,36 @@
+{
+  "execution_owner": "p1_socratic",
+  "gates": [
+    {
+      "command": "node tests/html-terms-browser.cjs",
+      "status": "Desktop normal gate passed; initial phone gate exposed diagnostic controls below the footer.",
+      "screenshots": "C:/Users/ASUS/.agent-hub/test-temp/ros-terms-GNSxCH",
+      "qualification": "Desktop normal scenario completed before the measured body-height correction; the initial phone result is a failure, not a pass."
+    },
+    {
+      "command": "node tests/html-terms-browser.cjs --phone-only",
+      "exit_code": 0,
+      "coverage": [
+        "Normal 375x740 actual canonical glossary/ledger snapshot and opaque authenticated parent",
+        "Long canonical labels (8 languages x 200 characters) at 1440x900 and 375x740",
+        "Acknowledgement refusal/delay, exact unchanged ledger hashes, raw drafts/reviews/reload, original lecture path/step, live metadata, unavailable source and disposal"
+      ],
+      "screenshots": "C:/Users/ASUS/.agent-hub/test-temp/ros-terms-LRXHAg",
+      "qualification": "Passed after measured body-height and bounded display heading fixes; the final ResizeObserver complement was tested separately."
+    },
+    {
+      "command": "node tests/html-terms-browser.cjs --reflow-only",
+      "exit_code": 0,
+      "reported_browser_seconds": 4.76,
+      "coverage": [
+        "Actual host draft-error wraps footer and shrinks reading area at 375px",
+        "Parent header padding/font reflow without window resize (resize count zero)",
+        "Reader and diagnostics stay within viewport/footer",
+        "Disposed/late acknowledgement remains quiet",
+        "No unexpected network/page errors; actual canonical ledger unchanged"
+      ],
+      "screenshots": "C:/Users/ASUS/.agent-hub/test-temp/ros-terms-93p2j0",
+      "qualification": "Final regenerated bundle including shell ResizeObserver, coalesced frame fitting and cleanup."
+    }
+  ]
+}

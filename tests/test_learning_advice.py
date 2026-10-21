@@ -26,8 +26,23 @@ class Advice(unittest.TestCase):
         page=hs.render_html(state,standalone=True)
         raw=json.loads(re.search(r'<script type="application/json" id="ros-session-data">([\s\S]*?)</script>',page).group(1))
         self.assertNotIn('context',raw)
-        self.assertEqual(set(raw['canonical_advice']),advice.FIELDS)
+        self.assertEqual(set(raw['canonical_advice']),advice.FIELDS|{'for_target'})
         self.assertNotIn(str(self.learning),json.dumps(raw['canonical_advice']))
+    def test_optional_practice_binding_is_canonical_bounded_and_legacy_compatible(self):
+        self.create(); legacy=advice.public(self.load())
+        self.assertNotIn('target',legacy,'a prerequisite recommendation cannot authorize target practice')
+        self.assertEqual(advice.validate(legacy),legacy)
+        self.put('foundation.md',capability('scale.explain','scale-invariance',rows=row(review='2030-01-01')))
+        self.put('target.md',capability(rows=row(review='2030-01-01')))
+        import context_kernel as ck
+        receipt=ck.preflight(self.request)[0]
+        valid=advice.snapshot(receipt)
+        self.assertEqual(valid['target'],'box-counting');self.assertEqual(valid['next'],{'scope':'transfer','dimension':'transfer'})
+        for change in ({'next':{'scope':[],'dimension':'transfer'}},{'next':{'scope':'transfer','dimension':{}}},{'target':[]},{'next':{'scope':'transfer','dimension':'made-up'}},{'next':{'scope':'transfer','dimension':'transfer','private_path':'secret'}}):
+            with self.assertRaises(ValueError):advice.validate(dict(valid,**change))
+        receipt['retrieval']['recommendation']['next']['concept']='prerequisite'
+        self.assertNotIn('target',advice.snapshot(receipt))
+
     def test_refresh_is_idempotent_and_preserves_raw_state(self):
         self.create(); before=self.load(); first=advice.refresh(self.root,fixture.SESSION)
         middle=self.load(); second=advice.refresh(self.root,fixture.SESSION)

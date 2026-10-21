@@ -1,0 +1,36 @@
+[
+  {
+    "command": "node tests/terms-unit.js",
+    "exit_code": 0,
+    "stdout": "Canonical vocabulary projection parity, bilingual identity, count fallback, native reader reuse and acknowledged presentation tests passed.\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/stages-unit.js",
+    "exit_code": 0,
+    "stdout": "stages unit tests passed\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/html-runtime-unit.js",
+    "exit_code": 0,
+    "stdout": "HTML runtime unit and bundled KaTeX checks passed\n",
+    "stderr": ""
+  },
+  {
+    "command": "python scripts/validate.py",
+    "exit_code": 0,
+    "stdout": "INFO HTML archival exception: examples/connected-research/tutor-sessions/2026-09-25 gamma shape.md (historical compatibility fixture)\nINFO HTML archival exception: tests/fixtures/legacy-v0.8.7/Sessions/legacy.md (historical compatibility fixture)\nOK: 19 skills, 14 agents, 26 Obsidian templates.\n",
+    "stderr": ""
+  },
+  {
+    "command": "git diff --check",
+    "exit_code": 0,
+    "stdout": "",
+    "stderr": "warning: in the working copy of 'assets/html-runtime/session.js', LF will be replaced by CRLF the next time Git touches it\n"
+  },
+  {
+    "command": "Normalized source membership: terms.js, stages.js, runtime.js in final session.js",
+    "exit_code": 0
+  }
+]

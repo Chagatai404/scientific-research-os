@@ -1,0 +1,12 @@
+{
+  "tests": 9,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "seconds": 4.687549799993576,
+  "patterns": [
+    "test_pedagogy_bloom_acceptance.py"
+  ],
+  "failures_detail": [],
+  "errors_detail": []
+}

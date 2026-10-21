@@ -166,7 +166,7 @@ def validate_interaction(event, question_ids, plan_ids=frozenset()):
     elif event.get('type') in {'open-question','checkpoint'}:
         if not isinstance(event.get('response'), str) or not event['response'].strip():
             raise ValueError('Question/checkpoint requires bounded nonempty text')
-    elif event.get('type') == 'plan-answer':
+    elif event.get('type') in {'plan-answer', 'pedagogy-help'}:
         pass                                    # checked above against the plan's question ids
     else:
         if event.get('question_id') not in question_ids:
@@ -367,7 +367,8 @@ def answered_plan_changes(old, new, events):
     before, after = questions(old), questions(new)
     answered = {(e.get('response', {}).get('tree'), e.get('question_id')) for e in events
                 if e.get('type') == 'plan-answer' and isinstance(e.get('response'), dict)}
-    return [f'{tree}/{qid}: answered question semantics changed; preserve it and add a new question ID'
+    import pedagogy_contract
+    return pedagogy_contract.revision_problems(old, new, events) + [f'{tree}/{qid}: answered question semantics changed; preserve it and add a new question ID'
             for tree, qid in sorted(answered) if semantics(before.get((tree, qid))) != semantics(after.get((tree, qid)))]
 
 
@@ -431,6 +432,11 @@ def review_plan_answer(root, relative_md, question_id, verdict, feedback="", rev
         if revised_plan is not None:
             _ensure_context(state)
             session_plan.check(revised_plan)
+            _validate_changed_vocabulary(root,relative_md,state,revised_plan)
+            import pedagogy_contract
+            frozen=pedagogy_contract.revision_problems(plan,revised_plan,state['events'])
+            if frozen:
+                raise ValueError('Preserve issued assessment and presented teaching: '+'; '.join(frozen))
             changed_answers = answered_plan_changes(plan, revised_plan, state['events'])
             if changed_answers:
                 raise ValueError('The revised plan would move the learner; nothing was saved: ' + '; '.join(changed_answers))
@@ -460,14 +466,17 @@ def _validate_context(context):
     if "preferences" in context:
         import learning_preferences
         learning_preferences.validate(context["preferences"])
+    if "vocabulary" in context:
+        import learning_advice
+        learning_advice.validate_vocabulary(context['vocabulary'])
     if context.get("waived") is True:
-        if set(context) - {"waived", "reason", "bound_at", "preferences"} or not isinstance(context.get("reason"), str) or not context["reason"].strip():
+        if set(context) - {"waived", "reason", "bound_at", "preferences", "vocabulary"} or not isinstance(context.get("reason"), str) or not context["reason"].strip():
             raise ValueError("A context waiver needs a reason")
         return
     if "advice" in context:
         import learning_advice
         learning_advice.validate(context["advice"])
-    if set(context) - {"binding", "request", "bound_at", "refreshed_at", "advice", "preferences"} or not isinstance(context.get("binding"), dict) \
+    if set(context) - {"binding", "request", "bound_at", "refreshed_at", "advice", "preferences", "vocabulary"} or not isinstance(context.get("binding"), dict) \
             or not isinstance(context.get("request"), dict):
         raise ValueError("Invalid session context binding")
     binding = context["binding"]
@@ -538,6 +547,22 @@ def validate_state(state):
     if "plan" in state:
         import session_plan  # the plan an agent wrote before the session; the page runs it, so it is checked with the same rules
         session_plan.check(state["plan"])
+        import pedagogy_source_comparison
+        for entry in (state['plan'].get('pedagogy') or {}).get('comparisons', []):
+            problems = pedagogy_source_comparison.validate(entry,state['plan'],state)
+            if problems:
+                raise ValueError('; '.join(problems))
+        import pedagogy_analogies
+        for entry in (state['plan'].get('pedagogy') or {}).get('analogies', []):
+            problems = pedagogy_analogies.validate(entry,state['plan'],state)
+            if problems:
+                raise ValueError('; '.join(problems))
+        import pedagogy_roles
+        for entry in (state['plan'].get('pedagogy') or {}).get('critiques', []):
+            problems=pedagogy_roles.validate_critique(entry,state['plan'],state)
+            if problems:raise ValueError('; '.join(problems))
+        import learning_advice
+        learning_advice.public_vocabulary(state)
         plan_ids = frozenset(q["id"] for tree in ("probe", "check") for q in (state["plan"].get(tree) or {}).get("questions", []))
     if "video_records" in state:
         _validate_video_records(state["video_records"])
@@ -589,14 +614,18 @@ def validate_state(state):
         ids.add(q["id"])
         _validate_reviews(q.get("reviews", []))
     event_ids = set()
+    import pedagogy_contract
+    previous_events = []
     for event in state["events"]:
         validate_interaction(event, ids, plan_ids)
-        if not isinstance(event, dict) or event.get("type") not in {"response", "hint", "solution", "confidence", "checkpoint", "reset", "open-question", "explanation-request", "plan-answer"}:
+        pedagogy_contract.validate_event(event, dict(state, events=previous_events), historical=True)
+        previous_events.append(event)
+        if not isinstance(event, dict) or event.get("type") not in {"response", "hint", "solution", "confidence", "checkpoint", "reset", "open-question", "explanation-request", "plan-answer", "pedagogy-help"}:
             raise ValueError("Unsupported interaction event")
         if not isinstance(event.get("event_id"), str) or event["event_id"] in event_ids:
             raise ValueError("Invalid or duplicate event identity")
         event_ids.add(event["event_id"])
-        if event.get("type") not in {"open-question", "checkpoint", "explanation-request", "plan-answer"} and event.get("question_id") not in ids:
+        if event.get("type") not in {"open-question", "checkpoint", "explanation-request", "plan-answer", "pedagogy-help"} and event.get("question_id") not in ids:
             raise ValueError("Unknown interaction question")
         if event.get("status") not in (None, "pending-review"):
             raise ValueError("Browser evidence must remain pending review")
@@ -1111,6 +1140,7 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
     import learning_advice
     page_state["canonical_advice"] = learning_advice.public(state)
     page_state["learning_preferences"] = learning_advice.public_preferences(state)
+    page_state["vocabulary_states"] = learning_advice.public_vocabulary(state)
     audio_urls = _audio_urls(state, runtime_prefix, standalone, audio_data)
     if audio_urls:
         page_state["audio_urls"] = audio_urls  # for the page only: the stored session never holds a resolved location
@@ -1263,6 +1293,39 @@ def _create_session(root, relative_md, text, session_type=None, title=None, meta
     return _save(root, relative_md, state)
 
 
+def _validate_changed_vocabulary(root, relative_md, state, proposed):
+    """Validate newly authored identities against actual canonical files, under lock.
+
+    Reading historical prepared content and saving raw work never rediscover a
+    missing glossary/catalog. Author-supplied copies are not identity authority.
+    """
+    before={entry['id']:entry for entry in ((state.get('plan') or {}).get('pedagogy') or {}).get('terms',[])}
+    changed=[entry for entry in (proposed.get('pedagogy') or {}).get('terms',[]) if before.get(entry['id'])!=entry]
+    if not changed or not any(entry['terms'] for entry in changed):
+        return
+    import terms
+    import knowledge
+    import context_kernel as ck
+    import pedagogy_terms
+    glossary,problems=terms.load_glossary(terms.learner_dir(root))
+    if problems:
+        raise ValueError('Canonical vocabulary glossary unavailable/invalid: '+'; '.join(problems))
+    request=ck.normalize_request(planning_request(root,relative_md,state))
+    directory=ck._context(request)['learning_root']
+    if directory is None or not directory.is_dir():
+        raise ValueError('Canonical vocabulary concept catalog unavailable')
+    collection=knowledge.discover(directory,dt.date.today())
+    if collection.diagnostics:
+        raise ValueError('Canonical vocabulary concept catalog invalid: '+'; '.join(collection.diagnostics))
+    registry=collection.ontology
+    concepts={ident for ident in registry.records if registry.valid(ident,{'concept'})}
+    concepts.update(ident for ident,node in collection.nodes.items() if node.meta.get('learning_schema')==1 and not node.issues)
+    for entry in changed:
+        errors=pedagogy_terms.validate(entry,proposed,glossary,concepts)
+        if errors:
+            raise ValueError('; '.join(errors))
+
+
 def update_session(root, relative_md, text=None, **changes):
     md, _, _ = paths(root, relative_md)
     with Lock(md.with_suffix(".session.lock")):
@@ -1280,6 +1343,7 @@ def update_session(root, relative_md, text=None, **changes):
         if 'plan' in changes:
             import session_plan
             session_plan.check(changes['plan'])
+            _validate_changed_vocabulary(root,relative_md,state,changes['plan'])
         teaching_changed = source != state['source_markdown'] or any(
             name in changes and changes[name] != state.get(name, [])
             for name in ('questions', 'widgets', 'teaching', 'resources'))
@@ -1292,7 +1356,29 @@ def update_session(root, relative_md, text=None, **changes):
             problems = plan_revision_problems(state['plan'], changes['plan'], state['events'])
             if problems:
                 raise ValueError('The revised plan would move the learner: ' + '; '.join(problems))
+        if (state.get('plan') or {}).get('pedagogy'):
+            import pedagogy_budget
+            before_budget = pedagogy_budget.project(state)
+            prospective = dict(state, **changes)
+            if before_budget['used']:
+                initial = lambda s: s['tutoring'].get('budget', 5) if s.get('tutoring') is not None else (s.get('plan') or {}).get('budget', 5)
+                if not (prospective.get('plan') or {}).get('pedagogy'):
+                    raise ValueError('Cannot disable shared budget after assessment reservations')
+                if initial(state) != initial(prospective):
+                    raise ValueError('Initial diagnostic budget is frozen; use an explicit learner-requested extension')
+            if 'questions' in changes:
+                old_costs = {q['id']: q.get('units') for q in state['questions'] if isinstance(q.get('contract'), dict)}
+                new_costs = {q['id']: q.get('units') for q in prospective['questions'] if isinstance(q.get('contract'), dict)}
+                if any(new_costs.get(qid) != cost for qid, cost in old_costs.items()):
+                    raise ValueError('Preserve existing contracted assessment budget reservations')
+            after_budget = pedagogy_budget.project(prospective)
+            if after_budget['used'] > max(before_budget['used'], after_budget['limit']):
+                raise ValueError('New contracted assessments exceed shared diagnostic budget')
+        vocabulary_changed = 'plan' in changes and ((state.get('plan') or {}).get('pedagogy') or {}).get('terms',[]) != (changes['plan'].get('pedagogy') or {}).get('terms',[])
         state.update(changes)
+        if vocabulary_changed:
+            import learning_advice
+            learning_advice.refresh_vocabulary_in_state(root,state)
         if "plan" in changes:
             records = _video_records(root, changes["plan"])
             if records:
@@ -1369,6 +1455,8 @@ def bind_session_context(root, relative_md, receipt):
     with Lock(md.with_suffix(".session.lock")):
         state = load_session(root, relative_md)
         state["context"] = bind_context(receipt, preferences=(state.get("context") or {}).get("preferences"))
+        import learning_advice
+        learning_advice.refresh_vocabulary_in_state(root,state)
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
 
@@ -1508,8 +1596,13 @@ def append_event(root, relative_md, event):
         state = load_session(root, relative_md)
         event = dict(event)
         event.setdefault("event_id", uuid.uuid4().hex)
-        if any(e["event_id"] == event["event_id"] for e in state["events"]):
+        prior = next((e for e in state["events"] if e["event_id"] == event["event_id"]), None)
+        if prior is not None:
+            if any(prior.get(k) != event.get(k) for k in ("type", "question_id", "response", "origin")):
+                raise ValueError("Event identity reused with different content")
             return state
+        import pedagogy_contract
+        pedagogy_contract.validate_event(event, state)
         event["status"] = "pending-review"
         event.setdefault("created_at", _now())
         state["events"].append(event)
@@ -1759,6 +1852,9 @@ def pending_activity(state):
             items.append({"kind": "plan-answer", "question_id": question_id, "tree": response.get("tree"), "prompt": question.get("prompt", ""), "criteria": question.get("criteria", []),
                           "tests": question.get("tests"), "solution": question.get("solution"), "event_id": event["event_id"], "response": response.get("answer"),
                           "created_at": event.get("created_at"), "attempt": number, "attempts": len(answers)})
+            practice = next((entry for entry in ((state.get("plan") or {}).get("pedagogy") or {}).get("practice", []) if entry["question_id"] == question_id), None)
+            if practice:
+                items[-1]["practice"] = {key: practice[key] for key in ("id", "version", "tier", "dimension", "answer_unit", "alternatives", "independent")}
     for record in state.get("open_questions", []):
         if not (isinstance(record.get("answer"), str) and record["answer"].strip()):
             items.append({"kind": "open-question", "id": record.get("id"), "prompt": record.get("prompt"), "created_at": record.get("created_at")})
@@ -2177,6 +2273,8 @@ def render_context(brief):
 
 def export_session(root, relative_md, destination):
     state = load_session(root, relative_md)
+    import learning_advice
+    learning_advice.refresh_vocabulary_in_state(root,state)
     md, view, _ = paths(root, relative_md)
     markup, scripts, images = "", "", {}
     used_images = set(re.findall(r'data-resource-id="([^"]+)"', markdown_html(state['source_markdown'])))

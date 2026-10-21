@@ -240,7 +240,7 @@ class LearningPreferenceIntegrationTests(unittest.TestCase):
         raw = json.loads(re.search(r'<script type="application/json" id="ros-session-data">([\s\S]*?)</script>', page).group(1))
         self.assertNotIn('context', raw)
         self.assertEqual(raw['learning_preferences'], {'preferences': {'goal': '<script>literal choice</script>', 'language': 'en-us'}})
-        self.assertEqual(set(raw['canonical_advice']), learning_advice.FIELDS)
+        self.assertEqual(set(raw['canonical_advice'])-{'for_target'}, learning_advice.FIELDS)
         self.assertNotIn(str(self.learning), json.dumps(raw['learning_preferences']))
         self.assertNotIn('<script>literal choice</script>', page)
 

@@ -1,0 +1,12 @@
+{
+  "tests": 10,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "seconds": 5.86153490000288,
+  "patterns": [
+    "test_pedagogy_analogies_acceptance.py"
+  ],
+  "failures_detail": [],
+  "errors_detail": []
+}

@@ -1,0 +1,23 @@
+{
+  "change": "Defensive comparison acknowledgement requires matching committed type, null question ID and exact payload, as well as event ID. Runtime persist already returns the actual committed event; no normal-path behavior changed.",
+  "checks": [
+    {
+      "command": "python assets/html-runtime/build.py --refresh",
+      "exit_code": 0
+    },
+    {
+      "command": "node tests/source-comparison-unit.js",
+      "exit_code": 0,
+      "case": "Divergent committed payload with same event ID cannot acknowledge feedback"
+    },
+    {
+      "command": "node tests/stages-unit.js",
+      "exit_code": 0
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "browser_limit": "The recorded actual comparison/browser and other regression gates preceded this final defensive helper guard; they cover the unchanged normal persistence path. The guard is independently exercised by the new module unit case and rebuilt offline bundle."
+}

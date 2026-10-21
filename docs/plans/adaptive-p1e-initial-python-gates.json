@@ -1,0 +1,20 @@
+{
+  "tests": 96,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "seconds": 77.40004590000171,
+  "patterns": [
+    "test_pedagogy_terms.py",
+    "test_pedagogy_terms_acceptance.py",
+    "test_vocabulary_snapshot.py",
+    "test_learning_advice.py",
+    "test_learning_preferences.py",
+    "test_teaching_context_boundaries.py",
+    "test_context_enforcement.py",
+    "test_terms.py",
+    "test_adaptive_helper_bundles.py"
+  ],
+  "failures_detail": [],
+  "errors_detail": []
+}

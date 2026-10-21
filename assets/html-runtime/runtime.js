@@ -116,6 +116,7 @@
     const nowMs = () => Date.now() + clockOffset;
     const currentSupervision = () => supervisionOf(state, liveLease, nowMs(), localEvents);
     const pending = new Map();
+    const persisted = new Map();
     const failed = new Set();
     const panels = new Map();
     const extensions = new Map();
@@ -192,6 +193,15 @@
       refreshAll();
       return event;
     };
+    // Teaching help is shown only after the authenticated host confirms its raw event.
+    function persist(type, questionId, response) {
+      const event = emit(type, questionId, response);
+      if (!host) return Promise.resolve(event);
+      return new Promise((resolve,reject) => {
+        const timer = root.setTimeout(() => { persisted.delete(event.event_id); reject(new Error('Save confirmation timed out. Retry when the host is available.')); },15000);
+        persisted.set(event.event_id,{resolve,reject,timer});
+      });
+    }
     function mergeState(next) {
       if (Object.prototype.hasOwnProperty.call(next, 'supervision_live')) { liveLease = next.supervision_live || null; if (typeof next.host_now === 'number') clockOffset = next.host_now - Date.now(); }
       state = Object.assign({}, state, next);
@@ -203,7 +213,11 @@
         if (!current || current.signature === entry.signature) draftValues.delete(key);
         toHost('draft', {key, signature: entry.signature, value: null});
       }
-      for (const id of saved) { pending.delete(id); failed.delete(id); }
+      for (const id of saved) {
+        pending.delete(id); failed.delete(id);
+        const waiting = persisted.get(id);
+        if (waiting) { root.clearTimeout(waiting.timer); persisted.delete(id); waiting.resolve(next.events.find(e => e.event_id === id)); }
+      }
       // Saved events are authoritative; keep only local events still on their way to the host.
       localEvents = [...next.events, ...localEvents.filter(e => !saved.has(e.event_id))];
       // A tutor who is still writing a lecture adds steps to the board's script; the open board picks them up in place.
@@ -248,6 +262,9 @@
         if (data.status === 'audio' && data.wav && typeof data.wav.byteLength === 'number') waiting.resolve({wav: data.wav, seconds: data.seconds});
         else waiting.reject(new Error(String(data.status === 'error' && data.message || 'The live voice sent no audio.').slice(0, 300)));
       } else if (data.type === 'error') {
+        for (const [id,waiting] of persisted) { root.clearTimeout(waiting.timer); waiting.reject(new Error(String(data.message || 'Host rejected the save.'))); persisted.delete(id); }
+        const committed = new Set((state.events || []).map(e => e.event_id));
+        localEvents = localEvents.filter(e => committed.has(e.event_id) || !(e.type === 'pedagogy-help' || e.type === 'checkpoint' && typeof e.response === 'string' && e.response.startsWith('pedagogy-')));
         for (const id of pending.keys()) failed.add(id);
         pending.clear(); refreshAll();
         status.textContent = 'Progress could not be saved. Keep this page open and copy progress from the progress panel: ' + String(data.message || 'host rejected update').slice(0, 300);
@@ -1203,8 +1220,10 @@
       if (liveOn) liveState = 'unknown';
       liveVoiceListeners.add(next => { liveState = next; });
       staged = Stages.mount(mount, state.plan, {
-        doc, events: () => localEvents, emit, rich, drafts: draftStore,
+        doc, events: () => localEvents, savedEvents: () => host ? state.events : localEvents, persist, emit, rich, drafts: draftStore,
+        preferences: () => state.learning_preferences && state.learning_preferences.preferences || {},
         canonicalAdvice: () => state.canonical_advice || null,
+        vocabularyState: () => state.vocabulary_states || null,
         learningPreferences: () => state.learning_preferences || null,
         requestPending: text => conversationRecords().some(r => r.prompt === text && !isAnswered(r)),
         reviews: () => state.plan_reviews || [],     // the tutor's verdicts on written answers (a getter: the state is replaced as saves arrive)

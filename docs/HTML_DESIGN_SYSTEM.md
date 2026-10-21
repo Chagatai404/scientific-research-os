@@ -106,3 +106,11 @@ Markdown, canonical JSON and the 37 vault template files were verified unchanged
 Replaced files and the hash manifest are kept under
 `C:/Users/ASUS/.agent-hub/backups/html-design-v2-20261010`. The rollout accepts
 installs matching `b473868` (the v0.8.5 design) as a known baseline.
+
+## Course-player shell (P1 layout)
+
+Staged sessions follow a course-player layout: a title bar, a left outline card of
+stage buttons, a central content card and, from 1100px up, a narrow right tool rail
+holding Study advice and Teaching roles. Below 1100px the outline and tools become
+one wrapping tab row above the content card. The layout is CSS-only (`stages.css`);
+the five stages, their order and the absence of in-stage scrollbars are unchanged.

@@ -1,0 +1,20 @@
+[
+  {
+    "command": "python scripts/validate.py",
+    "exit_code": 0,
+    "seconds": 3.966,
+    "stdout": "INFO HTML archival exception: examples/connected-research/tutor-sessions/2026-09-25 gamma shape.md (historical compatibility fixture)\nINFO HTML archival exception: tests/fixtures/legacy-v0.8.7/Sessions/legacy.md (historical compatibility fixture)\nOK: 19 skills, 14 agents, 26 Obsidian templates.\n",
+    "stderr": ""
+  },
+  {
+    "command": "git diff --check",
+    "exit_code": 0,
+    "seconds": 0.366,
+    "stdout": "",
+    "stderr": "warning: in the working copy of 'assets/html-runtime/session.js', LF will be replaced by CRLF the next time Git touches it\n"
+  },
+  {
+    "command": "Exact bundled source-byte membership: bloom.js, stages.js, practice.js",
+    "exit_code": 0
+  }
+]

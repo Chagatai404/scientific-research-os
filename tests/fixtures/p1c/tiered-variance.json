@@ -1,0 +1,668 @@
+{
+  "provenance": "Synthetic STAT303-style fixture, not a real course source or an independently vetted lesson. Arithmetic independently executable in test_pedagogy_practice.py. Tier and novelty declarations require human/source review before live teaching.",
+  "verification": {
+    "definition": "Var(X)=E[(X-E[X])²]; Var(aX+b)=a²Var(X); Cov(U,V)=E[(U-E[U])(V-E[V])].",
+    "assumptions": [
+      "All probabilities are nonnegative and normalized.",
+      "Finite support/finite second moments.",
+      "Physical units are mV for errors and mV² for second moments.",
+      "Zero covariance does not generally imply independence."
+    ],
+    "beginner": {
+      "support": [
+        0,
+        2
+      ],
+      "probabilities": [
+        "1/2",
+        "1/2"
+      ],
+      "variance": "1"
+    },
+    "intermediate": {
+      "support": [
+        1,
+        3
+      ],
+      "probabilities": [
+        "1/4",
+        "3/4"
+      ],
+      "scale": 2,
+      "shift": -7,
+      "variance": "3"
+    },
+    "advanced": {
+      "var_u": 4,
+      "var_v": 9,
+      "covariance": 1,
+      "variance": "15/4",
+      "zero_covariance_variance": "13/4"
+    }
+  },
+  "plan": {
+    "plan_schema": 1,
+    "title": "Variance and rescaling",
+    "target": "variance calculation, rescaling and covariance",
+    "budget": 8,
+    "probe": {
+      "start": "scale",
+      "questions": [
+        {
+          "id": "scale",
+          "kind": "choice",
+          "units": 1,
+          "prompt": "A random variable X has variance 4. What is the variance of 3X + 5?",
+          "options": [
+            {
+              "id": "a",
+              "text": "12",
+              "feedback": "That multiplies the variance by 3. Variance is built from squared distances, so a factor of 3 on X becomes a factor of 9 on the variance."
+            },
+            {
+              "id": "b",
+              "text": "36",
+              "correct": true
+            },
+            {
+              "id": "c",
+              "text": "41",
+              "feedback": "Adding 5 slides every value by the same amount, so the distances between values do not change. The shift adds nothing to the variance."
+            },
+            {
+              "id": "d",
+              "text": "17",
+              "feedback": "That is 3 times 4 plus 5: it treats variance like the mean. The mean moves with the shift and scales by 3; the variance ignores the shift and scales by 9."
+            }
+          ],
+          "on_correct": "twopoint",
+          "on_wrong": "twopoint",
+          "tests": "variance of a linear transformation: Var(aX + b) = a^2 Var(X)",
+          "assumes": "variance is the average squared distance from the mean",
+          "solution": "The shift of 5 moves every value equally, so spread is unchanged. The factor 3 stretches every distance by 3, and variance averages squared distances, so it grows by 3 squared, which is 9. Nine times 4 is 36."
+        },
+        {
+          "id": "twopoint",
+          "kind": "numeric",
+          "units": 1,
+          "prompt": "X equals 0 or 2, each with probability one half. What is Var(X)?",
+          "answer": {
+            "value": 1,
+            "tolerance": 0.001
+          },
+          "feedback_wrong": "Find the mean first: it is 1. Each value is exactly 1 away from it, so the average squared distance is 1. A common slip is to use E[X^2], which is 2, without subtracting the square of the mean.",
+          "on_correct": "why",
+          "on_wrong": "why",
+          "tests": "computing a variance from a distribution",
+          "assumes": "expectation of a discrete variable",
+          "solution": "E[X] = 0.5 * 0 + 0.5 * 2 = 1. Each value is 1 away from the mean, so E[(X - 1)^2] = 1. Equivalently E[X^2] - (E[X])^2 = 2 - 1 = 1."
+        },
+        {
+          "id": "why",
+          "kind": "short",
+          "units": 1,
+          "prompt": "In your own words: why can a variance never be negative?",
+          "criteria": [
+            "Says a variance is an average of squared distances from the mean",
+            "Notes that a square is never negative, so an average of squares cannot be"
+          ],
+          "next": "end",
+          "tests": "meaning of variance as a mean of squares",
+          "solution": "Variance is E[(X - mean)^2], an average of squares. Every square is at least zero, so the average is at least zero; it is zero only if X never moves from its mean."
+        }
+      ]
+    },
+    "segments": [
+      {
+        "id": "spread",
+        "role": "core",
+        "title": "What variance measures",
+        "covers": [
+          "variance as average squared distance"
+        ],
+        "script": {
+          "board_schema": 1,
+          "steps": [
+            {
+              "id": "sp1",
+              "say": "Variance measures how far a random variable typically sits from its mean.",
+              "do": [
+                {
+                  "op": "write",
+                  "text": "Variance",
+                  "at": [
+                    8,
+                    6
+                  ],
+                  "size": "huge",
+                  "color": "yellow",
+                  "id": "sp-title"
+                }
+              ]
+            },
+            {
+              "id": "sp2",
+              "say": "Take each distance from the mean, square it, and average the squares.",
+              "do": [
+                {
+                  "op": "math",
+                  "tex": "\\mathrm{Var}(X) = E\\left[(X-\\mu)^2\\right]",
+                  "at": [
+                    8,
+                    24
+                  ],
+                  "size": "large",
+                  "id": "sp-def"
+                }
+              ]
+            },
+            {
+              "id": "sp3",
+              "say": "We square so that values above and below the mean cannot cancel each other.",
+              "do": [
+                {
+                  "op": "highlight",
+                  "target": "sp-def"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "scale-repair",
+        "role": "repair",
+        "title": "Scaling, slowly",
+        "before": "scale",
+        "plays_if": {
+          "wrong": [
+            "scale"
+          ]
+        },
+        "covers": [
+          "effect of shift and scale on variance"
+        ],
+        "script": {
+          "board_schema": 1,
+          "steps": [
+            {
+              "id": "rp1",
+              "say": "Let us take scaling slowly with one concrete picture.",
+              "do": [
+                {
+                  "op": "write",
+                  "text": "Shift, then stretch",
+                  "at": [
+                    8,
+                    6
+                  ],
+                  "size": "large",
+                  "color": "green",
+                  "id": "rp-title"
+                }
+              ]
+            },
+            {
+              "id": "rp2",
+              "say": "Sliding every value by five moves the whole cloud, but the gaps between values stay exactly as they were.",
+              "do": [
+                {
+                  "op": "arrow",
+                  "from": [
+                    20,
+                    50
+                  ],
+                  "to": [
+                    60,
+                    50
+                  ],
+                  "color": "blue",
+                  "id": "rp-arrow"
+                }
+              ]
+            },
+            {
+              "id": "rp3",
+              "say": "Multiplying by three stretches every gap by three, and variance averages squared gaps, so it grows by nine.",
+              "do": [
+                {
+                  "op": "math",
+                  "tex": "3^2 \\cdot 4 = 36",
+                  "at": [
+                    8,
+                    66
+                  ],
+                  "size": "large",
+                  "id": "rp-calc"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "scale",
+        "role": "core",
+        "title": "Rescaling a variable",
+        "covers": [
+          "Var(aX+b) = a^2 Var(X)"
+        ],
+        "script": {
+          "board_schema": 1,
+          "steps": [
+            {
+              "id": "sc1",
+              "say": "Now rescale: multiply X by a and add b.",
+              "do": [
+                {
+                  "op": "math",
+                  "tex": "Y = aX + b",
+                  "at": [
+                    8,
+                    8
+                  ],
+                  "size": "large",
+                  "id": "sc-y"
+                }
+              ]
+            },
+            {
+              "id": "sc2",
+              "say": "The variance of Y is a squared times the variance of X, and b does not appear.",
+              "do": [
+                {
+                  "op": "math",
+                  "tex": "\\mathrm{Var}(Y) = a^2\\,\\mathrm{Var}(X)",
+                  "at": [
+                    8,
+                    26
+                  ],
+                  "size": "large",
+                  "color": "yellow",
+                  "id": "sc-var"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "moment-form",
+        "role": "extension",
+        "title": "A shortcut for computing it",
+        "plays_if": {
+          "correct": [
+            "scale",
+            "twopoint"
+          ]
+        },
+        "covers": [
+          "Var(X) = E[X^2] - (E[X])^2"
+        ],
+        "script": {
+          "board_schema": 1,
+          "steps": [
+            {
+              "id": "mf1",
+              "say": "Since you have this, here is a shortcut for computing a variance.",
+              "do": [
+                {
+                  "op": "math",
+                  "tex": "\\mathrm{Var}(X) = E[X^2] - (E[X])^2",
+                  "at": [
+                    8,
+                    8
+                  ],
+                  "size": "large",
+                  "id": "mf-form"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": "see-it",
+        "role": "core",
+        "title": "Seeing spread change",
+        "covers": [
+          "intuition for spread"
+        ],
+        "video": {
+          "resource": "RES-example-variance-video",
+          "start": 30,
+          "end": 210,
+          "notice": "Watch how the same shape gets wider while its centre stays put."
+        }
+      }
+    ],
+    "anticipated": [
+      {
+        "segment": "scale",
+        "label": "Why does the constant not matter?",
+        "match": [
+          "why",
+          "constant",
+          "shift",
+          "plus",
+          "add",
+          "b"
+        ],
+        "steps": [
+          {
+            "id": "aq1",
+            "say": "Adding a constant slides every value the same distance, so the gaps between values, and the mean of the squared gaps, do not change.",
+            "do": [
+              {
+                "op": "arrow",
+                "from": [
+                  20,
+                  60
+                ],
+                "to": [
+                  70,
+                  60
+                ],
+                "color": "blue",
+                "id": "aq-arrow"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "handout": {
+      "title": "Variance and rescaling",
+      "directory": "Tutor Handouts/variance-and-rescaling",
+      "status": "planned",
+      "sections": [
+        "What variance measures",
+        "Shifting and scaling a random variable",
+        "Computing a variance",
+        "Worked examples",
+        "Exercises with solutions",
+        "Sources"
+      ]
+    },
+    "check": {
+      "start": "practice-beginner",
+      "budget": 3,
+      "questions": [
+        {
+          "id": "practice-beginner",
+          "kind": "choice",
+          "units": 1,
+          "prompt": "X is 0 or 2, each with probability 1/2. What is its variance?",
+          "options": [
+            {
+              "id": "signed",
+              "text": "0",
+              "feedback": "Signed deviations cancel, but variance averages squared deviations."
+            },
+            {
+              "id": "variance",
+              "text": "1",
+              "correct": true
+            },
+            {
+              "id": "moment",
+              "text": "2",
+              "feedback": "That is the second raw moment. Subtract the squared mean."
+            },
+            {
+              "id": "range",
+              "text": "4",
+              "feedback": "The squared range is not the mean squared distance from the mean."
+            }
+          ],
+          "on_correct": "practice-intermediate",
+          "on_wrong": "practice-intermediate",
+          "tests": "variance calculation",
+          "solution": "The mean is 1. Both squared deviations are 1, so their equally weighted average is 1."
+        },
+        {
+          "id": "practice-intermediate",
+          "kind": "numeric",
+          "units": 1,
+          "prompt": "X takes 1 with probability 1/4 and 3 with probability 3/4. Y=2X-7. Compute Var(Y), dimensionless.",
+          "answer": {
+            "value": 3,
+            "tolerance": 1e-08
+          },
+          "feedback_wrong": "Use the nonuniform probabilities to find Var(X), then scale the variance by 2 squared. The shift changes no variance.",
+          "on_correct": "practice-advanced",
+          "on_wrong": "practice-advanced",
+          "tests": "nonuniform finite variance and rescaling",
+          "solution": "E[X]=5/2 and E[X^2]=7, so Var(X)=7-25/4=3/4. Hence Var(Y)=4 times 3/4=3; the additive constant has no effect."
+        },
+        {
+          "id": "practice-advanced",
+          "kind": "short",
+          "units": 1,
+          "prompt": "Novel synthetic sensor-fusion transfer: centered errors U,V have variances 4 and 9 mV² and covariance 1 mV². A device averages them as W=(U+V)/2. Derive Var(W), include its unit, and explain what changes if zero covariance is justified. Do these second moments alone prove independence?",
+          "criteria": [
+            "Expand the centered square or use covariance bilinearity to obtain (Var(U)+Var(V)+2Cov(U,V))/4.",
+            "Compute 15/4 mV², and 13/4 mV² if covariance is zero.",
+            "State finite second moments and distinguish zero covariance from independence; independence is sufficient but not established by these moments."
+          ],
+          "next": "end",
+          "tests": "transfer variance to correlated sensor averaging",
+          "solution": "Finite second moments permit the covariance expansion. Var(W)=(Var(U)+Var(V)+2Cov(U,V))/4=(4+9+2)/4=15/4 mV². With zero covariance it becomes 13/4 mV². Independence would imply zero covariance here, but zero covariance and the listed moments do not establish independence."
+        }
+      ]
+    },
+    "pedagogy": {
+      "schema": 1,
+      "practice": [
+        {
+          "id": "tier-beginner",
+          "target": "variance calculation, rescaling and covariance",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-variance-definition",
+              "locator": "tests/fixtures/p1c/tiered-variance.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "practice-beginner",
+          "question_sha256": "804453aa369b68d93baa10baf49507cbb7b0c9588875a4307d380680c8d0bf0f",
+          "tier": "beginner",
+          "dimension": "recognition",
+          "answer_unit": "",
+          "alternatives": [
+            "Compute the weighted squared deviations from the mean.",
+            "Use second raw moment minus squared mean."
+          ],
+          "independent": false
+        },
+        {
+          "id": "tier-intermediate",
+          "target": "variance calculation, rescaling and covariance",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-variance-definition",
+              "locator": "tests/fixtures/p1c/tiered-variance.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "practice-intermediate",
+          "question_sha256": "bd531989c8c13ec14e5fe62f0b9b45a235ce1a15449e7cbe6e4ddf27b88a331c",
+          "tier": "intermediate",
+          "dimension": "application",
+          "answer_unit": "",
+          "alternatives": [
+            "First compute Var(X), then apply the rescaling identity.",
+            "Transform the two support values before computing weighted squared deviations."
+          ],
+          "independent": false
+        },
+        {
+          "id": "tier-advanced",
+          "target": "variance calculation, rescaling and covariance",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-variance-definition",
+              "locator": "tests/fixtures/p1c/tiered-variance.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "practice-advanced",
+          "question_sha256": "dcbb8d78792e5059e7ff967eb3b16813f5aa8a09b321a3b906f55cb03bc59127",
+          "tier": "advanced",
+          "dimension": "transfer",
+          "answer_unit": "mV²",
+          "alternatives": [
+            "Expand the square of the sum of centered errors, retaining the cross term.",
+            "Apply bilinearity of covariance to the weighted average."
+          ],
+          "independent": true
+        }
+      ],
+      "socratic": [
+        {
+          "id": "help-practice-beginner",
+          "target": "variance calculation, rescaling and covariance",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-variance-definition",
+              "locator": "tests/fixtures/p1c/tiered-variance.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "practice-beginner",
+          "question_sha256": "804453aa369b68d93baa10baf49507cbb7b0c9588875a4307d380680c8d0bf0f",
+          "hints": [
+            {
+              "kind": "cue",
+              "text": "Identify what is being averaged and whether distances are squared."
+            },
+            {
+              "kind": "structure",
+              "text": "Write the variance definition and retain probability weights or covariance cross terms."
+            }
+          ]
+        },
+        {
+          "id": "help-practice-intermediate",
+          "target": "variance calculation, rescaling and covariance",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-variance-definition",
+              "locator": "tests/fixtures/p1c/tiered-variance.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "practice-intermediate",
+          "question_sha256": "bd531989c8c13ec14e5fe62f0b9b45a235ce1a15449e7cbe6e4ddf27b88a331c",
+          "hints": [
+            {
+              "kind": "cue",
+              "text": "Identify what is being averaged and whether distances are squared."
+            },
+            {
+              "kind": "structure",
+              "text": "Write the variance definition and retain probability weights or covariance cross terms."
+            }
+          ]
+        },
+        {
+          "id": "help-practice-advanced",
+          "target": "variance calculation, rescaling and covariance",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-variance-definition",
+              "locator": "tests/fixtures/p1c/tiered-variance.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "practice-advanced",
+          "question_sha256": "dcbb8d78792e5059e7ff967eb3b16813f5aa8a09b321a3b906f55cb03bc59127",
+          "hints": [
+            {
+              "kind": "cue",
+              "text": "Identify what is being averaged and whether distances are squared."
+            },
+            {
+              "kind": "structure",
+              "text": "Write the variance definition and retain probability weights or covariance cross terms."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "entries": [
+    {
+      "id": "tier-beginner",
+      "target": "variance calculation, rescaling and covariance",
+      "version": 1,
+      "sources": [
+        {
+          "id": "synthetic-variance-definition",
+          "locator": "tests/fixtures/p1c/tiered-variance.json:verification"
+        }
+      ],
+      "tree": "check",
+      "question_id": "practice-beginner",
+      "question_sha256": "804453aa369b68d93baa10baf49507cbb7b0c9588875a4307d380680c8d0bf0f",
+      "tier": "beginner",
+      "dimension": "recognition",
+      "answer_unit": "",
+      "alternatives": [
+        "Compute the weighted squared deviations from the mean.",
+        "Use second raw moment minus squared mean."
+      ],
+      "independent": false
+    },
+    {
+      "id": "tier-intermediate",
+      "target": "variance calculation, rescaling and covariance",
+      "version": 1,
+      "sources": [
+        {
+          "id": "synthetic-variance-definition",
+          "locator": "tests/fixtures/p1c/tiered-variance.json:verification"
+        }
+      ],
+      "tree": "check",
+      "question_id": "practice-intermediate",
+      "question_sha256": "bd531989c8c13ec14e5fe62f0b9b45a235ce1a15449e7cbe6e4ddf27b88a331c",
+      "tier": "intermediate",
+      "dimension": "application",
+      "answer_unit": "",
+      "alternatives": [
+        "First compute Var(X), then apply the rescaling identity.",
+        "Transform the two support values before computing weighted squared deviations."
+      ],
+      "independent": false
+    },
+    {
+      "id": "tier-advanced",
+      "target": "variance calculation, rescaling and covariance",
+      "version": 1,
+      "sources": [
+        {
+          "id": "synthetic-variance-definition",
+          "locator": "tests/fixtures/p1c/tiered-variance.json:verification"
+        }
+      ],
+      "tree": "check",
+      "question_id": "practice-advanced",
+      "question_sha256": "dcbb8d78792e5059e7ff967eb3b16813f5aa8a09b321a3b906f55cb03bc59127",
+      "tier": "advanced",
+      "dimension": "transfer",
+      "answer_unit": "mV²",
+      "alternatives": [
+        "Expand the square of the sum of centered errors, retaining the cross term.",
+        "Apply bilinearity of covariance to the weighted average."
+      ],
+      "independent": true
+    }
+  ]
+}

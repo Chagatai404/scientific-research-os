@@ -1,0 +1,578 @@
+{
+  "provenance": "Synthetic STAT303-style finite MSE tasks. No claim of a real instructor source, independent scientific vetting or measured educational effectiveness. Cognitive-demand and independence labels are authored declarations requiring actual review.",
+  "verification": {
+    "definitions": [
+      "MSE(T;theta)=E[(T-theta)^2] for fixed theta.",
+      "With finite second moments, MSE=Var(T)+(E[T]-theta)^2."
+    ],
+    "understand": {
+      "errors": [
+        -2,
+        2
+      ],
+      "probabilities": [
+        "1/2",
+        "1/2"
+      ],
+      "mse": "4"
+    },
+    "apply": {
+      "support": [
+        0,
+        2
+      ],
+      "probabilities": [
+        "1/2",
+        "1/2"
+      ],
+      "theta": 2,
+      "mse": "2"
+    },
+    "analyze": {
+      "constant_estimator": 0,
+      "theta": 1,
+      "actual_mse": 1,
+      "invalid_claim": -1
+    },
+    "evaluate": {
+      "a_variance": 4,
+      "a_bias": 0,
+      "b_variance": 2,
+      "b_bias": 1,
+      "a_mse": 4,
+      "b_mse": 3
+    },
+    "create": {
+      "support": [
+        0,
+        3
+      ],
+      "probabilities": [
+        "2/3",
+        "1/3"
+      ],
+      "theta": 0,
+      "mean": "1",
+      "mse": "3"
+    }
+  },
+  "plan": {
+    "plan_schema": 1,
+    "title": "Synthetic MSE cognitive challenges",
+    "target": "mean-squared estimation error and bias-variance reasoning",
+    "budget": 8,
+    "probe": {
+      "start": "mse-prerequisite",
+      "questions": [
+        {
+          "id": "mse-prerequisite",
+          "kind": "numeric",
+          "units": 1,
+          "prompt": "X equals 0 or 2 with equal probability. Compute E[X].",
+          "tests": "finite expectation",
+          "answer": {
+            "value": 1,
+            "tolerance": 1e-09
+          },
+          "feedback_wrong": "Use the given probabilities to form a weighted average.",
+          "on_correct": "end",
+          "on_wrong": "end",
+          "solution": "E[X]=(0+2)/2=1."
+        }
+      ]
+    },
+    "check": {
+      "start": "mse-remember",
+      "budget": 6,
+      "questions": [
+        {
+          "id": "mse-remember",
+          "kind": "short",
+          "units": 1,
+          "prompt": "State the mean-squared error definition for an estimator T of a fixed target theta. Identify the random and fixed quantities and a moment assumption.",
+          "tests": "mean-squared estimation error: remember",
+          "solution": "MSE(T;theta)=E[(T-theta)^2]. T is random under the sampling model; theta is the fixed target. A finite second moment ensures finite MSE.",
+          "criteria": [
+            "Express an expected squared estimation error.",
+            "Identify T as random and theta as fixed.",
+            "State finite second moment for the expectation to be finite."
+          ],
+          "next": "mse-understand"
+        },
+        {
+          "id": "mse-understand",
+          "kind": "short",
+          "units": 1,
+          "prompt": "The estimation error is -2 or +2 with equal probability. Explain why mean error zero can coexist with a nonzero MSE. Use this example to distinguish cancellation from squared loss.",
+          "tests": "mean-squared estimation error: understand",
+          "solution": "The mean error is (-2+2)/2=0. Each squared error is 4, so MSE is 4. Signed cancellation does not make the estimator exact.",
+          "criteria": [
+            "Explain that opposite signed errors cancel in their mean.",
+            "Explain that squaring produces two positive losses and compute their mean."
+          ],
+          "next": "mse-apply"
+        },
+        {
+          "id": "mse-apply",
+          "kind": "numeric",
+          "units": 1,
+          "prompt": "An estimator T takes 0 or 2, each with probability one half, while the fixed target theta is 2. Compute its dimensionless MSE.",
+          "tests": "mean-squared estimation error: apply",
+          "solution": "The errors are -2 and 0; their squared losses are 4 and 0. MSE=(4+0)/2=2.",
+          "answer": {
+            "value": 2,
+            "tolerance": 1e-09
+          },
+          "feedback_wrong": "Compute the error relative to theta in each support case, square it and average with the given probabilities.",
+          "on_correct": "mse-analyze",
+          "on_wrong": "mse-analyze"
+        },
+        {
+          "id": "mse-analyze",
+          "kind": "short",
+          "units": 1,
+          "prompt": "A derivation claims E[(T-theta)^2]=E[T^2]-theta^2 for every estimator T and fixed theta. Locate the missing term, state exactly when the claim holds, and give one counterexample.",
+          "tests": "mean-squared estimation error: analyze",
+          "solution": "The expansion is E[T^2]-2 theta E[T]+theta^2. The proposed formula is equal only when theta(E[T]-theta)=0. For constant T=0 and theta=1, actual MSE is 1 but the proposed expression is -1.",
+          "criteria": [
+            "Expand the square and identify the omitted mean term.",
+            "State equality holds if theta is zero or E[T]=theta.",
+            "Provide and verify a finite-second-moment counterexample."
+          ],
+          "next": "mse-evaluate"
+        },
+        {
+          "id": "mse-evaluate",
+          "kind": "short",
+          "units": 1,
+          "prompt": "Under one fixed sampling model, estimator A is unbiased with variance 4; estimator B has bias 1 and variance 2. Evaluate the claim that unbiasedness alone always makes A preferable for squared-error loss. State the scope and limitations of your conclusion.",
+          "tests": "mean-squared estimation error: evaluate",
+          "solution": "For squared-error loss and finite second moments, MSE(A)=4 and MSE(B)=2+1=3. B has smaller MSE here, despite its bias. This ordering need not hold under another sampling model, target or loss.",
+          "criteria": [
+            "Use variance plus squared bias to compare the two stated risks.",
+            "Reject unbiasedness alone as a sufficient ordering for MSE.",
+            "Limit the conclusion to this model, target and squared-error loss; do not claim universal estimator superiority."
+          ],
+          "next": "mse-create"
+        },
+        {
+          "id": "mse-create",
+          "kind": "short",
+          "units": 1,
+          "prompt": "Design a synthetic two-point estimator for a fixed target theta=0 with bias 1 and MSE 3. Give its support and normalized probabilities, verify the moments, and explain why this design does not establish the best estimator in a real experiment.",
+          "tests": "mean-squared estimation error: create",
+          "solution": "One valid design is T=0 with probability 2/3 and T=3 with probability 1/3. The mean is 1 and second moment is 3, giving bias 1 and MSE 3 at theta=0. Many constructions are valid; without a real sampling model and decision constraints this is only a synthetic example.",
+          "criteria": [
+            "Specify two support values and nonnegative probabilities summing to one.",
+            "Verify mean 1, hence bias 1, and second moment/MSE 3.",
+            "Discuss valid alternatives and the missing real sampling-model and decision constraints."
+          ],
+          "next": "end"
+        }
+      ]
+    },
+    "segments": [
+      {
+        "id": "mse-core",
+        "role": "core",
+        "title": "Mean squared error",
+        "covers": [
+          "mean squared error and its assumptions"
+        ],
+        "script": {
+          "board_schema": 1,
+          "steps": [
+            {
+              "id": "mse-definition",
+              "say": "Mean squared error averages the squared difference between a random estimator and its fixed target. Finite second moments make this risk finite."
+            }
+          ]
+        }
+      }
+    ],
+    "anticipated": [],
+    "handout": {
+      "title": "Synthetic MSE notes",
+      "directory": "Tutor Handouts/synthetic-mse",
+      "status": "planned",
+      "sections": [
+        "Definition",
+        "Assumptions",
+        "Examples",
+        "Sources"
+      ]
+    },
+    "pedagogy": {
+      "schema": 1,
+      "practice": [
+        {
+          "id": "practice-mse-remember",
+          "target": "mean-squared estimation error and bias-variance reasoning",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-finite-mse",
+              "locator": "tests/fixtures/p1f/mse-challenges.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "mse-remember",
+          "question_sha256": "363bdf71f6475ed4dbbc306125a2ef19c29af220fcb7116f418ddd22d53eecdb",
+          "tier": "beginner",
+          "dimension": "recognition",
+          "answer_unit": "",
+          "alternatives": [
+            "Directly state the expected squared error, identifying the roles of both symbols."
+          ],
+          "independent": false
+        },
+        {
+          "id": "practice-mse-understand",
+          "target": "mean-squared estimation error and bias-variance reasoning",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-finite-mse",
+              "locator": "tests/fixtures/p1f/mse-challenges.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "mse-understand",
+          "question_sha256": "6bc03b1595a0d158b94bc902d7dd00ad361b578971d52f800c39c019aa6fad9a",
+          "tier": "beginner",
+          "dimension": "explanation",
+          "answer_unit": "",
+          "alternatives": [
+            "Compute the signed mean and mean of squares separately.",
+            "Compare zero mean error with nonzero absolute errors."
+          ],
+          "independent": false
+        },
+        {
+          "id": "practice-mse-apply",
+          "target": "mean-squared estimation error and bias-variance reasoning",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-finite-mse",
+              "locator": "tests/fixtures/p1f/mse-challenges.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "mse-apply",
+          "question_sha256": "bc67ab43a1c2d23f765f18a76f3dedf0813e0059357efb1a93ec09cf089ea873",
+          "tier": "intermediate",
+          "dimension": "application",
+          "answer_unit": "",
+          "alternatives": [
+            "Average squared errors relative to the fixed target.",
+            "Use the variance-plus-squared-bias identity after calculating both components."
+          ],
+          "independent": false
+        },
+        {
+          "id": "practice-mse-analyze",
+          "target": "mean-squared estimation error and bias-variance reasoning",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-finite-mse",
+              "locator": "tests/fixtures/p1f/mse-challenges.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "mse-analyze",
+          "question_sha256": "c9b83fa0f4914ea3e2609edd2106b98bbf6619cac222f4711d8435c8f84355e6",
+          "tier": "intermediate",
+          "dimension": "derivation",
+          "answer_unit": "",
+          "alternatives": [
+            "Expand the square term by term before taking expectation.",
+            "Compare the claimed expression with the full bias-variance expression and solve for equality."
+          ],
+          "independent": false
+        },
+        {
+          "id": "practice-mse-evaluate",
+          "target": "mean-squared estimation error and bias-variance reasoning",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-finite-mse",
+              "locator": "tests/fixtures/p1f/mse-challenges.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "mse-evaluate",
+          "question_sha256": "fcad334afd8d19275f5bbb16607d922920ffa8cf0e2ec1a9736582d3f7083f33",
+          "tier": "advanced",
+          "dimension": "application",
+          "answer_unit": "",
+          "alternatives": [
+            "Compare the two risks using variance plus squared bias.",
+            "Directly construct error distributions with the stated moments to check the ordering."
+          ],
+          "independent": false
+        },
+        {
+          "id": "practice-mse-create",
+          "target": "mean-squared estimation error and bias-variance reasoning",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-finite-mse",
+              "locator": "tests/fixtures/p1f/mse-challenges.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "mse-create",
+          "question_sha256": "2538b7146bf946065172478ed34a1db6953c18d9be200ba8282b45c31029161e",
+          "tier": "advanced",
+          "dimension": "transfer",
+          "answer_unit": "",
+          "alternatives": [
+            "A zero/three two-point distribution with probabilities two-thirds/one-third satisfies the requested moments.",
+            "A distribution with equal probabilities at one minus square-root-two and one plus square-root-two also works."
+          ],
+          "independent": true
+        }
+      ],
+      "socratic": [
+        {
+          "id": "hint-mse-remember",
+          "target": "mean-squared estimation error and bias-variance reasoning",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-finite-mse",
+              "locator": "tests/fixtures/p1f/mse-challenges.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "mse-remember",
+          "question_sha256": "363bdf71f6475ed4dbbc306125a2ef19c29af220fcb7116f418ddd22d53eecdb",
+          "hints": [
+            {
+              "kind": "cue",
+              "text": "Which quantity is random, and what fixed target is being estimated?"
+            }
+          ]
+        },
+        {
+          "id": "hint-mse-understand",
+          "target": "mean-squared estimation error and bias-variance reasoning",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-finite-mse",
+              "locator": "tests/fixtures/p1f/mse-challenges.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "mse-understand",
+          "question_sha256": "6bc03b1595a0d158b94bc902d7dd00ad361b578971d52f800c39c019aa6fad9a",
+          "hints": [
+            {
+              "kind": "cue",
+              "text": "Compare signed errors with squared errors."
+            }
+          ]
+        },
+        {
+          "id": "hint-mse-apply",
+          "target": "mean-squared estimation error and bias-variance reasoning",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-finite-mse",
+              "locator": "tests/fixtures/p1f/mse-challenges.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "mse-apply",
+          "question_sha256": "bc67ab43a1c2d23f765f18a76f3dedf0813e0059357efb1a93ec09cf089ea873",
+          "hints": [
+            {
+              "kind": "cue",
+              "text": "Find the estimation error in each support case."
+            }
+          ]
+        },
+        {
+          "id": "hint-mse-analyze",
+          "target": "mean-squared estimation error and bias-variance reasoning",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-finite-mse",
+              "locator": "tests/fixtures/p1f/mse-challenges.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "mse-analyze",
+          "question_sha256": "c9b83fa0f4914ea3e2609edd2106b98bbf6619cac222f4711d8435c8f84355e6",
+          "hints": [
+            {
+              "kind": "cue",
+              "text": "Expand the square before taking its expectation."
+            }
+          ]
+        },
+        {
+          "id": "hint-mse-evaluate",
+          "target": "mean-squared estimation error and bias-variance reasoning",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-finite-mse",
+              "locator": "tests/fixtures/p1f/mse-challenges.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "mse-evaluate",
+          "question_sha256": "fcad334afd8d19275f5bbb16607d922920ffa8cf0e2ec1a9736582d3f7083f33",
+          "hints": [
+            {
+              "kind": "cue",
+              "text": "What loss and sampling model make the proposed comparison meaningful?"
+            }
+          ]
+        },
+        {
+          "id": "hint-mse-create",
+          "target": "mean-squared estimation error and bias-variance reasoning",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-finite-mse",
+              "locator": "tests/fixtures/p1f/mse-challenges.json:verification"
+            }
+          ],
+          "tree": "check",
+          "question_id": "mse-create",
+          "question_sha256": "2538b7146bf946065172478ed34a1db6953c18d9be200ba8282b45c31029161e",
+          "hints": [
+            {
+              "kind": "cue",
+              "text": "Choose two support values, then verify their first and second moments."
+            }
+          ]
+        }
+      ],
+      "bloom": [
+        {
+          "id": "mse-bloom-family",
+          "target": "mean-squared estimation error and bias-variance reasoning",
+          "version": 1,
+          "sources": [
+            {
+              "id": "synthetic-finite-mse",
+              "locator": "tests/fixtures/p1f/mse-challenges.json:verification"
+            }
+          ],
+          "prepared_by": "synthetic fixture author; arithmetic checked by tests, no external course validation",
+          "challenges": [
+            {
+              "level": "remember",
+              "practice_id": "practice-mse-remember",
+              "purpose": "Recall the mathematical object and its assumptions.",
+              "output_requirement": "A definition with symbol roles and a justified applicability condition.",
+              "practice_version": 1
+            },
+            {
+              "level": "understand",
+              "practice_id": "practice-mse-understand",
+              "purpose": "Explain signed-error cancellation versus nonnegative squared loss.",
+              "output_requirement": "A reasoned contrast using the supplied error example.",
+              "practice_version": 1
+            },
+            {
+              "level": "apply",
+              "practice_id": "practice-mse-apply",
+              "purpose": "Execute the definition on a new finite support and target.",
+              "output_requirement": "One computed scalar using the supplied support and target.",
+              "practice_version": 1
+            },
+            {
+              "level": "analyze",
+              "practice_id": "practice-mse-analyze",
+              "purpose": "Diagnose an invalid symbolic derivation and locate its domain of validity.",
+              "output_requirement": "A corrected derivation, an exact equality condition and a checked counterexample.",
+              "practice_version": 1
+            },
+            {
+              "level": "evaluate",
+              "practice_id": "practice-mse-evaluate",
+              "purpose": "Critique a decision rule using model-specific risks and explicit limitations.",
+              "output_requirement": "A justified comparison under the stated loss plus limits of the conclusion.",
+              "practice_version": 1
+            },
+            {
+              "level": "create",
+              "practice_id": "practice-mse-create",
+              "purpose": "Construct and justify a new admissible synthetic estimator rather than repeat a worked computation.",
+              "output_requirement": "Support, probabilities, verified required moments and a qualification about applicability.",
+              "practice_version": 1
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "entry": {
+    "id": "mse-bloom-family",
+    "target": "mean-squared estimation error and bias-variance reasoning",
+    "version": 1,
+    "sources": [
+      {
+        "id": "synthetic-finite-mse",
+        "locator": "tests/fixtures/p1f/mse-challenges.json:verification"
+      }
+    ],
+    "prepared_by": "synthetic fixture author; arithmetic checked by tests, no external course validation",
+    "challenges": [
+      {
+        "level": "remember",
+        "practice_id": "practice-mse-remember",
+        "purpose": "Recall the mathematical object and its assumptions.",
+        "output_requirement": "A definition with symbol roles and a justified applicability condition.",
+        "practice_version": 1
+      },
+      {
+        "level": "understand",
+        "practice_id": "practice-mse-understand",
+        "purpose": "Explain signed-error cancellation versus nonnegative squared loss.",
+        "output_requirement": "A reasoned contrast using the supplied error example.",
+        "practice_version": 1
+      },
+      {
+        "level": "apply",
+        "practice_id": "practice-mse-apply",
+        "purpose": "Execute the definition on a new finite support and target.",
+        "output_requirement": "One computed scalar using the supplied support and target.",
+        "practice_version": 1
+      },
+      {
+        "level": "analyze",
+        "practice_id": "practice-mse-analyze",
+        "purpose": "Diagnose an invalid symbolic derivation and locate its domain of validity.",
+        "output_requirement": "A corrected derivation, an exact equality condition and a checked counterexample.",
+        "practice_version": 1
+      },
+      {
+        "level": "evaluate",
+        "practice_id": "practice-mse-evaluate",
+        "purpose": "Critique a decision rule using model-specific risks and explicit limitations.",
+        "output_requirement": "A justified comparison under the stated loss plus limits of the conclusion.",
+        "practice_version": 1
+      },
+      {
+        "level": "create",
+        "practice_id": "practice-mse-create",
+        "purpose": "Construct and justify a new admissible synthetic estimator rather than repeat a worked computation.",
+        "output_requirement": "Support, probabilities, verified required moments and a qualification about applicability.",
+        "practice_version": 1
+      }
+    ]
+  }
+}

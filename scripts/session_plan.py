@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 import board_script
+import pedagogy_contract
 
 SCHEMA = 1
 ID = re.compile(r'[A-Za-z0-9_-]{1,64}')
@@ -304,7 +305,7 @@ def validate(plan) -> list[str]:
     if plan.get('plan_schema') != SCHEMA:
         problems.append(f'plan_schema must be {SCHEMA}')
     for key in plan:
-        if key not in ('plan_schema', 'title', 'target', 'budget', 'probe', 'segments', 'anticipated', 'handout', 'check'):
+        if key not in ('plan_schema', 'title', 'target', 'budget', 'probe', 'segments', 'anticipated', 'handout', 'check', 'pedagogy'):
             problems.append(f"unknown key '{key}'")
     _plain_title(plan.get('title'), 'title', problems)
     if not _text(plan.get('target'), 300):
@@ -439,6 +440,8 @@ def validate(plan) -> list[str]:
                     _plain_title(s, f'handout.sections[{j}]', problems)
             if 'readable' in handout:
                 problems.extend(readable_problems(handout['readable']))
+    if not problems:
+        problems.extend(pedagogy_contract.validate(plan))
     return problems
 
 

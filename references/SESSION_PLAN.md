@@ -68,7 +68,7 @@ a physical mobile device, or independently recorded speaker output.
 ## Layout acceptance
 
 The complete active stage must fit the available Obsidian pane without vertical or
-horizontal scrolling. Use a course-player layout: Quiz, Handout, Lecture, Video and Check navigation on the left of a desktop teaching surface, with supporting question tools alongside it. Keep the stage navigation, playback and question actions,
+horizontal scrolling. Use a course-player layout: Quiz, Handout, Lecture, Video and Check navigation in an outline card on the left of a desktop teaching surface, with Study advice and Teaching roles in a narrow right tool rail (a wrapping tab row below 1100px). Keep the stage navigation, playback and question actions,
 caption controls, and tutor status visible together. Use the wide lecture layout
 with the board beside its tools on desktop; stack compact tools on smaller panes.
 Size the drawing frame from the remaining height while keeping captions at a stable
@@ -158,3 +158,219 @@ with a blocked advice notice, while revised teaching remains refused. A blocked
 snapshot never replaces the last usable context binding. Once records return,
 explicit refresh can recover. Older unbound/waived sessions show an honest missing
 context message, with a request to the tutor rather than fabricated knowledge.
+
+## Optional P1 pedagogy contract (schema 1)
+
+`plan.pedagogy` is optional; legacy plans need no migration. It has exactly
+`schema: 1` plus optional `socratic`, `explanations`, `practice`, `comparisons` and `terms` arrays (at most 40 each,
+120 KiB UTF-8 in total). `pedagogy_contract.validate` checks these after the base
+plan validates. Structural acceptance does not verify scientific content.
+
+Every entry requires `id` (safe 1..64 characters), exact plan `target`, positive
+integer `version`, and 1..12 `sources: [{id, locator}]`. These source declarations
+need independent content verification; a string locator is no proof of access.
+
+Socratic entries additionally require `tree` (`probe` or `check`), `question_id`,
+`question_sha256` and `hints: [{kind, text}]`. The digest is SHA-256 of sorted,
+compact, UTF-8 JSON of the complete existing question. Hints progress through
+`cue`, `structure`, `partial-step`, without duplicates (1..3 hints, 2000 chars
+each). The original question owns the solution, key, criteria and routing.
+
+Explanation entries require `segment_id`, `segment_sha256` (same digest rule)
+and `levels`. One or more `intuitive`, `intermediate`, `formal` variants each
+contains exactly `text` (1..12000 characters), `assumptions` (1..12 explicit
+strings of at most 500 characters) and `bridge` (1..2000 characters explaining
+simplification/connection). A missing level must be reported, never invented.
+Metadata cannot override canonical scopes, dimensions, criteria or evidence.
+
+Wave 0 freezes the following interaction interfaces for P1 integration:
+
+- Shared issuance: checkpoint response `pedagogy-probe:<qid>:<units>`, units 1..4.
+  `pedagogy_budget.project(state, lesson=None)` counts each issued assessment once
+  across both trees, including off-route historical answers and legacy contracted
+  reservations. `assert_can_issue` rejects only a new assessment; pending answers
+  and revisions remain savable. Tutoring extensions retain the existing explicit
+  learner request/reason requirement. The optional same-session `lesson` is an
+  explicitly supplied, independently replayed tutor_session declaration; no saved
+  state mapping or automatic equivalence between formats is presumed.
+- Staged assistance uses `pedagogy-help`, with question_id and response exactly
+  `{entry_id, version, tree, question_sha256, level, prior_response_event_id}`.
+  Level is an integer hint index starting at 1, or `solution`. Prior response
+  identifies the actual latest attempt (null before the first). Persist and
+  acknowledge before presenting content; rejected persistence reveals nothing.
+- Explanation selection uses checkpoint `pedagogy-level:<entry-id>:<version>:<level>`.
+  It records presentation only, retains the lecture path/step and never grades.
+- New UI modules receive `persist(type, questionId, response): Promise<event>`,
+  committed `events()`, `doc`, `rich(tag,text)` and the unchanged prepared entry.
+  The host owns validation and persistence; offline persistence is explicitly
+  page-local. The existing five stages and three-column layout are preserved.
+
+P1a now enforces locked shared issuance and acknowledged help attribution.
+P1b level controls are a separate integration. Never infer scientific validation
+or evidence from metadata, reading or a presentation selection.
+
+Unpresented entry edits must increase their version. Once a help/level checkpoint
+presents an entry, retain it unchanged and add a new ID for new content. The first
+opening of prepared levels is acknowledged before display, including a preferred
+or restored level. Requests retain entry/version and segment in their origin so
+later tutor responses can identify the exact explanation even after navigation.
+
+
+P1c practice entries additionally carry exactly `tree`, `question_id`,
+`question_sha256`, `tier` (beginner/intermediate/advanced), `dimension`
+(recognition/explanation/derivation/transfer/application), `answer_unit` (literal
+physical unit label, at most 80 characters; empty means dimensionless),
+`alternatives` (1..8 legitimate approaches, at most 1000 characters each), and
+boolean `independent`. Existing questions own the prompt, key, tolerance, solution
+and criteria. Advanced and independent transfer eligibility require a written
+question with at least two criteria; eligibility never proves novelty or learning.
+Alternatives travel to the tutor's pending-written-review brief, not a premature
+learner answer reveal. Numeric matching checks the numeric component only; units
+and semantic alternatives need authored written reasoning and substantive review.
+
+Practice selection uses checkpoint `pedagogy-practice:<entry-id>:<version>`, with
+null question ID, and waits for committed acknowledgement. It reserves no probe by
+itself: the existing question issuance gate must acknowledge before presentation.
+Selection can open an existing off-route card; raw attempts, revisions and reviews
+remain in the existing event stream without rerouting history. Presented practice
+entries freeze like other pedagogy entries. Restore the active card separately
+from recommending the next suitable unanswered item; recommendation never forces
+navigation. Full trusted canonical recommendations may guide the pure selector.
+A bounded optional canonical advice pair `target` / `next: {scope,dimension}`
+is derived from the current canonical recommendation only when its actual next
+subject matches that concept/capability target. The browser uses it only for the
+exact prepared plan target and current UTC snapshot day. Old snapshots, prerequisite
+subjects, blocked/stale/malformed advice and block/project targets do not authorize
+advanced selection; explicit learner tier choices remain available. Snapshot date
+validation does not replace canonical evidence freshness policy.
+
+
+P1d `comparisons` entries add exactly `tree`, `question_id`, `question_sha256`,
+`summary_event_id`, `summary_sha256`, `summary`, `source`, `claims`, `synthesis`,
+and `prepared_by` to the common identity/source fields. The original question must
+be short, the summary at most 4000 characters, and its digest uses the same JSON
+digest rule. Trusted state publication binds it to one unchanged actual raw answer
+event for that question/tree; an unrelated/newer attempt cannot silently replace it.
+One entry per question/tree/summary event is allowed. Presented feedback freezes;
+a new learner revision and prepared comparison remain separate records.
+
+`source` is exactly `{id,locator,access,text,sha256}`. Access is `excerpt`, `full`
+or `unavailable`; the first two declare a supplied snapshot, not external retrieval
+or independent verification. Text is at most 16000 characters with a SHA-256 over
+its exact UTF-8 bytes. Unavailable text/synthesis are empty and claims absent.
+The source identity/locator must match a declared source. Up to 12 claims contain
+exactly `{kind,learner_quote,source_quote,locator,feedback,revision_prompt}`. Kinds
+are correct/omitted/misconception/unsupported/emphasis. Quotes occur verbatim in
+the bound original summary and supplied snapshot. Omitted points use a related
+learner anchor; unsupported means unsupported within the supplied snapshot.
+Substring matching proves structural grounding, not scientific classification.
+Attribution `prepared_by` and an explicit revision challenge remain visible.
+
+Opening feedback records checkpoint `pedagogy-comparison:<id>:<version>` before
+presentation. Explicit optional synthesis records
+`pedagogy-comparison-synthesis:<id>:<version>` before display; unavailable sources
+cannot record either assistance checkpoint or reveal synthesis. Their refusal and
+request-source notice opens without a help event, so missing sources do not falsely
+label later work assisted. Both saved checkpoints use null question IDs and exact
+prepared bindings.
+Default feedback asks for a raw revision; an explicit direct explanation request
+may reveal the prepared synthesis immediately as recorded assistance. Opening
+comparison feedback counts as hinted for subsequent evidence proposals; synthesis
+counts as open notes under existing append-order/timestamp rules. Truly later
+help does not retroactively downgrade an earlier attempt. Neither checkpoint
+awards evidence or spends a new assessment probe. Revision reuses the original
+question/card, draft sidecar and raw answer stream, including cross-stage return.
+
+
+P1e vocabulary entries require common fields plus exactly `prepared_by`, `source`
+(the supplied snapshot shape from P1d), `requested: {terms,categories}` (null or
+1..40 / 1..10), `terms` (at most 40) and `categories` (at most 10). Each term has
+`term_id`, canonical `labels` and `concepts`, `plain`, nullable `formal`, `example`,
+`prerequisites`, `contrasts`, exact `source_quote` / `locator`, and nullable
+`diagnostic: {tree,question_id,question_sha256}`. Labels/concept links must match
+the actual canonical glossary when NEW/CHANGED metadata is published. Concept and
+prerequisite IDs resolve through the actual valid concept registry (plus supported
+schema-1 conceptual IDs); capability IDs are never concept aliases. Author-supplied
+glossary copies cannot authorize identity. Both plan writers validate under the
+session lock. Historical display and unchanged raw-answer saves do not rediscover
+a missing catalog. Categories declare bounded meaningful rationale and explicit
+membership reasons, assigning each prepared term once. Quotes provide structural
+grounding, not independent scientific verification of definitions or grouping.
+
+`pedagogy-terms:<id>:<version>` is an acknowledged presentation checkpoint with
+null question ID. Available vocabulary displays only after committed persistence;
+unavailable source notices record no help or evidence. Prepared counts below the
+explicit requested count are disclosed; unsupported items are never fabricated.
+An optional diagnostic opens its existing card/tree through the same budget gate.
+Definitions, category reading and term-state display never call term record/define
+writers. Source vocabulary lives in the existing Handout/Lecture central surface;
+closing it restores the original reader/player and lecture step.
+
+Optional `context.vocabulary` is exactly
+`{vocabulary_schema:1,as_of:ISO-date,states:null|{term_id:{language:state}}}`.
+This dated read-only projection comes from the existing term authority at changed
+teaching/startup/advice/export boundaries, never from a browser assertion. At most
+40 prepared term IDs and 8 declared-label languages cross the sandbox boundary.
+The existing authoritative event fold avoids losing a known prepared term when a
+bounded Student Brief spends its budget on unrelated shaky terms. Missing snapshot
+coverage is unavailable, distinct from an explicit empty recorded state (unseen).
+No full glossary, profile, goal or private path is exposed. Unbound historical
+sessions gain no invented context/waiver: prepared content remains readable, while
+recorded states remain unavailable until normal binding/explicit waiver exists.
+The browser labels the snapshot date and does not treat it as evidence or policy.
+
+`allow_reroute` waives only route choices allowed by existing history guards.
+It cannot rewrite issued complete question contracts/digests or already-presented
+teaching metadata. Legacy/unissued route overrides remain available; a changed
+issued question, including its routing digest, requires a new question identity.
+
+P1f optional `bloom` entries contain the common identity/target/version/sources
+plus exactly `prepared_by` and `challenges`. One to six distinct challenges use
+exactly `{level,practice_id,practice_version,purpose,output_requirement}`. Levels
+are remember/understand/apply/analyze/evaluate/create; each references a distinct
+existing practice ID and its exact integer version. Evaluate/create reference
+written questions with at least two existing criteria. Purpose/output are bounded
+prepared instructions, not a second rubric or answer store. A missing activity
+is disclosed; six activities are never a mandatory completion ladder.
+
+`pedagogy-bloom:<id>:<version>:<level|all>` records an exact prepared view with
+null question ID. Opening a challenge awaits that committed checkpoint and the
+referenced `pedagogy-practice:<id>:<version>` checkpoint before choosing the existing
+card. New questions still await the shared probe issuance gate. The all-activities
+view issues no questions. Raw attempts, revisions, drafts and substantive reviews
+remain in their existing streams; activity labels never award understanding or
+evidence. Source/provenance labels require independent scientific vetting.
+
+P1g `analogies` entries contain common identity/target/version/sources plus
+`prepared_by,segment_id,segment_sha256,domain,relevance,correspondences,limits,
+worked,transfer,replacement`. They bind an unchanged segment, explicit formal
+mapping and failure limits. Transfer references exact existing practice ID/version,
+an independent written transfer item with at least two criteria, distinct worked
+and transfer structure IDs, substantive differences and a digest-bound novelty
+declaration. Declared reviewer identity and reviewed-different status do not
+authenticate independence or award evidence. Each entry is at most 60000 bytes
+within the shared 120 KiB teaching budget.
+
+A replacement retains the original same-target analogy and exact actual original
+answer ID plus immutable substantive gap-review snapshot/hash. Newer pending work
+does not erase historical feedback; automatic replacement suggestions require the
+bound review still concern the latest actual attempt. Both publication and locked
+checkpoint validation reject fabricated provenance. `pedagogy-analogy:<id>:<version>`
+commits before mapping/limits display; reading records open-notes assistance under
+existing append-order/timestamp policy, with no assessment issuance. Opening
+transfer practice separately acknowledges its exact practice assignment, then
+uses the existing card/budget gate. The Lecture launcher filters by current actual
+segment; reading/closing retains lecture path and step.
+
+## P1h teaching roles and Editor critiques
+
+`pedagogy.critiques` entries carry exactly: `id, target, version, sources,
+prepared_by, tree, question_id, question_sha256, answer_event_id, answer_sha256,
+answer, review_sha256, review_snapshot, work_kind, source, findings, checked,
+not_checked`. `work_kind` is `derivation`, `argument` or `code-explanation`
+(summaries use P1d comparisons). Each finding is exactly `location, learner_quote,
+source_quote, locator, feedback, revision_prompt`, anchored to raw lines of the actual
+answer; at most twelve findings, none when the source is unavailable, and explicit
+checked/not-checked limits. A new raw revision never inherits an old critique or
+review. The role selector (`pedagogy_roles.py` / `roles.js`, identical rules) is
+read-only: it recommends a behavior, never grades, starts agents or writes ledgers.

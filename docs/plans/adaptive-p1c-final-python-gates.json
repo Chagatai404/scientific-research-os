@@ -1,0 +1,12 @@
+{
+  "tests": 29,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "seconds": 23.28740870000911,
+  "patterns": [
+    "test_learning_advice.py",
+    "test_pedagogy_practice_integration.py",
+    "test_adaptive_helper_bundles.py"
+  ]
+}

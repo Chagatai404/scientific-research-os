@@ -1,0 +1,33 @@
+{
+  "tests": 280,
+  "failures": 0,
+  "errors": 0,
+  "skips": 0,
+  "seconds": 194.37593149999884,
+  "patterns": [
+    "test_pedagogy_contract.py",
+    "test_pedagogy_budget.py",
+    "test_pedagogy_socratic.py",
+    "test_pedagogy_explanations.py",
+    "test_pedagogy_persistence.py",
+    "test_pedagogy_practice.py",
+    "test_pedagogy_practice_integration.py",
+    "test_pedagogy_source_comparison.py",
+    "test_pedagogy_comparison_acceptance.py",
+    "test_session_plan.py",
+    "test_p0_text_flow.py",
+    "test_adaptive_helper_bundles.py",
+    "test_release_documentation.py",
+    "test_learning_advice.py",
+    "test_learning_preferences.py",
+    "test_context_enforcement.py",
+    "test_pedagogy_terms.py",
+    "test_pedagogy_terms_acceptance.py",
+    "test_vocabulary_snapshot.py",
+    "test_terms.py",
+    "test_teaching_context_boundaries.py",
+    "test_adaptive_context.py"
+  ],
+  "failures_detail": [],
+  "errors_detail": []
+}

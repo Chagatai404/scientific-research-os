@@ -176,6 +176,110 @@ function parseState(text) {
   if (ids.some(id => typeof id !== 'string' || id.length > 128) || new Set(ids).size !== ids.length) throw new Error('Invalid question IDs.');
   return s;
 }
+// P1 shares one budget across staged trees and legacy contracted reservations.
+// This executes again with freshly read state inside the filesystem lock.
+function pedagogyBudget(state) {
+  const plan = state.plan || {}, tutoring = state.tutoring;
+  let limit = tutoring ? (tutoring.budget === undefined ? 5 : tutoring.budget) : (plan.budget === undefined ? 5 : plan.budget);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 8) throw new Error('Invalid diagnostic budget.');
+  if (tutoring) {
+    if (Object.keys(tutoring).some(k => !['budget','extensions'].includes(k)) || !Array.isArray(tutoring.extensions || []) || (tutoring.extensions || []).length > 29) throw new Error('Invalid tutoring budget.');
+    for (const e of tutoring.extensions || []) {
+      if (!e || Object.keys(e).sort().join(',') !== 'learner_requested,limit,reason' || e.learner_requested !== true || !Number.isInteger(e.limit) || e.limit <= limit || e.limit > 30 || typeof e.reason !== 'string' || e.reason.trim().length < 3 || e.reason.trim().length > 500) throw new Error('Explicit learner budget extension required.');
+      limit = e.limit;
+    }
+  }
+  const questions = new Map(['probe','check'].flatMap(t => ((plan[t] || {}).questions || []).map(q => [q.id,{...q,tree:t}]))), costs = new Map();
+  for (const e of state.events || []) if (e.type === 'checkpoint' && typeof e.response === 'string' && e.response.startsWith('pedagogy-probe:')) {
+    const m = /^pedagogy-probe:([A-Za-z0-9_-]{1,64}):([1-4])$/.exec(e.response);
+    if (!m || !questions.has(m[1]) || costs.has(m[1]) && costs.get(m[1]) !== Number(m[2])) throw new Error('Invalid diagnostic reservation.');
+    costs.set(m[1], Number(m[2]));
+  }
+  for (const e of state.events || []) if (e.type === 'plan-answer') {
+    const q = questions.get(e.question_id);
+    if (!q || !e.response || e.response.tree !== q.tree) throw new Error('Answer tree mismatch.');
+    if (!costs.has(q.id)) costs.set(q.id, q.units || 1);
+  }
+  for (const q of questions.values()) if (q.units !== undefined && (!Number.isInteger(q.units) || q.units < 1 || q.units > 4)) throw new Error('Staged diagnostic units must be 1..4.');
+  for (const q of state.questions || []) if (q.contract && typeof q.contract === 'object' && (!Number.isInteger(q.units) || q.units < 1 || q.units > 8)) throw new Error('Legacy diagnostic units must be 1..8.');
+  const legacy = (state.questions || []).filter(q => q.contract && typeof q.contract === 'object').reduce((n,q) => n + (q.units || 0),0);
+  const used = legacy + [...costs.values()].reduce((a,b) => a+b,0);
+  return {limit,used,issued:[...costs.keys()]};
+}
+function validatePedagogyEvent(event,state) {
+  const plan = state.plan || {}, meta = plan.pedagogy, r = event.response;
+  if (event.type === 'pedagogy-help') {
+    if (!r || Object.keys(r).sort().join(',') !== 'entry_id,level,prior_response_event_id,question_sha256,tree,version') throw new Error('Exact staged help binding required.');
+    const entry = meta && (meta.socratic || []).find(e => e.id === r.entry_id);
+    if (!entry || entry.question_id !== event.question_id || entry.version !== r.version || entry.tree !== r.tree || entry.question_sha256 !== r.question_sha256) throw new Error('Help binding mismatch.');
+    if (r.level !== 'solution' && (!Number.isInteger(r.level) || r.level < 1 || r.level > entry.hints.length)) throw new Error('Unknown help level.');
+    const prior = (state.events || []).filter(e => e.type === 'plan-answer' && e.question_id === event.question_id).at(-1);
+    if (r.prior_response_event_id !== (prior ? prior.event_id : null)) throw new Error('Help requires latest actual attempt.');
+    const levels = (state.events || []).filter(e => e.type === 'pedagogy-help' && e.response.entry_id === entry.id && Number.isInteger(e.response.level)).map(e => e.response.level);
+    if (Number.isInteger(r.level) && r.level > Math.max(0,...levels)+1) throw new Error('Hints must be revealed in order.');
+  }
+  const issue = event.type === 'checkpoint' && typeof r === 'string' && r.startsWith('pedagogy-probe:');
+  if (issue || event.type === 'plan-answer' && meta) {
+    if (!meta) throw new Error('Prepared pedagogy required.');
+    const m = issue ? /^pedagogy-probe:([A-Za-z0-9_-]{1,64}):([1-4])$/.exec(r) : null;
+    if (issue && (!m || event.question_id != null)) throw new Error('Invalid question issuance.');
+    const qid = issue ? m[1] : event.question_id;
+    const q = ['probe','check'].flatMap(t => ((plan[t] || {}).questions || []).map(q => ({...q,tree:t}))).find(q => q.id === qid);
+    if (!q || issue && Number(m[2]) !== (q.units || 1) || !issue && event.response.tree !== q.tree) throw new Error('Question issuance cost/tree mismatch.');
+    const budget = pedagogyBudget(state);
+    if (!budget.issued.includes(qid) && budget.used + (q.units || 1) > budget.limit) throw new Error('Diagnostic budget exhausted across questions and branches.');
+  }
+  if (event.type === 'checkpoint' && typeof r === 'string' && r.startsWith('pedagogy-practice:')) {
+    const parts = r.split(':'), entry = meta && (meta.practice || []).find(e => e.id === parts[1]);
+    if (parts.length !== 3 || !entry || event.question_id != null || parts[2] !== String(entry.version)) throw new Error('Unknown prepared practice selection.');
+  }
+  if (event.type === 'checkpoint' && typeof r === 'string' && /^(pedagogy-comparison|pedagogy-comparison-synthesis):/.test(r)) {
+    const parts=r.split(':'),entry=meta && (meta.comparisons || []).find(e=>e.id===parts[1]);
+    const matches=entry && (state.events || []).filter(e=>e.event_id===entry.summary_event_id);
+    const raw=matches && matches[0];
+    if(parts.length!==3 || !entry || event.question_id!=null || parts[2]!==String(entry.version) || matches.length!==1 || raw.type!=='plan-answer' || raw.question_id!==entry.question_id || !raw.response || raw.response.tree!==entry.tree || raw.response.answer!==entry.summary || entry.source.access==='unavailable')throw new Error('Comparison requires the unchanged actual summary and available synthesis.');
+  }
+  if(event.type==='checkpoint' && typeof r==='string' && r.startsWith('pedagogy-terms:')){
+    const parts=r.split(':'),entry=meta && (meta.terms || []).find(e=>e.id===parts[1]);
+    if(parts.length!==3 || !entry || event.question_id!=null || parts[2]!==String(entry.version) || entry.source.access==='unavailable')throw new Error('Unknown available vocabulary presentation.');
+  }
+  if(event.type==='checkpoint' && typeof r==='string' && r.startsWith('pedagogy-role:')){
+    if(event.question_id!=null || !['Advisor','Librarian','Tutor','Editor','Roommate','recommended'].some(role=>r==='pedagogy-role:'+role))throw new Error('Unknown teaching role choice.');
+  }
+  if(event.type==='checkpoint' && typeof r==='string' && r.startsWith('pedagogy-path:')){
+    const parts=r.split(':'),families=['socratic','explanations','practice','comparisons','terms','bloom','analogies','critiques'];
+    const entry=parts.length===4 && families.includes(parts[1]) && meta && (meta[parts[1]]||[]).find(e=>e.id===parts[2]);
+    if(!entry || event.question_id!=null || parts[3]!==String(entry.version))throw new Error('Unknown exact prepared teaching path.');
+  }
+  if(event.type==='checkpoint' && typeof r==='string' && r.startsWith('pedagogy-editor:')){
+    const parts=r.split(':'),entry=meta && (meta.critiques || []).find(e=>e.id===parts[1]);
+    const matches=entry && (state.events||[]).filter(e=>e.event_id===entry.answer_event_id);
+    const raw=matches && matches[0];
+    const stable=v=>Array.isArray(v)?'['+v.map(stable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}':JSON.stringify(v);
+    if(parts.length!==3 || !entry || event.question_id!=null || parts[2]!==String(entry.version) || entry.source.access==='unavailable' || matches.length!==1 || raw.type!=='plan-answer' || raw.question_id!==entry.question_id || !raw.response || raw.response.tree!==entry.tree || raw.response.answer!==entry.answer || entry.review_snapshot!==null && !(state.plan_reviews||[]).some(v=>stable(v)===stable(entry.review_snapshot)))throw new Error('Editor critique requires unchanged actual work and review binding.');
+  }
+  if(event.type==='checkpoint' && typeof r==='string' && r.startsWith('pedagogy-analogy:')){
+    const parts=r.split(':'),entry=meta && (meta.analogies || []).find(e=>e.id===parts[1]);
+    const item=entry && (meta.practice || []).find(e=>e.id===entry.transfer.practice_id);
+    if(parts.length!==3 || !entry || event.question_id!=null || parts[2]!==String(entry.version) || !item || !Number.isInteger(entry.transfer.practice_version) || entry.transfer.practice_version!==item.version)throw new Error('Unknown analogy or referenced transfer version.');
+    const replacement=entry.replacement;
+    if(replacement){
+      const stable=value=>Array.isArray(value)?'['+value.map(stable).join(',')+']':value&&typeof value==='object'?'{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+stable(value[k])).join(',')+'}':JSON.stringify(value);
+      const raw=(state.events || []).find(e=>e.type==='plan-answer' && e.event_id===replacement.response_event_id && e.question_id===replacement.question_id);
+      const review=(state.plan_reviews || []).find(v=>v.question_id===replacement.question_id && v.response_event_id===replacement.response_event_id && ['incorrect','partially-correct'].includes(v.verdict) && typeof v.feedback==='string' && !!v.feedback.trim() && stable(v)===stable(replacement.review_snapshot));
+      if(!raw || !review)throw new Error('Analogy replacement requires its unchanged actual gap review.');
+    }
+  }
+  if(event.type==='checkpoint' && typeof r==='string' && r.startsWith('pedagogy-bloom:')){
+    const parts=r.split(':'),entry=meta && (meta.bloom || []).find(e=>e.id===parts[1]);
+    const known=new Map((meta && meta.practice || []).map(e=>[e.id,e]));
+    if(parts.length!==4 || !entry || event.question_id!=null || parts[2]!==String(entry.version) || !['all',...entry.challenges.map(c=>c.level)].includes(parts[3]) || entry.challenges.some(c=>!known.has(c.practice_id)||!Number.isInteger(c.practice_version)||c.practice_version!==known.get(c.practice_id).version))throw new Error('Unknown Bloom selection or referenced practice version.');
+  }
+  if (event.type === 'checkpoint' && typeof r === 'string' && r.startsWith('pedagogy-level:')) {
+    const parts = r.split(':'), entry = meta && (meta.explanations || []).find(e => e.id === parts[1]);
+    if (parts.length !== 4 || !entry || event.question_id != null || parts[2] !== String(entry.version) || !Object.hasOwn(entry.levels,parts[3])) throw new Error('Unknown prepared explanation level.');
+  }
+}
 function validateEvent(event, state) {
   if (!event || typeof event !== 'object' || Array.isArray(event)) throw new Error('Invalid event.');
   const allowed = new Set(['event_id', 'type', 'question_id', 'response', 'created_at', 'origin']);
@@ -187,7 +291,7 @@ function validateEvent(event, state) {
       || typeof o.section !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(o.section) || typeof o.title !== 'string' || o.title.length > 200) throw new Error('Invalid question origin.');
   }
   if (typeof event.event_id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(event.event_id)) throw new Error('Invalid event ID.');
-  if (!['response', 'hint', 'solution', 'confidence', 'checkpoint', 'reset', 'open-question', 'explanation-request', 'plan-answer'].includes(event.type)) throw new Error('Unsupported event type.');
+  if (!['response', 'hint', 'solution', 'confidence', 'checkpoint', 'reset', 'open-question', 'explanation-request', 'plan-answer', 'pedagogy-help'].includes(event.type)) throw new Error('Unsupported event type.');
     if (event.type === 'plan-answer') {
       // An answer to a question in the session plan, judged on the page against the plan's own key: a pacing decision, never evidence of learning.
       const plan = state && state.plan, r = event.response;
@@ -197,7 +301,7 @@ function validateEvent(event, state) {
     }
     // A request for another explanation names one known mode and no question; it is never evidence of anything.
     if (event.type === 'explanation-request' && (!ADAPT_MODES.includes(event.response) || (event.question_id !== undefined && event.question_id !== null))) throw new Error('Unknown explanation mode.');
-    if (event.type !== 'open-question' && event.type !== 'explanation-request' && event.type !== 'plan-answer' && !(event.type === 'checkpoint' && event.question_id == null) && !state.questions.some(q => q.id === event.question_id)) throw new Error('Unknown question.');
+    if (event.type !== 'open-question' && event.type !== 'explanation-request' && event.type !== 'plan-answer' && event.type !== 'pedagogy-help' && !(event.type === 'checkpoint' && event.question_id == null) && !state.questions.some(q => q.id === event.question_id)) throw new Error('Unknown question.');
     if (event.type === 'open-question' && (typeof event.response !== 'string' || !event.response.trim())) throw new Error('Open question must have a prompt.');
     if (event.type === 'checkpoint' && (typeof event.response !== 'string' || !event.response.trim())) throw new Error('Checkpoint must include a raw explanation.');
   if (event.question_id !== undefined && !(['checkpoint', 'open-question', 'explanation-request'].includes(event.type) && event.question_id === null) && (typeof event.question_id !== 'string' || event.question_id.length > 128)) throw new Error('Invalid question ID.');
@@ -214,6 +318,7 @@ function validateEvent(event, state) {
   if (event.response !== undefined) checkValue(event.response);
   if (JSON.stringify(event).length > 16384) throw new Error('Event exceeds size limit.');
   if (event.created_at !== undefined && (typeof event.created_at !== 'string' || !Number.isFinite(Date.parse(event.created_at)))) throw new Error('Invalid event time.');
+  validatePedagogyEvent(event,state);
   return Object.assign({}, event, {created_at: new Date().toISOString(), status: 'pending-review'});
 }
 // appendUnplaced keeps the historical behaviour (an image with no place follows the content); a session with
@@ -420,6 +525,7 @@ function pageState(state, live = null) {
   const visible = Object.assign({}, state); delete visible.context;
   visible.canonical_advice = adviceSnapshot(state.context && state.context.advice);
   visible.learning_preferences = preferenceSnapshot(state.context && state.context.preferences);
+  visible.vocabulary_states = vocabularySnapshot(state.context && state.context.vocabulary,state.plan);
   visible.supervision_live = live; visible.host_now = Date.now();
   // Always present, so a decision that was withdrawn clears on the page instead of lingering through a merge.
   if (!('supervision' in visible)) visible.supervision = null;
@@ -441,10 +547,22 @@ function preferenceSnapshot(value) {
   }
   return {preferences: prefs};
 }
+function vocabularySnapshot(value,plan){
+  if(!value || typeof value!=='object' || Object.keys(value).sort().join(',')!=='as_of,states,vocabulary_schema' || value.vocabulary_schema!==1 || typeof value.as_of!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.as_of) || !Number.isFinite(Date.parse(value.as_of)) || new Date(value.as_of).toISOString().slice(0,10)!==value.as_of)return null;
+  if(value.states!==null){
+    if(!value.states || typeof value.states!=='object' || Array.isArray(value.states) || Object.keys(value.states).length>40)return null;
+    const prepared=new Set(((plan && plan.pedagogy || {}).terms || []).flatMap(entry=>entry.terms.map(row=>row.term_id)));
+    for(const [term,languages] of Object.entries(value.states)){
+      if(!prepared.has(term) || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(term) || !languages || typeof languages!=='object' || Array.isArray(languages) || Object.keys(languages).length>8)return null;
+      for(const [language,state] of Object.entries(languages))if(!/^[a-z]{2,3}(?:-[A-Za-z]{2,4})?$/.test(language) || !['unseen','introduced','shaky','defined','used','fluent'].includes(state))return null;
+    }
+  }
+  return JSON.parse(JSON.stringify(value));
+}
 // Only this bounded presentation projection crosses the context/privacy boundary.
 function adviceSnapshot(value) {
   const fields = ['advice_schema', 'evidence', 'status', 'context_outcome', 'action', 'reason', 'as_of', 'receipt_id'];
-  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length !== fields.length || fields.some(k => !(k in value))
+  if (!value || typeof value !== 'object' || Array.isArray(value) || ![fields.length,fields.length+2].includes(Object.keys(value).filter(k=>k!=='for_target').length) || Object.keys(value).some(k=>!fields.includes(k)&&!['target','next','for_target'].includes(k)) || fields.some(k => !(k in value))
       || value.advice_schema !== 1 || value.evidence !== false || !['ready', 'limited', 'blocked'].includes(value.status)
       || !['ready', 'degraded', 'blocked'].includes(value.context_outcome) || typeof value.action !== 'string' || !/^[a-z_]{1,60}$/.test(value.action)
       || typeof value.reason !== 'string' || !value.reason.length || [...value.reason].length > 600
@@ -454,6 +572,14 @@ function adviceSnapshot(value) {
       || value.status === 'ready' && value.receipt_id === null
       || (value.context_outcome === 'blocked') !== (value.status === 'blocked')
       || value.status === 'blocked' && value.action !== 'repair_context') return null;
+  if ('for_target' in value) {
+    if(typeof value.for_target!=='string' || !value.for_target.length || [...value.for_target].length>300 || /[\x00-\x1f\x7f]/.test(value.for_target) || 'target' in value && value.for_target!==value.target)return null;
+    fields.push('for_target');
+  }
+  if ('target' in value || 'next' in value) {
+    if (typeof value.target !== 'string' || !value.target.length || [...value.target].length > 300 || /[\x00-\x1f\x7f]/.test(value.target) || !value.next || Object.keys(value.next).sort().join(',') !== 'dimension,scope' || !['conceptual','transfer','project_application'].includes(value.next.scope) || !['recognition','explanation','derivation','transfer','application'].includes(value.next.dimension)) return null;
+    fields.push('target','next');
+  }
   return Object.fromEntries(fields.map(k => [k, value[k]]));
 }
 // What the page may say about the voice worker, from its lease file (the same rule as voice.py lease_state): never "listening" unless it beat recently.
@@ -675,7 +801,8 @@ class SessionHost extends Component {
     this.queue = this.queue.then(async () => {
       if (token !== this.token || generation !== this.generation || this.invalidated) { this.pending--; return; }
       try {
-        const event = validateEvent(data.event, this.state);
+        // Only the locked disk state can validate latest-attempt and budget bindings.
+        const event = Object.assign({},data.event,{created_at:new Date().toISOString(),status:'pending-review'});
         const file = this.plugin.app.vault.getAbstractFileByPath(sibling(this.path));
         if (!file || file.children) throw new Error('Session state is missing.');
         this.writing = true;
@@ -685,8 +812,10 @@ class SessionHost extends Component {
           const state = parseState(raw);
           if (token !== this.token || generation !== this.generation || this.invalidated) throw new Error('Session view changed before persistence.');
           if (state.session_id !== data.session_id) throw new Error('Session identity changed.');
-          validateEvent(data.event, state);
-          if (!state.events.some(e => e.event_id === event.event_id)) {
+          const existing = state.events.find(e => e.event_id === event.event_id);
+          if (existing && ['type','question_id','response','origin'].some(k => JSON.stringify(existing[k]) !== JSON.stringify(data.event[k]))) throw new Error('Event identity reused with different content.');
+          if (!existing) validateEvent(data.event, state);
+          if (!existing) {
             if (state.events.length >= MAX_EVENTS) throw new Error('Session event limit reached.');
             state.events.push(event); state.updated_at = event.created_at;
             if (event.type === 'explanation-request') {
@@ -1153,5 +1282,5 @@ class ResearchOSHTML extends Plugin {
   onunload() { this.app.workspace.detachLeavesOfType(VIEW); this.app.workspace.detachLeavesOfType(VIDEO_VIEW); }
 }
 module.exports = ResearchOSHTML;
-module.exports._test = {pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, declaredResource, resolveNote, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling, voiceWorkerState, parseVoiceResult, microphoneMessage, browserRecorder,
+module.exports._test = {pedagogyBudget, validatePedagogyEvent, pageState, parseLease, parseState, validateEvent, validateResources, approveModule, imageData, svgProblems, validNoteTarget, declaredTargets, declaredResource, resolveNote, acquireLock, acquireLockWithRetry, sanitizeHtml, buildDocument, SessionHost, sibling, voiceWorkerState, parseVoiceResult, microphoneMessage, browserRecorder,
   playerSlot, mountInlineVideo, youtubeId, videoAddress, videoSpec, videoFrameAttributes, playerSignal, safeVaultPath, handoutSpec, pickHandout, VideoView, VIDEO_VIEW};

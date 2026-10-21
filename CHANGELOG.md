@@ -1,5 +1,60 @@
 # Changelog
 
+## Unreleased — P1 teaching behaviors
+
+- Deterministic ALTER role selector (Advisor, Librarian, Tutor, Editor, Roommate)
+  over existing canonical advice, preferences, prepared content and actual attempts.
+  Pending written work precedes stale advice; currency uses the host-local day.
+  Prepared Editor critiques bind exact lines/quotes with explicit checked and
+  not-checked limits. No agents or providers are started. Release gates now run the
+  P1 Node and browser suites.
+
+- Course-player layout: outline card, content card and right tool rail (Study advice,
+  Teaching roles) on wide screens; a compact wrapping tab row on tablet and phone.
+  No scrollbars inside a stage; stage logic unchanged.
+
+- Prepared analogies retain formal mappings, failure limits, source scope and
+  honest novelty declarations. Replacements bind actual historical gap reviews;
+  segment-specific Lecture and optional Quiz/Check readers preserve raw work.
+  Acknowledged assistance and existing transfer practice retain canonical gates.
+
+- Optional Bloom activities offer distinct prepared cognitive demands through
+  existing practice cards and exact content versions. Acknowledged activity and
+  practice selections precede shared-budget issuance; all-activities reading
+  creates no assessment or learning credit. Written evaluation and creation
+  retain the existing substantive review requirements.
+
+- Source-supported key terms and categories retain actual canonical bilingual
+  identities, concept/prerequisite links and honest requested-count shortfalls.
+  Dated recorded per-language states come from the existing term ledger without
+  new evidence writes; optional diagnostics reuse existing cards and budget.
+  Plan route overrides preserve issued questions and presented teaching.
+
+- Prepared source comparisons bind unchanged raw learner summaries and exact
+  supplied snapshots/locators. Claim-specific revision challenges distinguish
+  omissions, misconceptions, unsupported snapshot claims and emphasis. Feedback
+  and optional explicit synthesis are acknowledged assistance; revisions retain
+  originals and unavailable sources refuse invented comparison content.
+
+- Optional tiered practice selects existing Quiz/Check cards, including off-route
+  items, with committed selection and shared-budget issuance before display.
+  Raw revisions, drafts and actual-attempt reviews remain intact. Physical-unit
+  labels disclose the limits of local numeric checking; written alternatives
+  remain available to the tutor for substantive review.
+
+- Prepared intuitive, intermediate and formal explanation levels retain assumptions,
+  simplification bridges and source locators. Initial depth preferences and saved
+  choices select only available content; requests keep entry/version/segment origin.
+  Opening/selection is acknowledged before display, with lecture progress retained.
+
+- Optional digest-bound Socratic reasoning help adds graduated hints, explicit
+  solution reveal, raw-answer revisions and pause controls. Help is acknowledged
+  before display, remains attributable after revision and never grants mastery.
+- Shared staged assessment issuance preserves spent budget across both trees,
+  reloads and reroutes, while keeping pending answers and revisions savable.
+  Existing explicit learner-requested extensions remain authoritative.
+
+
 ## 0.9.8 - 2026-10-19 - Adaptive Learning Core
 
 This release covers P0 of the adaptive-learning brief. P1 teaching behaviors,

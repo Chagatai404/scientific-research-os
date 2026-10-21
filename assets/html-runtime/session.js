@@ -2210,6 +2210,849 @@
   return {canonical, signature, validValue, key};
 });
 
+/* Prepared explanation variants. Presentation only; no inference or grading. */
+(function (root, factory) {
+  'use strict';
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  root.ResearchOSExplanations = api;
+})(typeof window !== 'undefined' ? window : globalThis, function () {
+  'use strict';
+  const LEVELS = ['intuitive', 'intermediate', 'formal'];
+  const copy = value => value == null ? null : JSON.parse(JSON.stringify(value));
+  function project(entry, events, requested, preferred) {
+    const levels = entry.levels || {}, available = LEVELS.filter(level => Object.prototype.hasOwnProperty.call(levels, level));
+    let selected = available.includes(preferred) ? preferred : available[0] || null, restored = false;
+    const prefix = 'pedagogy-level:' + entry.id + ':' + entry.version + ':';
+    for (const event of events || []) {
+      if (event && event.type === 'checkpoint' && event.question_id == null && typeof event.response === 'string' && event.response.startsWith(prefix)) {
+        const level = event.response.slice(prefix.length); if (available.includes(level)) { selected = level; restored = true; }
+      }
+    }
+    if (available.includes(requested)) selected = requested;
+    return {entry_id: entry.id, version: entry.version, available, selected,
+      variant: copy(levels[selected]), sources: copy(entry.sources || []),
+      unavailable: requested != null ? (!available.includes(requested) ? requested : null) :
+        preferred != null && !available.includes(preferred) && !restored ? preferred : null};
+  }
+  // Small fragments keep all original text, including formulas, intact; rich
+  // markup remains the host's trusted formatter. No HTML strings are inserted.
+  function chunks(text, size = 260) {
+    const paragraphs = String(text).split(/\n\s*\n/), out = [];
+    for (const paragraph of paragraphs) {
+      // Never split a TeX delimiter pair. A long formula is one honest page.
+      const tokens = paragraph.match(/\$\$[\s\S]*?\$\$|\$[^$]*\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\S+\s*|\s+/g) || [''];
+      let part = '';
+      for (const token of tokens) { if (part && part.length + token.length > size) { out.push(part); part = ''; } part += token; }
+      if (part) out.push(part);
+    }
+    return out.length ? out : [''];
+  }
+  function mount(container, entry, ctx) {
+    const doc = ctx.doc;
+    const el = (tag, text) => { const n = doc.createElement(tag); if (text !== undefined) n.textContent = text; return n; };
+    const button = (text, action) => { const n = el('button', text); n.type = 'button'; n.addEventListener('click', action); return n; };
+    const shell = el('details'); shell.className = 'ros-explanations';
+    shell.style.margin = '0';
+    shell.style.minWidth = '0'; shell.style.overflowWrap = 'anywhere';
+    const summary = el('summary', 'Explanation levels'); shell.append(summary);
+    const controls = el('div'); controls.style.display = 'flex'; controls.style.flexWrap = 'wrap'; controls.style.gap = '0.3rem';
+    const choose = el('select'); choose.setAttribute('aria-label', 'Explanation level');
+    LEVELS.forEach(level => { const option = el('option', level + (entry.levels[level] ? '' : ' (unavailable)')); option.value = level; option.disabled = !entry.levels[level]; choose.append(option); });
+    const section = el('select'); section.setAttribute('aria-label', 'Explanation section');
+    ['Explanation', 'Assumptions', 'Bridge', 'Sources'].forEach((label, i) => { const option = el('option', label); option.value = String(i); section.append(option); });
+    controls.append(choose, section);
+    const content = el('div'); content.setAttribute('aria-live', 'polite');
+    const status = el('p'); status.setAttribute('role', 'status');
+    const counter = el('span'), previous = button('Previous', () => move(-1)), next = button('Next', () => move(1));
+    previous.setAttribute('aria-label', 'Previous explanation page'); next.setAttribute('aria-label', 'Next explanation page');
+    const pager = el('div'); pager.style.display = 'flex'; pager.style.flexWrap = 'wrap'; pager.append(previous, counter, next);
+    const requests = el('div'); requests.style.display = 'flex'; requests.style.flexWrap = 'wrap';
+    const requestChoice = el('select'); requestChoice.setAttribute('aria-label', 'Explanation request');
+    for (const [label, mode] of [['Simpler', 'simpler'], ['More rigorous', 'more-rigorous'], ['Derivation', 'derivation'], ['Physical interpretation', 'physical-interpretation'], ['Counterexample', 'counterexample']]) {
+      const option = el('option', label); option.value = mode; requestChoice.append(option);
+    }
+    requestChoice.value = 'simpler';
+    requests.append(requestChoice, button('Ask tutor', () => { if (typeof ctx.request === 'function') ctx.request(requestChoice.value); else status.textContent = 'Ask the tutor for this explanation.'; }));
+    shell.append(controls, content, pager, requests, status); container.append(shell);
+    const preferred = typeof ctx.depth === 'function' ? ctx.depth() : null;
+    let state = project(entry, ctx.events(), null, LEVELS.includes(preferred) ? preferred : null), page = 0, pages = [], disposed = false, busy = false;
+    if (state.unavailable) status.textContent = 'Preferred ' + state.unavailable + ' level is not prepared; showing ' + state.selected + '.';
+    function acknowledged(event, response) {
+      return event && event.type === 'checkpoint' && event.question_id == null && event.response === response &&
+        (ctx.events() || []).some(saved => saved === event || event.event_id && saved.event_id === event.event_id);
+    }
+    summary.addEventListener('click', async event => {
+      if (shell.open) return;
+      event.preventDefault();
+      if (busy || disposed || !state.selected) return;
+      busy = true; choose.disabled = true; summary.textContent = 'Saving explanation presentation…';
+      const response = 'pedagogy-level:' + entry.id + ':' + entry.version + ':' + state.selected;
+      try {
+        const saved = await ctx.persist('checkpoint', null, response);
+        if (!acknowledged(saved, response)) throw new Error('Presentation was not committed');
+        if (!disposed) { summary.textContent = 'Explanation levels'; shell.open = true; }
+      } catch (_) { if (!disposed) summary.textContent = 'Explanation levels — could not save; retry'; }
+      finally { busy = false; if (!disposed) choose.disabled = false; }
+    });
+    section.value = '0';
+    function render() {
+      if (disposed) return;
+      choose.value = state.selected || ''; content.textContent = '';
+      const variant = state.variant;
+      if (!variant) { content.append(el('p', 'No prepared explanation is available. Ask the tutor.')); pages = ['']; }
+      else {
+        const texts = [variant.text, variant.assumptions.map((a, i) => (i + 1) + '. ' + a).join('\n\n'), variant.bridge,
+          state.sources.map(source => source.id + ' — ' + source.locator).join('\n\n')];
+        const narrow = doc.defaultView && doc.defaultView.innerWidth < 600;
+        pages = chunks(texts[Number(section.value) || 0], narrow ? 140 : 260); page = Math.max(0, Math.min(page, pages.length - 1));
+        content.append(ctx.rich ? ctx.rich('p', pages[page]) : el('p', pages[page]));
+      }
+      previous.disabled = page === 0; next.disabled = page >= pages.length - 1;
+      counter.textContent = 'Page ' + (page + 1) + ' of ' + pages.length;
+    }
+    function move(delta) { page = Math.max(0, Math.min(page + delta, pages.length - 1)); render(); }
+    section.addEventListener('change', () => { page = 0; render(); });
+    choose.addEventListener('change', async () => {
+      if (busy || disposed) return;
+      const requested = choose.value;
+      if (!state.available.includes(requested)) { status.textContent = 'That level is not prepared; showing ' + state.selected + '.'; render(); return; }
+      busy = true; choose.disabled = true; status.textContent = 'Saving explanation preference…';
+      const response = 'pedagogy-level:' + entry.id + ':' + entry.version + ':' + requested;
+      try {
+        const event = await ctx.persist('checkpoint', null, response);
+        if (!acknowledged(event, response)) throw new Error('Preference was not acknowledged');
+        if (!disposed) { state = project(entry, [event]); page = 0; status.textContent = 'Showing ' + state.selected + '. Presentation only; no learning evidence awarded.'; render(); }
+      } catch (_) { if (!disposed) { status.textContent = 'Could not save that level. The previous explanation is retained; try again.'; render(); } }
+      finally { busy = false; if (!disposed) choose.disabled = false; }
+    });
+    render();
+    return {update() { if (!busy && !disposed) { state = project(entry, ctx.events(), null, state.selected); render(); } }, destroy() { disposed = true; shell.remove(); }};
+  }
+  return {LEVELS, project, chunks, mount};
+});
+
+;
+/* Optional prepared help. Committed assistance is presentation history, never evidence. */
+(function(root, factory) {
+  'use strict'; const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  root.ResearchOSSocratic = api;
+})(typeof window !== 'undefined' ? window : globalThis, function() {
+  'use strict';
+  function stable(value) {
+    if (Array.isArray(value)) return '[' + value.map(stable).join(',') + ']';
+    if (value && typeof value === 'object') return '{' + Object.keys(value).sort().map(k => JSON.stringify(k) + ':' + stable(value[k])).join(',') + '}';
+    return JSON.stringify(value);
+  }
+  // The trusted Python plan writer validates the complete authored question digest.
+  // JS serialization cannot reproduce Python number spellings (1.0 vs 1).
+  // The host supplies that validated entry/question pair; help binds its exact metadata.
+  function project(entry, question, events=[], reviews=[]) {
+    const base={available:false,evidence:false,assisted:false,level:0,solution:false,response_event_id:null,action:'unavailable'};
+    if (!entry || !question || entry.question_id!==question.id || typeof entry.question_sha256!=='string' || !/^[a-f0-9]{64}$/.test(entry.question_sha256) || !Number.isInteger(entry.version) || !['probe','check'].includes(entry.tree) || !Array.isArray(entry.hints) || !entry.hints.length) return base;
+    let latest=null, level=0, solution=false, assisted=false;
+    for(const event of events) {
+      const r=event.response; if(event.question_id!==entry.question_id || !r || typeof r!=='object') continue;
+      if(event.type==='plan-answer' && r.tree===entry.tree && event.event_id) {latest=event;level=0;solution=false;}
+      else if(event.type==='pedagogy-help') {
+        const expected={entry_id:entry.id,version:entry.version,tree:entry.tree,question_sha256:entry.question_sha256,prior_response_event_id:latest?latest.event_id:null};
+        if(Object.keys(r).length!==6 || !Number.isInteger(r.version) || !Object.keys(expected).every(k=>r[k]===expected[k])) continue;
+        if(r.level==='solution') {solution=true;assisted=true;}
+        else if(Number.isInteger(r.level) && r.level>=1 && r.level<=entry.hints.length && r.level<=level+1) {level=Math.max(level,r.level);assisted=true;}
+      }
+    }
+    let review=null;
+    if(latest) for(const r of reviews) if(r.question_id===entry.question_id && r.response_event_id===latest.event_id) review=r;
+    let verdict=latest ? question.kind==='short' ? 'pending' : latest.response.verdict || 'pending' : 'unanswered';
+    if(review && ['correct','incorrect','partially-correct'].includes(review.verdict)) {
+      verdict=review.verdict;
+      if(verdict==='correct' && review.criteria_met!=null && (!Array.isArray(review.criteria_met) || !review.criteria_met.length || !review.criteria_met.every(v=>v===true))) verdict='pending';
+    }
+    const action=verdict==='pending'?'await_review':['wrong','incorrect','partially-correct'].includes(verdict)?'revise':verdict==='correct'?'continue':'attempt';
+    return {...base,available:true,assisted,level,solution,response_event_id:latest?latest.event_id:null,action,verdict};
+  }
+  const openViews=new WeakMap();
+  function mount(container, entry, question, ctx) {
+    let busy=false, dead=false, message='',reader=null,target=container;
+    const doc=ctx.doc;
+    const candidate=doc.createElement('dialog'),modal=typeof candidate.showModal==='function';
+    const key=entry?entry.id+':'+entry.version+':'+entry.question_sha256:'';
+    if(!openViews.has(doc)) openViews.set(doc,new Map());
+    const views=openViews.get(doc),view=views.get(key)||{open:false,selected:null};views.set(key,view);
+    function add(tag,text) {const el=ctx.rich?ctx.rich(tag,text):doc.createElement(tag); if(!ctx.rich) el.textContent=text;target.appendChild(el);return el;}
+    function button(label,callback) {const b=doc.createElement('button');b.type='button';b.textContent=label;b.disabled=busy;b.addEventListener('click',callback);target.appendChild(b);return b;}
+    function render() {
+      if(dead) return;if(reader){reader.destroy();reader=null;}container.replaceChildren();target=container;
+      const p=project(entry,question,ctx.events(),ctx.reviews()); if(!p.available) return;
+      let dialog=null;
+      if(modal) {
+        button('Reasoning help',()=>{view.open=true;render();});
+        if(!view.open)return;
+        dialog=doc.createElement('dialog');dialog.className='ros-advice-dialog ros-socratic-dialog';dialog.setAttribute('aria-label','Reasoning help');container.appendChild(dialog);target=dialog;
+        dialog.addEventListener('cancel',()=>{view.open=false;});
+        dialog.addEventListener('close',()=>{view.open=false;});
+        add('h2','Reasoning help');
+      }
+      const advice=add('p',p.action==='await_review'?'Your written reasoning awaits tutor review. Help is optional.':p.action==='revise'?'Review the gap, then revise your reasoning.':'Try your own reasoning first; prepared help is optional.');
+      if(modal)advice.className='ros-advice-note';
+      if(p.assisted){const assisted=add('p','Help used in this question. A revision does not establish independent mastery.');if(modal)assisted.className='ros-advice-note';}
+      if(modal) {
+        const options=Array.from({length:p.level},(_,i)=>({id:String(i+1),title:'Hint '+(i+1),text:entry.hints[i].text}));
+        if(p.solution)options.push({id:'solution',title:'Full solution',text:question.solution});
+        if(p.solution&&!view.solution || p.level>(view.level||0))view.selected=p.solution?'solution':String(p.level);
+        view.level=p.level;view.solution=p.solution;
+        if(options.length) {
+          if(!options.some(o=>o.id===view.selected))view.selected=options[options.length-1].id;
+          const choose=doc.createElement('select');choose.setAttribute('aria-label','Revealed help');
+          for(const option of options){const o=doc.createElement('option');o.value=option.id;o.textContent=option.title;choose.appendChild(o);}choose.value=view.selected;target.appendChild(choose);
+          choose.addEventListener('change',()=>{view.selected=choose.value;render();});
+          const selected=options.find(o=>o.id===view.selected),host=doc.createElement('div');host.className='ros-reader-host';target.appendChild(host);
+          const Reader=doc.defaultView&&doc.defaultView.ResearchOSReader;
+          if(Reader)reader=Reader.mount(host,{revision:entry.version,sections:[{title:selected.title,paragraphs:[selected.text]}],sources:[]},{doc,rich:ctx.rich,events:()=>[],emit:()=>{},hideSelector:true});
+          else {target=host;add('p',selected.text);target=dialog;}
+        }
+      } else {
+        for(let i=0;i<p.level;i++) add('p',entry.hints[i].text);
+        if(p.solution) add('p',question.solution);
+      }
+      const status=add('p',message);status.setAttribute('role','status');status.setAttribute('aria-live','polite');
+      if(modal){status.className='ros-advice-status';const actions=doc.createElement('div');actions.className='ros-reader-actions';target.appendChild(actions);target=actions;}
+      if(p.level<entry.hints.length && !p.solution) button('Hint '+(p.level+1),()=>reveal(p.level+1));
+      if(!p.solution && typeof question.solution==='string' && question.solution.trim()) button('Show full solution',()=>reveal('solution'));
+      if(ctx.revise) button('Revise answer',()=>{view.open=false;if(dialog)dialog.close();ctx.revise();});
+      if(ctx.pause) button('Pause and review handout',()=>{view.open=false;if(dialog)dialog.close();ctx.pause();});
+      if(dialog){button('Close help',()=>{view.open=false;dialog.close();render();});doc.defaultView.requestAnimationFrame(()=>{if(!dead&&dialog.isConnected&&!dialog.open)dialog.showModal();});}
+    }
+    async function reveal(level) {
+      if(busy || dead) return;
+      const p=project(entry,question,ctx.events(),ctx.reviews());if(!p.available) return;
+      if(level==='solution'?p.solution:p.level>=level) return;
+      const response={entry_id:entry.id,version:entry.version,tree:entry.tree,question_sha256:entry.question_sha256,level,prior_response_event_id:p.response_event_id};
+      busy=true;message='Saving help request…';render();
+      try {
+        const saved=await ctx.persist('pedagogy-help',entry.question_id,response);
+        // Never append optimistically: the host owns the committed event view.
+        if(!saved || saved.type!=='pedagogy-help' || !saved.event_id || saved.question_id!==entry.question_id || stable(saved.response)!==stable(response) || !ctx.events().some(e=>e.event_id===saved.event_id && e.type==='pedagogy-help' && stable(e.response)===stable(response))) throw new Error('Help acknowledgement is not committed');
+        view.selected=String(level);message='';
+      } catch (_) {message='Help could not be saved. Nothing new was revealed. Try again.';}
+      busy=false;render();
+    }
+    render();return {refresh:render,destroy(){dead=true;if(reader)reader.destroy();container.replaceChildren();}};
+  }
+  return {project,mount};
+});
+
+;
+/* Tiered practice chooses existing assessment cards, never a second answer ledger.
+   Inputs are prepared/validated by the trusted Python plan writer. */
+(function(root,factory){'use strict';const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;root.ResearchOSPractice=api;})(typeof window!=='undefined'?window:globalThis,function(){
+  'use strict';
+  const TIERS=['beginner','intermediate','advanced'];
+  const questionFor=(entry,plan)=>((plan[entry.tree]||{}).questions||[]).find(q=>q.id===entry.question_id);
+  function attempt(entry,plan,events,reviews) {
+    const q=questionFor(entry,plan);let latest=null,index=-1,assisted=false;
+    events.forEach((e,i)=>{if(['hint','solution','explanation-request','pedagogy-help'].includes(e.type)||e.type==='checkpoint'&&typeof e.response==='string'&&['handout-solution:','pedagogy-comparison:','pedagogy-comparison-synthesis:','pedagogy-analogy:','pedagogy-editor:'].some(prefix=>e.response.startsWith(prefix)))assisted=true;
+      const r=e.response;if(e.question_id!==entry.question_id||!r||typeof r!=='object'||r.tree!==entry.tree)return;
+      if(e.type==='plan-answer'&&e.event_id){latest=e;index=i;}
+      if(e.type==='pedagogy-help'&&r.question_sha256===entry.question_sha256)assisted=true;
+    });
+    let verdict='unanswered';
+    if(latest){const answer=latest.response.answer;verdict='pending';
+      if(q.kind==='choice'){const option=(q.options||[]).find(o=>o.id===answer);if(option)verdict=option.correct===true?'correct':'incorrect';}
+      else if(q.kind==='numeric'&&typeof answer==='number'){verdict=Math.abs(answer-q.answer.value)<=(q.answer.tolerance||0)?'correct':'incorrect';}
+      let review=null;for(const r of reviews)if(r.question_id===entry.question_id&&r.response_event_id===latest.event_id)review=r;
+      if(review&&['correct','incorrect','partially-correct'].includes(review.verdict)){verdict=review.verdict;const criteria=review.criteria_met,substantive=(v,limit)=>typeof v==='string'&&!!v.trim()&&[...v].length<=limit&&!/[\x00-\x08\x0b-\x1f\x7f]/.test(v);
+        if(verdict==='correct'&&q.kind==='short'&&(!Array.isArray(criteria)||criteria.length!==(q.criteria||[]).length||!criteria.every(c=>c===true)||!substantive(review.reviewed_by,200)||!substantive(review.feedback,32000)))verdict='pending';
+        else if(verdict==='correct'&&criteria!=null&&(!Array.isArray(criteria)||!criteria.length||!criteria.every(c=>c===true)))verdict='pending';}
+    }
+    return {verdict,index,assisted,response_event_id:latest?latest.event_id:null};
+  }
+  function project(entries,plan,events=[],reviews=[],options={}) {
+    const base={available:false,evidence:false,action:'prepare_practice',reason:'No suitable prepared practice is available.',restored:false,unavailable_tier:null};
+    if(!Array.isArray(entries)||entries.length>40)return base;
+    options=options&&typeof options==='object'?options:{};const requested=options.requested_tier;
+    if(requested!=null&&!TIERS.includes(requested))return {...base,unavailable_tier:requested};
+    // Authored content/digests are validated at Python publication; JS does not
+    // reserialize numeric questions to guess a Python SHA-256 representation.
+    const valid=entries.filter(e=>e&&questionFor(e,plan)&&TIERS.includes(e.tier));
+    const candidates=valid.filter(e=>requested==null||e.tier===requested);
+    if(!candidates.length)return {...base,unavailable_tier:requested==null?null:requested};
+    const state=new Map(candidates.map(e=>[e.id,attempt(e,plan,events,reviews)]));
+    let selected=null,restored=false;
+    for(const statuses of [['pending'],['incorrect','partially-correct']]){const matches=candidates.filter(e=>statuses.includes(state.get(e.id).verdict));if(matches.length){selected=matches.reduce((a,b)=>state.get(a.id).index>=state.get(b.id).index?a:b);break;}}
+    const canonical=options.canonical&&options.canonical.status==='ready'&&options.canonical.target===plan.target?options.canonical:{};
+    const next=canonical.next&&typeof canonical.next==='object'?canonical.next:{},transfer=next.scope==='transfer'&&next.dimension==='transfer';
+    const suitable=candidates.filter(e=>e.tier!=='advanced'||requested==='advanced'||transfer);
+    if(!selected)for(const event of events){if(event.type!=='checkpoint'||event.question_id!=null)continue;const match=candidates.find(e=>event.response==='pedagogy-practice:'+e.id+':'+e.version);if(match&&state.get(match.id).verdict!=='correct'){selected=match;restored=true;}}
+    if(!selected){const unanswered=suitable.filter(e=>state.get(e.id).verdict==='unanswered');let pool=unanswered.length?unanswered:suitable;const aligned=pool.filter(e=>e.dimension===next.dimension);if(aligned.length)pool=aligned;if(!pool.length)return base;selected=pool.reduce((a,b)=>TIERS.indexOf(a.tier)<=TIERS.indexOf(b.tier)?a:b);}
+    const status=state.get(selected.id),q=questionFor(selected,plan);
+    const action=status.verdict==='pending'?'await_review':['incorrect','partially-correct'].includes(status.verdict)?'revise':'practice';
+    const reason={await_review:'The latest actual written reasoning needs substantive review before further adaptation.',revise:'Revisit the latest reviewed or keyed gap; preserve the original attempt.',practice:'Try the selected prepared item. Local results pace practice; they do not award mastery.'}[action];
+    return {...base,available:true,action,reason,restored,id:selected.id,entry_id:selected.id,version:selected.version,tree:selected.tree,question_id:selected.question_id,tier:selected.tier,dimension:selected.dimension,answer_unit:selected.answer_unit,alternatives:[...selected.alternatives],independent:selected.independent,requires_review:q.kind==='short'||!!selected.answer_unit||['explanation','derivation','transfer'].includes(selected.dimension),assisted:status.assisted,response_event_id:status.response_event_id};
+  }
+  function mount(container,entries,plan,ctx){
+    const doc=ctx.doc;let requested=null,busy=false,message='',dead=false,reader=null,dialog=null;
+    const el=(tag,text)=>{const n=doc.createElement(tag);if(text!=null)n.textContent=text;return n;};
+    const button=(label,fn)=>{const b=el('button',label);b.type='button';b.addEventListener('click',fn);return b;};
+    const options=()=>({...((ctx.options&&ctx.options())||{}),...(requested?{requested_tier:requested}:{})});
+    const current=()=>project(entries,plan,ctx.events(),ctx.reviews(),options());
+    const launcher=button('Practice tiers',()=>{dialog.showModal();paint();});container.appendChild(launcher);
+    dialog=el('dialog');dialog.className='ros-advice-dialog ros-practice-dialog';dialog.setAttribute('aria-label','Practice tiers');container.appendChild(dialog);
+    function paint(){if(dead||!dialog.open)return;if(reader){reader.destroy();reader=null;}dialog.replaceChildren();
+      dialog.appendChild(el('h2','Practice tiers'));const select=el('select');select.setAttribute('aria-label','Practice tier');
+      for(const [value,label] of [['','Recommended'],...TIERS.map(t=>[t,t[0].toUpperCase()+t.slice(1)])]){const o=el('option',label);o.value=value;select.appendChild(o);}select.value=requested||'';select.disabled=busy;select.addEventListener('change',()=>{requested=select.value||null;message='';paint();});dialog.appendChild(select);
+      const p=current(),paragraphs=p.available?[p.reason,'Prepared tier: '+p.tier+'. Capability dimension: '+p.dimension+'.',p.answer_unit?'Physical answer unit: '+p.answer_unit+'. Numeric equality alone does not verify this unit; use a written reasoning item for unit and semantic review.':'The answer is dimensionless; diagnostic budget units count probes, not measurement.',p.independent?'Prepared for independent transfer practice; novelty, assistance and reasoning still require substantive review.':'This item is practice, not proof of independent transfer.',p.assisted?'Help is recorded in this session; attempt independence still needs review.':'No prepared help is recorded in this session. This is not an evidence award.']:['This tier has no suitable prepared item. Other stages and tiers remain available.'];
+      const host=el('div');host.className='ros-reader-host';dialog.appendChild(host);const Reader=doc.defaultView&&doc.defaultView.ResearchOSReader;
+      if(Reader)reader=Reader.mount(host,{revision:1,sections:[{title:'Selected practice',paragraphs}],sources:[]},{doc,rich:ctx.rich,events:()=>[],emit:()=>{},hideSelector:true});else for(const text of paragraphs)host.appendChild(el('p',text));
+      const status=el('p',message);status.className='ros-advice-status';status.setAttribute('role','status');dialog.appendChild(status);
+      const actions=el('div');actions.className='ros-reader-actions';const use=button('Open practice item',()=>choose());use.disabled=busy||!p.available;actions.appendChild(use);actions.appendChild(button('Close practice',()=>dialog.close()));dialog.appendChild(actions);
+    }
+    async function choose(){if(busy||dead)return;const p=current();if(!p.available)return;const response='pedagogy-practice:'+p.entry_id+':'+p.version;busy=true;message='Saving practice selection…';paint();
+      try{const saved=await ctx.persist('checkpoint',null,response);if(!saved||!saved.event_id||saved.type!=='checkpoint'||saved.question_id!=null||saved.response!==response||!ctx.events().some(e=>e.event_id===saved.event_id&&e.type==='checkpoint'&&e.question_id==null&&e.response===response))throw Error('Selection not committed');if(dead)return;dialog.close();ctx.choose(p.question_id);message='';}
+      catch(_){message='Practice selection could not be saved. No question was opened. Try again.';}
+      busy=false;paint();
+    }
+    dialog.addEventListener('close',()=>{if(reader){reader.destroy();reader=null;}});
+    return {refresh:paint,destroy(){dead=true;if(reader)reader.destroy();container.replaceChildren();}};
+  }
+  return {project,mount};
+});
+
+;
+/* Prepared comparisons over explicit source snapshots and unchanged raw answers. */
+(function (root, factory) {
+  'use strict'; const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  root.ResearchOSSourceComparison = api;
+})(typeof window !== 'undefined' ? window : globalThis, function () {
+  'use strict';
+  const copy = value => JSON.parse(JSON.stringify(value));
+  function project(entry, state) {
+    const events = state && Array.isArray(state.events) ? state.events : [];
+    const attempts = events.filter(e => e && e.type === 'plan-answer' && e.question_id === entry.question_id && e.response && e.response.tree === entry.tree);
+    const matches = attempts.filter(e => e.event_id === entry.summary_event_id && e.response.answer === entry.summary);
+    const bound = matches.length === 1 && events.filter(e => e && e.event_id === entry.summary_event_id).length === 1;
+    const historical = bound && attempts[attempts.length - 1].event_id !== entry.summary_event_id;
+    const status = !bound ? 'unbound' : entry.source.access === 'unavailable' ? 'unavailable' : historical ? 'historical' : 'ready';
+    const synthesisRevealed = bound && entry.source.access !== 'unavailable' && events.some(e => e && e.type === 'checkpoint' && e.question_id == null && e.response === 'pedagogy-comparison-synthesis:' + entry.id + ':' + entry.version);
+    const sections = [];
+    if (bound && entry.source.access !== 'unavailable') for (const claim of entry.claims) {
+      const label = claim.kind === 'omitted' ? 'Related learner anchor (omitted point is absent)' : 'Learner quote (original summary)';
+      sections.push({title: claim.kind === 'unsupported' ? 'unsupported within supplied snapshot' : claim.kind,
+        text: label + ': ' + claim.learner_quote + '\n\nSource quote: ' + claim.source_quote + '\n\nLocator: ' + claim.locator + '\n\nPrepared feedback: ' + claim.feedback + '\n\nRevision challenge: ' + claim.revision_prompt});
+    }
+    return copy({entry_id: entry.id, version: entry.version, status, historical,
+      summary_event_id: entry.summary_event_id, summary: bound ? entry.summary : null, source: entry.source, sections,
+      prepared_by: entry.prepared_by, synthesis_available: historical && status !== 'unavailable',
+      synthesis_revealed: synthesisRevealed, synthesis: synthesisRevealed ? entry.synthesis : null,
+      scope: 'Supplied ' + entry.source.access + ' snapshot; quoted text checked locally, external source content not independently verified.',
+      notice: historical ? 'A newer summary is awaiting its own comparison; this review refers to the original attempt.' :
+        status === 'unavailable' ? 'Source unavailable. Provide the source before a comparison can be prepared.' :
+        status === 'unbound' ? 'Original summary attempt unavailable; comparison cannot be displayed.' :
+        'Prepared feedback only; opening this comparison awards no learning evidence.'});
+  }
+  function chunks(text, limit) {
+    const out = []; let page = '';
+    const tokens = String(text).match(/\$\$[\s\S]*?\$\$|\$[^$]*\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\S+\s*|\s+/g) || [''];
+    for (const token of tokens) { if (page && page.length + token.length > limit) { out.push(page); page = ''; } page += token; }
+    if (page) out.push(page); return out.length ? out : [''];
+  }
+  function mount(container, entry, ctx) {
+    const doc = ctx.doc;
+    const el = (tag, text) => { const n = doc.createElement(tag); if (text !== undefined) n.textContent = text; return n; };
+    const button = (label, fn) => { const n = el('button', label); n.type = 'button'; n.addEventListener('click', fn); return n; };
+    const shell = el('details'); shell.className = 'ros-source-comparison';
+    Object.assign(shell.style, {margin: '0', minWidth: '0', minHeight: '0', boxSizing: 'border-box', overflowWrap: 'anywhere'});
+    const summary = el('summary', 'Source comparison');
+    const choose = el('select'); choose.setAttribute('aria-label', 'Source comparison section'); choose.style.maxWidth = '100%';
+    const content = el('div'); content.setAttribute('aria-live', 'polite');
+    const heading = el('p'), prose = el('div'); content.append(heading, prose);
+    const counter = el('span'); counter.setAttribute('role', 'status');
+    const previous = button('Previous', () => move(-1)), next = button('Next', () => move(1));
+    previous.setAttribute('aria-label', 'Previous comparison page'); next.setAttribute('aria-label', 'Next comparison page');
+    const pager = el('div'); Object.assign(pager.style, {display: 'flex', flexWrap: 'wrap', gap: '0.3rem'}); pager.append(previous, counter, next);
+    const actions = el('div'); Object.assign(actions.style, {display: 'flex', flexWrap: 'wrap', gap: '0.3rem'});
+    const revise = button('Revise original summary', () => { if (ctx.revise) ctx.revise(entry.question_id); });
+    const request = button('Request source', () => { if (ctx.request) ctx.request('Please provide the source snapshot ' + entry.source.id + ' at ' + entry.source.locator + ' for comparison with summary attempt ' + entry.summary_event_id + '.'); });
+    const reveal = button('Show prepared source synthesis now', async () => {
+      if (busy || disposed || ['unbound', 'unavailable'].includes(view.status)) return;
+      busy = true; reveal.disabled = true; status.textContent = 'Saving explicit synthesis request…';
+      const response = 'pedagogy-comparison-synthesis:' + entry.id + ':' + entry.version;
+      try {
+        const saved = await ctx.persist('checkpoint', null, response);
+        if (!acknowledged(saved, response)) throw new Error('Synthesis not committed');
+        if (!disposed) { view = project(entry, {events: ctx.events()}); render(true); choose.value = String(sections.length - 1); renderPage(); status.textContent = 'Prepared synthesis shown by explicit request; this is assistance, not evidence.'; }
+      } catch (_) { if (!disposed) status.textContent = 'Could not save the synthesis request; content remains hidden.'; }
+      finally { busy = false; if (!disposed) reveal.disabled = false; }
+    });
+    actions.append(revise, request, reveal);
+    const status = el('p'); status.setAttribute('role', 'status');
+    shell.append(summary, choose, content, pager, actions, status); container.append(shell);
+    let view = project(entry, {events: ctx.events()}), sections = [], pages = [], page = 0, busy = false, disposed = false;
+    function render(reset) {
+      if (disposed) return;
+      const oldSection = Number(choose.value) || 0;
+      choose.textContent = ''; sections = [{title: 'Comparison scope', text: 'PREPARED comparison by ' + view.prepared_by + '. ' + view.notice + '\n\n' + view.scope + '\n\nSource identity: ' + entry.source.id + '; locator: ' + entry.source.locator + '. Classifications are prepared judgments, not proven by substring matching or a grade.'}];
+      if (view.status !== 'unbound') sections.push({title: 'Original summary — ' + entry.summary_event_id, text: view.summary});
+      sections.push(...view.sections);
+      if (view.synthesis_revealed) sections.push({title: 'Optional prepared source synthesis', text: view.synthesis});
+      else if (view.status === 'ready') sections.push({title: 'Synthesis after revision', text: 'Try a revision first, or explicitly request prepared source synthesis now. Synthesis is assistance and never evidence of independent understanding.'});
+      sections.forEach((section, i) => { const option = el('option', section.title); option.value = String(i); choose.append(option); });
+      choose.value = String(Math.min(oldSection, sections.length - 1));
+      if (reset) page = 0;
+      renderPage(); revise.disabled = ['unbound', 'unavailable'].includes(view.status); revise.hidden = view.status === 'unavailable'; request.hidden = view.status !== 'unavailable';
+      reveal.hidden = ['unbound', 'unavailable'].includes(view.status) || view.synthesis_revealed;
+    }
+    function renderPage() {
+      const section = sections[Number(choose.value) || 0];
+      const narrow = doc.defaultView && doc.defaultView.innerWidth < 600;
+      pages = chunks(section.text, narrow ? 120 : 250); page = Math.max(0, Math.min(page, pages.length - 1));
+      heading.textContent = section.title; prose.textContent = ''; prose.append(ctx.rich ? ctx.rich('p', pages[page]) : el('p', pages[page]));
+      previous.disabled = page === 0; next.disabled = page === pages.length - 1; counter.textContent = (page + 1) + ' / ' + pages.length;
+    }
+    function move(delta) { page = Math.max(0, Math.min(page + delta, pages.length - 1)); renderPage(); }
+    choose.addEventListener('change', () => { page = 0; renderPage(); });
+    function acknowledged(saved, response) {
+      return saved && saved.type === 'checkpoint' && saved.question_id == null && saved.response === response &&
+        (ctx.events() || []).some(e => saved.event_id && e.event_id === saved.event_id && e.type === 'checkpoint' && e.question_id == null && e.response === response);
+    }
+    summary.addEventListener('click', async event => {
+      if (shell.open) return;
+      event.preventDefault(); if (busy || disposed) return;
+      view = project(entry, {events: ctx.events()});
+      if (view.status === 'unavailable' || view.status === 'unbound') {
+        render(true); shell.open = true; return; // Refusal supplies no instructional assistance.
+      }
+      busy = true; summary.textContent = 'Saving comparison presentation…';
+      const response = 'pedagogy-comparison:' + entry.id + ':' + entry.version;
+      try {
+        const saved = await ctx.persist('checkpoint', null, response);
+        if (!acknowledged(saved, response)) throw new Error('Comparison not committed');
+        if (!disposed) { view = project(entry, {events: ctx.events()}); render(true); summary.textContent = 'Source comparison'; shell.open = true; }
+      } catch (_) { if (!disposed) summary.textContent = 'Source comparison — could not save; retry'; }
+      finally { busy = false; }
+    });
+    render(true);
+    return {update() { if (!disposed && !busy) { view = project(entry, {events: ctx.events()}); render(false); } }, destroy() { disposed = true; shell.remove(); }};
+  }
+  return {project, chunks, mount};
+});
+
+;
+/* Canonical term identities with prepared teaching; no term-ledger writes. */
+(function (root, factory) {
+  'use strict'; const api = factory(root);
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  root.ResearchOSTerms = api;
+})(typeof window !== 'undefined' ? window : globalThis, function (root) {
+  'use strict';
+  const copy = value => JSON.parse(JSON.stringify(value));
+  function termView(source) {
+    if (!source || typeof source !== 'object' || !Object.keys(source).length) return null;
+    const direct=Object.entries(source).every(([key,value])=>/^[a-z0-9][a-z0-9-]{0,63}$/.test(key)&&value&&typeof value==='object'&&!Array.isArray(value)&&Object.entries(value).every(([lang,state])=>/^[a-z]{2,3}(?:-[A-Za-z]{2,4})?$/.test(lang)&&['unseen','introduced','shaky','defined','used','fluent'].includes(state)));
+    if(direct)return copy(source);
+    const student = source.retrieval ? (source.retrieval.learner || {}).student : source;
+    if (!student || typeof student !== 'object') return null;
+    if ('status' in student) {
+      if (student.status === 'not-configured') return null;
+      const out = {}; for (const key of ['known', 'shaky', 'introduced', 'unseen']) for (const row of student[key] || []) out[row.term] = row.states || {};
+      return Object.entries(out).every(([key,value])=>/^[a-z0-9][a-z0-9-]{0,63}$/.test(key)&&value&&typeof value==='object'&&!Array.isArray(value)&&Object.entries(value).every(([lang,state])=>/^[a-z]{2,3}(?:-[A-Za-z]{2,4})?$/.test(lang)&&['unseen','introduced','shaky','defined','used','fluent'].includes(state)))?out:null;
+    }
+    const pairs = Object.entries(student).filter(([, value]) => value && typeof value === 'object' && !Array.isArray(value));
+    return null; // A valid plain map was already handled before envelope parsing.
+  }
+  function project(entry, student) {
+    const states = termView(student);
+    const rows = entry.terms.map(row => ({...copy(row), recorded_states: states === null || !Object.hasOwn(states,row.term_id) ? null : copy(states[row.term_id])}));
+    const actual = {terms: rows.length, categories: entry.categories.length}, shortfalls = {};
+    for (const [key, count] of Object.entries(entry.requested)) if (count != null && actual[key] < count) shortfalls[key] = {requested: count, prepared: actual[key]};
+    return {entry_id: entry.id, version: entry.version, prepared_by: entry.prepared_by,
+      status: entry.source.access === 'unavailable' ? 'unavailable' : 'ready', source: copy(entry.source), terms: rows,
+      categories: copy(entry.categories), requested: copy(entry.requested), prepared: actual, shortfalls,
+      notice: Object.keys(shortfalls).length ? 'Only supplied source-supported terms and defensible groups are prepared. Missing requested items are not invented.' : 'Prepared vocabulary; reading definitions never records demonstrated use.',
+      scope: 'Supplied ' + entry.source.access + ' snapshot; source quotations matched locally, definitions and category membership remain prepared interpretations, not independent scientific verification.'};
+  }
+  const heading = text => {const chars=Array.from(String(text));return chars.length>100?chars.slice(0,99).join('')+'…':String(text);};
+  function sections(view) {
+    const counts = Object.entries(view.shortfalls).map(([key, count]) => key + ': prepared ' + count.prepared + ' of requested ' + count.requested + '. Remaining requested items are not supplied.').join('\n\n');
+    const out = [{title: 'Terms and source scope', paragraphs: ['PREPARED vocabulary by ' + view.prepared_by + '. ' + view.notice, counts || 'Prepared counts: ' + view.prepared.terms + ' terms, ' + view.prepared.categories + ' groups.', view.scope,
+      'Source: ' + view.source.id + ' — ' + view.source.locator]}];
+    if (view.status === 'unavailable') out[0].paragraphs.unshift('Source unavailable. Ask the tutor to supply this source before preparing vocabulary.');
+    for (const category of view.categories) out.push({title: heading(category.title), paragraphs: [category.title, category.rationale, ...category.members.map(member => member.term_id + ': ' + member.reason)]});
+    for (const row of view.terms) {
+      const labels = Object.entries(row.labels).map(([lang, label]) => lang + ': ' + label).join('; ');
+      const states = row.recorded_states === null ? 'Recorded term knowledge unavailable.' : Object.keys(row.recorded_states).length ? 'Recorded per-language states: ' + Object.entries(row.recorded_states).map(([lang, state]) => lang + ': ' + state).join('; ') : 'No recorded use for this term in the supplied brief; do not assume it is known.';
+      out.push({title: heading(row.term_id + ' — ' + labels), paragraphs: [states, ...Object.entries(row.labels).map(([language,label])=>'Canonical label ('+language+'): '+label), 'Plain meaning: ' + row.plain,
+        'Formal meaning: ' + (row.formal || 'No formal variant prepared.'), 'Example: ' + row.example,
+        'Canonical concepts: ' + row.concepts.join(', ') + '. Prerequisites: ' + (row.prerequisites.join(', ') || 'none declared'),
+        ...row.contrasts.map(contrast => 'Contrast with ' + contrast.term_id + ': ' + contrast.explanation),
+        'Source quote: ' + row.source_quote + '\n\nLocator: ' + row.locator]});
+    }
+    return out;
+  }
+  function mount(container, entry, ctx) {
+    const doc = ctx.doc, el = (tag, text) => { const n = doc.createElement(tag); if (text !== undefined) n.textContent = text; return n; };
+    const button = (text, fn) => { const n = el('button', text); n.type = 'button'; n.addEventListener('click', fn); return n; };
+    const shell = el('details'); shell.className = 'ros-terms'; Object.assign(shell.style, {margin:'0',minWidth:'0',minHeight:'0',boxSizing:'border-box'});
+    const summary = el('summary', 'Key terms and categories'); shell.append(summary); container.append(shell);
+    let reader = null, body = null, busy = false, disposed = false, snapshot = null;
+    const student = () => typeof ctx.student === 'function' ? ctx.student() : ctx.student;
+    function render() {
+      if (reader) reader.destroy(); if (body) body.remove();
+      const view = project(entry, student()); snapshot = JSON.stringify(view);
+      body = el('div'); Object.assign(body.style, {display:'flex',flexDirection:'column',flex:'none',minHeight:'0',gap:'4px'});
+      const host = el('div'); Object.assign(host.style, {flex:'1',minHeight:'0',minWidth:'0'}); body.append(host); shell.append(body);
+      const prepared = sections(view);
+      const asOf=typeof ctx.asOf==='function'?ctx.asOf():ctx.asOf;
+      if(asOf)prepared[0].paragraphs.unshift(view.terms.some(row=>row.recorded_states!==null)?'Recorded term states as of '+asOf+'. These are dated records, not a new assessment.':'Recorded term states unavailable; snapshot checked '+asOf+'.');
+      if (root.ResearchOSReader) reader = root.ResearchOSReader.mount(host,{revision:entry.id + '-' + entry.version,sections:prepared,sources:[]},{doc,rich:ctx.rich,events:()=>[],emit:()=>{},label:'Vocabulary section'});
+      else {
+        // Honest small-page fallback when the native reader is not installed.
+        const choose = el('select'); choose.setAttribute('aria-label','Vocabulary section'); choose.style.maxWidth='100%';
+        const pages = []; for (const section of prepared) for (const text of section.paragraphs) {
+          const parts = String(text).match(/.{1,120}(?:\s|$)|\S+/gs) || [''];
+          for (const part of parts) pages.push({title:section.title,text:part});
+        }
+        pages.forEach((page,i)=>{const option=el('option',page.title + ' / ' + (i+1));option.value=String(i);choose.append(option);});
+        const prose=el('div'); const draw=()=>{const page=pages[Number(choose.value)||0];prose.textContent='';prose.append(ctx.rich?ctx.rich('p',page.text):el('p',page.text));};
+        choose.value='0';choose.addEventListener('change',draw);host.append(choose,prose);draw();
+      }
+      fitSoon();
+      const diagnostics = view.terms.filter(row=>row.diagnostic);
+      if (diagnostics.length) {
+        const controls=el('div');Object.assign(controls.style,{display:'flex',flexWrap:'wrap',gap:'4px'});
+        const choose=el('select');choose.setAttribute('aria-label','Vocabulary diagnostic');choose.style.maxWidth='100%';
+        diagnostics.forEach((row,i)=>{const option=el('option',row.term_id);option.value=String(i);choose.append(option);});choose.value='0';
+        controls.append(choose,button('Try diagnostic',()=>{if(ctx.choose)ctx.choose(diagnostics[Number(choose.value)||0].diagnostic.question_id);}));body.append(controls);
+      }
+    }
+    function fit(){
+      if(disposed||!body||!shell.open||!shell.getBoundingClientRect)return;
+      const box=shell.getBoundingClientRect(),start=body.getBoundingClientRect().top;
+      if(!box.height)return;
+      const win=doc.defaultView,padding=win&&win.getComputedStyle?parseFloat(win.getComputedStyle(shell).paddingBottom)||0:8;
+      body.style.height=Math.max(0,box.bottom-start-padding)+'px';
+      if(reader&&reader.layout)reader.layout();
+    }
+    let fitFrame=null;
+    const fitSoon=()=>{const win=doc.defaultView;if(!disposed&&fitFrame===null&&win&&win.requestAnimationFrame)fitFrame=win.requestAnimationFrame(()=>{fitFrame=null;fit();});};
+    const geometry=doc.defaultView&&doc.defaultView.ResizeObserver?new doc.defaultView.ResizeObserver(fitSoon):null;
+    if(geometry)geometry.observe(shell);
+    if(doc.defaultView)doc.defaultView.addEventListener('resize',fitSoon);
+    shell.addEventListener('toggle',()=>{if(!shell.open){shell.style.height='';shell.style.display='';}else{shell.style.height='100%';shell.style.display='flex';shell.style.flexDirection='column';fitSoon();}});
+    summary.addEventListener('click',async event=>{
+      if(shell.open)return;event.preventDefault();if(busy||disposed)return;busy=true;summary.textContent='Saving vocabulary presentation…';
+      if(entry.source.access==='unavailable'){summary.textContent='Key terms and categories';shell.open=true;render();busy=false;return;}
+      const response='pedagogy-terms:' + entry.id + ':' + entry.version;
+      try{
+        const saved=await ctx.persist('checkpoint',null,response);
+        if(!saved||saved.type!=='checkpoint'||saved.question_id!=null||saved.response!==response||!(ctx.events()||[]).some(e=>saved.event_id&&e.event_id===saved.event_id&&e.type==='checkpoint'&&e.question_id==null&&e.response===response))throw new Error('Vocabulary not committed');
+        if(!disposed){summary.textContent='Key terms and categories';shell.open=true;render();}
+      }catch(_){if(!disposed)summary.textContent='Key terms and categories — could not save; retry';}
+      finally{busy=false;}
+    });
+    return {update(){if(!disposed&&shell.open&&!busy&&JSON.stringify(project(entry,student()))!==snapshot)render();},destroy(){disposed=true;if(geometry)geometry.disconnect();if(fitFrame!==null&&doc.defaultView&&doc.defaultView.cancelAnimationFrame)doc.defaultView.cancelAnimationFrame(fitFrame);if(doc.defaultView)doc.defaultView.removeEventListener('resize',fitSoon);if(reader)reader.destroy();shell.remove();}};
+  }
+  return {project,termView,sections,mount};
+});
+
+;
+/* Optional cognitive activities reuse existing practice/questions and assessment. */
+(function(root,factory){'use strict';const api=factory(root);if(typeof module==='object'&&module.exports)module.exports=api;root.ResearchOSBloom=api;})(typeof window!=='undefined'?window:globalThis,function(root){
+  'use strict';
+  const Practice=typeof module==='object'&&module.exports?require('./practice.js'):root.ResearchOSPractice;
+  const LEVELS=['remember','understand','apply','analyze','evaluate','create'];
+  function project(entry,plan,events=[],reviews=[],options={}){
+    const base={entry_id:entry?entry.id:null,version:entry?entry.version:null,evidence:false,available:[],missing:[...LEVELS],view:null,selected:null,practice:null,recommended:null,unavailable:null,restored:false,reason:'No suitable prepared Bloom challenges are available.'};
+    if(!entry||!Array.isArray(entry.challenges)||!entry.challenges.length||!Practice)return base;
+    options=options&&typeof options==='object'?options:{};
+    const known=new Map(((plan.pedagogy||{}).practice||[]).map(e=>[e.id,e])),challenges=new Map(entry.challenges.map(c=>[c.level,c]));
+    if(entry.challenges.some(c=>!LEVELS.includes(c.level)||!known.has(c.practice_id)||!Number.isInteger(c.practice_version)||c.practice_version!==known.get(c.practice_id).version))return base;
+    const available=LEVELS.filter(l=>challenges.has(l)),requested=options.requested_level;
+    const unavailable=requested!=null&&requested!=='all'&&!available.includes(requested)?requested:null;
+    const entries=entry.challenges.map(c=>known.get(c.practice_id));
+    const current=Practice.project(entries,plan,events,reviews,{canonical:options.canonical,preferences:options.preferences});
+    let savedView=null;const prefix='pedagogy-bloom:'+entry.id+':'+entry.version+':';for(const event of events){if(event.type!=='checkpoint'||event.question_id!=null||typeof event.response!=='string'||!event.response.startsWith(prefix))continue;const level=event.response.slice(prefix.length);if(level==='all'||available.includes(level))savedView=level;}
+    let selected=null,restored=false,reason='Choose a prepared activity; levels are optional and never a completion ladder.';
+    if(requested==='all'||available.includes(requested)){selected=requested;reason='Your explicit challenge choice controls this view; it makes no claim about proficiency.';}
+    else if(savedView==='all'){selected='all';restored=true;reason='Your saved all-activities view is preserved; the current practice recommendation remains separate.';}
+    else if(['await_review','revise'].includes(current.action)){const c=entry.challenges.find(c=>c.practice_id===current.entry_id);selected=c?c.level:null;reason=current.reason;}
+    if(selected===null&&savedView!==null){selected=savedView;restored=true;}
+    if(selected===null){const canonical=options.canonical&&options.canonical.status==='ready'&&options.canonical.target===plan.target?options.canonical:{},step=canonical.next&&typeof canonical.next==='object'?canonical.next:{};
+      let preferred={recognition:'remember',explanation:'understand',application:'apply',derivation:'analyze',transfer:'evaluate'}[step.dimension];
+      if(available.includes(preferred)){selected=preferred;reason='Current scoped advice suggests this cognitive activity; its output still needs the existing assessment.';}
+      else {preferred={understand:'understand',exam:'apply',research:'evaluate',apply:'apply',review:'remember'}[(options.preferences||{}).objective];if(available.includes(preferred)){selected=preferred;reason='Your explicit objective suggests this optional activity, not a presumed level of knowledge.';}}
+    }
+    if(selected===null)selected=available.includes('understand')?'understand':available[0];
+    const challenge=challenges.get(selected)||null,item=challenge?known.get(challenge.practice_id):null;
+    return {...base,available,missing:LEVELS.filter(l=>!available.includes(l)),view:selected,selected:challenge?{...challenge}:null,practice:item?Practice.project([item],plan,events,reviews,{requested_tier:item.tier}):null,recommended:current,unavailable,restored,reason,sources:entry.sources.map(s=>({...s})),prepared_by:entry.prepared_by};
+  }
+  function mount(container,entry,plan,ctx){
+    const doc=ctx.doc;let requested=null,busy=false,dead=false,message='',reader=null;
+    const el=(tag,text)=>{const n=doc.createElement(tag);if(text!=null)n.textContent=text;return n;},button=(name,fn)=>{const b=el('button',name);b.type='button';b.addEventListener('click',fn);return b;};
+    const options=()=>({...((ctx.options&&ctx.options())||{}),...(requested?{requested_level:requested}:{})});
+    const current=()=>project(entry,plan,ctx.events(),ctx.reviews(),options());
+    const dialog=el('dialog');dialog.className='ros-advice-dialog ros-bloom-dialog';dialog.setAttribute('aria-label','Bloom challenges');
+    const launcher=button('Bloom challenges',()=>{dialog.showModal();paint();});container.appendChild(launcher);container.appendChild(dialog);
+    function paint(){if(dead||!dialog.open)return;if(reader){reader.destroy();reader=null;}dialog.replaceChildren();
+      const p=current();dialog.appendChild(el('h2','Bloom challenges'));
+      const choose=el('select');choose.setAttribute('aria-label','Cognitive activity');
+      for(const [value,label] of [['','Recommended'],...p.available.map(l=>[l,l[0].toUpperCase()+l.slice(1)])]){const o=el('option',label);o.value=value;choose.appendChild(o);}choose.value=requested&&requested!=='all'?requested:'';choose.disabled=busy;choose.addEventListener('change',()=>{requested=choose.value||null;message='';paint();});dialog.appendChild(choose);
+      const paragraphs=[p.available.length+' of 6 cognitive activities are prepared. Choose any useful activity; completing all six is never required.',p.reason];
+      if(p.missing.length)paragraphs.push('Not prepared: '+p.missing.join(', ')+'.');
+      if(p.unavailable)paragraphs.push('Requested activity is not prepared: '+p.unavailable+'. Choose an available activity.');
+      const displayed=p.view==='all'?entry.challenges:p.selected?[p.selected]:[];
+      for(const c of displayed)paragraphs.push(c.level[0].toUpperCase()+c.level.slice(1)+': '+c.purpose,'Expected learner output: '+c.output_requirement);
+      if(p.practice&&p.practice.action==='await_review')paragraphs.push('The latest actual written attempt is awaiting substantive review. This activity label awards no understanding.');
+      if(p.view==='all'&&p.recommended&&['await_review','revise'].includes(p.recommended.action))paragraphs.push('Current recommendation: '+p.recommended.reason+' Your all-activities view remains available.');
+      if(p.practice&&p.practice.assisted)paragraphs.push('Help is recorded in this session; independence remains for the existing review authority to assess.');
+      paragraphs.push('Prepared by: '+entry.prepared_by+'. Preparation/source labels are not independent scientific verification or research approval.');
+      for(const source of entry.sources)paragraphs.push('Source: '+source.id+' — '+source.locator);
+      const host=el('div');host.className='ros-reader-host';dialog.appendChild(host);const Reader=doc.defaultView&&doc.defaultView.ResearchOSReader;
+      if(Reader)reader=Reader.mount(host,{revision:entry.version,sections:[{title:p.view==='all'?'All prepared activities':'Optional activity',paragraphs}],sources:[]},{doc,rich:ctx.rich,events:()=>[],emit:()=>{},hideSelector:true});else for(const text of paragraphs)host.appendChild(el('p',text));
+      const status=el('p',message);status.className='ros-advice-status';status.setAttribute('role','status');dialog.appendChild(status);
+      const actions=el('div');actions.className='ros-reader-actions';const all=button('Show all prepared activities',()=>select('all',false));all.disabled=busy;actions.appendChild(all);
+      const open=button('Open challenge',()=>{const p=current();if(p.selected)return select(p.selected.level,true);});open.disabled=busy||!p.selected||!!p.unavailable;actions.appendChild(open);
+      actions.appendChild(button('Close challenges',()=>dialog.close()));dialog.appendChild(actions);
+    }
+    async function select(level,open){if(busy||dead)return;const p=project(entry,plan,ctx.events(),ctx.reviews(),{...options(),requested_level:level});if(level!=='all'&&!p.selected)return;
+      const response='pedagogy-bloom:'+entry.id+':'+entry.version+':'+level;busy=true;message='Saving challenge selection…';paint();
+      try{const saved=await ctx.persist('checkpoint',null,response);if(!saved||!saved.event_id||saved.type!=='checkpoint'||saved.question_id!=null||saved.response!==response||!ctx.events().some(e=>e.event_id===saved.event_id&&e.type==='checkpoint'&&e.question_id==null&&e.response===response))throw Error('Selection not committed');if(dead)return;
+        if(open){const response='pedagogy-practice:'+p.selected.practice_id+':'+p.selected.practice_version;
+          const selected=await ctx.persist('checkpoint',null,response);
+          if(!selected||!selected.event_id||selected.type!=='checkpoint'||selected.question_id!=null||selected.response!==response||!ctx.events().some(e=>e.event_id===selected.event_id&&e.type==='checkpoint'&&e.question_id==null&&e.response===response))throw Error('Referenced practice not committed');
+          if(dead)return;
+        }
+        requested=level;message='';if(open){dialog.close();ctx.choose(p.selected.practice_id);}}
+      catch(_){message='Challenge selection could not be saved. No assessment was opened. Try again.';}
+      busy=false;paint();
+    }
+    dialog.addEventListener('close',()=>{if(reader){reader.destroy();reader=null;}});
+    return {refresh:paint,destroy(){dead=true;if(reader)reader.destroy();container.replaceChildren();}};
+  }
+  return {project,mount};
+});
+
+;
+/* Illustrative mappings and failure limits, never scientific acceptance or evidence.
+   The trusted writer validates segment/question bindings and novelty declarations. */
+(function(root,factory){'use strict';const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;root.ResearchOSAnalogies=api;})(typeof window!=='undefined'?window:globalThis,function(){
+  'use strict';
+  const copy=value=>JSON.parse(JSON.stringify(value));
+  function equalReview(left,right){
+    const stable=v=>Array.isArray(v)?'['+v.map(stable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}':JSON.stringify(v);
+    return stable(left)===stable(right);
+  }
+  function boundReplacement(entry,events,reviews){const r=entry.replacement;if(!r)return true;return events.some(e=>e.type==='plan-answer'&&e.question_id===r.question_id&&e.event_id===r.response_event_id&&e.response&&typeof e.response==='object')&&reviews.some(v=>v.question_id===r.question_id&&v.response_event_id===r.response_event_id&&['incorrect','partially-correct'].includes(v.verdict)&&typeof v.feedback==='string'&&!!v.feedback.trim()&&equalReview(v,r.review_snapshot));}
+  function currentReplacement(entry,events,reviews){const r=entry.replacement;if(!r)return false;const latest=events.filter(e=>e.type==='plan-answer'&&e.question_id===r.question_id).at(-1),review=reviews.filter(v=>v.question_id===r.question_id&&v.response_event_id===r.response_event_id).at(-1);return !!(latest&&latest.event_id===r.response_event_id&&review&&equalReview(review,r.review_snapshot));}
+  function project(entries,plan,events=[],reviews=[],options={}){
+    const base={available:false,evidence:false,entry_id:null,version:null,revealed:false,restored:false,unavailable:null,replacement_current:false,content:null,transfer_practice_id:null,transfer_question_id:null,novelty_status:null,reason:'No suitable prepared analogy is available.'};
+    if(!Array.isArray(entries)||entries.length>40)return base;options=options&&typeof options==='object'?options:{};
+    const items=(plan.pedagogy||{}).practice||[],item=e=>items.find(p=>p.id===e.transfer.practice_id);
+    // Full authored structure/digests are checked by the trusted Python writer.
+    const valid=entries.filter(e=>e&&e.transfer&&item(e)&&Number.isInteger(e.transfer.practice_version)&&e.transfer.practice_version===item(e).version&&boundReplacement(e,events,reviews));if(!valid.length)return base;
+    const requested=options.requested_id;let selected=valid.find(e=>e.id===requested),unavailable=requested!=null&&!selected?requested:null,restored=false;
+    let reason='This prepared analogy may support the current target; its mapping and limits are illustrative, not evidence.';
+    if(selected)reason='Your explicit analogy choice controls this view; it makes no claim about familiarity or understanding.';
+    else{selected=[...valid].reverse().find(e=>currentReplacement(e,events,reviews));if(selected)reason='This replacement addresses the latest actual reviewed misconception; original work and feedback remain unchanged.';}
+    if(!selected)for(const event of events){if(event.type!=='checkpoint'||event.question_id!=null)continue;const found=valid.find(e=>event.response==='pedagogy-analogy:'+e.id+':'+e.version);if(found){selected=found;restored=true;}}
+    if(!selected)selected=valid.find(e=>!e.replacement)||valid[0];
+    const target=item(selected),revealed=events.some(e=>e.type==='checkpoint'&&e.question_id==null&&e.response==='pedagogy-analogy:'+selected.id+':'+selected.version);
+    let content=null;if(revealed){content=copy(Object.fromEntries(['domain','relevance','correspondences','limits','worked','sources','prepared_by'].map(k=>[k,selected[k]])));content.novelty=copy(selected.transfer.novelty);content.differences=copy(selected.transfer.differences);content.replacement_reason=selected.replacement?selected.replacement.reason:null;}
+    return {...base,available:true,entry_id:selected.id,version:selected.version,revealed,restored,unavailable,replacement_current:currentReplacement(selected,events,reviews),content,transfer_practice_id:target.id,transfer_question_id:target.question_id,novelty_status:selected.transfer.novelty.status,reason};
+  }
+  function mount(container,entries,plan,ctx){
+    const doc=ctx.doc;let requested=null,busy=false,dead=false,message='',reader=null;
+    const el=(tag,text)=>{const n=doc.createElement(tag);if(text!=null)n.textContent=text;return n;},button=(name,fn)=>{const b=el('button',name);b.type='button';b.addEventListener('click',fn);return b;};
+    const current=()=>project(entries,plan,ctx.events(),ctx.reviews(),{...((ctx.options&&ctx.options())||{}),...(requested?{requested_id:requested}:{})});
+    const dialog=el('dialog');dialog.className='ros-advice-dialog ros-analogy-dialog';dialog.setAttribute('aria-label','Analogy and limits');container.appendChild(button('Analogy and limits',()=>{dialog.showModal();paint();}));container.appendChild(dialog);
+    function paint(){if(dead||!dialog.open)return;if(reader){reader.destroy();reader=null;}dialog.replaceChildren();dialog.appendChild(el('h2','Analogy and limits'));
+      const choose=el('select');choose.setAttribute('aria-label','Prepared analogy');for(const e of entries){const o=el('option',e.domain.name);o.value=e.id;choose.appendChild(o);}const p=current();choose.value=p.entry_id||'';choose.disabled=busy;choose.addEventListener('change',()=>{requested=choose.value;message='';paint();});dialog.appendChild(choose);
+      const paragraphs=[p.reason];if(p.unavailable)paragraphs.push('Requested analogy is not prepared: '+p.unavailable+'.');
+      if(!p.revealed)paragraphs.push('Read the prepared analogy only after its assistance record is saved. You may continue without it.');
+      else{const c=p.content;paragraphs.push('Illustration, not evidence. '+c.domain.accessibility,c.relevance);
+        for(const map of c.correspondences)paragraphs.push('Formal: '+map.formal+' Analogy: '+map.analogy+' Relationship: '+map.relationship);
+        for(const limit of c.limits)paragraphs.push('Limit: '+limit);
+        paragraphs.push('Worked context: '+c.worked.description);
+        for(const difference of c.differences)paragraphs.push('Declared transfer difference ('+difference.aspect+'): '+difference.description);
+        paragraphs.push('Novelty declaration: '+c.novelty.status+'. '+c.novelty.rationale,'Reviewer attribution: '+(c.novelty.reviewed_by||'not reviewed')+'. Attribution is not authenticated identity or automatic independent evidence.');
+        if(c.replacement_reason)paragraphs.push('Replacement reason: '+c.replacement_reason+' Original feedback remains preserved.'+(p.replacement_current?' This refers to the latest reviewed attempt.':' This documents historical feedback; a newer attempt needs its own review.'));
+        for(const source of c.sources)paragraphs.push('Source: '+source.id+' — '+source.locator);paragraphs.push('Prepared by: '+c.prepared_by+'. A transfer response still uses the existing assessment and research approval rules.');}
+      const host=el('div');host.className='ros-reader-host';dialog.appendChild(host);const Reader=doc.defaultView&&doc.defaultView.ResearchOSReader;
+      if(Reader)reader=Reader.mount(host,{revision:p.version||1,sections:[{title:p.revealed?'Mapping and failure limits':'Optional assistance',paragraphs}],sources:[]},{doc,rich:ctx.rich,events:()=>[],emit:()=>{},hideSelector:true});else for(const text of paragraphs)host.appendChild(el('p',text));
+      const status=el('p',message);status.className='ros-advice-status';status.setAttribute('role','status');dialog.appendChild(status);const actions=el('div');actions.className='ros-reader-actions';
+      if(!p.revealed){const read=button('Read analogy',()=>reveal());read.disabled=busy||!p.available;actions.appendChild(read);}
+      const transfer=button('Open transfer practice',()=>openTransfer());transfer.disabled=busy||!p.revealed;actions.appendChild(transfer);actions.appendChild(button('Close analogy',()=>dialog.close()));dialog.appendChild(actions);
+    }
+    async function openTransfer(){if(busy||dead)return;const p=current();if(!p.revealed)return;const item=((plan.pedagogy||{}).practice||[]).find(e=>e.id===p.transfer_practice_id);if(!item)return;
+      const response='pedagogy-practice:'+item.id+':'+item.version;busy=true;message='Saving transfer selection…';paint();
+      try{const saved=await ctx.persist('checkpoint',null,response);if(!saved||!saved.event_id||saved.type!=='checkpoint'||saved.question_id!=null||saved.response!==response||!ctx.events().some(e=>e.event_id===saved.event_id&&e.type==='checkpoint'&&e.question_id==null&&e.response===response))throw Error('Transfer selection not committed');if(dead)return;message='';dialog.close();ctx.choose(item.id);}
+      catch(_){message='Transfer selection could not be saved. No assessment was opened. Try again.';}
+      busy=false;paint();
+    }
+    async function reveal(){if(busy||dead)return;const p=current();if(!p.available||p.revealed)return;const response='pedagogy-analogy:'+p.entry_id+':'+p.version;busy=true;message='Saving analogy assistance…';paint();
+      try{const saved=await ctx.persist('checkpoint',null,response);if(!saved||!saved.event_id||saved.type!=='checkpoint'||saved.question_id!=null||saved.response!==response||!ctx.events().some(e=>e.event_id===saved.event_id&&e.type==='checkpoint'&&e.question_id==null&&e.response===response))throw Error('Analogy assistance not committed');if(dead)return;message='';}
+      catch(_){message='Analogy assistance could not be saved. Nothing new was revealed. Try again.';}
+      busy=false;paint();
+    }
+    dialog.addEventListener('close',()=>{if(reader){reader.destroy();reader=null;}});
+    return {refresh:paint,destroy(){dead=true;if(reader)reader.destroy();container.replaceChildren();}};
+  }
+  return {project,mount};
+});
+
+;
+/* One cheap deterministic role projection. No models, new grades or ledgers. */
+(function(root,factory){'use strict';const api=factory(root);if(typeof module==='object'&&module.exports)module.exports=api;root.ResearchOSRoles=api;})(typeof window!=='undefined'?window:globalThis,function(root){
+ 'use strict';
+ const ROLES=['Advisor','Librarian','Tutor','Editor','Roommate'],copy=v=>JSON.parse(JSON.stringify(v));
+ const text=(s,n)=>typeof s==='string'&&!!s.trim()&&[...s].length<=n&&!/[\x00-\x08\x0b-\x1f\x7f]/.test(s);
+ const stable=v=>v&&typeof v==='object'?(Array.isArray(v)?'['+v.map(stable).join(',')+']':'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}'):JSON.stringify(v);
+ function projectCritique(entry,state={}){
+  const events=state.events||[],attempts=events.filter(e=>e&&e.type==='plan-answer'&&e.question_id===entry.question_id&&e.response&&e.response.tree===entry.tree);
+  const matches=attempts.filter(e=>e.event_id===entry.answer_event_id&&e.response.answer===entry.answer);
+  let bound=matches.length===1&&events.filter(e=>e&&e.event_id===entry.answer_event_id).length===1;
+  if(entry.review_snapshot!==null&&!(state.plan_reviews||[]).some(r=>stable(r)===stable(entry.review_snapshot)))bound=false;
+  const historical=bound&&attempts[attempts.length-1].event_id!==entry.answer_event_id;
+  const status=!bound?'unbound':entry.source.access==='unavailable'?'unavailable':historical?'historical':'prepared';
+  const revealed=['prepared','historical'].includes(status)&&events.some(e=>e&&e.type==='checkpoint'&&e.question_id==null&&e.response==='pedagogy-editor:'+entry.id+':'+entry.version);
+  return copy({entry_id:entry.id,version:entry.version,status,revealed,answer_event_id:entry.answer_event_id,answer:bound?entry.answer:null,
+   prepared_by:entry.prepared_by,work_kind:entry.work_kind,source:entry.source,review_snapshot:bound?entry.review_snapshot:null,
+   findings:revealed?entry.findings:[],checked:revealed?entry.checked:[],not_checked:revealed?entry.not_checked:[],
+   notice:status==='historical'?'A newer raw attempt awaits its own feedback; this critique remains bound to the original work.':status==='unavailable'?'Source unavailable; request the source before a critique can be prepared.':status==='unbound'?'Original work or review binding is unavailable; no critique can be displayed.':'PREPARED pedagogical critique; no grade, independent scientific acceptance or research approval.',
+   scope:'Supplied '+entry.source.access+' snapshot; quoted text checked locally, external source content not independently verified.'});
+ }
+ function available(state){
+  const plan=state.plan||{},p=plan.pedagogy||{},refs=[];
+  for(const [family,role,stage] of [['socratic','Tutor','probe'],['explanations','Tutor','lecture'],['practice','Tutor','check'],['comparisons','Editor','check'],['terms','Librarian','handout'],['bloom','Tutor','check'],['analogies','Roommate','lecture'],['critiques','Editor','check']])for(const entry of p[family]||[]){
+   if(!entry||entry.target!==plan.target)continue;
+   if(['comparisons','terms','critiques'].includes(family)&&!['excerpt','full'].includes((entry.source||{}).access))continue;
+   if(family==='comparisons'){
+    const attempts=(state.events||[]).filter(e=>e&&e.type==='plan-answer'&&e.question_id===entry.question_id&&e.response&&e.response.tree===entry.tree);
+    if(attempts.filter(e=>e.event_id===entry.summary_event_id&&e.response.answer===entry.summary).length!==1||(state.events||[]).filter(e=>e&&e.event_id===entry.summary_event_id).length!==1)continue;
+   }
+   if(family==='critiques'&&!['prepared','historical'].includes(projectCritique(entry,state).status))continue;
+   if(family==='analogies'&&!text(entry.relevance,2000))continue;
+   refs.push({kind:'prepared',role,stage:entry.tree||stage,family,entry_id:entry.id,version:entry.version});
+  }
+  if((((plan.handout||{}).readable||{}).sections||[]).length)refs.push({kind:'stage',role:'Librarian',stage:'handout',family:null,entry_id:null,version:null});
+  return refs;
+ }
+ function attempts(state){
+  const plan=state.plan||{},pending=[],gaps=[];
+  for(const tree of ['probe','check'])for(const q of (plan[tree]||{}).questions||[]){
+   let latest=null;for(const e of state.events||[])if(e&&e.type==='plan-answer'&&e.question_id===q.id&&e.response&&e.response.tree===tree&&e.event_id)latest=e;
+   if(!latest)continue;let verdict='pending',answer=latest.response.answer;
+   if(q.kind==='choice'){const o=(q.options||[]).find(o=>o.id===answer);if(o)verdict=o.correct===true?'correct':'incorrect';}
+   else if(q.kind==='numeric'&&typeof answer==='number')verdict=Math.abs(answer-q.answer.value)<=(q.answer.tolerance||0)?'correct':'incorrect';
+   let review=null;for(const r of state.plan_reviews||[])if(r.question_id===q.id&&r.response_event_id===latest.event_id)review=r;
+   if(review&&['correct','incorrect','partially-correct'].includes(review.verdict)){
+    verdict=review.verdict;const c=review.criteria_met;
+    if(verdict==='correct'&&q.kind==='short'&&(!Array.isArray(c)||c.length!==(q.criteria||[]).length||!c.every(v=>v===true)||!text(review.reviewed_by,200)||!text(review.feedback,32000)))verdict='pending';
+    else if(verdict==='correct'&&c!=null&&(!Array.isArray(c)||!c.length||!c.every(v=>v===true)))verdict='pending';
+   }
+   const item={tree,question_id:q.id,response_event_id:latest.event_id};if(verdict==='pending')pending.push(item);else if(['incorrect','partially-correct'].includes(verdict))gaps.push(item);
+  }
+  return {pending,gaps};
+ }
+ function canonicalFor(canonical,target,today){
+  if(!canonical||typeof canonical!=='object'||!text(target,300))return null;const v=copy(canonical),binding=v.for_target;delete v.for_target;
+  if(binding!==undefined&&!text(binding,300))return null;
+  const keys=['advice_schema','evidence','status','context_outcome','action','reason','as_of','receipt_id'],actual=Object.keys(v).sort();
+  if(stable(actual)!==stable([...keys].sort())&&stable(actual)!==stable([...keys,'target','next'].sort()))return null;
+  if(v.advice_schema!==1||v.evidence!==false||v.status!=='ready'||v.context_outcome!=='ready'||!/^[0-9a-f]{32}$/.test(v.receipt_id||'')||v.as_of!==today||!/^[a-z_]{1,60}$/.test(v.action||'')||typeof v.reason!=='string'||!v.reason.length||[...v.reason].length>600)return null;
+  if((binding!==undefined?binding!==target:v.target!==target)||(v.target!==undefined&&v.target!==target))return null;
+  if(v.target!==undefined){const n=v.next;if(!text(v.target,300)||/[\x00-\x1f\x7f]/.test(v.target)||!n||stable(Object.keys(n).sort())!==stable(['dimension','scope'])||!['conceptual','transfer','project_application'].includes(n.scope)||!['recognition','explanation','derivation','transfer','application'].includes(n.dimension))return null;}
+  return v;
+ }
+ function select(state,canonical=null,preferences=null,request=null,asOf=null){
+  const plan=state.plan||{},today=asOf||(d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'))(new Date()),prefs=validatePreferences(preferences||{}),current=canonicalFor(canonical,plan.target,today),refs=available(state),{pending,gaps}=attempts(state);
+  const inventory=[];for(const family of ['comparisons','terms','critiques'])for(const entry of (plan.pedagogy||{})[family]||[]){const s=entry.source||{};if(entry.target!==plan.target||!['excerpt','full','unavailable'].includes(s.access)||!text(s.id,200)||!text(s.locator,400))continue;const item={id:s.id??null,locator:s.locator??null,access:s.access??null,sha256:s.sha256??null};if(!inventory.some(v=>stable(v)===stable(item)))inventory.push(item);}
+  const cut=Number.isInteger(prefs.time_minutes)&&prefs.time_minutes<=45?[{behavior:'Optional enrichment and additional examples',reason:'Recommend one bounded unit before extra activities; evidence requirements remain unchanged.',overridable:true}]:[];
+  const result=(role,behavior,reason,handoff=null)=>copy({roles_schema:1,evidence:false,role,behavior,reason,pending,handoff,cut_list:cut,available:refs,canonical_current:current!==null,scope:current&&current.next?current.next.scope:null,requested:request,requirements_preserved:true,inventory:inventory.slice(0,12)});
+  if(request!==null){
+   if(request==='all')return result('Advisor','choose_optional_behavior','These are available prepared paths, not a required completion ladder.');
+   const chosen=ROLES.includes(request)?refs.find(r=>r.role===request):refs.find(r=>r.entry_id===request);
+   if(chosen)return result(chosen.role,'open_prepared','Your explicit choice overrides suggested deferral; any pending review remains pending.',chosen);
+   if(request==='Advisor')return result('Advisor','inspect_path','Inspect the current destination and prerequisites; context and evidence still determine advancement.');
+   if(request==='Librarian')return result('Librarian',inventory.some(s=>['excerpt','full'].includes(s.access))?'inspect_sources':'request_source','Inspect supplied snapshot identities and access limits; registered references alone do not prove full source access.');
+   if(request==='Editor'&&pending.length)return result('Editor','await_review','The actual latest written attempt needs its own review or prepared critique.');
+   return result(ROLES.includes(request)?request:'Advisor','request_preparation','That behavior has no usable matching prepared content. Ask the tutor; no integration or scientific result is invented.');
+  }
+  if(pending.length){const editor=refs.find(r=>r.role==='Editor'&&((plan.pedagogy||{})[r.family]||[]).some(e=>e.id===r.entry_id&&pending.some(p=>e.question_id===p.question_id&&(e.answer_event_id||e.summary_event_id)===p.response_event_id)));return result('Editor',editor?'open_prepared':'await_review','The latest actual written work takes priority; old reviews do not settle a new attempt.',editor);}
+  if(!current)return result('Advisor','refresh_context','Current canonical advice for this exact target is unavailable, stale or blocked. Refresh it before claiming advancement.');
+  if(gaps.length){const tutor=refs.find(r=>r.role==='Tutor'&&((plan.pedagogy||{})[r.family]||[]).some(e=>e.id===r.entry_id&&gaps.some(g=>e.question_id===g.question_id||e.segment_id&&(plan.segments||[]).some(s=>s.id===e.segment_id&&s.role==='repair'&&((s.plays_if||{}).wrong||[]).includes(g.question_id)))));return result('Tutor',tutor?'open_prepared':'request_repair','Repair the latest actual gap before recommending advancement.',tutor);}
+  if(current.action==='complete')return result('Advisor','choose_optional_extension','Current scoped advice is complete. Existing extensions are optional; do not automatically reteach or infer another scope.');
+  if(['request_source','inspect_source','select_source'].includes(current.action)){const librarian=refs.find(r=>r.role==='Librarian');return result('Librarian',librarian?'open_prepared':inventory.some(s=>['excerpt','full'].includes(s.access))?'inspect_sources':'request_source','Use existing source inventory first; unavailable material is not fabricated.',librarian);}
+  if(current.action==='offer_analogy'){const roommate=refs.find(r=>r.role==='Roommate');return result('Roommate',roommate?'open_prepared':'request_preparation','Only a prepared analogy for this exact target with an explicit relevance rationale is eligible.',roommate);}
+  const preferred={explain_intuitively:'explanations',explain_intermediate:'explanations',explain_formally:'explanations',derive:'explanations',practice_intermediate:'practice',application:'practice',project_application:'practice',transfer_probe:'practice',critique_work:'critiques'}[current.action];
+  let scoped=refs.filter(r=>preferred&&r.family===preferred);
+  const step=current.next||{},level={explain_intuitively:'intuitive',explain_intermediate:'intermediate',explain_formally:'formal',derive:'formal'}[current.action];
+  if(preferred==='practice'){
+   const dimension=step.scope==='project_application'?'application':step.dimension;
+   const items=((plan.pedagogy||{}).practice||[]).filter(e=>e.dimension===dimension),Practice=typeof module==='object'&&module.exports?require('./practice.js'):root.ResearchOSPractice;
+   const p=Practice?Practice.project(items,plan,state.events||[],state.plan_reviews||[],{canonical:current}):{};scoped=scoped.filter(r=>r.entry_id===p.entry_id);
+  }else if(preferred==='explanations')scoped=scoped.filter(r=>((plan.pedagogy||{}).explanations||[]).some(e=>e.id===r.entry_id&&level in (e.levels||{})));
+  let chosen=scoped[0];if(chosen&&level)chosen={...chosen,level};
+  return result(chosen?chosen.role:'Tutor',chosen?'open_prepared':'request_preparation','Follow the current scoped recommendation using existing prepared teaching; presentation is not evidence.',chosen);
+ }
+ function validatePreferences(p){
+  if(!p||typeof p!=='object'||Array.isArray(p)||Object.keys(p).some(k=>!['objective','goal','time_minutes','language','depth'].includes(k)))throw Error('Invalid explicit preferences');
+  const out=copy(p);if('objective'in out&&!['understand','exam','research','apply','review'].includes(out.objective))throw Error('Invalid objective');if('depth'in out&&!['intuitive','intermediate','formal'].includes(out.depth))throw Error('Invalid depth');
+  if('time_minutes'in out&&(!Number.isInteger(out.time_minutes)||out.time_minutes<1||out.time_minutes>480))throw Error('Invalid minutes');
+  if('goal'in out){if(typeof out.goal!=='string'||![...out.goal.trim()].length||[...out.goal.trim()].length>500||/[\x00-\x1f\x7f]/.test(out.goal))throw Error('Invalid goal');out.goal=out.goal.trim();}
+  if('language'in out){if(typeof out.language!=='string'||out.language.length>35||!/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/.test(out.language))throw Error('Invalid language');out.language=out.language.toLowerCase();}return out;
+ }
+ function acknowledged(ctx,saved,response){return saved&&typeof saved.event_id==='string'&&saved.type==='checkpoint'&&saved.question_id==null&&saved.response===response&&(ctx.events()||[]).some(e=>e.event_id===saved.event_id&&e.type==='checkpoint'&&e.question_id==null&&e.response===response);}
+ function ui(doc){return{el(tag,text){const n=doc.createElement(tag);if(text!==undefined)n.textContent=text;return n;},button(text,fn){const n=doc.createElement('button');n.textContent=text;n.type='button';n.addEventListener('click',fn);return n;}};}
+ function mount(container,plan,ctx){
+  const {el,button}=ui(ctx.doc);let requested=null,requestedPath=null,busy=false,dead=false,reader=null,message='';
+  for(const e of ctx.events()||[])if(e.type==='checkpoint'&&e.question_id==null){if(ROLES.some(role=>e.response==='pedagogy-role:'+role)){requested=e.response.slice('pedagogy-role:'.length);requestedPath=null;}else if(e.response==='pedagogy-role:recommended'){requested=null;requestedPath=null;}else if(typeof e.response==='string'&&e.response.startsWith('pedagogy-path:')){const f=e.response.split(':');const entry=((plan.pedagogy||{})[f[1]]||[]).find(x=>x.id===f[2]&&String(x.version)===f[3]);if(entry)requestedPath=entry.id;}}
+  const launcher=button('Teaching roles',()=>{dialog.showModal();paint();});container.append(launcher);
+  const dialog=el('dialog');dialog.className='ros-advice-dialog ros-roles-dialog';dialog.setAttribute('aria-label','Teaching roles');container.append(dialog);
+  const current=()=>{const options=(ctx.options&&ctx.options())||{};return select({plan:ctx.plan?ctx.plan():plan,events:ctx.events(),plan_reviews:ctx.reviews?ctx.reviews():[]},options.canonical,options.preferences,requestedPath||requested||options.request||null,options.as_of);};
+  function paint(){if(dead||!dialog.open)return;if(reader)reader.destroy();dialog.replaceChildren();const view=current();dialog.append(el('h2','Teaching roles'));
+   const choose=el('select');choose.setAttribute('aria-label','Teaching role');for(const role of ['',...ROLES]){const o=el('option',role||'Recommended');o.value=role;choose.append(o);}choose.value=requested||'';choose.disabled=busy;
+   choose.addEventListener('change',async()=>{const role=choose.value;if(busy)return;busy=true;message='Saving explicit role choice…';paint();const response='pedagogy-role:'+(role||'recommended');
+    try{const saved=await ctx.persist('checkpoint',null,response);if(!acknowledged(ctx,saved,response))throw Error('Role not committed');if(!dead){requested=role||null;requestedPath=null;message=role?'Role selected explicitly; pending reviews and learning requirements remain unchanged.':'Current recommended behavior restored.';}}
+    catch(_){if(!dead)message='Role choice could not be saved; previous recommendation retained.';}finally{busy=false;paint();}});dialog.append(choose);
+   const paths=el('select');paths.setAttribute('aria-label','Prepared path');const automatic=el('option','Suggested prepared path');automatic.value='';paths.append(automatic);
+   for(const ref of view.available.filter(r=>r.kind==='prepared'&&(!requested||r.role===requested))){const o=el('option',ref.family+' — '+ref.entry_id+' (version '+ref.version+')');o.value=ref.family+':'+ref.entry_id+':'+ref.version;paths.append(o);}const selectedRef=view.available.find(r=>r.entry_id===requestedPath);paths.value=selectedRef?selectedRef.family+':'+selectedRef.entry_id+':'+selectedRef.version:'';paths.disabled=busy;
+   paths.addEventListener('change',async()=>{if(busy)return;const ref=view.available.find(r=>paths.value===r.family+':'+r.entry_id+':'+r.version);if(!ref)return;busy=true;message='Saving prepared path…';paint();const response='pedagogy-path:'+ref.family+':'+ref.entry_id+':'+ref.version;try{const saved=await ctx.persist('checkpoint',null,response);if(!acknowledged(ctx,saved,response))throw Error('Path not committed');if(!dead){requestedPath=ref.entry_id;requested=ref.role;message='Prepared path selected.';}}catch(_){if(!dead)message='Prepared path could not be saved; previous selection retained.';}finally{busy=false;paint();}});dialog.append(paths);
+   const labels={open_prepared:'Open prepared teaching',refresh_context:'Ask the tutor to refresh current advice',await_review:'Await feedback',request_repair:'Request targeted repair',request_preparation:'Request matching teaching',request_source:'Request the source',inspect_sources:'Inspect supplied sources',inspect_path:'Inspect learning path',choose_optional_extension:'Choose an optional extension',choose_optional_behavior:'Choose an optional activity'};
+   const paragraphs=[view.role+': '+(labels[view.behavior]||'Review the suggested next step')+'. '+view.reason,view.pending.length?'Actual written attempts awaiting review: '+view.pending.map(p=>p.question_id+' / '+p.response_event_id).join('; '):'No pending written attempt is inferred by this projection.',...view.cut_list.map(c=>'Suggested deferral (overridable): '+c.behavior+'. '+c.reason),...view.inventory.map(s=>'Supplied source '+s.id+' — '+s.locator+'; access: '+s.access+'. Scope is declared, not independent verification.'),'Available optional paths: '+(view.available.map(r=>r.family||r.stage).join(', ')||'none prepared')+'. No completion ladder.','This dialog starts no five-agent or provider calls; choosing a role only saves your choice or asks the tutor.'];
+   const host=el('div');host.className='ros-reader-host';dialog.append(host);const Reader=(ctx.doc.defaultView||root).ResearchOSReader;if(Reader)reader=Reader.mount(host,{revision:1,sections:[{title:'Selected teaching behavior',paragraphs}],sources:[]},{doc:ctx.doc,rich:ctx.rich,events:()=>[],emit:()=>{},hideSelector:true});else host.append(el('p',paragraphs.join('\n\n')));
+   const status=el('p',message);status.setAttribute('role','status');status.className='ros-advice-status';dialog.append(status);const actions=el('div');actions.className='ros-reader-actions';const use=button('Open selected behavior',async()=>{if(busy||dead)return;const selected=current();if(selected.handoff){const ref=selected.handoff,route=ref.kind==='stage'?ctx.show:ctx.prepared;if(typeof route!=='function'){message='Prepared behavior routing is unavailable. Ask the tutor to connect this behavior.';paint();return;}
+    if(ref.kind==='prepared'){busy=true;message='Saving selected path…';paint();const response='pedagogy-path:'+ref.family+':'+ref.entry_id+':'+ref.version;try{const saved=await ctx.persist('checkpoint',null,response);if(!acknowledged(ctx,saved,response))throw Error('Path not committed');if(dead)return;busy=false;dialog.close();await route(ref);}catch(_){if(!dead){busy=false;message='Prepared path could not be opened. Try again.';if(!dialog.open)dialog.showModal();paint();}}}
+    else{dialog.close();route(ref.stage);}
+   }else if(ctx.request)ctx.request('Please '+(labels[selected.behavior]||'review the next step').toLowerCase()+' for '+plan.target+'. Preserve my actual attempts, pending reviews and running lecture path.');else{message='Tutor request routing is unavailable.';paint();}});use.disabled=busy;actions.append(use,button('Close roles',()=>dialog.close()));dialog.append(actions);
+  }
+  dialog.addEventListener('close',()=>{if(reader){reader.destroy();reader=null;}launcher.focus({preventScroll:true});});return{refresh:paint,destroy(){dead=true;if(reader)reader.destroy();dialog.remove();launcher.remove();}};
+ }
+ function mountCritique(container,entry,ctx){
+  const {el,button}=ui(ctx.doc);let dead=false,busy=false,reader=null;
+  const state=()=>({events:ctx.events(),plan_reviews:ctx.reviews?ctx.reviews():[]});
+  const launcher=button('Prepared Editor critique',async()=>{
+   if(dead||busy)return;const view=projectCritique(entry,state());
+   if(['unbound','unavailable'].includes(view.status)){dialog.showModal();paint();return;}
+   busy=true;launcher.textContent='Saving critique presentation…';const response='pedagogy-editor:'+entry.id+':'+entry.version;
+   try{const saved=await ctx.persist('checkpoint',null,response);if(!acknowledged(ctx,saved,response))throw Error('Critique not committed');if(!dead){dialog.showModal();paint();launcher.textContent='Prepared Editor critique';}}
+   catch(_){if(!dead)launcher.textContent='Prepared Editor critique — could not save; retry';}finally{busy=false;}
+  });container.append(launcher);const dialog=el('dialog');dialog.className='ros-advice-dialog ros-editor-dialog';dialog.setAttribute('aria-label','Prepared Editor critique');container.append(dialog);
+  function paint(){if(dead||!dialog.open)return;if(reader)reader.destroy();dialog.replaceChildren();const view=projectCritique(entry,state());dialog.append(el('h2','Prepared Editor critique'));
+   const sections=[{title:'Scope and provenance',paragraphs:[view.notice,'Prepared by '+view.prepared_by+'. '+view.scope,view.review_snapshot?'A saved session review is cited as provenance only; it is not independent scientific approval.':'No saved review is claimed; this is prepared pedagogical feedback.']}];
+   if(view.answer!==null)sections.push({title:'Original work — '+view.answer_event_id,paragraphs:[view.answer]});
+   if(view.revealed){sections.push({title:'Checks and limits',paragraphs:['Checked: '+view.checked.join('; '),'Not checked: '+view.not_checked.join('; ')]});for(const f of view.findings)sections.push({title:f.location.unit+' '+f.location.label+' (lines '+f.location.line_start+'–'+f.location.line_end+')',paragraphs:['Actual learner quote: '+f.learner_quote,'Supplied source quote: '+f.source_quote+'\nLocator: '+f.locator,'Prepared feedback: '+f.feedback,'Revision challenge: '+f.revision_prompt]});}
+   const host=el('div');host.className='ros-reader-host';dialog.append(host);const Reader=(ctx.doc.defaultView||root).ResearchOSReader;if(Reader)reader=Reader.mount(host,{revision:entry.version,sections,sources:[]},{doc:ctx.doc,rich:ctx.rich,events:()=>[],emit:()=>{},label:'Critique section'});else host.append(el('p',sections.map(s=>s.title+'\n'+s.paragraphs.join('\n\n')).join('\n\n')));
+   const actions=el('div');actions.className='ros-reader-actions';if(view.revealed)actions.append(button('Revise original work',()=>{dialog.close();if(ctx.revise)ctx.revise(entry.question_id);}));else if(ctx.request)actions.append(button('Request source or review',()=>ctx.request('Please provide the source or actual review binding for '+entry.id+' without inventing work or a grade.')));actions.append(button('Close critique',()=>dialog.close()));dialog.append(actions);
+  }
+  dialog.addEventListener('close',()=>{if(reader){reader.destroy();reader=null;}launcher.focus({preventScroll:true});});return{refresh:paint,destroy(){dead=true;if(reader)reader.destroy();dialog.remove();launcher.remove();}};
+ }
+ return{ROLES,select,projectCritique,mount,mountCritique};
+});
+
+;
 /* Research OS staged session: runs a session plan (scripts/session_plan.py) as Quiz, Handout, Lecture, Video and Check environments.
    The logic (judging an answer, choosing the next question, choosing the lecture segments) mirrors session_plan.py and is pinned by tests/fixtures/plan-cases.json;
    the view shows one thing at a time, so nothing inside it scrolls and the questions never sink to the bottom of a page.
@@ -2448,7 +3291,9 @@
      {status, resource, title, message} back. video: opened | ended | closed | error. handout: opened | error. */
   function mount(container, plan, ctx) {
     const doc = ctx.doc;
-    let current = plan;
+    let current = plan, disposed = false;
+    const reservations = new Map();
+    const savedEvents = () => ctx.savedEvents ? ctx.savedEvents() : ctx.events();
     const reviews = () => (ctx.reviews ? ctx.reviews() : []);
     const reviewOf = id => activePlanReviews(ctx.events(), reviews()).find(r => r.question_id === id) || null;
     const REVIEW_LABEL = {correct: 'Correct', 'partially-correct': 'Partly correct', incorrect: 'Not quite', reviewed: 'Read'};
@@ -2473,7 +3318,7 @@
     const footer = el('div', {class: 'ros-stages-footer'});
     shell.append(el('header', {class: 'ros-stages-head'}, title, bar), body, footer);
     container.prepend(shell);
-    let advice = null;
+    let advice = null, roles = null;
     if (doc.defaultView.ResearchOSAdvice && doc.defaultView.ResearchOSReader) {
       const opener = button('Study advice', () => {}, {class: 'ros-advice-launcher'});
       bar.append(opener);
@@ -2535,6 +3380,7 @@
       });
     }
     function show(id) {
+      if (disposed) return;
       if (!panels[id]) return;
       if (shown === 'lecture' && id !== 'lecture' && lecture.controller && lecture.controller.status === 'playing') { lecture.controller.pause(); sendStep(true); }
       if (shown === 'video' && id !== 'video' && ctx.panes) { if (selectedVideo) ctx.panes.video.close(); selectedVideo = null; }
@@ -2546,15 +3392,40 @@
       if (destination) { if (!destination.matches('button, textarea, input')) destination.tabIndex = -1; destination.focus({preventScroll: true}); }
     }
 
+    function teachingOptions(){
+      const advice=ctx.canonicalAdvice ? ctx.canonicalAdvice() : null;
+      const today=new Date().toISOString().slice(0,10); // Existing policy; calendar hardening is a separate gate.
+      const step=advice && advice.next;
+      const canonical=advice && advice.advice_schema===1 && advice.evidence===false && typeof advice.receipt_id==='string' && /^[0-9a-f]{32}$/.test(advice.receipt_id) && advice.status==='ready' && advice.context_outcome==='ready' && advice.as_of===today && advice.target===current.target && step && Object.keys(step).sort().join(',')==='dimension,scope' && ['conceptual','transfer','project_application'].includes(step.scope) && ['recognition','explanation','derivation','transfer','application'].includes(step.dimension) ? advice : null;
+      const value=ctx.learningPreferences ? ctx.learningPreferences() : null;
+      return {canonical,preferences:value && (value.preferences || value)};
+    }
+
     // ------------------------------------------------------------------------------------------------- questions (probe and check)
     function treeView(name) {
+      if (disposed) return;
       const panel = panels[name];
       if (!current[name]) { panel.textContent = ''; panel.append(el('p', {role: 'status', text: 'This check has not been prepared yet. You can study in another stage.'})); return; }
       const view = views[name] = views[name] || {viewing: null, signature: ''};
       const r = replay(current, name, ctx.events());
-      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, derived, shown]);
+      const practiceEntries = ((current.pedagogy || {}).practice || []).filter(e => e.tree === name);
+      if (!view.restoredPractice) {
+        view.restoredPractice = true;
+        for (const event of savedEvents()) {
+          const entry = practiceEntries.find(e => event.type === 'checkpoint' && event.response === 'pedagogy-practice:' + e.id + ':' + e.version);
+          if (entry) view.viewing = entry.question_id;
+        }
+      }
+      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, reviews(), practiceEntries, (current.pedagogy || {}).comparisons, (current.pedagogy || {}).bloom, (current.pedagogy || {}).analogies, (current.pedagogy || {}).critiques, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
       if (signature === view.signature) return;
       view.signature = signature;
+      if (view.help) {view.help.destroy();view.help=null;}
+      if (view.practice) {view.practice.destroy();view.practice=null;}
+      if (view.comparison) {view.comparison.destroy();view.comparison=null;}
+      if(view.bloom){view.bloom.destroy();view.bloom=null;}
+      if(view.analogy){view.analogy.destroy();view.analogy=null;}
+      if(view.critique){view.critique.destroy();view.critique=null;}
+      panel.dataset.comparisonOpen='false';
       panel.textContent = '';
       const tree = current[name], questions = new Map(tree.questions.map(q => [q.id, q]));
       const focusId = view.viewing || r.current || (r.trail.length ? r.trail[r.trail.length - 1].id : null);
@@ -2570,16 +3441,87 @@
         strip.append(el('li', null, button(String(n), goTo(null), {'aria-label': `Question ${n}, to answer`, 'data-verdict': 'open', 'aria-current': focusId === r.current ? 'step' : undefined})));
       }
       panel.append(strip);
+      if (practiceEntries.length && doc.defaultView.ResearchOSPractice) {
+        const host = el('div', {class:'ros-practice'}); panel.append(host);
+        view.practice = doc.defaultView.ResearchOSPractice.mount(host,practiceEntries,current,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,
+          options:teachingOptions,
+          choose:qid=>{if(questions.has(qid)){view.viewing=qid;view.signature='';treeView(name);}}});
+      }
+
+      const bloomEntries=((current.pedagogy || {}).bloom || []);
+      if(bloomEntries.length && doc.defaultView.ResearchOSBloom){
+        const host=el('div',{class:'ros-bloom'});panel.append(host);
+        const entry=bloomEntries.find(e=>e.id===view.bloomId) || bloomEntries[0];view.bloomId=entry.id;
+        if(bloomEntries.length>1){const select=el('select',{'aria-label':'Prepared Bloom set'});for(const item of bloomEntries)select.append(el('option',{value:item.id,text:item.id}));select.value=entry.id;select.addEventListener('change',()=>{view.bloomId=select.value;view.signature='';treeView(name);});host.append(select);}
+        const mount=el('div');host.append(mount);
+        view.bloom=doc.defaultView.ResearchOSBloom.mount(mount,entry,current,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,options:teachingOptions,
+          choose:ident=>{const practice=((current.pedagogy || {}).practice || []).find(e=>e.id===ident);if(!practice)return;const view=views[practice.tree]=views[practice.tree] || {};view.viewing=practice.question_id;view.signature='';show(practice.tree);}});
+      }
+
+      const analogyEntries=((current.pedagogy || {}).analogies || []);
+      if(analogyEntries.length && doc.defaultView.ResearchOSAnalogies){
+        const host=el('div',{class:'ros-analogies'});panel.append(host);
+        view.analogy=doc.defaultView.ResearchOSAnalogies.mount(host,analogyEntries,current,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,options:()=>({...teachingOptions(),requested_id:view.analogyRequestedId}),
+          choose:ident=>{const practice=((current.pedagogy || {}).practice || []).find(e=>e.id===ident);if(!practice)return;const target=views[practice.tree]=views[practice.tree] || {};target.viewing=practice.question_id;target.signature='';show(practice.tree);}});
+      }
+
+      const critiques=((current.pedagogy || {}).critiques || []);
+      if(critiques.length && doc.defaultView.ResearchOSRoles){
+        const host=el('div',{class:'ros-critiques'});panel.append(host);
+        const entry=critiques.find(e=>e.id===view.critiqueId) || critiques.find(e=>e.question_id===focusId) || critiques[0];view.critiqueId=entry.id;
+        if(critiques.length>1){const select=el('select',{'aria-label':'Prepared critique'});for(const item of critiques)select.append(el('option',{value:item.id,text:item.id}));select.value=entry.id;select.addEventListener('change',()=>{view.critiqueId=select.value;view.signature='';treeView(name);});host.append(select);}
+        view.critique=doc.defaultView.ResearchOSRoles.mountCritique(host,entry,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,
+          revise:()=>{const target=views[entry.tree]=views[entry.tree] || {};target.viewing=entry.question_id;target.revising=entry.question_id;target.signature='';show(entry.tree);},
+          request:text=>{if(!ctx.requestPending || !ctx.requestPending(text))ctx.emit('open-question',null,text);}});
+      }
+
+      const comparisons = ((current.pedagogy || {}).comparisons || []);
+      if (comparisons.length && doc.defaultView.ResearchOSSourceComparison) {
+        const host=el('div',{class:'ros-comparison-host'});panel.append(host);
+        const entry=comparisons.find(e=>e.id===view.comparisonId) || comparisons.find(e=>e.question_id===focusId) || comparisons[0];
+        view.comparisonId=entry.id;
+        if(comparisons.length>1){
+          const select=el('select',{'aria-label':'Prepared summary comparison'});
+          for(const item of comparisons)select.append(el('option',{value:item.id,text:item.question_id+' — '+item.summary_event_id}));
+          select.value=entry.id;select.addEventListener('change',()=>{view.comparisonId=select.value;view.signature='';treeView(name);});host.append(select);
+        }
+        view.comparison=doc.defaultView.ResearchOSSourceComparison.mount(host,entry,{doc,rich:ctx.rich,events:savedEvents,persist:ctx.persist,
+          revise:()=>{const destination=views[entry.tree]=views[entry.tree] || {};destination.viewing=entry.question_id;destination.revising=entry.question_id;destination.signature='';show(entry.tree);},
+          request:message=>{if(!ctx.requestPending || !ctx.requestPending(message))ctx.emit('open-question',null,message);}});
+        const detail=host.querySelector('details');
+        detail.addEventListener('toggle',()=>{panel.dataset.comparisonOpen=String(detail.open);});
+      }
 
       if (!focusId) { panel.append(el('p', {text: 'There are no questions here.'})); return; }
-      const question = questions.get(focusId), answered = r.trail.find(t => t.id === focusId);
-      if (answered) clearDraft(draftKey(name, question), draftSignature(question));
+      const question = questions.get(focusId);
+      if (!question) {view.viewing=null;view.signature='';treeView(name);return;}
+      // Off-route practice uses its latest actual attempt without rewriting routes.
+      const raw = ctx.events().filter(e=>e.type==='plan-answer' && e.question_id===focusId && e.response && e.response.tree===name).at(-1);
+      const answered = raw ? {id:focusId,answer:raw.response.answer,...judge(question,raw.response.answer)} : null;
+      const practice = practiceEntries.find(e=>e.question_id===focusId);
+      if (current.pedagogy && !savedEvents().some(e => e.type === 'plan-answer' && e.question_id === focusId || e.type === 'checkpoint' && typeof e.response === 'string' && e.response.startsWith('pedagogy-probe:' + focusId + ':'))) {
+        const reservation = reservations.get(focusId);
+        panel.append(el('p', {role:'status',text:reservation && reservation.error ? 'Question not opened: ' + reservation.error : 'Opening this question within the shared diagnostic budget…'}));
+        if (reservation && reservation.error) panel.append(button('Retry opening question',()=>{reservations.delete(focusId);view.signature='';treeView(name);}));
+        if (!reservation) {
+          reservations.set(focusId,{pending:true});
+          if (!ctx.persist) { reservations.set(focusId,{error:'Updated session runtime required.'}); view.signature=''; return; }
+          ctx.persist('checkpoint',null,'pedagogy-probe:' + focusId + ':' + (question.units || 1)).then(()=>{
+            reservations.delete(focusId); view.signature=''; treeView(name);
+          },error=>{reservations.set(focusId,{error:String(error.message || error)});view.signature='';treeView(name);});
+        }
+        return;
+      }
+      const socratic = ((current.pedagogy || {}).socratic || []).find(e => e.tree === name && e.question_id === focusId);
+      if (answered && view.revising !== focusId) clearDraft(draftKey(name, question), draftSignature(question));
       const card = el('article', {class: 'ros-qcard', 'data-kind': question.kind});
-      const number = answered ? r.trail.indexOf(answered) + 1 : r.trail.length + 1;
+      const routeIndex = r.trail.findIndex(t=>t.id===focusId);
+      const number = routeIndex >= 0 ? routeIndex + 1 : r.trail.length + 1;
       card.append(el('p', {class: 'ros-qcard-count', text: `Question ${number}`}), ctx.rich('h2', question.prompt));
+      if (practice && practice.answer_unit) card.append(el('p',{class:'ros-stage-hint',text:'Answer unit: '+practice.answer_unit+'. Numeric matching does not verify units or reasoning.'}));
       const feedback = el('div', {class: 'ros-qcard-feedback', role: 'status', 'aria-live': 'polite'});
 
-      if (answered) {
+      if (answered && view.revising !== focusId) {
         const savedAnswer = review(question, answered);
         card.append(savedAnswer);
         const tutor = answered.verdict === 'pending' ? reviewOf(focusId) : null;
@@ -2590,15 +3532,16 @@
           if (tutor.feedback) box.append(ctx.rich('p', tutor.feedback));
           card.append(box);
         }
-        const last = r.trail[r.trail.length - 1].id === focusId;
+        const last = !!r.trail.length && r.trail[r.trail.length - 1].id === focusId;
         const verdictText = answered.verdict === 'correct' ? 'Correct.' : answered.verdict === 'wrong' ? 'Not quite.' : tutor ? 'Saved. The tutor has read your answer.' : 'Saved. The tutor reads your answer in the background; you can go on.';
         feedback.append(el('p', {class: 'ros-stage-verdict', 'data-verdict': answered.verdict, text: verdictText}));
         if (answered.feedback) feedback.append(ctx.rich('p', answered.feedback));
-        if (question.solution && answered.verdict !== 'pending') feedback.append(el('details', {class: 'ros-solution', open: answered.verdict !== 'correct'}, el('summary', {text: 'Why'}), ctx.rich('p', question.solution)));
+        if (!socratic && question.solution && answered.verdict !== 'pending') feedback.append(el('details', {class: 'ros-solution', open: answered.verdict !== 'correct'}, el('summary', {text: 'Why'}), ctx.rich('p', question.solution)));
         card.append(feedback);
         const row = el('div', {class: 'ros-qcard-actions'});
         if (last && r.current) row.append(button('Next question', goTo(null), {class: 'ros-primary'}));
         else if (!last) row.append(button('Back to the latest question', goTo(null)));
+        if (practice) row.append(button('Revise this answer',()=>{view.revising=focusId;view.signature='';treeView(name);}));
         if (last && r.done) row.append(button(name === 'probe' ? 'Continue to your handout' : 'Finish', () => finishTree(name), {class: 'ros-primary'}));
         card.append(row);
         // Feedback and the complete saved answer use separate pages when both
@@ -2606,7 +3549,7 @@
         const pager = el('div', {class: 'ros-review-pages', hidden: true});
         const answerPage = button('Your answer', () => chooseReview(false));
         const feedbackPage = button('Feedback', () => chooseReview(true));
-        const explanation = question.solution && answered.verdict !== 'pending' ? ctx.rich('div', question.solution) : null;
+        const explanation = !socratic && question.solution && answered.verdict !== 'pending' ? ctx.rich('div', question.solution) : null;
         const explanationPage = explanation ? button('Explanation', () => chooseReview(false, true)) : null;
         if (explanation) { explanation.hidden = true; card.insertBefore(explanation, row); }
         const tutorBox = card.querySelector('.ros-agent-review');
@@ -2636,7 +3579,13 @@
       } else {
         card.append(inputFor(question, name, feedback), feedback);
       }
+      if (socratic && doc.defaultView.ResearchOSSocratic) {
+        const help = el('section',{class:'ros-socratic','aria-label':'Reasoning help'}); card.append(help);
+        view.help = doc.defaultView.ResearchOSSocratic.mount(help,socratic,question,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,
+          revise:()=>{view.revising=focusId;view.signature='';treeView(name);},pause:()=>show('handout')});
+      }
       panel.append(card);
+      if(view.pendingHelp && view.help){view.pendingHelp=false;const launcher=card.querySelector('.ros-socratic button');if(launcher)launcher.click();}
     }
 
     function review(question, answered) {
@@ -2660,6 +3609,7 @@
       if (ctx.emit('plan-answer', question.id, {answer, verdict: judged.verdict, tree: name}) === false) return;
       clearDraft(draftKey(name, question), draftSignature(question));
       views[name].viewing = question.id;
+      views[name].revising = false;
       render();
     }
 
@@ -2718,17 +3668,35 @@
       show(name === 'probe' ? 'handout' : 'done');
     }
 
+    function vocabulary(container, onToggle) {
+      const entries=((current.pedagogy || {}).terms || []);
+      if(!entries.length || !doc.defaultView.ResearchOSTerms)return null;
+      const host=el('div',{class:'ros-vocabulary-host'});container.append(host);
+      const entry=entries.find(e=>e.id===container.dataset.vocabularyEntry) || entries[0];
+      container.dataset.vocabularyEntry=entry.id;
+      if(entries.length>1){const select=el('select',{'aria-label':'Prepared vocabulary set'});for(const item of entries)select.append(el('option',{value:item.id,text:item.source.id+' — '+item.id}));select.value=entry.id;select.addEventListener('change',()=>{container.dataset.vocabularyEntry=select.value;if(container===panels.handout){delete container.dataset.signature;renderHandout();}else{lecture.vocabularySignature='';renderVocabulary();}});host.append(select);}
+      const snapshot=()=>ctx.vocabularyState ? ctx.vocabularyState() : null;
+      const ui=doc.defaultView.ResearchOSTerms.mount(host,entry,{doc,rich:ctx.rich,events:savedEvents,persist:ctx.persist,
+        student:()=>{const value=snapshot();return value?value.states:null;},asOf:()=>{const value=snapshot();return value?value.as_of:null;},
+        choose:qid=>{const diagnostic=entry.terms.map(row=>row.diagnostic).find(d=>d&&d.question_id===qid);if(!diagnostic)return;const view=views[diagnostic.tree]=views[diagnostic.tree] || {};view.viewing=qid;view.signature='';show(diagnostic.tree);}});
+      const details=host.querySelector('details');details.addEventListener('toggle',()=>onToggle(details.open));
+      return {destroy(){ui.destroy();host.remove();},update(){ui.update();}};
+    }
+
     // ------------------------------------------------------------------------------------------------- handout
     let handoutNote = {text: '', problem: false};      // what the host last said about opening the PDF
-    let nativeReader = null;
+    let nativeReader = null, handoutVocabulary = null;
     function openHandout() { handoutNote = {text: 'Opening the handout…', problem: false}; ctx.panes.handout.open(); renderHandout(); }
     function renderHandout() {
       const panel = panels.handout;
       const handout = current.handout, voiceState = ctx.liveVoice ? ctx.liveVoice.state() : 'none';
-      const signature = JSON.stringify([handout, handout && handout.readable ? null : voiceState, derived, shown, handoutNote]);
+      const signature = JSON.stringify([handout, handout && handout.readable ? null : voiceState, derived, shown, handoutNote, (current.pedagogy || {}).terms, ctx.vocabularyState ? ctx.vocabularyState() : null]);
       if (panel.dataset.signature === signature) return;
       if (nativeReader) { nativeReader.destroy(); nativeReader = null; }
+      if (handoutVocabulary) {handoutVocabulary.destroy();handoutVocabulary=null;}
+      panel.dataset.vocabularyOpen='false';
       panel.dataset.signature = signature; panel.textContent = '';
+      handoutVocabulary=vocabulary(panel,open=>{panel.dataset.vocabularyOpen=String(open);});
       const card = el('article', {class: 'ros-handout'});
       if (handout && handout.readable && doc.defaultView.ResearchOSReader) {
         card.classList.add('ros-native-handout');
@@ -2836,6 +3804,7 @@
       if (type === 'status' && ['error', 'invalid'].includes(data.status)) { switchLecture('text', true); return; }
       if (type === 'step') {
         lecture.stepId = data.step.id;
+        renderExplanation();
         if (!lecture.started) {
           lecture.started = true;
           const path = lecture.path.join(',');
@@ -2883,8 +3852,14 @@
       lecture.boardMode = button('Blackboard', () => switchLecture('board'));
       lecture.modeNote = el('p', {class: 'ros-stage-hint', role: 'status'});
       modes.append(lecture.textMode, lecture.boardMode);
-      tools.append(modes, lecture.modeNote, lecture.videoBox, lecture.askButton, lecture.chips, lecture.composer, lecture.offer, lecture.next);
-      panels.lecture.append(lecture.host, tools);
+      lecture.analogiesHost=el('div',{class:'ros-lecture-analogies'});
+      tools.append(modes, lecture.modeNote, lecture.analogiesHost, lecture.videoBox, lecture.askButton, lecture.chips, lecture.composer, lecture.offer, lecture.next);
+      lecture.surface = el('div',{class:'ros-lecture-surface'});
+      lecture.explanationsHost = el('div',{class:'ros-explanations-host'});
+      lecture.surface.append(lecture.explanationsHost,lecture.host);
+      lecture.vocabularyContainer=el('div',{class:'ros-lecture-vocabulary'});
+      const center=el('div',{class:'ros-lecture-center'});center.append(lecture.vocabularyContainer,lecture.surface);
+      panels.lecture.append(center, tools);
       lecture.built = lectureChunks(current, lecture.path); lecture.k = 0;
       lecture.script = lecture.built.chunks.length ? chunkScript(lecture.built, 0) : composeScript(current, lecture.path);
       if (ctx.panes) ctx.panes.video.on(onVideoMessage);
@@ -2894,10 +3869,68 @@
       const mode = checkpoints(events, 'lecture-mode:').at(-1);
       switchLecture(mode === 'text' ? 'text' : 'board', false, true);
       renderChips();
+      renderExplanation();
       if (lecture.controller.preloadAcks) lecture.controller.preloadAcks(ACKS);   // short clips the live voice plays the moment a question is sent
       // The caption, the voice note and the controls change as the lecture plays; the board gives back or takes height as they do.
       const win = doc.defaultView;
       if (win && win.MutationObserver) new win.MutationObserver(() => win.requestAnimationFrame(fitLecture)).observe(shell, {childList: true, characterData: true, subtree: true});
+    }
+
+    function renderVocabulary(){
+      if(!lecture.vocabularyContainer)return;
+      const signature=JSON.stringify([(current.pedagogy || {}).terms,ctx.vocabularyState ? ctx.vocabularyState() : null]);
+      if(signature===lecture.vocabularySignature){if(lecture.vocabulary)lecture.vocabulary.update();return;}
+      lecture.vocabularySignature=signature;
+      if(lecture.vocabulary)lecture.vocabulary.destroy();lecture.vocabulary=null;
+      lecture.vocabularyContainer.textContent='';lecture.vocabularyContainer.parentElement.dataset.vocabularyOpen='false';
+      lecture.vocabulary=vocabulary(lecture.vocabularyContainer,open=>{lecture.vocabularyContainer.parentElement.dataset.vocabularyOpen=String(open);if(open&&lecture.controller&&lecture.controller.pause){lecture.controller.pause();sendStep(true);}fitLecture();});
+    }
+
+    function lectureSegment(){
+      const anticipated=(current.anticipated || []).find(a=>a.steps.some(step=>step.id===lecture.stepId));
+      return lecture.stepId ? current.segments.find(s=>(s.script && s.script.steps || []).some(step=>step.id===lecture.stepId) || anticipated && s.id===anticipated.segment) : current.segments.find(s=>lecture.path.includes(s.id));
+    }
+    function renderAnalogy(){
+      if(!lecture.analogiesHost || !doc.defaultView.ResearchOSAnalogies)return;
+      const segment=lectureSegment(),entries=((current.pedagogy || {}).analogies || []).filter(e=>segment && e.segment_id===segment.id);
+      const signature=JSON.stringify([entries,reviews(),savedEvents().filter(e=>e.type==='plan-answer').map(e=>e.event_id)]);
+      if(signature===lecture.analogySignature){if(lecture.analogy)lecture.analogy.refresh();return;}
+      if(lecture.analogy)lecture.analogy.destroy();lecture.analogy=null;lecture.analogySignature=signature;lecture.analogiesHost.textContent='';
+      if(!entries.length)return;
+      lecture.analogy=doc.defaultView.ResearchOSAnalogies.mount(lecture.analogiesHost,entries,current,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,options:()=>({...teachingOptions(),requested_id:lecture.requestedAnalogyId}),
+        choose:ident=>{const item=((current.pedagogy || {}).practice || []).find(e=>e.id===ident);if(!item)return;const target=views[item.tree]=views[item.tree] || {};target.viewing=item.question_id;target.signature='';show(item.tree);}});
+      const launcher=lecture.analogiesHost.querySelector('button');if(launcher)launcher.addEventListener('click',()=>{if(lecture.controller && lecture.controller.pause)lecture.controller.pause();sendStep(true);});
+    }
+    function renderExplanation() {
+      renderVocabulary();
+      renderAnalogy();
+      if (!lecture.explanationsHost || !doc.defaultView.ResearchOSExplanations) return;
+      const entries = ((current.pedagogy || {}).explanations || []);
+      const segment = lectureSegment();
+      const entry = entries.find(e => segment && e.segment_id === segment.id);
+      const signature = JSON.stringify(entry || null);
+      if (lecture.explanationSignature === signature) { if (lecture.explanation) lecture.explanation.update(); return; }
+      const hadFocus = lecture.explanationsHost.contains(doc.activeElement);
+      if (lecture.explanation) lecture.explanation.destroy();
+      lecture.explanation = null; lecture.explanationSignature = signature;
+      lecture.explanationsHost.textContent = ''; lecture.surface.dataset.explanationsOpen = 'false';
+      if (!entry) {
+        if (entries.length) lecture.explanationsHost.append(el('p',{class:'ros-stage-hint',role:'status',tabindex:'-1',text:'Explanation levels are not prepared for this step. The original lesson remains available.'}));
+        if (hadFocus && lecture.explanationsHost.firstElementChild) lecture.explanationsHost.firstElementChild.focus();
+        return;
+      }
+      const origin = {section:'pedagogy-' + entry.id + '-v' + entry.version,title:(entry.segment_id + ': ' + entry.target).slice(0,200)};
+      lecture.explanationsHost.id = origin.section;
+      lecture.explanation = doc.defaultView.ResearchOSExplanations.mount(lecture.explanationsHost,entry,{doc,rich:ctx.rich,events:savedEvents,persist:ctx.persist,
+        depth:()=>ctx.preferences ? ctx.preferences().depth : null,
+        request:mode=>mode === 'counterexample' ? ctx.emit('open-question',null,'Please give a counterexample for ' + entry.target + ', explaining its assumptions and limits.',origin) : ctx.emit('explanation-request',null,mode,origin)});
+      const detail = lecture.explanationsHost.querySelector('details');
+      if (hadFocus && detail) { const summary=detail.querySelector('summary'); if(summary)summary.focus(); }
+      if (detail) detail.addEventListener('toggle',()=>{
+        lecture.surface.dataset.explanationsOpen=String(detail.open);
+        if (detail.open && lecture.controller && lecture.controller.pause) lecture.controller.pause();
+        fitLecture();
+      });
     }
 
     // Both presentations consume the same prepared steps and retain the same
@@ -2964,7 +3997,8 @@
       board.style.maxWidth = 'none';
       const tools = panels.lecture.querySelector('.ros-lecture-tools');
       const sideBySide = win.innerWidth >= 1000;
-      const hostHeight = panels.lecture.getBoundingClientRect().height - (!sideBySide && tools ? tools.getBoundingClientRect().height + 8 : 0);
+      const explanationHeight = lecture.explanationsHost && lecture.explanationsHost.childElementCount ? lecture.explanationsHost.getBoundingClientRect().height + 6 : 0;
+      const hostHeight = panels.lecture.getBoundingClientRect().height - (!sideBySide && tools ? tools.getBoundingClientRect().height + 8 : 0) - explanationHeight;
       // Only the frame changes size. Captions retain the column width, so their
       // wrapping cannot feed back into the size of the drawing.
       for (let pass = 0; pass < 2; pass++) {
@@ -3127,6 +4161,7 @@
       for (const id of Object.keys(panels)) panels[id].hidden = id !== shown;
       renderBar();
       if (advice) advice.refresh();
+      if (roles) roles.refresh();
       if (shown === 'probe') treeView('probe');
       else if (shown === 'handout') renderHandout();
       else if (shown === 'lecture') {
@@ -3175,17 +4210,66 @@
       doc.defaultView.addEventListener('resize', () => { fitLecture(); placeVideo(); for (const view of Object.values(views)) if (view.fit) view.fit(); });
       if (doc.defaultView.requestAnimationFrame) doc.defaultView.requestAnimationFrame(() => doc.defaultView.requestAnimationFrame(fitLecture));   // once fonts and the first layout have settled
     }
+    async function preparedBehavior(ref){
+      if(disposed)return;
+      const entry=((current.pedagogy || {})[ref.family] || []).find(e=>e.id===ref.entry_id && e.version===ref.version);
+      if(!entry)throw Error('Prepared path changed; choose it again.');
+      const launch=(parent,selector)=>{const control=parent.querySelector(selector);if(!control)throw Error('Prepared behavior is unavailable here.');control.click();};
+      if(ref.family==='terms'){
+        panels.handout.dataset.vocabularyEntry=entry.id;delete panels.handout.dataset.signature;show('handout');launch(panels.handout,'.ros-terms summary');return;
+      }
+      if(['explanations','analogies'].includes(ref.family)){
+        show('lecture');
+        const segment=current.segments.find(s=>s.id===entry.segment_id),first=(segment && segment.script && segment.script.steps || [])[0];
+        if(!first || !lecture.script.steps.some(s=>s.id===first.id))throw Error('This prepared segment is outside the current lecture path. Ask the tutor to prepare the matching path.');
+        if(lecture.controller && lecture.controller.pause)lecture.controller.pause();
+        lecture.stepId=first.id;switchLecture('text',false,true);renderExplanation();sendStep(true);
+        if(ref.family==='analogies'){
+          if(lecture.analogy)lecture.analogy.destroy();lecture.analogy=null;lecture.analogySignature='';lecture.requestedAnalogyId=entry.id;renderAnalogy();launch(lecture.analogiesHost,'button');
+        }else{
+          if(ref.level){await ctx.persist('checkpoint',null,'pedagogy-level:'+entry.id+':'+entry.version+':'+ref.level);if(disposed)return;}
+          renderExplanation();launch(lecture.explanationsHost,'summary');
+        }
+        return;
+      }
+      const tree=entry.tree || (ref.stage==='probe'?'probe':'check'),target=views[tree]=views[tree] || {};
+      if(entry.question_id)target.viewing=entry.question_id;
+      if(ref.family==='practice'){
+        await ctx.persist('checkpoint',null,'pedagogy-practice:'+entry.id+':'+entry.version);if(disposed)return;
+      }
+      if(ref.family==='bloom')target.bloomId=entry.id;
+      if(ref.family==='comparisons')target.comparisonId=entry.id;
+      if(ref.family==='critiques')target.critiqueId=entry.id;
+      if(ref.family==='socratic')target.pendingHelp=true;
+      target.signature='';show(tree);
+      if(ref.family==='bloom')launch(panels[tree],'.ros-bloom button');
+      if(ref.family==='comparisons')launch(panels[tree],'.ros-comparison-host summary');
+      if(ref.family==='critiques')launch(panels[tree],'.ros-critiques button');
+    }
+    if(doc.defaultView.ResearchOSRoles){
+      const host=el('div',{class:'ros-teaching-roles'});bar.append(host);
+      roles=doc.defaultView.ResearchOSRoles.mount(host,current,{doc,rich:ctx.rich,plan:()=>current,events:savedEvents,reviews,persist:ctx.persist,show,prepared:preparedBehavior,
+        options:()=>{const prefs=ctx.learningPreferences?ctx.learningPreferences():null;return {canonical:ctx.canonicalAdvice?ctx.canonicalAdvice():null,preferences:prefs && (prefs.preferences || prefs)};},
+        request:text=>{if(!ctx.requestPending || !ctx.requestPending(text))ctx.emit('open-question',null,text);}});
+    }
     render();
     if (ctx.liveVoice) ctx.liveVoice.ask();
 
     return {
       get stage() { return shown; },
       refreshDrafts,
-      update(next) { current = next; title.textContent = next.title; adjustLecture(); render(); },
+      update(next) { if(disposed)return;current = next; title.textContent = next.title; adjustLecture(); renderExplanation(); render(); },
       destroy() {
+        disposed = true;
+        for (const view of Object.values(views)) for (const key of ['help','practice','comparison','bloom','analogy','critique']) if(view[key]) {view[key].destroy();view[key]=null;}
         if (typeof unsubscribeDrafts === 'function') unsubscribeDrafts();
         if (advice) advice.destroy();
+        if (roles) roles.destroy();
+        if (lecture.explanation) lecture.explanation.destroy();
+        if (lecture.analogy) lecture.analogy.destroy();
         if (nativeReader) nativeReader.destroy();
+        if(handoutVocabulary)handoutVocabulary.destroy();
+        if(lecture.vocabulary)lecture.vocabulary.destroy();
         if (lecture.video && (lecture.video.phase === 'opening' || lecture.video.phase === 'playing') && ctx.panes) ctx.panes.video.close();
         if (lecture.controller && lecture.controller.destroy) lecture.controller.destroy();
         shell.remove();
@@ -3314,6 +4398,7 @@
     const nowMs = () => Date.now() + clockOffset;
     const currentSupervision = () => supervisionOf(state, liveLease, nowMs(), localEvents);
     const pending = new Map();
+    const persisted = new Map();
     const failed = new Set();
     const panels = new Map();
     const extensions = new Map();
@@ -3390,6 +4475,15 @@
       refreshAll();
       return event;
     };
+    // Teaching help is shown only after the authenticated host confirms its raw event.
+    function persist(type, questionId, response) {
+      const event = emit(type, questionId, response);
+      if (!host) return Promise.resolve(event);
+      return new Promise((resolve,reject) => {
+        const timer = root.setTimeout(() => { persisted.delete(event.event_id); reject(new Error('Save confirmation timed out. Retry when the host is available.')); },15000);
+        persisted.set(event.event_id,{resolve,reject,timer});
+      });
+    }
     function mergeState(next) {
       if (Object.prototype.hasOwnProperty.call(next, 'supervision_live')) { liveLease = next.supervision_live || null; if (typeof next.host_now === 'number') clockOffset = next.host_now - Date.now(); }
       state = Object.assign({}, state, next);
@@ -3401,7 +4495,11 @@
         if (!current || current.signature === entry.signature) draftValues.delete(key);
         toHost('draft', {key, signature: entry.signature, value: null});
       }
-      for (const id of saved) { pending.delete(id); failed.delete(id); }
+      for (const id of saved) {
+        pending.delete(id); failed.delete(id);
+        const waiting = persisted.get(id);
+        if (waiting) { root.clearTimeout(waiting.timer); persisted.delete(id); waiting.resolve(next.events.find(e => e.event_id === id)); }
+      }
       // Saved events are authoritative; keep only local events still on their way to the host.
       localEvents = [...next.events, ...localEvents.filter(e => !saved.has(e.event_id))];
       // A tutor who is still writing a lecture adds steps to the board's script; the open board picks them up in place.
@@ -3446,6 +4544,9 @@
         if (data.status === 'audio' && data.wav && typeof data.wav.byteLength === 'number') waiting.resolve({wav: data.wav, seconds: data.seconds});
         else waiting.reject(new Error(String(data.status === 'error' && data.message || 'The live voice sent no audio.').slice(0, 300)));
       } else if (data.type === 'error') {
+        for (const [id,waiting] of persisted) { root.clearTimeout(waiting.timer); waiting.reject(new Error(String(data.message || 'Host rejected the save.'))); persisted.delete(id); }
+        const committed = new Set((state.events || []).map(e => e.event_id));
+        localEvents = localEvents.filter(e => committed.has(e.event_id) || !(e.type === 'pedagogy-help' || e.type === 'checkpoint' && typeof e.response === 'string' && e.response.startsWith('pedagogy-')));
         for (const id of pending.keys()) failed.add(id);
         pending.clear(); refreshAll();
         status.textContent = 'Progress could not be saved. Keep this page open and copy progress from the progress panel: ' + String(data.message || 'host rejected update').slice(0, 300);
@@ -4401,8 +5502,10 @@
       if (liveOn) liveState = 'unknown';
       liveVoiceListeners.add(next => { liveState = next; });
       staged = Stages.mount(mount, state.plan, {
-        doc, events: () => localEvents, emit, rich, drafts: draftStore,
+        doc, events: () => localEvents, savedEvents: () => host ? state.events : localEvents, persist, emit, rich, drafts: draftStore,
+        preferences: () => state.learning_preferences && state.learning_preferences.preferences || {},
         canonicalAdvice: () => state.canonical_advice || null,
+        vocabularyState: () => state.vocabulary_states || null,
         learningPreferences: () => state.learning_preferences || null,
         requestPending: text => conversationRecords().some(r => r.prompt === text && !isAnswered(r)),
         reviews: () => state.plan_reviews || [],     // the tutor's verdicts on written answers (a getter: the state is replaced as saves arrive)

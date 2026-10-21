@@ -1,0 +1,7 @@
+{
+  "command": "node tests/html-stages-browser.cjs",
+  "exit_code": 0,
+  "seconds": 299.841,
+  "stdout": "staged session browser tests passed\n",
+  "stderr": ""
+}

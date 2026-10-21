@@ -1,0 +1,23 @@
+[
+  {
+    "command": "node tests/html-practice-browser.cjs .",
+    "exit_code": 0,
+    "seconds": 59.501,
+    "stdout": "Practice actual-bundle offroute selection, acknowledgement/budget gate, unit labels, assistance/draft reload, raw revision and review acceptance passed; screenshots C:\\Users\\ASUS\\.agent-hub\\test-temp\\ros-practice-n156S0\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/html-socratic-browser.cjs .",
+    "exit_code": 0,
+    "seconds": 35.585,
+    "stdout": "Socratic actual-bundle ack/refusal, hint/solution, draft/help reload, raw revision and latest-review acceptance passed; screenshots C:\\Users\\ASUS\\.agent-hub\\test-temp\\ros-socratic-AnThVr\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/html-explanations-browser.cjs .",
+    "exit_code": 0,
+    "seconds": 27.549,
+    "stdout": "Explanation browser acceptance passed desktop and phone; screenshots: C:\\Users\\ASUS\\.agent-hub\\test-temp\\ros-explanations-YMI90K\n",
+    "stderr": ""
+  }
+]

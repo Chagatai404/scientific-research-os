@@ -229,3 +229,12 @@ the check that replaces the learner's "Checking…" with the verdict and explana
 See [the protocol](../references/HTML_SESSION_PROTOCOL.md) for the full loop.
 
 Open questions use an inline **Send** button and chronological question/answer history below the composer. Send records for the session agent; it does not call an AI service. Read `open_questions`, answer the actual prompt, then use `answer_open_question(root, session, question_id, answer)` or `html_sessions.py --root VAULT answer SESSION QUESTION_ID --source answer.txt`. This preserves earlier answers and pending questions without awarding learning evidence. Reopening restores the recorded conversation.
+
+## Teaching behaviors and layout
+
+Optional `plan.pedagogy` content (Socratic help, explanation levels, tiered practice,
+source comparisons, vocabulary, Bloom activities, analogies, Editor critiques) is
+authored per `references/SESSION_PLAN.md` and migrated per `docs/MIGRATION_P1.md`.
+The session view is a course-player: outline, content and a right tool rail on wide
+panes, a wrapping tab row on narrow ones. Install the complete helper, runtime and
+companion bundles together.
