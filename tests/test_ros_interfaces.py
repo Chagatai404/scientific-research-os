@@ -77,12 +77,12 @@ class TerminalTests(Fixture):
 class LogTests(Fixture):
     def test_log_shows_questions_answers_asks_and_replies(self):
         items = ladder(self.rec, 2)
-        lesson = api.start(self.rec, CAP, title="Log test")["lesson"]
-        api.teach(self.rec, lesson, CAP, "visual", "A picture of spread.")
-        api.answer(self.rec, lesson, items[1], 1)
-        api.answer(self.rec, lesson, items[2], 5)
-        a = api.ask(self.rec, lesson, text="Why $\\sigma^2$?")
-        api.reply(self.rec, a["ask"], "Squares keep signs from cancelling.")
+        lesson = api.call("start", self.rec, scope=CAP, title="Log test")["lesson"]
+        api.call("teach", self.rec, lesson=lesson, capability=CAP, mode="visual", content="A picture of spread.")
+        api.call("answer", self.rec, lesson=lesson, item=items[1], response=1)
+        api.call("answer", self.rec, lesson=lesson, item=items[2], response=5)
+        a = api.call("ask", self.rec, lesson=lesson, text="Why $\\sigma^2$?")
+        api.call("reply", self.rec, ask=a["ask"], text="Squares keep signs from cancelling.")
         text = export.lesson_log(self.rec, lesson)
         for want in ("# Log test", "## Variance", "A picture of spread.", "**Q1.** Level 1", "> Answer: 5",
                      "*Why:* It is 2.", "**You asked:** Why $\\sigma^2$?", "**Tutor:** Squares"):
@@ -97,9 +97,9 @@ class ApiTests(Fixture):
         self.assertNotIn("explanation", shown)
         self.assertEqual(shown["hints"], 1)
         self.assertEqual(api.TOOLS["item"].call(self.rec, {"id": items[1], "reveal": True})["answer"], 1)
-        started = api.start(self.rec, CAP)
+        started = api.call("start", self.rec, scope=CAP)
         self.assertNotIn("answer", started["next"]["question"])
-        api.next_step(self.rec, started["lesson"])
+        api.call("next", self.rec, lesson=started["lesson"])
         logged = self.rec.events(type="policy", subject=started["lesson"])
         self.assertEqual([e["data"]["action"] for e in logged], ["probe"])  # logged once per change
 

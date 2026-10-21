@@ -114,7 +114,7 @@ class OwnershipTests(Fixture):
         self.assertIn("ownership unowned", str(cm.exception))
         self.assertTrue(any(q["kind"] == "defend" for q in research.queue(self.rec)))
         items = self.defence_items()
-        lesson = api.start(self.rec, CLAIM, title="Defend the width claim")["lesson"]
+        lesson = api.call("start", self.rec, scope=CLAIM, title="Defend the width claim")["lesson"]
         for kind, h in items.items():
             out = tutor.answer(self.rec, lesson, h, f"my defence of {kind}")
             tutor.grade(self.rec, out["attempt"], "correct", by="tutor")

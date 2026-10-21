@@ -84,10 +84,9 @@ def grade(rec: Record, attempt_id: str, verdict: str, feedback: str = "", by: st
     """A tutor's verdict on an answer. Finishes the grading task when there is one."""
     if verdict not in VERDICTS:
         raise ValueError(f"verdict must be one of {VERDICTS}")
-    found = [e for e in rec.events(type="attempt") if e["id"] == attempt_id]
-    if not found:
+    a = rec.event(attempt_id)
+    if a is None or a["type"] != "attempt":
         raise KeyError(f"no attempt {attempt_id}")
-    a = found[0]
     data = {"lesson": a["data"].get("lesson"), "attempt": attempt_id, "verdict": verdict, "feedback": feedback}
     if criteria_met is not None:
         data["criteria_met"] = criteria_met

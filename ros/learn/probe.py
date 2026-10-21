@@ -1,15 +1,104 @@
-"""Find the edge of what the learner can do on one capability by bracketing: the hardest item answered correctly
-without help is the floor, the easiest item missed is the ceiling, and the next probe sits midway between them.
-Probing stops when nothing lies strictly between floor and ceiling, or the budget is spent."""
+"""One lesson, read once, and the bracketing probe that finds the edge of what the learner can do.
+
+``LessonView`` reads a lesson's events with one indexed query and derives everything the policy asks about: each
+answer with its verdict, what was taught and how, which items were helped, the learner's latest explanation request,
+and the bundle's closing items. Item lists per capability are memoised. Build one per decision; never keep it across
+writes.
+
+Bracketing: the hardest item answered correctly without help is the floor, the easiest item missed is the ceiling,
+and the next probe sits midway between them. Only answers given before the capability was taught count, and only on
+items that check themselves, so a probe never waits for a grader.
+"""
 from __future__ import annotations
+
+from dataclasses import dataclass, field
+from functools import cached_property
 
 from ..store import Record
 
 DEFAULT_BUDGET = 4
+CHECKABLE = ("choice", "numeric")
+
+
+@dataclass
+class LessonView:
+    rec: Record
+    lesson: str
+    _items: dict = field(default_factory=dict, repr=False)
+
+    @cached_property
+    def node(self) -> dict:
+        return self.rec.node(self.lesson) or {}
+
+    @cached_property
+    def _derived(self) -> tuple[list[dict], dict[str, set[str]], str | None]:
+        helped, taught, rows, by_attempt, mode = set(), {}, [], {}, None
+        for e in self.rec.events(lesson=self.lesson):
+            t, subject = e["type"], e["subject"]
+            if t in ("hint", "reveal"):
+                helped.add(subject)
+            elif t == "teach":
+                taught.setdefault(subject, set()).add(e["data"].get("mode", "explain"))
+            elif t == "ask" and e["data"].get("mode"):
+                mode = e["data"]["mode"]
+            elif t == "attempt":
+                row = {"attempt": e["id"], "item": subject, "verdict": "pending", "helped": subject in helped,
+                       "ts": e["ts"], "taught": frozenset(taught)}
+                rows.append(row)
+                by_attempt[e["id"]] = row
+            elif t == "grade" and e["data"].get("attempt") in by_attempt:
+                by_attempt[e["data"]["attempt"]]["verdict"] = e["data"]["verdict"]
+        return rows, taught, mode
+
+    @property
+    def outcomes(self) -> list[dict]:
+        """Each answer in order: item, latest verdict (``pending`` until graded), whether it was helped, and the
+        capabilities taught before it."""
+        return self._derived[0]
+
+    @property
+    def requested_mode(self) -> str | None:
+        """The learner's latest request for another kind of explanation."""
+        return self._derived[2]
+
+    def taught(self, capability: str, mode: str | None = None) -> bool:
+        modes = self._derived[1].get(capability, set())
+        return bool(modes) if mode is None else mode in modes
+
+    @cached_property
+    def answered(self) -> set[str]:
+        return {o["item"] for o in self.outcomes}
+
+    @cached_property
+    def right(self) -> set[str]:
+        """Items answered correctly without help in this lesson."""
+        return {o["item"] for o in self.outcomes if o["verdict"] == "correct" and not o["helped"]}
+
+    @cached_property
+    def plan_items(self) -> dict[str, list[str]]:
+        """The bundle's item lists (probe, close, transfer, review), empty for a lesson without a bundle."""
+        bundle = self.node.get("bundle")
+        if not bundle:
+            return {}
+        from .. import prepare
+        try:
+            return prepare.load_plan(self.rec, bundle).get("items", {})
+        except KeyError:
+            return {}
+
+    @cached_property
+    def closing(self) -> list[str]:
+        """Free-recall then transfer items, asked once at the end of a prepared lesson."""
+        return self.plan_items.get("close", []) + self.plan_items.get("transfer", [])
+
+    def items_for(self, capability: str) -> list[dict]:
+        """Current (not superseded) items that test a capability or the concept it is about, easiest first."""
+        if capability not in self._items:
+            self._items[capability] = items_for(self.rec, capability)
+        return self._items[capability]
 
 
 def items_for(rec: Record, capability: str) -> list[dict]:
-    """Current (not superseded) items that test a capability or the concept it is about, easiest first."""
     keys = {capability} | {e["dst"] for e in rec.edges(src=capability, type="about")}
     seen, out = set(), []
     for k in sorted(keys):
@@ -21,32 +110,13 @@ def items_for(rec: Record, capability: str) -> list[dict]:
 
 
 def outcomes(rec: Record, lesson: str) -> list[dict]:
-    """Each answer in a lesson, in order, with its latest verdict (``pending`` until graded), whether a hint or the
-    explanation was shown for that item earlier in the lesson, and which capabilities had been taught before it."""
-    helped, taught, rows, by_attempt = set(), set(), [], {}
-    for e in rec.events():
-        if e["data"].get("lesson") != lesson:
-            continue
-        if e["type"] in ("hint", "reveal"):
-            helped.add(e["subject"])
-        elif e["type"] == "teach":
-            taught.add(e["subject"])
-        elif e["type"] == "attempt":
-            row = {"attempt": e["id"], "item": e["subject"], "verdict": "pending", "helped": e["subject"] in helped,
-                   "ts": e["ts"], "taught": frozenset(taught)}
-            rows.append(row)
-            by_attempt[e["id"]] = row
-        elif e["type"] == "grade" and e["data"].get("attempt") in by_attempt:
-            by_attempt[e["data"]["attempt"]]["verdict"] = e["data"]["verdict"]
-    return rows
+    return LessonView(rec, lesson).outcomes
 
 
-def bracket(rec: Record, lesson: str, capability: str, budget: int = DEFAULT_BUDGET) -> dict:
-    """Only answers given before the capability was taught count, and only on items that check themselves: a probe
-    must not wait for a grader."""
-    pool = [i for i in items_for(rec, capability) if i.get("kind") in ("choice", "numeric")]
+def bracket(view: LessonView, capability: str, budget: int = DEFAULT_BUDGET) -> dict:
+    pool = [i for i in view.items_for(capability) if i.get("kind") in CHECKABLE]
     ids = {i["id"]: i for i in pool}
-    mine = [o for o in outcomes(rec, lesson) if o["item"] in ids and capability not in o["taught"]]
+    mine = [o for o in view.outcomes if o["item"] in ids and capability not in o["taught"]]
     ceiling = None
     for o in mine:
         if o["verdict"] in ("incorrect", "partially-correct") or (o["verdict"] == "correct" and o["helped"]):

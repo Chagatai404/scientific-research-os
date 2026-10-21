@@ -496,10 +496,10 @@ def link_ontology(node: Node, registry) -> None:
         node.subjects = sorted(registry.records[concept].meta['subjects'])
         node.domains = sorted({domain for subject in node.subjects if subject in registry.records
                                for domain in registry.records[subject].meta.get('domains', [])})
-    for field, kinds in [('projects', {'project'}), ('blocks', {'research-block'})]:
-        for target in node.meta.get(field, []):
+    for name, kinds in [('projects', {'project'}), ('blocks', {'research-block'})]:
+        for target in node.meta.get(name, []):
             if not registry.valid(target, kinds):
-                node.issues.append(f'{field}: missing, invalid or wrong-type reference {target}')
+                node.issues.append(f'{name}: missing, invalid or wrong-type reference {target}')
     # Explicit ontology application links are views, not copied learning metadata.
     applications = set()
     if concept in registry.records and registry.records[concept].type == 'concept':

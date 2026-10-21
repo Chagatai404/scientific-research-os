@@ -246,7 +246,7 @@ def answer_rows(rec: Record) -> dict[str, list[dict]]:
     a hint or revealed solution before it makes it assisted; the next review is the FSRS due day after it."""
     from .learn import schedule
     helped, attempts = set(), {}
-    for e in rec.events():
+    for e in rec.events(types=("hint", "reveal", "attempt")):
         lesson = e["data"].get("lesson")
         if e["type"] in ("hint", "reveal"):
             helped.add((lesson, e["subject"]))

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 import re
 import shutil
@@ -112,9 +111,9 @@ class ExportTests(Fixture):
     def test_static_snapshot_is_self_contained_and_says_read_only(self):
         rec, bundle = demo.build(self.tmp / "rec")
         self.addCleanup(rec.close)
-        lesson = api.start(rec, bundle=bundle)["lesson"]
-        step = api.next_step(rec, lesson)
-        api.answer(rec, lesson, step["item"], 3)
+        lesson = api.call("start", rec, bundle=bundle)["lesson"]
+        step = api.call("next", rec, lesson=lesson)
+        api.call("answer", rec, lesson=lesson, item=step["item"], response=3)
         path = export.static(rec, self.tmp / "out" / "snapshot.html")
         html = path.read_text()
         self.assertIn("Read-only snapshot", html)

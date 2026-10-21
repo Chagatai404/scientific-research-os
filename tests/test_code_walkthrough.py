@@ -1,9 +1,6 @@
 """Code walkthroughs: units, locators, verification, approved execution, code map, ownership proposals, wiring."""
-import io
 import json
-from contextlib import redirect_stdout
 from pathlib import Path
-import re
 import subprocess
 import sys
 import tempfile

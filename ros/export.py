@@ -16,7 +16,7 @@ def lesson_log(rec: Record, lesson: str) -> str:
     """The lesson as it happened: what was taught, each question with the answer given and the verdict, hints shown,
     questions asked and their answers."""
     node = rec.node(lesson) or {}
-    events = [e for e in rec.events() if e["subject"] == lesson or e["data"].get("lesson") == lesson]
+    events = rec.events(lesson=lesson)
     title = node.get("title") or next((e["data"].get("title") for e in events if e["type"] == "lesson.start"
                                        and e["data"].get("title")), None) or lesson
     grades = {e["data"].get("attempt"): e for e in events if e["type"] == "grade"}

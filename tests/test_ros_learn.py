@@ -102,7 +102,7 @@ class BracketTests(Fixture):
         for skill in (0, 3, 6, 9):
             lesson = f"L{skill}"
             for _ in range(10):
-                b = probe.bracket(self.rec, lesson, CAP, budget=10)
+                b = probe.bracket(probe.LessonView(self.rec, lesson), CAP, budget=10)
                 if b["done"]:
                     break
                 d = next(k for k, v in items.items() if v == b["next"])

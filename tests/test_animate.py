@@ -1,8 +1,6 @@
 """Animation: spec, scene lint, backend detection and choice, a recorded render, and the registry record. No renderer is needed to run these."""
-import io
 import json
 import os
-from contextlib import redirect_stdout
 from pathlib import Path
 import shutil
 import subprocess

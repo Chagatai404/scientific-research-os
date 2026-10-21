@@ -400,3 +400,18 @@ def migrate(rec: Record, vault: Path | str, research_root: Path | str | None = N
     (rec.root / "migration-report.json").write_text(_json.dumps(report, indent=2, ensure_ascii=False) + "\n",
                                                     encoding="utf-8")
     return report
+
+
+def _graphify(rec: Record, path, repo=None, **_) -> dict:
+    from .graph import import_graphify
+    return {"symbols": import_graphify(rec, path, repo)}
+
+
+# What ``ros import --kind <name>`` runs (the tool's choices come from these keys). An importer takes the record and a
+# path, plus keyword options it may ignore, and returns a JSON report. To read another old format, add it here.
+IMPORTERS = {
+    "learning": lambda rec, path, **_: learning_records(rec, path),
+    "sessions": lambda rec, path, **_: sessions(rec, path),
+    "research": lambda rec, path, evidence=None, **_: research_records(rec, path, evidence),
+    "graphify": _graphify,
+}

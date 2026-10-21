@@ -103,7 +103,6 @@ def synth_chatterbox(args, text: str, out: Path) -> dict:
 
 def split_sentences(text: str) -> list[str]:
     """Sentences as the researcher heard them in the blind test: split after . ! ? and a colon."""
-    import re
     return [s for s in re.split(SENTENCE_END, text.strip()) if s]
 
 

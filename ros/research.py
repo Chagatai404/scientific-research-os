@@ -58,12 +58,12 @@ def add_claim(rec: Record, key: str, text: str, project: str, author: str, assur
     return node
 
 
-def claims(rec: Record, project: str | None = None, root: Path | None = None, as_of: date | None = None) -> list[dict]:
-    out = []
+def claims(rec: Record, project: str | None = None, as_of: date | None = None) -> list[dict]:
+    out, practice = [], Practice(rec, as_of)
     for n in rec.nodes(type="claim"):
         if project and n.get("project") != project:
             continue
-        s = status(rec, n["id"], as_of)
+        s = status(rec, n["id"], as_of, practice)
         out.append({"id": n["id"], "text": n.get("text"), "assurance": n.get("assurance"), "verdict": s["verdict"],
                     "owned": s["ownership"] in ("owned", "waived"), "ownership": s["ownership"],
                     "missing": s["missing"]})
@@ -148,7 +148,7 @@ def latest_verdicts(rec: Record, claim: str) -> dict[str, dict]:
     return out
 
 
-def status(rec: Record, claim: str, as_of: date | None = None) -> dict:
+def status(rec: Record, claim: str, as_of: date | None = None, practice: "Practice | None" = None) -> dict:
     """The claim's overall verdict over its required steps (worst wins; missing steps leave it PENDING), its
     ownership, and whether its assurance level is met."""
     node = _claim(rec, claim)
@@ -160,7 +160,7 @@ def status(rec: Record, claim: str, as_of: date | None = None) -> dict:
     worst = min(verdicts, key=order.index) if verdicts else None
     overall = worst if worst in ("ERROR", "BLOCKED", "FAIL") else "PENDING" if missing else (
         "WARN" if worst == "WARN" else "PASS")
-    own = ownership(rec, claim, as_of)
+    own = ownership(rec, claim, as_of, practice)
     met = overall in ("PASS", "WARN") and (node["assurance"] not in OWNERSHIP_NEEDED or own in ("owned", "waived"))
     return {"claim": claim, "assurance": node["assurance"], "required": list(required), "verdicts": have,
             "missing": missing, "verdict": overall, "ownership": own, "assurance_met": met}
@@ -276,7 +276,31 @@ def open_defence(rec: Record, claim: str) -> list[str]:
             for kind in DEFENCE]
 
 
-def ownership(rec: Record, claim: str, as_of: date | None = None) -> str:
+class Practice:
+    """The review schedule and the grades of every item, read once and shared by every claim's ownership."""
+
+    def __init__(self, rec: Record, as_of: date | None = None):
+        self.rec, self.as_of = rec, as_of or date.today()
+        self._cards: dict | None = None
+        self._grades: dict | None = None
+
+    @property
+    def cards(self) -> dict:
+        if self._cards is None:
+            from .learn import schedule
+            self._cards = {c["id"]: c for c in schedule.schedule(self.rec, self.as_of)}
+        return self._cards
+
+    @property
+    def grades(self) -> dict:
+        if self._grades is None:
+            self._grades = {}
+            for g in self.rec.events(type="grade"):
+                self._grades.setdefault(g["subject"], []).append(g["data"].get("verdict"))
+        return self._grades
+
+
+def ownership(rec: Record, claim: str, as_of: date | None = None, practice: Practice | None = None) -> str:
     """unowned: no defence item answered; practising: some answered or not yet secure; owned: every defence kind has a
     correct, unaided answer and none is past its FSRS review; waived: the owner accepted the risk."""
     if rec.events(type="waiver", subject=claim):
@@ -284,17 +308,12 @@ def ownership(rec: Record, claim: str, as_of: date | None = None) -> str:
     items = [i for i in rec.items(claim) if i.get("defence") in DEFENCE and rec.current_item(i["id"]) == i["id"]]
     if not items:
         return "unowned"
-    from .learn import schedule
-    as_of = as_of or date.today()
-    cards = {c["id"]: c for c in schedule.schedule(rec, as_of)}
-    grades = {}
-    for g in rec.events(type="grade"):
-        grades.setdefault(g["subject"], []).append(g["data"].get("verdict"))
-    answered = [i for i in items if grades.get(i["id"])]
-    if not answered:
+    practice = practice or Practice(rec, as_of)
+    if not any(practice.grades.get(i["id"]) for i in items):
         return "unowned"
-    secure = {i["defence"] for i in items if (grades.get(i["id"]) or [None])[-1] == "correct"
-              and not (cards.get(i["id"]) and cards[i["id"]]["due"] < as_of.isoformat())}
+    today = practice.as_of.isoformat()
+    secure = {i["defence"] for i in items if practice.grades.get(i["id"], [None])[-1] == "correct"
+              and not (practice.cards.get(i["id"]) and practice.cards[i["id"]]["due"] < today)}
     return "owned" if secure >= set(DEFENCE) else "practising"
 
 

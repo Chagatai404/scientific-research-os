@@ -13,12 +13,14 @@ Videos found by a scout are optional: a clip whose transcript was not verified i
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
 import re
 import shutil
 import subprocess
+from typing import Callable
 
 from . import tasks
 from .store import Record, canonical, validate_item
@@ -27,6 +29,7 @@ PLAN_SCHEMA = 1
 ROLES = ("motivate", "establish", "connect", "check", "close")
 MAX_ELEMENTS = 7
 MIN_PROBE_LEVELS = 3
+MAX_CLIP_SECONDS = 180
 ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 
 
@@ -105,92 +108,160 @@ def plan_problems(plan: dict) -> list[str]:
 
 
 # ---- the gate -----------------------------------------------------------------------------------------------------
-def check(rec: Record, bundle: str, record_ready: bool = True) -> dict:
-    """Every gate row with ``ok`` and the reasons it fails. Writes ``manifest.json`` with the verdict and file hashes,
-    and a ``bundle.ready`` event the first time a given manifest passes."""
-    d = bundle_dir(rec, bundle)
-    plan = load_plan(rec, bundle)
-    rows: list[dict] = []
+@dataclass
+class Gate:
+    """What a row checker may look at: the record, the bundle folder and its plan, and the speech-text module."""
+    rec: Record
+    dir: Path
+    plan: dict
+    speech: object = None
 
-    def row(name, problems, node=None, warn=()):
-        rows.append({"row": name, "node": node, "ok": not problems, "problems": list(problems),
-                     "warnings": list(warn)})
 
-    speech = _speech_text()
-    for n in plan["nodes"]:
-        nid, segs = n["id"], n.get("segments", [])
-        p = [] if segs else ["no narration segments"]
-        for s in segs:
-            text = (s.get("text") or "").strip()
-            if not text:
-                p.append(f"{s['id']}: no text")
-            elif speech:
-                problems = speech.prepare(text, plan.get("lang", "en"))["problems"]
-                p += [f"{s['id']}: cannot be spoken: {x}" for x in problems]
-            p += _math_problems(text, f"{s['id']}")
-        row("narration", p, nid)
-        p = []
-        for s in segs:
-            for c in s.get("claims", []):
-                if not (c.get("locator") or c.get("derivation")):
-                    p.append(f"{s['id']}: claim without a source locator or derivation mark: {c.get('text', '')[:60]}")
-        row("claims", p, nid)
-        row("voice", [f"{s['id']}: no audio" for s in segs if not _file(d, s.get("audio"))], nid)
-        p = []
-        if not n.get("visuals"):
-            p.append("no visual")
-        for v in n.get("visuals", []):
-            if not _file(d, v.get("path")):
-                p.append(f"{v.get('path')}: not rendered")
-            if not _file(d, v.get("result")):
-                p.append(f"{v.get('path')}: no RESULT note (the maker has not looked at it)")
-            if not isinstance(v.get("elements"), int):
-                p.append(f"{v.get('path')}: element count not stated")
-            elif v["elements"] > MAX_ELEMENTS:
-                p.append(f"{v.get('path')}: {v['elements']} elements; at most {MAX_ELEMENTS}")
-        row("visuals", p, nid)
-        p = []
-        if n.get("dynamic"):
-            a = n.get("animation") or {}
-            for key in ("video", "poster", "keyframes"):
-                if not _file(d, a.get(key)):
-                    p.append(f"animation {key} missing")
-            if not (a.get("basis") or "").strip():
-                p.append("animation has no stated basis (equation, model or data)")
-            if not a.get("looked_at"):
-                p.append("animation key frames not looked at")
-        row("animation", p, nid)
-        clip, warn = n.get("clip"), []
-        if clip and not clip.get("transcript_verified"):
-            warn.append("clip left out: its transcript was not verified")
-        elif clip and not (isinstance(clip.get("start"), (int, float)) and isinstance(clip.get("end"), (int, float))
-                           and 0 <= clip["start"] < clip["end"] <= clip["start"] + 180):
-            warn.append("clip left out: a clip is one segment of at most 3 minutes")
-        row("clip", [], nid, warn)
-        row("check items", _item_problems(rec, n.get("items", {}).get("check", []), need=1), nid)
-    items = plan.get("items", {})
-    p = _item_problems(rec, items.get("probe", []), need=1)
-    for strand, levels in _levels(rec, items.get("probe", [])).items():
+@dataclass(frozen=True)
+class Row:
+    """One gate row. ``check(gate, node)`` returns ``(problems, warnings)``; ``node`` is ``None`` for a bundle-wide
+    row. ``task`` is the kind of task that fixes a failing row. To add a check, append a ``Row`` to ``ROWS``."""
+    name: str
+    per_node: bool
+    task: str
+    check: Callable[[Gate, dict | None], tuple[list[str], list[str]]]
+
+
+def _narration(g: Gate, n: dict):
+    segs, p = n.get("segments", []), [] if n.get("segments") else ["no narration segments"]
+    for seg in segs:
+        text = (seg.get("text") or "").strip()
+        if not text:
+            p.append(f"{seg['id']}: no text")
+        elif g.speech:
+            p += [f"{seg['id']}: cannot be spoken: {x}" for x in g.speech.prepare(text, g.plan.get("lang", "en"))["problems"]]
+        p += _math_problems(text, seg["id"])
+    return p, []
+
+
+def _claims(g: Gate, n: dict):
+    return [f"{seg['id']}: claim without a source locator or derivation mark: {c.get('text', '')[:60]}"
+            for seg in n.get("segments", []) for c in seg.get("claims", [])
+            if not (c.get("locator") or c.get("derivation"))], []
+
+
+def _voice(g: Gate, n: dict):
+    return [f"{seg['id']}: no audio" for seg in n.get("segments", []) if not _file(g.dir, seg.get("audio"))], []
+
+
+def _visuals(g: Gate, n: dict):
+    p = [] if n.get("visuals") else ["no visual"]
+    for v in n.get("visuals", []):
+        if not _file(g.dir, v.get("path")):
+            p.append(f"{v.get('path')}: not rendered")
+        if not _file(g.dir, v.get("result")):
+            p.append(f"{v.get('path')}: no RESULT note (the maker has not looked at it)")
+        if not isinstance(v.get("elements"), int):
+            p.append(f"{v.get('path')}: element count not stated")
+        elif v["elements"] > MAX_ELEMENTS:
+            p.append(f"{v.get('path')}: {v['elements']} elements; at most {MAX_ELEMENTS}")
+    return p, []
+
+
+def _animation(g: Gate, n: dict):
+    if not n.get("dynamic"):
+        return [], []
+    a = n.get("animation") or {}
+    p = [f"animation {key} missing" for key in ("video", "poster", "keyframes") if not _file(g.dir, a.get(key))]
+    if not (a.get("basis") or "").strip():
+        p.append("animation has no stated basis (equation, model or data)")
+    if not a.get("looked_at"):
+        p.append("animation key frames not looked at")
+    return p, []
+
+
+def _clip(g: Gate, n: dict):
+    clip = n.get("clip")
+    if clip and not clip.get("transcript_verified"):
+        return [], ["clip left out: its transcript was not verified"]
+    if clip and not (isinstance(clip.get("start"), (int, float)) and isinstance(clip.get("end"), (int, float))
+                     and 0 <= clip["start"] < clip["end"] <= clip["start"] + MAX_CLIP_SECONDS):
+        return [], ["clip left out: a clip is one segment of at most 3 minutes"]
+    return [], []
+
+
+def _check_items(g: Gate, n: dict):
+    return _item_problems(g.rec, n.get("items", {}).get("check", []), need=1), []
+
+
+def _probe_items(g: Gate, _):
+    hashes = g.plan.get("items", {}).get("probe", [])
+    p = _item_problems(g.rec, hashes, need=1)
+    for strand, levels in _levels(g.rec, hashes).items():
         if len(levels) < MIN_PROBE_LEVELS:
             p.append(f"{strand}: probe items cover {len(levels)} difficulty level(s); at least {MIN_PROBE_LEVELS}")
-    row("probe items", p)
-    p = _item_problems(rec, items.get("close", []), need=1)
-    if items.get("close") and not any((rec.item(h) or {}).get("kind") == "free" for h in items["close"]):
+    return p, []
+
+
+def _close_items(g: Gate, _):
+    hashes = g.plan.get("items", {}).get("close", [])
+    p = _item_problems(g.rec, hashes, need=1)
+    if hashes and not any((g.rec.item(h) or {}).get("kind") == "free" for h in hashes):
         p.append("close needs a free-recall item")
-    row("close items", p)
-    row("transfer item", _item_problems(rec, items.get("transfer", []), need=1))
-    ready = all(r["ok"] for r in rows)
-    files = {path: _sha(d / path) for path in sorted(_paths(plan)) if _file(d, path)}
-    manifest = {"bundle": bundle, "plan_sha256": hashlib.sha256(canonical(plan)).hexdigest(), "files": files,
-                "items": sorted(set(_all_items(plan))), "rows": rows, "ready": ready,
-                "missing": [f"{r['row']}{' / ' + r['node'] if r['node'] else ''}: {x}" for r in rows for x in r["problems"]]}
-    (d / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8",
-                                     newline="\n")
+    return p, []
+
+
+def _transfer_item(g: Gate, _):
+    return _item_problems(g.rec, g.plan.get("items", {}).get("transfer", []), need=1), []
+
+
+ROWS: list[Row] = [
+    Row("narration", True, "narration", _narration),
+    Row("claims", True, "verify", _claims),
+    Row("voice", True, "narration", _voice),
+    Row("visuals", True, "visual", _visuals),
+    Row("animation", True, "animation", _animation),
+    Row("clip", True, "video", _clip),
+    Row("check items", True, "item", _check_items),
+    Row("probe items", False, "item", _probe_items),
+    Row("close items", False, "item", _close_items),
+    Row("transfer item", False, "item", _transfer_item),
+]
+
+
+def verdict(rec: Record, bundle: str) -> dict:
+    """Run every gate row and hash every file. Writes nothing; ``check`` stores the result."""
+    gate = Gate(rec, bundle_dir(rec, bundle), load_plan(rec, bundle), _speech_text())
+    rows = []
+    for row in ROWS:
+        for node in (gate.plan["nodes"] if row.per_node else [None]):
+            problems, warnings = row.check(gate, node)
+            rows.append({"row": row.name, "node": node["id"] if node else None, "ok": not problems,
+                         "problems": problems, "warnings": warnings})
+    files = {path: _sha(gate.dir / path) for path in sorted(set(_paths(gate.plan))) if _file(gate.dir, path)}
+    return {"bundle": bundle, "plan_sha256": hashlib.sha256(canonical(gate.plan)).hexdigest(), "files": files,
+            "items": sorted(set(_all_items(gate.plan))), "rows": rows, "ready": all(r["ok"] for r in rows),
+            "missing": [f"{r['row']}{' / ' + r['node'] if r['node'] else ''}: {x}" for r in rows for x in r["problems"]]}
+
+
+def check(rec: Record, bundle: str) -> dict:
+    """The gate's verdict, stored in ``manifest.json``, and a ``bundle.ready`` event the first time a given manifest
+    passes."""
+    manifest = verdict(rec, bundle)
+    (bundle_dir(rec, bundle) / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+                                                          encoding="utf-8", newline="\n")
     digest = hashlib.sha256(canonical({k: manifest[k] for k in ("plan_sha256", "files", "items")})).hexdigest()
-    if ready and record_ready and not any(e["data"].get("manifest") == digest
-                                          for e in rec.events(type="bundle.ready", subject=f"bundle:{bundle}")):
+    if manifest["ready"] and not any(e["data"].get("manifest") == digest
+                                     for e in rec.events(type="bundle.ready", subject=f"bundle:{bundle}")):
         rec.append("bundle.ready", f"bundle:{bundle}", {"manifest": digest})
     return manifest
+
+
+def bundles(rec: Record) -> list[dict]:
+    """Every bundle in the record with its title, goal, size and whether it is ready."""
+    base = rec.root / "bundles"
+    out = []
+    for d in sorted(base.iterdir()) if base.is_dir() else []:
+        if (d / "plan.json").exists():
+            plan = load_plan(rec, d.name)
+            out.append({"id": d.name, "title": plan.get("title"), "goal": plan.get("goal"),
+                        "nodes": len(plan.get("nodes", [])), "ready": is_ready(rec, d.name)})
+    return out
 
 
 def is_ready(rec: Record, bundle: str) -> bool:
@@ -207,15 +278,11 @@ def is_ready(rec: Record, bundle: str) -> bool:
 
 
 # ---- work for agents and local engines ----------------------------------------------------------------------------
-TASK_FOR_ROW = {"narration": "narration", "claims": "verify", "voice": "narration", "visuals": "visual",
-                "animation": "animation", "check items": "item", "probe items": "item", "close items": "item",
-                "transfer item": "item"}
-
-
 def open_tasks(rec: Record, bundle: str, clips: bool = False) -> list[str]:
     """One task per failing gate row (and, when ``clips`` is set, a video-scout task per node without a clip).
     Keyed by bundle, row, node and the problems, so asking again opens nothing new until something changes."""
-    manifest = check(rec, bundle, record_ready=False)
+    manifest = verdict(rec, bundle)
+    task_for = {row.name: row.task for row in ROWS}
     plan = load_plan(rec, bundle)
     opened = []
     for r in manifest["rows"]:
@@ -223,7 +290,7 @@ def open_tasks(rec: Record, bundle: str, clips: bool = False) -> list[str]:
             continue
         brief = (f"Bundle {bundle} ({plan['title']}): {r['row']}" + (f" for {r['node']}" if r["node"] else "")
                  + ": " + "; ".join(r["problems"]))
-        opened.append(tasks.open_task(rec, TASK_FOR_ROW[r["row"]], f"bundle:{bundle}", brief,
+        opened.append(tasks.open_task(rec, task_for[r["row"]], f"bundle:{bundle}", brief,
                                       data={"bundle": bundle, "node": r["node"], "row": r["row"]},
                                       key=f"{r['row']}|{r['node']}|{'|'.join(r['problems'])}"))
     if clips:

@@ -7,11 +7,9 @@ import json
 import os
 from pathlib import Path
 import re
-import argparse
-import sys
 from dataclasses import asdict
 
-from .knowledge import scalar, iso_date, ID as LEARNING_ID, safe_text, mermaid_text
+from .knowledge import scalar, iso_date, ID as LEARNING_ID
 
 ID = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]*\Z')
 STATES = {

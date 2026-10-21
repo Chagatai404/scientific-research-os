@@ -69,7 +69,7 @@ class GateTests(Fixture):
         failing = {r["row"] for r in m["rows"] if not r["ok"]}
         self.assertTrue({"narration", "visuals", "check items", "probe items", "close items", "transfer item"} <= failing)
         with self.assertRaises(ValueError) as cm:
-            api.start(self.rec, bundle="var-1")
+            api.call("start", self.rec, bundle="var-1")
         self.assertIn("not ready", str(cm.exception))
 
     def test_complete_bundle_is_ready_and_starts_with_prepared_content(self):
@@ -82,7 +82,7 @@ class GateTests(Fixture):
         self.assertEqual(len(self.rec.events(type="bundle.ready")), 1)
         prepare.check(self.rec, "var-1")
         self.assertEqual(len(self.rec.events(type="bundle.ready")), 1)
-        started = api.start(self.rec, bundle="var-1")
+        started = api.call("start", self.rec, bundle="var-1")
         self.assertEqual(started["next"]["action"], "probe")
         content = prepare.segments_for(self.rec, "var-1", GOAL)
         self.assertEqual(content["segments"][0]["audio"], "audio/variance.wav")

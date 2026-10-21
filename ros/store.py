@@ -481,6 +481,11 @@ class Record:
         sql += " ORDER BY ts, seq"
         return [_event_row(r) for r in self.index().execute(sql, args)]
 
+    def event(self, id: str) -> dict | None:
+        self.sync()
+        row = self.index().execute("SELECT * FROM events WHERE id=?", (id,)).fetchone()
+        return _event_row(row) if row else None
+
     def item(self, h: str) -> dict | None:
         self.sync()
         row = self.index().execute("SELECT data FROM items WHERE id=?", (h,)).fetchone()

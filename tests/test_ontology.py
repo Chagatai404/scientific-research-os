@@ -1,7 +1,5 @@
 """Concept identity, explicit applications and scope-safe evidence; offline fixtures."""
-from contextlib import redirect_stdout
 from datetime import date
-import io
 import json
 from pathlib import Path
 import subprocess

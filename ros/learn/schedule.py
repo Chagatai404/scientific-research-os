@@ -185,7 +185,7 @@ def reviews(rec: Record, as_of: date) -> dict[str, list[tuple[date, int]]]:
         out.setdefault(key, []).append((day, rating))
     helped: set[tuple[str, str]] = set()
     attempts = {}
-    for ev in rec.events():
+    for ev in rec.events(types=("hint", "reveal", "attempt")):
         lesson = ev["data"].get("lesson")
         if ev["type"] in ("hint", "reveal"):
             helped.add((lesson, ev["subject"]))

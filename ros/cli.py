@@ -178,7 +178,7 @@ HELP = ("Type your answer. ? for a hint, - for I don't know, !text to ask the tu
 
 def learn(rec: Record, scope: str | None, title: str | None = None, read=input, write=print,
           bundle: str | None = None) -> int:
-    started = api.start(rec, scope=scope, bundle=bundle, title=title)
+    started = api.call("start", rec, scope=scope, bundle=bundle, title=title)
     lesson, step = started["lesson"], started["next"]
     write(f"Lesson {lesson} on {scope or bundle}. {HELP}")
     while True:
@@ -188,17 +188,17 @@ def learn(rec: Record, scope: str | None, title: str | None = None, read=input, 
             if action == "wait":
                 write("Your written answers are waiting for the tutor. Close for now? [Y/n]")
                 if read("> ").strip().lower().startswith("n"):
-                    step = api.next_step(rec, lesson)
+                    step = api.call("next", rec, lesson=lesson)
                     continue
-            out = api.close(rec, lesson, step.get("reason", ""))
+            out = api.call("close", rec, lesson=lesson, summary=step.get("reason", ""))
             write(f"Lesson closed. Log: {out['log']}")
             return 0
         if action == "teach":
             write(f"Now: {step.get('title')} ({step.get('mode')}). Your tutor teaches this part; "
                   "press Enter when done.")
             read("> ")
-            api.teach(rec, lesson, step["capability"] or scope, step.get("mode", "explain"))
-            step = api.next_step(rec, lesson)
+            api.call("teach", rec, lesson=lesson, capability=step["capability"] or scope, mode=step.get("mode", "explain"))
+            step = api.call("next", rec, lesson=lesson)
             continue
         q = step["question"]
         write(q["prompt"])
@@ -207,30 +207,30 @@ def learn(rec: Record, scope: str | None, title: str | None = None, read=input, 
         while True:
             text = read("> ").strip()
             if text == "q":
-                api.close(rec, lesson, "stopped by the learner")
+                api.call("close", rec, lesson=lesson, summary="stopped by the learner")
                 write("Stopped. The log is written.")
                 return 0
             if text == "?":
-                h = api.hint(rec, lesson, step["item"])
+                h = api.call("hint", rec, lesson=lesson, item=step["item"])
                 write(h.get("hint") or h.get("explanation") or "No more hints.")
                 continue
             if text.startswith("!"):
-                api.ask(rec, lesson, text=text[1:].strip())
+                api.call("ask", rec, lesson=lesson, text=text[1:].strip())
                 write("Asked. Your tutor will answer.")
                 continue
             if text.startswith("~"):
-                api.ask(rec, lesson, mode=text[1:].strip() or "simpler")
+                api.call("ask", rec, lesson=lesson, mode=text[1:].strip() or "simpler")
                 write("Noted: the next explanation will be like that.")
                 continue
             if text:
                 break
         if text == "-":
-            out = api.answer(rec, lesson, step["item"], dont_know=True)
+            out = api.call("answer", rec, lesson=lesson, item=step["item"], dont_know=True)
         else:
             response = text
             if q.get("kind") == "choice" and len(text) == 1 and text.isalpha():
                 response = ord(text.lower()) - 97
-            out = api.answer(rec, lesson, step["item"], response)
+            out = api.call("answer", rec, lesson=lesson, item=step["item"], response=response)
         verdict = out["verdict"]
         write({"correct": "Correct.", "incorrect": "Not yet.", "pending": "Saved; your tutor will grade it."}
               .get(verdict, verdict))

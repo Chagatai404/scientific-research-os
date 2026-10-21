@@ -14,7 +14,6 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ros.lib import speech_text as st
 from ros.lib import voice as vc
 
 

@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ros.lib import literature_check as lc
 from ros.lib import validate_evidence as ev
-from literature_fixture import atom, reviewed, paper, claim, comparison, write, build
+from literature_fixture import atom, reviewed, paper, claim, write, build
 
 
 class LiteratureTests(unittest.TestCase):
