@@ -106,6 +106,9 @@ def main(argv: list[str] | None = None) -> int:
                 from . import serve
                 return serve.run(rec, args.port, args.open)
             t = api.TOOLS[args.command]
+            if t.human and not _confirm(t, args):
+                sys.stderr.write(f"ros: {t.name} is a person's decision; it was not recorded\n")
+                return 3
             emit(t.call(rec, {k: getattr(args, k) for k in t.params if getattr(args, k, None) not in (None, False)}),
                  args.json)
         finally:
@@ -118,6 +121,14 @@ def main(argv: list[str] | None = None) -> int:
         else:
             sys.stderr.write(f"ros: {msg}\n")
         return 2
+
+
+def _confirm(t, args) -> bool:
+    """A human act needs a person at a terminal who types yes."""
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False
+    shown = ", ".join(f"{k}={getattr(args, k)}" for k in t.params if getattr(args, k, None))
+    return input(f"Record {t.name} ({shown})? Type yes: ").strip().lower() == "yes"
 
 
 # ---- the terminal lesson --------------------------------------------------------------------------------------------

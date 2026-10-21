@@ -1,0 +1,149 @@
+/* The portal in real Chromium: a whole prepared lesson through the page, at most 6 controls in the player, no
+   overlapping or overflowing text at 320, 768, 1280 and 1920 px, every button at least 44 px tall, no requests
+   leaving the computer, no console errors.
+
+   node tests/ros-portal-browser.cjs   (ROS_BROWSER=<chromium> to choose the browser) */
+'use strict';
+const assert = require('node:assert/strict');
+const {spawn, execFileSync} = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const {chromium} = require(process.env.ROS_PLAYWRIGHT || 'playwright');
+
+const root = path.join(__dirname, '..');
+const python = process.env.PYTHON || 'python3';
+const WIDTHS = [320, 768, 1280, 1920];
+const MAX_CONTROLS = 6;
+const debug = process.env.ROS_DEBUG ? (...a) => console.error(...a) : () => {};
+
+function startServer(record) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(python, ['-m', 'ros', '-p', record, 'serve', '--port', '0'], {cwd: root, env: {...process.env, PYTHONPATH: root}});
+    let out = '';
+    p.stdout.on('data', (d) => {
+      out += d;
+      const m = out.match(/http:\/\/127\.0\.0\.1:(\d+)\//);
+      if (m) resolve({proc: p, url: m[0]});
+    });
+    p.stderr.on('data', (d) => process.stderr.write(d));
+    p.on('exit', (code) => reject(new Error(`server exited ${code}: ${out}`)));
+  });
+}
+
+async function layout(page, label) {
+  const problems = await page.evaluate(() => {
+    const out = [];
+    if (document.documentElement.scrollWidth > window.innerWidth + 1) out.push(`page scrolls sideways (${document.documentElement.scrollWidth} > ${window.innerWidth})`);
+    const els = [...document.querySelectorAll('h1,h2,h3,p,li,button,a,label,td,th,legend,select,input,textarea')]
+      .filter((e) => e.offsetParent !== null && !e.closest('.katex, .table-wrap'));
+    const rects = els.map((e) => e.getBoundingClientRect());
+    for (let i = 0; i < els.length; i++) {
+      const r = rects[i];
+      if (r.width === 0 || r.height === 0) continue;
+      if (els[i].matches('button, .button') && r.height < 43.5) out.push(`button "${els[i].textContent.trim()}" is ${r.height}px tall`);
+      for (let j = i + 1; j < els.length; j++) {
+        if (els[i].contains(els[j]) || els[j].contains(els[i])) continue;
+        const s = rects[j];
+        const x = Math.min(r.right, s.right) - Math.max(r.left, s.left);
+        const y = Math.min(r.bottom, s.bottom) - Math.max(r.top, s.top);
+        if (x > 1 && y > 1) out.push(`"${els[i].textContent.trim().slice(0, 30)}" overlaps "${els[j].textContent.trim().slice(0, 30)}"`);
+      }
+    }
+    return out;
+  });
+  assert.deepEqual(problems, [], `${label}: ${problems.join('; ')}`);
+}
+
+async function controls(page) {
+  return page.evaluate(() => {
+    const form = document.querySelector('.player');
+    if (!form) return 0;
+    const radios = form.querySelectorAll('input[type=radio]').length ? 1 : 0;
+    return form.querySelectorAll('button, textarea, select, input:not([type=radio])').length + radios;
+  });
+}
+
+async function main() {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ros-portal-'));
+  const record = path.join(tmp, 'rec');
+  execFileSync(python, [path.join(root, 'tests', 'support_ros_demo.py'), record], {env: {...process.env, PYTHONPATH: root}});
+  const server = await startServer(record);
+  const browser = await chromium.launch({headless: true, ...(process.env.ROS_BROWSER ? {executablePath: process.env.ROS_BROWSER} : {})});
+  const started = Date.now();
+  try {
+    const page = await browser.newPage({viewport: {width: 1280, height: 900}});
+    const errors = [], foreign = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    page.on('request', (r) => { if (!r.url().startsWith(server.url)) foreign.push(r.url()); });
+
+    await page.goto(server.url, {waitUntil: 'domcontentloaded'});
+    await page.getByRole('heading', {name: 'Today'}).waitFor();
+    for (const w of WIDTHS) { await page.setViewportSize({width: w, height: 900}); await layout(page, `today @${w}`); }
+    await page.setViewportSize({width: 1280, height: 900});
+    await page.getByRole('button', {name: 'Start lesson'}).click();
+
+    const seen = new Set();
+    let maxControls = 0, steps = 0;
+    while (steps++ < 60) {
+      await page.waitForSelector('.player');
+      const heading = await page.locator('.player h1').first().textContent({timeout: 500}).catch(() => '');
+      debug('step', steps, heading, (await page.locator('.player').first().innerText()).slice(0, 80).replace(/\n/g, ' | '));
+      maxControls = Math.max(maxControls, await controls(page));
+      if (/Lesson complete/.test(heading || '')) { seen.add('close'); break; }
+      if (/Waiting for your tutor/.test(heading || '')) { seen.add('wait'); break; }
+      const feedback = await page.locator('.feedback').count();
+      const prompt = (await page.locator('.prompt').textContent({timeout: 500}).catch(() => '')) || '';
+      if (!feedback && !(await page.locator('.prompt').count())) {
+        seen.add('teach');
+        if (!seen.has('teach-layout')) {
+          seen.add('teach-layout');
+          for (const w of WIDTHS) { await page.setViewportSize({width: w, height: 900}); await layout(page, `teach @${w}`); }
+          await page.setViewportSize({width: 1280, height: 900});
+        }
+      } else if (!feedback) {
+        const level = (prompt.match(/Level (\d)/) || [])[1];
+        if (level) {
+          seen.add('numeric');
+          await page.getByLabel('Your answer').fill(String(+level <= 2 ? level * level : 0));
+        } else if (await page.locator('input[type=radio]').count()) {
+          seen.add('choice');
+          await page.locator('input[type=radio]').first().check();
+        } else if (await page.locator('textarea[name=answer]').count()) {
+          seen.add('free');
+          await page.locator('textarea[name=answer]').fill('The average squared distance from the mean.');
+        } else {
+          await page.getByLabel('Your answer').fill('3');
+        }
+        if (!seen.has('question-layout')) {
+          seen.add('question-layout');
+          for (const w of WIDTHS) { await page.setViewportSize({width: w, height: 900}); await layout(page, `question @${w}`); }
+          await page.setViewportSize({width: 1280, height: 900});
+        }
+      } else seen.add('feedback');
+      await page.getByRole('button', {name: 'Continue'}).click();
+      await page.waitForTimeout(80);
+    }
+    assert.ok(maxControls <= MAX_CONTROLS, `the player showed ${maxControls} controls; at most ${MAX_CONTROLS}`);
+    for (const want of ['numeric', 'teach', 'feedback']) assert.ok(seen.has(want), `the lesson never reached ${want}: ${[...seen]}`);
+    assert.ok(seen.has('close') || seen.has('wait'), 'the lesson did not end');
+
+    for (const view of ['learn', 'library', 'history', 'research']) {
+      await page.goto(server.url + '#' + view, {waitUntil: 'domcontentloaded'});
+      await page.waitForSelector('main h1');
+      for (const w of WIDTHS) { await page.setViewportSize({width: w, height: 900}); await layout(page, `${view} @${w}`); }
+    }
+    const katex = await page.evaluate(() => typeof window.katex);
+    assert.equal(katex, 'object', 'KaTeX did not load');
+    assert.deepEqual(errors, [], 'console errors: ' + errors.join('; '));
+    assert.deepEqual(foreign, [], 'requests left the computer: ' + foreign.join(', '));
+    console.log(JSON.stringify({ok: true, steps, maxControls, reached: [...seen], seconds: (Date.now() - started) / 1000}));
+  } finally {
+    await browser.close();
+    server.proc.kill();
+    fs.rmSync(tmp, {recursive: true, force: true});
+  }
+}
+
+main().catch((e) => { console.error(e); process.exit(1); });

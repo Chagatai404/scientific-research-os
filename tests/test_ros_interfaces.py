@@ -66,7 +66,7 @@ class TerminalTests(Fixture):
         h = self.rec.put_item({"kind": "choice", "prompt": "Pick b", "options": ["a", "b"], "answer": 1,
                                "concepts": [CAP], "hints": ["second"]})
         self.rec.put_node(CAP, "capability")
-        answers = iter(["?", "b", "q"])
+        answers = iter(["?", "b", "", "q"])  # a hinted answer is the ceiling, so it is taught next
         out: list[str] = []
         cli.learn(self.rec, CAP, read=lambda _: next(answers), write=out.append)
         self.assertIn("second", out)

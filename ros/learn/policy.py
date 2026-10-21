@@ -2,12 +2,14 @@
 policy does, and says why. Rules, in order:
 
 1. **Stop** after three misses in a row (repair later, not now) or when the lesson's budget of answers is spent.
-2. **Retry** an item missed once, offering a hint; after a second miss on it, **teach** with a worked example.
+2. **Retry** an item missed once after teaching, offering a hint; after a second miss on it, **teach** with a worked
+   example. A miss while probing is the ceiling, not something to retry.
 3. **Review** what is due (FSRS) in scope, up to three items, before new work.
 4. For each target capability (the frontier of the scope, or the capability itself): **probe** until bracketed,
    then **teach** at the edge, then **practise** one step above the floor, interleaving an item from another
    ready capability every third practice.
-5. **Wait** while only ungraded free answers remain; otherwise **close**: the goal is reached.
+5. **Recall**: a prepared lesson ends with its free-recall and transfer items.
+6. **Wait** while only ungraded free answers remain; otherwise **close**: the goal is reached.
 
 Teaching mode: the learner's latest explanation request wins; otherwise ``simpler`` when even the easiest item was
 missed, ``worked-example`` after two misses on one item, else ``explain``.
@@ -43,7 +45,8 @@ def decide(rec: Record, lesson: str, scope: str, as_of: date | None = None, budg
         last = graded[-1]["item"]
         misses = sum(1 for o in graded if o["item"] == last and o["verdict"] != "correct")
         caps = [c for c in (rec.item(last) or {}).get("concepts", []) if c.startswith("capability:")]
-        probing = bool(caps) and not _taught(rec, lesson, caps[0])  # a miss while probing is the ceiling, not a retry
+        # A miss while probing is the ceiling, not something to retry: only misses after teaching are retried.
+        probing = not caps or caps[0] not in graded[-1]["taught"]
         if probing:
             pass
         elif misses == 1:
@@ -72,13 +75,23 @@ def decide(rec: Record, lesson: str, scope: str, as_of: date | None = None, budg
                 continue
             return {"action": "review", "item": item_id, "reason": f"due for review since {card['due']}"}
 
-    targets = [c for c in learning.frontier(scope) if c in closure] or sorted(primary) or (
-        [scope] if scope.startswith("capability:") else [])
-    practice_count = sum(1 for o in done if o.get("item") in _practised(rec, lesson))
+    # Every capability the scope rests on, roots first; what is already retained and ready needs no lesson time.
+    targets = [c for c in learning.order(closure)
+               if not (c in learning.ready and learning.caps[c].assessment.state == "retained")]
+    if not closure and scope.startswith("capability:"):
+        targets = [scope]  # items can test a capability the graph does not list yet
+    practice_count = sum(1 for o in done if o["taught"])  # answers given after something was taught
     waiting = []
     for cap in targets:
         b = probe.bracket(rec, lesson, cap)
         if b["items"] == 0:
+            # Nothing checks itself here: ask its written items one by one, then wait for the tutor's grades.
+            free = [i["id"] for i in probe.items_for(rec, cap) if i["id"] not in _closing(rec, lesson)]
+            fresh = [h for h in free if h not in answered]
+            if fresh:
+                return {"action": "practice", "capability": cap, "item": fresh[0],
+                        "reason": "a written answer: your tutor grades it"}
+            waiting += [o["item"] for o in done if o["item"] in free and o["verdict"] == "pending"]
             continue
         if b["next"]:
             return {"action": "probe", "capability": cap, "item": b["next"],
@@ -99,9 +112,30 @@ def decide(rec: Record, lesson: str, scope: str, as_of: date | None = None, budg
                             "reason": "interleave a different capability"}
             return {"action": "practice", "capability": cap, "item": step,
                     "reason": "practise one step above what is secure"}
+    recall = _recall_item(rec, lesson, answered)
+    if recall:
+        return {"action": "recall", "item": recall, "reason": "close: recall it in your own words, then transfer it"}
     if waiting:
         return {"action": "wait", "items": waiting, "reason": "a free answer is waiting for the tutor's grade"}
-    return {"action": "close", "reason": "every target capability is secure up to its hardest prepared item"}
+    pending = sum(1 for o in done if o["verdict"] == "pending")
+    return {"action": "close", "reason": "every target capability is secure up to its hardest prepared item"
+            + (f"; {pending} written answer(s) wait for your tutor" if pending else "")}
+
+
+def _recall_item(rec: Record, lesson: str, answered: set[str]) -> str | None:
+    """A prepared lesson ends with free recall and one transfer item (from its bundle), each asked once."""
+    bundle = (rec.node(lesson) or {}).get("bundle")
+    if not bundle:
+        return None
+    from .. import prepare
+    try:
+        plan = prepare.load_plan(rec, bundle)
+    except KeyError:
+        return None
+    for h in plan.get("items", {}).get("close", []) + plan.get("items", {}).get("transfer", []):
+        if h not in answered:
+            return h
+    return None
 
 
 def _taught(rec: Record, lesson: str, cap: str, mode: str | None = None) -> bool:
@@ -114,19 +148,34 @@ def _mode(rec: Record, lesson: str, default: str) -> str:
     return asks[-1]["data"]["mode"] if asks else default
 
 
-def _practised(rec: Record, lesson: str) -> set[str]:
-    return {e["subject"] for e in rec.events(type="attempt") if e["data"].get("lesson") == lesson}
-
-
 def _practice_item(rec: Record, lesson: str, cap: str, b: dict) -> str | None:
-    """The easiest current item above the floor not yet answered correctly in this lesson."""
-    right = {o["item"] for o in probe.outcomes(rec, lesson) if o["verdict"] == "correct"}
-    tried = {o["item"] for o in probe.outcomes(rec, lesson)}
-    floor = b["floor"] if b["floor"] is not None else float("-inf")
-    pool = [i for i in probe.items_for(rec, cap) if i["id"] not in right and i.get("difficulty", 1) > floor]
+    """The easiest item from the edge upward (the ceiling, or above the floor) not yet answered correctly without
+    help in this lesson; fresh items before ones already missed."""
+    done = probe.outcomes(rec, lesson)
+    right = {o["item"] for o in done if o["verdict"] == "correct" and not o["helped"]}
+    tried = {o["item"] for o in done}
+    if b["ceiling"] is not None:
+        pool = [i for i in probe.items_for(rec, cap) if i.get("difficulty", 1) >= b["ceiling"]]
+    else:
+        floor = b["floor"] if b["floor"] is not None else float("-inf")
+        pool = [i for i in probe.items_for(rec, cap) if i.get("difficulty", 1) > floor]
+    pool = [i for i in pool if i["id"] not in right and i["id"] not in _closing(rec, lesson)
+            and sum(1 for o in done if o["item"] == i["id"]) < 2]
     fresh = [i for i in pool if i["id"] not in tried]
     pick = (fresh or pool)
     return pick[0]["id"] if pick else None
+
+
+def _closing(rec: Record, lesson: str) -> set[str]:
+    bundle = (rec.node(lesson) or {}).get("bundle")
+    if not bundle:
+        return set()
+    from .. import prepare
+    try:
+        items = prepare.load_plan(rec, bundle).get("items", {})
+    except KeyError:
+        return set()
+    return set(items.get("close", [])) | set(items.get("transfer", []))
 
 
 def _interleave(rec: Record, lesson: str, learning: Learning, cap: str) -> tuple[str, str] | None:

@@ -21,17 +21,19 @@ def items_for(rec: Record, capability: str) -> list[dict]:
 
 
 def outcomes(rec: Record, lesson: str) -> list[dict]:
-    """Each answer in a lesson, in order, with its latest verdict (``pending`` until graded) and whether a hint or
-    the explanation was shown for that item earlier in the lesson."""
-    helped, rows, by_attempt = set(), [], {}
+    """Each answer in a lesson, in order, with its latest verdict (``pending`` until graded), whether a hint or the
+    explanation was shown for that item earlier in the lesson, and which capabilities had been taught before it."""
+    helped, taught, rows, by_attempt = set(), set(), [], {}
     for e in rec.events():
         if e["data"].get("lesson") != lesson:
             continue
         if e["type"] in ("hint", "reveal"):
             helped.add(e["subject"])
+        elif e["type"] == "teach":
+            taught.add(e["subject"])
         elif e["type"] == "attempt":
             row = {"attempt": e["id"], "item": e["subject"], "verdict": "pending", "helped": e["subject"] in helped,
-                   "ts": e["ts"]}
+                   "ts": e["ts"], "taught": frozenset(taught)}
             rows.append(row)
             by_attempt[e["id"]] = row
         elif e["type"] == "grade" and e["data"].get("attempt") in by_attempt:
@@ -40,16 +42,21 @@ def outcomes(rec: Record, lesson: str) -> list[dict]:
 
 
 def bracket(rec: Record, lesson: str, capability: str, budget: int = DEFAULT_BUDGET) -> dict:
-    pool = items_for(rec, capability)
+    """Only answers given before the capability was taught count, and only on items that check themselves: a probe
+    must not wait for a grader."""
+    pool = [i for i in items_for(rec, capability) if i.get("kind") in ("choice", "numeric")]
     ids = {i["id"]: i for i in pool}
-    mine = [o for o in outcomes(rec, lesson) if o["item"] in ids]
-    floor = ceiling = None
+    mine = [o for o in outcomes(rec, lesson) if o["item"] in ids and capability not in o["taught"]]
+    ceiling = None
+    for o in mine:
+        if o["verdict"] in ("incorrect", "partially-correct") or (o["verdict"] == "correct" and o["helped"]):
+            d = ids[o["item"]].get("difficulty", 1)
+            ceiling = d if ceiling is None else min(ceiling, d)
+    floor = None
     for o in mine:
         d = ids[o["item"]].get("difficulty", 1)
-        if o["verdict"] == "correct" and not o["helped"]:
+        if o["verdict"] == "correct" and not o["helped"] and (ceiling is None or d < ceiling):
             floor = d if floor is None else max(floor, d)
-        elif o["verdict"] in ("incorrect", "partially-correct") or (o["verdict"] == "correct" and o["helped"]):
-            ceiling = d if ceiling is None else min(ceiling, d)
     pending = [o["item"] for o in mine if o["verdict"] == "pending"]
     used = {o["item"] for o in mine}
     lo = float("-inf") if floor is None else floor

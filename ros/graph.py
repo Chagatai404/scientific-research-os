@@ -141,6 +141,8 @@ class Learning:
         retrievals: dict[str, list[dict]] = {}
         for ev in rec.events(type="retrieval"):
             retrievals.setdefault(ev["subject"], []).append(ev["data"])
+        for cap, rows in answer_rows(rec).items():
+            retrievals.setdefault(cap, []).extend(rows)
         requires: dict[str, list[str]] = {}
         for e in rec.edges(type="requires"):
             requires.setdefault(e["src"], []).append(e["dst"])
@@ -168,6 +170,18 @@ class Learning:
             if not more:
                 return ready
             ready |= more
+
+    def order(self, keys) -> list[str]:
+        """``keys`` with every capability after its prerequisites (roots first), ties by id."""
+        keys, out, placed = set(keys), [], set()
+        while len(out) < len(keys):
+            layer = sorted(k for k in keys - placed
+                           if all(p in placed or p not in keys for p in self.caps[k].prerequisites))
+            if not layer:  # a cycle: place the rest by id
+                layer = sorted(keys - placed)
+            out += layer
+            placed |= set(layer)
+        return out
 
     def closure(self, ids) -> set[str]:
         """The given capabilities and everything they transitively require."""
@@ -220,6 +234,57 @@ class Learning:
         if c.mastery:
             out["mastery"] = {s: {d: a.as_dict(self.as_of) for d, a in dims.items()} for s, dims in c.mastery.items()}
         return out
+
+
+# ---- answers as evidence ------------------------------------------------------------------------------------------
+ITEM_METHOD = {"choice": "mcq", "numeric": "computation", "free": "explanation"}
+METHOD_DIMENSION = {"mcq": "recognition", "computation": "application", "explanation": "explanation"}
+
+
+def answer_rows(rec: Record) -> dict[str, list[dict]]:
+    """Graded answers as retrieval rows on each capability their item tests, so lessons move capability states the
+    same way recorded retrievals do. A choice answer is recognition (it never alone makes a capability demonstrated);
+    a hint or revealed solution before it makes it assisted; the next review is the FSRS due day after it."""
+    from .learn import schedule
+    helped, attempts = set(), {}
+    for e in rec.events():
+        lesson = e["data"].get("lesson")
+        if e["type"] in ("hint", "reveal"):
+            helped.add((lesson, e["subject"]))
+        elif e["type"] == "attempt":
+            attempts[e["id"]] = (lesson, e["subject"], (lesson, e["subject"]) in helped)
+    about: dict[str, set[str]] = {}
+    for e in rec.edges(type="about"):
+        about.setdefault(e["dst"], set()).add(e["src"])
+    latest: dict[str, dict] = {}
+    for g in rec.events(type="grade"):
+        if g["data"].get("attempt") in attempts:
+            latest[g["data"]["attempt"]] = g
+    out: dict[str, list[dict]] = {}
+    cards: dict[str, schedule.Card] = {}
+    passed_on: dict[str, str] = {}
+    for g in sorted(latest.values(), key=lambda g: g["ts"]):
+        lesson, item_id, was_helped = attempts[g["data"]["attempt"]]
+        item = rec.item(item_id) or {}
+        caps = {c for c in item.get("concepts", []) if c.startswith("capability:")}
+        caps |= {cap for c in item.get("concepts", []) for cap in about.get(c, ())}
+        verdict, day = g["data"].get("verdict"), g["ts"][:10]
+        method = ITEM_METHOD.get(item.get("kind"), "explanation")
+        for cap in caps:
+            rating = schedule.rating_for_grade(verdict, was_helped)
+            if rating is not None:
+                cards[cap] = schedule.review(cards.get(cap, schedule.Card()), rating, date.fromisoformat(day))
+            due = schedule.due_date(cards[cap]) if cap in cards else None
+            timing = "delayed" if passed_on.get(cap, day) < day else "same-session"
+            out.setdefault(cap, []).append({
+                "day": day, "period": cap, "timing": timing, "method": method,
+                "outcome": {"correct": "pass", "partially-correct": "partial"}.get(verdict, "fail"),
+                "assistance": "hinted" if was_helped else "none", "evidence": g["id"],
+                "review": due.isoformat() if due else None, "scope": "conceptual",
+                "dimension": METHOD_DIMENSION[method], "context": "", "source": "answer"})
+            if verdict == "correct" and not was_helped:
+                passed_on.setdefault(cap, day)
+    return out
 
 
 # ---- research ----------------------------------------------------------------------------------------------------
