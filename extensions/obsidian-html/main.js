@@ -239,6 +239,10 @@ function validatePedagogyEvent(event,state) {
     const raw=matches && matches[0];
     if(parts.length!==3 || !entry || event.question_id!=null || parts[2]!==String(entry.version) || matches.length!==1 || raw.type!=='plan-answer' || raw.question_id!==entry.question_id || !raw.response || raw.response.tree!==entry.tree || raw.response.answer!==entry.summary || entry.source.access==='unavailable')throw new Error('Comparison requires the unchanged actual summary and available synthesis.');
   }
+  if(event.type==='checkpoint' && typeof r==='string' && r.startsWith('pedagogy-terms:')){
+    const parts=r.split(':'),entry=meta && (meta.terms || []).find(e=>e.id===parts[1]);
+    if(parts.length!==3 || !entry || event.question_id!=null || parts[2]!==String(entry.version) || entry.source.access==='unavailable')throw new Error('Unknown available vocabulary presentation.');
+  }
   if (event.type === 'checkpoint' && typeof r === 'string' && r.startsWith('pedagogy-level:')) {
     const parts = r.split(':'), entry = meta && (meta.explanations || []).find(e => e.id === parts[1]);
     if (parts.length !== 4 || !entry || event.question_id != null || parts[2] !== String(entry.version) || !Object.hasOwn(entry.levels,parts[3])) throw new Error('Unknown prepared explanation level.');
@@ -489,6 +493,7 @@ function pageState(state, live = null) {
   const visible = Object.assign({}, state); delete visible.context;
   visible.canonical_advice = adviceSnapshot(state.context && state.context.advice);
   visible.learning_preferences = preferenceSnapshot(state.context && state.context.preferences);
+  visible.vocabulary_states = vocabularySnapshot(state.context && state.context.vocabulary,state.plan);
   visible.supervision_live = live; visible.host_now = Date.now();
   // Always present, so a decision that was withdrawn clears on the page instead of lingering through a merge.
   if (!('supervision' in visible)) visible.supervision = null;
@@ -509,6 +514,18 @@ function preferenceSnapshot(value) {
     prefs.language = prefs.language.toLowerCase();
   }
   return {preferences: prefs};
+}
+function vocabularySnapshot(value,plan){
+  if(!value || typeof value!=='object' || Object.keys(value).sort().join(',')!=='as_of,states,vocabulary_schema' || value.vocabulary_schema!==1 || typeof value.as_of!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(value.as_of) || !Number.isFinite(Date.parse(value.as_of)) || new Date(value.as_of).toISOString().slice(0,10)!==value.as_of)return null;
+  if(value.states!==null){
+    if(!value.states || typeof value.states!=='object' || Array.isArray(value.states) || Object.keys(value.states).length>40)return null;
+    const prepared=new Set(((plan && plan.pedagogy || {}).terms || []).flatMap(entry=>entry.terms.map(row=>row.term_id)));
+    for(const [term,languages] of Object.entries(value.states)){
+      if(!prepared.has(term) || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(term) || !languages || typeof languages!=='object' || Array.isArray(languages) || Object.keys(languages).length>8)return null;
+      for(const [language,state] of Object.entries(languages))if(!/^[a-z]{2,3}(?:-[A-Za-z]{2,4})?$/.test(language) || !['unseen','introduced','shaky','defined','used','fluent'].includes(state))return null;
+    }
+  }
+  return JSON.parse(JSON.stringify(value));
 }
 // Only this bounded presentation projection crosses the context/privacy boundary.
 function adviceSnapshot(value) {

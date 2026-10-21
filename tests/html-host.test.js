@@ -736,6 +736,11 @@ assert(!html.includes('title":"</script>'));
     assert.equal(pageState({...base,context:{advice:{...advice,[key]:value}}}).canonical_advice,null,key);
   }
   assert.equal(pageState(base).canonical_advice,null,'withdrawal clears old advice');
+  const vocabulary={vocabulary_schema:1,as_of:'2026-10-21',states:{variance:{en:'used',tr:'shaky'}}};
+  const vocabularyState={...base,plan:{pedagogy:{terms:[{terms:[{term_id:'variance'}]}]}},context:{vocabulary}};
+  assert.equal(JSON.stringify(pageState(vocabularyState).vocabulary_states),JSON.stringify(vocabulary));
+  for(const bad of [{...vocabulary,private_path:'secret'},{...vocabulary,states:{unrelated:{en:'used'}}},{...vocabulary,states:{variance:{en:'mastered'}}},{...vocabulary,as_of:'2026-02-30'}])assert.equal(pageState({...vocabularyState,context:{vocabulary:bad}}).vocabulary_states,null);
+  assert.equal(pageState(base).vocabulary_states,null,'withdrawal clears term snapshots');
 }
 
 // Only explicit bounded preferences cross the private context boundary.

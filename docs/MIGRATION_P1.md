@@ -63,3 +63,16 @@ with their matching helpers or read pre-upgrade backups; never strip raw work or
 assistance for compatibility. The central Quiz/Check surface switches between the
 prepared comparison and its original card while preserving the existing frame.
 No external source is fetched or independently vetted by these structural checks.
+
+
+P1e vocabulary publication validates new/changed labels, canonical term/concept IDs
+and source snapshots against actual local authorities under the existing lock.
+Keep actual glossary/catalog files available for authoring; unchanged historical
+content and raw-answer saves remain usable when those files are absent. Reading
+prepared definitions never adds term events or learning credit. Optional dated
+`context.vocabulary` crosses to the page only as bounded prepared term states,
+with unavailable coverage distinguished from unseen. Unbound historical sessions
+gain no automatic context waiver/binding. Adopt the full updated helpers, runtime
+and host together; older strict context validators do not understand this field.
+The route override no longer bypasses immutable issued questions or presented
+teaching. Explicit legacy/unissued route changes still use their existing gate.

@@ -162,7 +162,7 @@ context message, with a request to the tutor rather than fabricated knowledge.
 ## Optional P1 pedagogy contract (schema 1)
 
 `plan.pedagogy` is optional; legacy plans need no migration. It has exactly
-`schema: 1` plus optional `socratic`, `explanations`, `practice` and `comparisons` arrays (at most 40 each,
+`schema: 1` plus optional `socratic`, `explanations`, `practice`, `comparisons` and `terms` arrays (at most 40 each,
 120 KiB UTF-8 in total). `pedagogy_contract.validate` checks these after the base
 plan validates. Structural acceptance does not verify scientific content.
 
@@ -280,3 +280,46 @@ counts as open notes under existing append-order/timestamp rules. Truly later
 help does not retroactively downgrade an earlier attempt. Neither checkpoint
 awards evidence or spends a new assessment probe. Revision reuses the original
 question/card, draft sidecar and raw answer stream, including cross-stage return.
+
+
+P1e vocabulary entries require common fields plus exactly `prepared_by`, `source`
+(the supplied snapshot shape from P1d), `requested: {terms,categories}` (null or
+1..40 / 1..10), `terms` (at most 40) and `categories` (at most 10). Each term has
+`term_id`, canonical `labels` and `concepts`, `plain`, nullable `formal`, `example`,
+`prerequisites`, `contrasts`, exact `source_quote` / `locator`, and nullable
+`diagnostic: {tree,question_id,question_sha256}`. Labels/concept links must match
+the actual canonical glossary when NEW/CHANGED metadata is published. Concept and
+prerequisite IDs resolve through the actual valid concept registry (plus supported
+schema-1 conceptual IDs); capability IDs are never concept aliases. Author-supplied
+glossary copies cannot authorize identity. Both plan writers validate under the
+session lock. Historical display and unchanged raw-answer saves do not rediscover
+a missing catalog. Categories declare bounded meaningful rationale and explicit
+membership reasons, assigning each prepared term once. Quotes provide structural
+grounding, not independent scientific verification of definitions or grouping.
+
+`pedagogy-terms:<id>:<version>` is an acknowledged presentation checkpoint with
+null question ID. Available vocabulary displays only after committed persistence;
+unavailable source notices record no help or evidence. Prepared counts below the
+explicit requested count are disclosed; unsupported items are never fabricated.
+An optional diagnostic opens its existing card/tree through the same budget gate.
+Definitions, category reading and term-state display never call term record/define
+writers. Source vocabulary lives in the existing Handout/Lecture central surface;
+closing it restores the original reader/player and lecture step.
+
+Optional `context.vocabulary` is exactly
+`{vocabulary_schema:1,as_of:ISO-date,states:null|{term_id:{language:state}}}`.
+This dated read-only projection comes from the existing term authority at changed
+teaching/startup/advice/export boundaries, never from a browser assertion. At most
+40 prepared term IDs and 8 declared-label languages cross the sandbox boundary.
+The existing authoritative event fold avoids losing a known prepared term when a
+bounded Student Brief spends its budget on unrelated shaky terms. Missing snapshot
+coverage is unavailable, distinct from an explicit empty recorded state (unseen).
+No full glossary, profile, goal or private path is exposed. Unbound historical
+sessions gain no invented context/waiver: prepared content remains readable, while
+recorded states remain unavailable until normal binding/explicit waiver exists.
+The browser labels the snapshot date and does not treat it as evidence or policy.
+
+`allow_reroute` waives only route choices allowed by existing history guards.
+It cannot rewrite issued complete question contracts/digests or already-presented
+teaching metadata. Legacy/unissued route overrides remain available; a changed
+issued question, including its routing digest, requires a new question identity.

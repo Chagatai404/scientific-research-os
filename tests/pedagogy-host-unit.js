@@ -24,6 +24,13 @@ const help = (changes = {}, id = 'help') => ({event_id: id, type: 'pedagogy-help
   entry_id: 'hints', version: 1, tree: 'probe', question_sha256: 'a'.repeat(64), level: 1, prior_response_event_id: null, ...changes}});
 const tests = [];
 function test(name, run) { tests.push({name, run}); }
+test('vocabulary presentation records only an available exact version', () => {
+ const s=state();s.plan.pedagogy.terms=[{id:'words',version:1,source:{access:'excerpt'}}];
+ const e={event_id:'read',type:'checkpoint',question_id:null,response:'pedagogy-terms:words:1'};
+ assert.equal(validateEvent(e,s).response,e.response);
+ for(const response of ['pedagogy-terms:words:2','pedagogy-terms:words:01','pedagogy-terms:words:1:extra','pedagogy-terms:missing:1'])assert.throws(()=>validateEvent({...e,response},s),/vocabulary/);
+ s.plan.pedagogy.terms[0].source.access='unavailable';assert.throws(()=>validateEvent(e,s),/vocabulary/);
+});
 test('comparison binds original actual summary and synthesis availability', () => {
   const s=state(),raw=answer('original','parent','probe','The unchanged raw summary.');s.events=[raw];
   s.plan.pedagogy.comparisons=[{id:'source-feedback',version:1,tree:'probe',question_id:'parent',summary_event_id:'original',summary:raw.response.answer,source:{access:'excerpt'}}];

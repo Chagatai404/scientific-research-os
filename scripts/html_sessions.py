@@ -432,6 +432,11 @@ def review_plan_answer(root, relative_md, question_id, verdict, feedback="", rev
         if revised_plan is not None:
             _ensure_context(state)
             session_plan.check(revised_plan)
+            _validate_changed_vocabulary(root,relative_md,state,revised_plan)
+            import pedagogy_contract
+            frozen=pedagogy_contract.revision_problems(plan,revised_plan,state['events'])
+            if frozen:
+                raise ValueError('Preserve issued assessment and presented teaching: '+'; '.join(frozen))
             changed_answers = answered_plan_changes(plan, revised_plan, state['events'])
             if changed_answers:
                 raise ValueError('The revised plan would move the learner; nothing was saved: ' + '; '.join(changed_answers))
@@ -461,14 +466,17 @@ def _validate_context(context):
     if "preferences" in context:
         import learning_preferences
         learning_preferences.validate(context["preferences"])
+    if "vocabulary" in context:
+        import learning_advice
+        learning_advice.validate_vocabulary(context['vocabulary'])
     if context.get("waived") is True:
-        if set(context) - {"waived", "reason", "bound_at", "preferences"} or not isinstance(context.get("reason"), str) or not context["reason"].strip():
+        if set(context) - {"waived", "reason", "bound_at", "preferences", "vocabulary"} or not isinstance(context.get("reason"), str) or not context["reason"].strip():
             raise ValueError("A context waiver needs a reason")
         return
     if "advice" in context:
         import learning_advice
         learning_advice.validate(context["advice"])
-    if set(context) - {"binding", "request", "bound_at", "refreshed_at", "advice", "preferences"} or not isinstance(context.get("binding"), dict) \
+    if set(context) - {"binding", "request", "bound_at", "refreshed_at", "advice", "preferences", "vocabulary"} or not isinstance(context.get("binding"), dict) \
             or not isinstance(context.get("request"), dict):
         raise ValueError("Invalid session context binding")
     binding = context["binding"]
@@ -544,6 +552,8 @@ def validate_state(state):
             problems = pedagogy_source_comparison.validate(entry,state['plan'],state)
             if problems:
                 raise ValueError('; '.join(problems))
+        import learning_advice
+        learning_advice.public_vocabulary(state)
         plan_ids = frozenset(q["id"] for tree in ("probe", "check") for q in (state["plan"].get(tree) or {}).get("questions", []))
     if "video_records" in state:
         _validate_video_records(state["video_records"])
@@ -1121,6 +1131,7 @@ def render_html(state, runtime_prefix=".research-os/runtime", standalone=False, 
     import learning_advice
     page_state["canonical_advice"] = learning_advice.public(state)
     page_state["learning_preferences"] = learning_advice.public_preferences(state)
+    page_state["vocabulary_states"] = learning_advice.public_vocabulary(state)
     audio_urls = _audio_urls(state, runtime_prefix, standalone, audio_data)
     if audio_urls:
         page_state["audio_urls"] = audio_urls  # for the page only: the stored session never holds a resolved location
@@ -1273,6 +1284,39 @@ def _create_session(root, relative_md, text, session_type=None, title=None, meta
     return _save(root, relative_md, state)
 
 
+def _validate_changed_vocabulary(root, relative_md, state, proposed):
+    """Validate newly authored identities against actual canonical files, under lock.
+
+    Reading historical prepared content and saving raw work never rediscover a
+    missing glossary/catalog. Author-supplied copies are not identity authority.
+    """
+    before={entry['id']:entry for entry in ((state.get('plan') or {}).get('pedagogy') or {}).get('terms',[])}
+    changed=[entry for entry in (proposed.get('pedagogy') or {}).get('terms',[]) if before.get(entry['id'])!=entry]
+    if not changed or not any(entry['terms'] for entry in changed):
+        return
+    import terms
+    import knowledge
+    import context_kernel as ck
+    import pedagogy_terms
+    glossary,problems=terms.load_glossary(terms.learner_dir(root))
+    if problems:
+        raise ValueError('Canonical vocabulary glossary unavailable/invalid: '+'; '.join(problems))
+    request=ck.normalize_request(planning_request(root,relative_md,state))
+    directory=ck._context(request)['learning_root']
+    if directory is None or not directory.is_dir():
+        raise ValueError('Canonical vocabulary concept catalog unavailable')
+    collection=knowledge.discover(directory,dt.date.today())
+    if collection.diagnostics:
+        raise ValueError('Canonical vocabulary concept catalog invalid: '+'; '.join(collection.diagnostics))
+    registry=collection.ontology
+    concepts={ident for ident in registry.records if registry.valid(ident,{'concept'})}
+    concepts.update(ident for ident,node in collection.nodes.items() if node.meta.get('learning_schema')==1 and not node.issues)
+    for entry in changed:
+        errors=pedagogy_terms.validate(entry,proposed,glossary,concepts)
+        if errors:
+            raise ValueError('; '.join(errors))
+
+
 def update_session(root, relative_md, text=None, **changes):
     md, _, _ = paths(root, relative_md)
     with Lock(md.with_suffix(".session.lock")):
@@ -1290,6 +1334,7 @@ def update_session(root, relative_md, text=None, **changes):
         if 'plan' in changes:
             import session_plan
             session_plan.check(changes['plan'])
+            _validate_changed_vocabulary(root,relative_md,state,changes['plan'])
         teaching_changed = source != state['source_markdown'] or any(
             name in changes and changes[name] != state.get(name, [])
             for name in ('questions', 'widgets', 'teaching', 'resources'))
@@ -1320,7 +1365,11 @@ def update_session(root, relative_md, text=None, **changes):
             after_budget = pedagogy_budget.project(prospective)
             if after_budget['used'] > max(before_budget['used'], after_budget['limit']):
                 raise ValueError('New contracted assessments exceed shared diagnostic budget')
+        vocabulary_changed = 'plan' in changes and ((state.get('plan') or {}).get('pedagogy') or {}).get('terms',[]) != (changes['plan'].get('pedagogy') or {}).get('terms',[])
         state.update(changes)
+        if vocabulary_changed:
+            import learning_advice
+            learning_advice.refresh_vocabulary_in_state(root,state)
         if "plan" in changes:
             records = _video_records(root, changes["plan"])
             if records:
@@ -1397,6 +1446,8 @@ def bind_session_context(root, relative_md, receipt):
     with Lock(md.with_suffix(".session.lock")):
         state = load_session(root, relative_md)
         state["context"] = bind_context(receipt, preferences=(state.get("context") or {}).get("preferences"))
+        import learning_advice
+        learning_advice.refresh_vocabulary_in_state(root,state)
         state["updated_at"] = _now()
         return _save(root, relative_md, state)
 
@@ -2213,6 +2264,8 @@ def render_context(brief):
 
 def export_session(root, relative_md, destination):
     state = load_session(root, relative_md)
+    import learning_advice
+    learning_advice.refresh_vocabulary_in_state(root,state)
     md, view, _ = paths(root, relative_md)
     markup, scripts, images = "", "", {}
     used_images = set(re.findall(r'data-resource-id="([^"]+)"', markdown_html(state['source_markdown'])))

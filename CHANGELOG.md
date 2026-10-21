@@ -2,6 +2,12 @@
 
 ## Unreleased — P1 teaching behaviors
 
+- Source-supported key terms and categories retain actual canonical bilingual
+  identities, concept/prerequisite links and honest requested-count shortfalls.
+  Dated recorded per-language states come from the existing term ledger without
+  new evidence writes; optional diagnostics reuse existing cards and budget.
+  Plan route overrides preserve issued questions and presented teaching.
+
 - Prepared source comparisons bind unchanged raw learner summaries and exact
   supplied snapshots/locators. Claim-specific revision challenges distinguish
   omissions, misconceptions, unsupported snapshot claims and emphasis. Feedback

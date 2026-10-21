@@ -1223,6 +1223,7 @@
         doc, events: () => localEvents, savedEvents: () => host ? state.events : localEvents, persist, emit, rich, drafts: draftStore,
         preferences: () => state.learning_preferences && state.learning_preferences.preferences || {},
         canonicalAdvice: () => state.canonical_advice || null,
+        vocabularyState: () => state.vocabulary_states || null,
         learningPreferences: () => state.learning_preferences || null,
         requestPending: text => conversationRecords().some(r => r.prompt === text && !isAnswered(r)),
         reviews: () => state.plan_reviews || [],     // the tutor's verdicts on written answers (a getter: the state is replaced as saves arrive)

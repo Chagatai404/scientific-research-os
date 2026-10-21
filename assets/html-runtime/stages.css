@@ -205,3 +205,27 @@ body.ros-staged .ros-side-panel,body.ros-staged .ros-panel-toggle,body.ros-stage
 .ros-source-comparison button,.ros-source-comparison select{font-size:13px;min-height:30px;padding:4px 6px;max-width:100%}
 .ros-source-comparison>div[aria-live]{flex:1;min-height:0}
 @media(max-width:640px){.ros-source-comparison p{font-size:14px;line-height:1.3}.ros-source-comparison[open]{gap:4px}}
+
+
+/* Vocabulary remains inside Handout/Lecture's existing central surface. */
+.ros-stage-handout[data-vocabulary-open="true"]{height:100%;min-height:0}
+.ros-stage-handout[data-vocabulary-open="true"]>.ros-handout{display:none}
+.ros-vocabulary-host{min-width:0;min-height:0;margin:0 0 6px}
+.ros-stage-handout[data-vocabulary-open="true"]>.ros-vocabulary-host{height:100%;margin:0;display:flex;flex-direction:column}
+.ros-lecture-center{height:100%;min-width:0;min-height:0;display:flex;flex-direction:column;gap:6px}
+.ros-lecture-center>.ros-lecture-surface{flex:1;height:auto}
+.ros-lecture-vocabulary:empty{display:none}
+.ros-lecture-center[data-vocabulary-open="true"]>.ros-lecture-surface{display:none}
+.ros-lecture-center[data-vocabulary-open="true"]>.ros-lecture-vocabulary{height:100%;min-height:0}
+.ros-lecture-center[data-vocabulary-open="true"] .ros-vocabulary-host{height:100%;display:flex;flex-direction:column;margin:0}
+.ros-terms{border:1px solid var(--ros-border);border-radius:10px;background:var(--ros-surface);padding:8px}
+.ros-terms>summary{font-weight:600;cursor:pointer}
+.ros-terms[open]{flex:1;gap:6px}
+.ros-terms .ros-reader h3{font-size:18px}
+.ros-terms .ros-reader-page p{font-size:15px;line-height:1.35}
+.ros-terms select,.ros-terms button{font-size:13px;min-height:30px;padding:4px 6px;max-width:100%}
+@media(max-width:999px){.ros-stage-lecture>.ros-lecture-center{flex:1;min-height:0}.ros-terms .ros-reader-page p{font-size:14px;line-height:1.3}}
+
+.ros-stage-handout:not([hidden]){display:flex;flex-direction:column}
+.ros-stage-handout>.ros-vocabulary-host{flex:none}
+.ros-stage-handout>.ros-handout{flex:1;height:auto;min-height:0}

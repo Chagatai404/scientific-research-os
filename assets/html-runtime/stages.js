@@ -579,17 +579,35 @@
       show(name === 'probe' ? 'handout' : 'done');
     }
 
+    function vocabulary(container, onToggle) {
+      const entries=((current.pedagogy || {}).terms || []);
+      if(!entries.length || !doc.defaultView.ResearchOSTerms)return null;
+      const host=el('div',{class:'ros-vocabulary-host'});container.append(host);
+      const entry=entries.find(e=>e.id===container.dataset.vocabularyEntry) || entries[0];
+      container.dataset.vocabularyEntry=entry.id;
+      if(entries.length>1){const select=el('select',{'aria-label':'Prepared vocabulary set'});for(const item of entries)select.append(el('option',{value:item.id,text:item.source.id+' — '+item.id}));select.value=entry.id;select.addEventListener('change',()=>{container.dataset.vocabularyEntry=select.value;if(container===panels.handout){delete container.dataset.signature;renderHandout();}else{lecture.vocabularySignature='';renderVocabulary();}});host.append(select);}
+      const snapshot=()=>ctx.vocabularyState ? ctx.vocabularyState() : null;
+      const ui=doc.defaultView.ResearchOSTerms.mount(host,entry,{doc,rich:ctx.rich,events:savedEvents,persist:ctx.persist,
+        student:()=>{const value=snapshot();return value?value.states:null;},asOf:()=>{const value=snapshot();return value?value.as_of:null;},
+        choose:qid=>{const diagnostic=entry.terms.map(row=>row.diagnostic).find(d=>d&&d.question_id===qid);if(!diagnostic)return;const view=views[diagnostic.tree]=views[diagnostic.tree] || {};view.viewing=qid;view.signature='';show(diagnostic.tree);}});
+      const details=host.querySelector('details');details.addEventListener('toggle',()=>onToggle(details.open));
+      return {destroy(){ui.destroy();host.remove();},update(){ui.update();}};
+    }
+
     // ------------------------------------------------------------------------------------------------- handout
     let handoutNote = {text: '', problem: false};      // what the host last said about opening the PDF
-    let nativeReader = null;
+    let nativeReader = null, handoutVocabulary = null;
     function openHandout() { handoutNote = {text: 'Opening the handout…', problem: false}; ctx.panes.handout.open(); renderHandout(); }
     function renderHandout() {
       const panel = panels.handout;
       const handout = current.handout, voiceState = ctx.liveVoice ? ctx.liveVoice.state() : 'none';
-      const signature = JSON.stringify([handout, handout && handout.readable ? null : voiceState, derived, shown, handoutNote]);
+      const signature = JSON.stringify([handout, handout && handout.readable ? null : voiceState, derived, shown, handoutNote, (current.pedagogy || {}).terms, ctx.vocabularyState ? ctx.vocabularyState() : null]);
       if (panel.dataset.signature === signature) return;
       if (nativeReader) { nativeReader.destroy(); nativeReader = null; }
+      if (handoutVocabulary) {handoutVocabulary.destroy();handoutVocabulary=null;}
+      panel.dataset.vocabularyOpen='false';
       panel.dataset.signature = signature; panel.textContent = '';
+      handoutVocabulary=vocabulary(panel,open=>{panel.dataset.vocabularyOpen=String(open);});
       const card = el('article', {class: 'ros-handout'});
       if (handout && handout.readable && doc.defaultView.ResearchOSReader) {
         card.classList.add('ros-native-handout');
@@ -749,7 +767,9 @@
       lecture.surface = el('div',{class:'ros-lecture-surface'});
       lecture.explanationsHost = el('div',{class:'ros-explanations-host'});
       lecture.surface.append(lecture.explanationsHost,lecture.host);
-      panels.lecture.append(lecture.surface, tools);
+      lecture.vocabularyContainer=el('div',{class:'ros-lecture-vocabulary'});
+      const center=el('div',{class:'ros-lecture-center'});center.append(lecture.vocabularyContainer,lecture.surface);
+      panels.lecture.append(center, tools);
       lecture.built = lectureChunks(current, lecture.path); lecture.k = 0;
       lecture.script = lecture.built.chunks.length ? chunkScript(lecture.built, 0) : composeScript(current, lecture.path);
       if (ctx.panes) ctx.panes.video.on(onVideoMessage);
@@ -766,7 +786,18 @@
       if (win && win.MutationObserver) new win.MutationObserver(() => win.requestAnimationFrame(fitLecture)).observe(shell, {childList: true, characterData: true, subtree: true});
     }
 
+    function renderVocabulary(){
+      if(!lecture.vocabularyContainer)return;
+      const signature=JSON.stringify([(current.pedagogy || {}).terms,ctx.vocabularyState ? ctx.vocabularyState() : null]);
+      if(signature===lecture.vocabularySignature){if(lecture.vocabulary)lecture.vocabulary.update();return;}
+      lecture.vocabularySignature=signature;
+      if(lecture.vocabulary)lecture.vocabulary.destroy();lecture.vocabulary=null;
+      lecture.vocabularyContainer.textContent='';lecture.vocabularyContainer.parentElement.dataset.vocabularyOpen='false';
+      lecture.vocabulary=vocabulary(lecture.vocabularyContainer,open=>{lecture.vocabularyContainer.parentElement.dataset.vocabularyOpen=String(open);if(open&&lecture.controller&&lecture.controller.pause){lecture.controller.pause();sendStep(true);}fitLecture();});
+    }
+
     function renderExplanation() {
+      renderVocabulary();
       if (!lecture.explanationsHost || !doc.defaultView.ResearchOSExplanations) return;
       const entries = ((current.pedagogy || {}).explanations || []);
       const anticipated = (current.anticipated || []).find(a => a.steps.some(step => step.id === lecture.stepId));
@@ -1087,6 +1118,8 @@
         if (advice) advice.destroy();
         if (lecture.explanation) lecture.explanation.destroy();
         if (nativeReader) nativeReader.destroy();
+        if(handoutVocabulary)handoutVocabulary.destroy();
+        if(lecture.vocabulary)lecture.vocabulary.destroy();
         if (lecture.video && (lecture.video.phase === 'opening' || lecture.video.phase === 'playing') && ctx.panes) ctx.panes.video.close();
         if (lecture.controller && lecture.controller.destroy) lecture.controller.destroy();
         shell.remove();

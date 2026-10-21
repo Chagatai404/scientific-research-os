@@ -67,6 +67,70 @@ def public_preferences(state):
     return {'preferences': learning_preferences.validate(bound['preferences'])}
 
 
+def validate_vocabulary(value):
+    import terms
+    if (not isinstance(value,dict) or set(value)!={'vocabulary_schema','as_of','states'}
+            or type(value['vocabulary_schema']) is not int or value['vocabulary_schema']!=1
+            or not isinstance(value['as_of'],str) or date.fromisoformat(value['as_of']).isoformat()!=value['as_of']):
+        raise ValueError('Invalid vocabulary presentation snapshot')
+    states=value['states']
+    if states is not None:
+        if not isinstance(states,dict) or len(states)>40:
+            raise ValueError('Bounded vocabulary states required')
+        for term,languages in states.items():
+            if not isinstance(term,str) or not terms.ID.fullmatch(term) or not isinstance(languages,dict) or len(languages)>8:
+                raise ValueError('Invalid vocabulary term snapshot')
+            for language,state in languages.items():
+                if not isinstance(language,str) or not terms.LANG.fullmatch(language) or not isinstance(state,str) or state not in terms.STATES:
+                    raise ValueError('Invalid recorded vocabulary language state')
+    return value
+
+
+def public_vocabulary(state):
+    value=(state.get('context') or {}).get('vocabulary')
+    if value is None:return None
+    validate_vocabulary(value)
+    prepared={row['term_id'] for entry in ((state.get('plan') or {}).get('pedagogy') or {}).get('terms',[]) for row in entry['terms']}
+    if value['states'] is not None and set(value['states'])-prepared:
+        raise ValueError('Vocabulary states must belong to prepared canonical terms')
+    return deepcopy(value)
+
+
+def refresh_vocabulary_in_state(root,state):
+    """Readonly dated projection of actual term authority at meaningful boundaries."""
+    import terms
+    bound=state.get('context')
+    if bound is None:
+        return False # Never invent a canonical binding or context waiver.
+    entries=((state.get('plan') or {}).get('pedagogy') or {}).get('terms',[])
+    old=bound.get('vocabulary')
+    if not entries:
+        bound.pop('vocabulary',None)
+        return old is not None
+    prepared={row['term_id']:row for entry in entries for row in entry['terms']}
+    ids=list(prepared)[:40]
+    snapshot={'vocabulary_schema':1,'as_of':date.today().isoformat(),'states':None}
+    try:
+        glossary,problems=terms.load_glossary(terms.learner_dir(root))
+        if not problems and all(key in glossary for key in ids):
+            concepts=sorted({concept for key in ids for concept in prepared[key]['concepts']})
+            brief=terms.brief(root,concepts,max_terms=40)
+            brief_states=terms.term_view(brief)
+            if brief_states is not None:
+                validate_vocabulary(dict(snapshot,states={key:value for key,value in brief_states.items() if key in ids}))
+            events,event_problems=terms.load_events(terms.learner_dir(root))
+            # Use the existing authoritative fold rather than a truncated brief
+            # that may spend its budget on unrelated shaky terms.
+            recorded=terms.term_states(events)
+            if not brief.get('diagnostics') and not event_problems:
+                snapshot['states']={key:{language:state for language,state in recorded.get(key,{}).items() if language in prepared[key]['labels']} for key in ids}
+        validate_vocabulary(snapshot)
+    except (OSError,ValueError,TypeError):
+        snapshot['states']=None
+    bound['vocabulary']=snapshot
+    return old!=snapshot
+
+
 def refresh_in_state(root, session, state, *, require_usable=False):
     """Called under the session lock at meaningful boundaries, never per page view.
 
@@ -77,12 +141,12 @@ def refresh_in_state(root, session, state, *, require_usable=False):
     import context_kernel as ck
     import html_sessions as hs
     bound=state.get('context') or {}
-    if not bound or bound.get('waived'): return False
+    if not bound or bound.get('waived'): return refresh_vocabulary_in_state(root,state)
     old=deepcopy(bound)
     try:
         receipt,_,_=ck.preflight(hs.planning_request(root,session,state))
         if require_usable or receipt['outcome']!='blocked': ck.require(receipt)
-        if not receipt['retrieval'].get('recommendation'): return False
+        if not receipt['retrieval'].get('recommendation'): return refresh_vocabulary_in_state(root,state)
         if receipt['outcome']!='blocked':
             fresh=hs.bind_context(receipt, preferences=bound.get('preferences'))
             fresh['bound_at']=bound.get('bound_at',fresh['bound_at'])
@@ -96,6 +160,7 @@ def refresh_in_state(root, session, state, *, require_usable=False):
         state['context']=dict(bound,advice={'advice_schema':1,'evidence':False,'status':'limited',
             'context_outcome':'degraded','action':'inspect_context','receipt_id':None,'as_of':date.today().isoformat(),
             'reason':'Current knowledge advice could not be refreshed. Ask the tutor to check context; prior advice does not establish current knowledge.'})
+    refresh_vocabulary_in_state(root,state)
     changed={k:v for k,v in old.items() if k!='refreshed_at'}!={k:v for k,v in state['context'].items() if k!='refreshed_at'}
     if changed: state['context']['refreshed_at']=hs._now()
     return changed
