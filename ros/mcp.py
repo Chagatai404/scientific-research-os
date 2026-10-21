@@ -29,6 +29,8 @@ class Server:
     def tools(self) -> list[dict]:
         out = []
         for t in api.TOOLS.values():
+            if t.human:  # approvals, decisions and waivers are a person's, not an agent's
+                continue
             schema = t.schema()
             schema["properties"] = {"project": {"type": "string", "description": "project name or record folder"},
                                     **schema["properties"]}
@@ -54,8 +56,9 @@ class Server:
             elif method == "tools/call":
                 params = msg.get("params") or {}
                 name, args = params.get("name"), dict(params.get("arguments") or {})
-                if name not in api.TOOLS:
-                    return _error(mid, -32602, f"unknown tool {name}")
+                if name not in api.TOOLS or api.TOOLS[name].human:
+                    return _error(mid, -32602, f"unknown tool {name}" if name not in api.TOOLS
+                                  else f"{name} is a person's decision: ask the researcher to make it in the portal")
                 try:
                     value = api.TOOLS[name].call(self.record(args.pop("project", None)), args)
                     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
