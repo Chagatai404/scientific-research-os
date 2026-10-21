@@ -38,7 +38,22 @@ def _value(p: api.Param):
     return parse
 
 
-def parser() -> argparse.ArgumentParser:
+def command_of(argv: list[str]) -> str | None:
+    """The subcommand named in ``argv``, skipping global options, or None when it cannot be told."""
+    skip = False
+    for a in argv:
+        if skip:
+            skip = False
+        elif a in ("--project", "-p"):
+            skip = True
+        elif not a.startswith("-"):
+            return a
+    return None
+
+
+def parser(only: str | None = None) -> argparse.ArgumentParser:
+    """The argument parser. With ``only`` naming a tool, just that tool's subparser is built: constructing all sixty
+    costs about 0.15 s, paid on every call for nothing."""
     ap = argparse.ArgumentParser(prog="ros", description="Research OS: one record per course or project.")
     ap.add_argument("--project", "-p", help="project name or record folder (default: $ROS_PROJECT, ./.ros, the only one)")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
@@ -71,6 +86,8 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--port", type=int, default=8737)
     s.add_argument("--open", action="store_true", help="open it in the browser")
     for t in api.TOOLS.values():
+        if only in api.TOOLS and t.name != only:
+            continue
         s = add(t.name, help=t.help, description=t.help)
         for name, p in t.params.items():
             flag = "--" + name.replace("_", "-")
@@ -92,7 +109,8 @@ def emit(value, as_json: bool) -> None:
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
-    args = parser().parse_args(argv)
+    argv = sys.argv[1:] if argv is None else argv
+    args = parser(command_of(argv)).parse_args(argv)
     try:
         if args.command == "init":
             emit({"record": str(home.init(args.name, Path.cwd() if args.here else None))}, args.json)
@@ -173,8 +191,17 @@ HELP = ("Type your answer. ? for a hint, - for I don't know, !text to ask the tu
 def learn(rec: Record, scope: str | None, title: str | None = None, read=input, write=print,
           bundle: str | None = None) -> int:
     started = api.call("start", rec, scope=scope, bundle=bundle, title=title)
-    lesson, step = started["lesson"], started["next"]
-    write(f"Lesson {lesson} on {scope or bundle}. {HELP}")
+    lesson = started["lesson"]
+    try:
+        return _converse(rec, lesson, started["next"], scope or bundle, scope, read, write)
+    except (EOFError, KeyboardInterrupt):  # Ctrl-D, Ctrl-C or a closed pipe: leave like "q", never a traceback
+        api.call("close", rec, lesson=lesson, summary="stopped by the learner")
+        write("\nStopped. The log is written.")
+        return 0
+
+
+def _converse(rec: Record, lesson: str, step: dict, topic: str | None, scope: str | None, read, write) -> int:
+    write(f"Lesson {lesson} on {topic}. {HELP}")
     while True:
         action = step["action"]
         write(f"\n[{action}] {step.get('reason', '')}")
@@ -188,8 +215,23 @@ def learn(rec: Record, scope: str | None, title: str | None = None, read=input, 
             write(f"Lesson closed. Log: {out['log']}")
             return 0
         if action == "teach":
-            write(f"Now: {step.get('title')} ({step.get('mode')}). Your tutor teaches this part; "
-                  "press Enter when done.")
+            write(f"Now: {step.get('title')} ({step.get('mode')}).")
+            content = step.get("content") or {}
+            if content.get("segments"):  # prepared: the narration is the lesson, media are files on disk
+                base = rec.root / content.get("base", "")
+                for seg in content["segments"]:
+                    write(f"\n{seg['text']}")
+                    if seg.get("audio"):
+                        write(f"  (audio: {base / seg['audio']})")
+                for v in content.get("visuals", []):
+                    write(f"  (visual: {base / v['path']})")
+                for key, label in (("animation", "video"), ("clip", "path")):
+                    media = content.get(key) or {}
+                    if media.get(label):
+                        write(f"  ({key}: {base / media[label]})")
+                write("\nPress Enter to go on, or ask with !text.")
+            else:
+                write("Your tutor teaches this part live; press Enter when done.")
             read("> ")
             api.call("teach", rec, lesson=lesson, capability=step["capability"] or scope, mode=step.get("mode", "explain"))
             step = api.call("next", rec, lesson=lesson)
@@ -216,6 +258,11 @@ def learn(rec: Record, scope: str | None, title: str | None = None, read=input, 
                 api.call("ask", rec, lesson=lesson, mode=text[1:].strip() or "simpler")
                 write("Noted: the next explanation will be like that.")
                 continue
+            if text and q.get("kind") == "choice" and text != "-":
+                letters = [chr(97 + i) for i in range(len(q.get("options") or []))]
+                if text.lower() not in letters:  # not an answer: do not count a typo as a miss
+                    write(f"Choose one of {', '.join(letters)} (- for I don't know).")
+                    continue
             if text:
                 break
         if text == "-":

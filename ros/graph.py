@@ -237,6 +237,34 @@ class Learning:
         return out
 
 
+# ---- editing the graph by hand -----------------------------------------------------------------------------------
+def add_node(rec: Record, id: str, type: str, data: dict | None = None) -> dict:
+    """Add or update a node. Its id is ``<type>:<key>``: the prefix is how every view finds nodes of a type."""
+    prefix, _, key = id.partition(":")
+    if not key.strip() or prefix != type:
+        raise ValueError(f"a {type} node's id is '{type}:<key>', not {id!r}")
+    rec.put_node(id, type, **(data or {}))
+    return rec.node(id)
+
+
+def add_edge(rec: Record, src: str, type: str, dst: str, data: dict | None = None) -> dict:
+    """Add a typed edge. An edge from a node to itself, or a ``requires`` edge that closes a loop, would make
+    a capability its own prerequisite and so never ready; both are refused."""
+    if src == dst:
+        raise ValueError(f"{src} cannot {type} itself")
+    if type == "requires":
+        seen, todo = set(), [dst]
+        while todo:
+            cur = todo.pop()
+            if cur == src:
+                raise ValueError(f"{src} requires {dst} would make a loop: {dst} already requires {src}")
+            if cur not in seen:
+                seen.add(cur)
+                todo += [e["dst"] for e in rec.edges(src=cur, type="requires")]
+    rec.put_edge(src, type, dst, **(data or {}))
+    return {"src": src, "type": type, "dst": dst}
+
+
 # ---- research ----------------------------------------------------------------------------------------------------
 def support(rec: Record, node: str) -> dict:
     """What supports or invalidates a node, with each source's current node data when it has one."""

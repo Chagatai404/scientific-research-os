@@ -26,10 +26,16 @@ def resolve(project: str | None = None, cwd: Path | None = None) -> Path:
     if project:
         p = Path(project).expanduser()
         if "/" in project or "\\" in project or project.startswith((".", "~")):
-            return p.resolve()
-        if not NAME.fullmatch(project):
+            root = p.resolve()
+        elif not NAME.fullmatch(project):
             raise ValueError(f"not a project name or record folder: {project}")
-        return home() / "projects" / project
+        else:
+            root = home() / "projects" / project
+        if not root.is_dir():  # a typo must not quietly start a second, empty record
+            found = projects()
+            raise ValueError(f"no record {project!r}: create it with 'ros init {project}'"
+                             + (f" (existing: {', '.join(found)})" if found else ""))
+        return root
     here = (cwd or Path.cwd()).resolve()
     for d in (here, *here.parents):
         if (d / ".ros").is_dir():

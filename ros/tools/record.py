@@ -4,6 +4,8 @@ and the index.
 Each tool is declared with ``@tool`` from ``ros.registry``; see ``docs/ARCHITECTURE.md``."""
 from __future__ import annotations
 
+from pathlib import Path
+
 from .. import export, graph, importers, tasks
 from ..learn import schedule
 from ..store import validate_item
@@ -38,6 +40,8 @@ def history(rec, lesson=None, item=None, limit=200):
       id=P("string", "item hash", True), reveal=P("boolean", "include the key and explanation"))
 def item(rec, id, reveal=False):
     it = rec.item(id)
+    if it is None:
+        raise KeyError(f"no item {id}")
     return it if reveal else present(it)
 
 
@@ -55,6 +59,8 @@ def list_tasks(rec, kind=None, state="open"):
 
 @tool("log", "The Markdown log of a lesson.", lesson=P("string", "lesson id", True))
 def log(rec, lesson):
+    if rec.node(lesson) is None:
+        raise KeyError(f"no lesson {lesson}")
     return export.lesson_log(rec, lesson)
 
 
@@ -116,15 +122,13 @@ def add_item(rec, item):
 @tool("add_node", "Add or update a graph node.", writes=True, id=P("string", "<type>:<key>", True),
       type=P("string", "node type", True), data=P("object", "fields"))
 def add_node(rec, id, type, data=None):
-    rec.put_node(id, type, **(data or {}))
-    return rec.node(id)
+    return graph.add_node(rec, id, type, data)
 
 
 @tool("add_edge", "Add a typed edge between nodes.", writes=True, src=P("string", "source id", True),
       type=P("string", "edge type", True), dst=P("string", "target id", True), data=P("object", "fields"))
 def add_edge(rec, src, type, dst, data=None):
-    rec.put_edge(src, type, dst, **(data or {}))
-    return {"src": src, "type": type, "dst": dst}
+    return graph.add_edge(rec, src, type, dst, data)
 
 
 @tool("import", "Import old files into this record (idempotent).", writes=True,
@@ -132,6 +136,8 @@ def add_edge(rec, src, type, dst, data=None):
       path=P("string", "folder (or graph.json for graphify)", True),
       evidence=P("string", "EvidenceAtom folder for research"), repo=P("string", "repository root for graphify"))
 def import_(rec, kind, path, evidence=None, repo=None):
+    if not Path(path).expanduser().exists():
+        raise ValueError(f"no such path: {path}")
     return importers.IMPORTERS[kind](rec, path, evidence=evidence, repo=repo)
 
 

@@ -133,7 +133,9 @@ def targets(ctx: Context) -> dict | None:
             continue
         if b["next"]:
             return {"action": "probe", "capability": cap, "item": b["next"],
-                    "reason": f"finding the edge: floor {b['floor']}, ceiling {b['ceiling']}"}
+                    "reason": "finding the edge: " + (
+                        "secure up to level %s, " % b["floor"] if b["floor"] is not None else "nothing secure yet, ")
+                    + ("first miss at level %s" % b["ceiling"] if b["ceiling"] is not None else "no miss yet")}
         if b["pending"]:
             ctx.waiting += b["pending"]
             continue
