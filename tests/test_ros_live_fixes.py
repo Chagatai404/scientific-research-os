@@ -1,6 +1,7 @@
 """Regression tests for what the 1.0 live test found (docs/qa/LIVE_TEST_1.0.md)."""
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import sys
@@ -11,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from ros import api, cli, home, install  # noqa: E402
+from ros import api, cli, home, install, serve  # noqa: E402
 import support_ros_demo  # noqa: E402
 
 
@@ -92,6 +93,28 @@ class TerminalLesson(Fixture):
         _, text = self.run_lesson(["3", "4", "9", "banana", "a"])
         self.assertIn("Choose one of a, b", text)
         self.assertNotIn("banana", [str(h.get("response")) for h in api.call("history", self.rec)])
+
+
+class PortalDecisions(Fixture):
+    def post(self, port, headers):
+        import http.client
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        body = json.dumps({"subject": "experiment:EXP-1", "decision": "approved", "by": "Researcher"})
+        c.request("POST", "/api/approve", body, {"X-ROS": "1", **headers})
+        status = c.getresponse().status
+        c.close()
+        return status
+
+    def test_a_decision_needs_the_browsers_own_header(self):
+        httpd = serve.start(self.rec, 0)
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        port = httpd.server_address[1]
+        self.assertEqual(self.post(port, {}), 403)  # curl, or an agent's HTTP client
+        self.assertEqual(self.post(port, {"Sec-Fetch-Site": "cross-site"}), 403)
+        self.assertEqual(api.call("queue", self.rec)[0]["kind"], "approve")  # still waiting
+        self.assertEqual(self.post(port, {"Sec-Fetch-Site": "same-origin"}), 200)  # the page's own request
+        self.assertEqual([q for q in api.call("queue", self.rec) if q["kind"] == "approve"], [])
 
 
 class Parser(unittest.TestCase):

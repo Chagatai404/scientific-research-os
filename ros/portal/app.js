@@ -259,7 +259,7 @@
     if (f.matches("[data-step]")) return submitStep(f);
     if (f.dataset.human) {
       const args = Object.fromEntries(new FormData(f));
-      try { await api(f.dataset.human, { subject: f.dataset.subject, ...args }, true); say("Recorded."); route(); }
+      try { await api(f.dataset.human, { subject: f.dataset.subject, ...args }, true); await route(); say("Recorded."); }
       catch (e) { say(e.message); }
     }
   });

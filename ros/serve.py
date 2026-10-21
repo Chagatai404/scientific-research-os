@@ -122,6 +122,11 @@ def make_handler(rec: Record):
                 return self._send(HTTPStatus.NOT_FOUND, {"error": f"no tool {name}"})
             if t.writes and not write:
                 return self._send(HTTPStatus.METHOD_NOT_ALLOWED, {"error": f"{name} writes: use POST"})
+            if t.human and self.headers.get("Sec-Fetch-Site") != "same-origin":
+                # a browser sets this header on a page's own requests and a script cannot take it from the page, so
+                # a decision made by `curl` or an agent's HTTP client is not taken for the researcher's click
+                return self._send(HTTPStatus.FORBIDDEN, {"error": f"{name} is a person's decision: make it in the "
+                                                                  "portal page"})
             try:
                 result = t.call(rec, args)
             except (ValueError, KeyError) as exc:
