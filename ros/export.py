@@ -95,7 +95,7 @@ def obsidian(rec: Record, vault: Path | str, folder: str | None = None, as_of=No
     notes: dict[Path, str] = {}
 
     def link(cap: str) -> str:
-        return f"[[{_slug(cap)}|{learning.caps[cap].node.get('title', cap.split(':', 1)[1])}]]" if cap in learning.caps \
+        return f"[[{_slug(cap)}|{learning.caps[cap].node.get('title', cap.split(':', 1)[-1])}]]" if cap in learning.caps \
             else cap.split(":", 1)[-1]
 
     rows = ["| Capability | State | Next review | Ready |", "|---|---|---|---|"]

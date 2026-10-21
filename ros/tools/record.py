@@ -71,7 +71,7 @@ def library(rec):
     closed = {e["subject"] for e in rec.events(type="lesson.close")}
     rows = []
     for lid, n in lessons.items():
-        log = rec.root / "logs" / (lid.split(":", 1)[1] + ".md")
+        log = rec.root / "logs" / (lid.split(":", 1)[-1] + ".md")
         rows.append({"id": lid, "title": n.get("title"), "started": started.get(lid), "closed": lid in closed,
                      "log": f"logs/{log.name}" if log.exists() else None, "legacy": n.get("legacy", False)})
     return sorted(rows, key=lambda r: r["started"] or "", reverse=True)

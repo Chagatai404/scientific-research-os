@@ -126,6 +126,8 @@ def main(argv: list[str] | None = None) -> int:
             from . import install
             out = install.install(args.client, Path(args.target) if args.target else None, args.user, args.force,
                                   args.dry_run)
+            if not args.json and len(out.get("written", [])) > 10:  # a person wants the count, not 75 file names
+                out = {**out, "written": f"{len(out['written'])} files (--json lists them)"}
             emit(out, args.json)
             return 0 if out.get("installed", True) else 4
         if args.command == "mcp":

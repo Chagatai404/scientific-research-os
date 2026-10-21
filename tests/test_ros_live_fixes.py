@@ -129,6 +129,27 @@ class Parser(unittest.TestCase):
         self.assertEqual(vars(a), vars(b))
 
 
+class Export(Fixture):
+    def test_an_old_record_with_an_odd_node_id_still_exports(self):
+        self.rec.put_node("foo", "capability", title="Foo")  # written before ids were validated
+        with tempfile.TemporaryDirectory() as vault:
+            out = api.call("export", self.rec, kind="obsidian", path=vault)
+            self.assertTrue(any(w.endswith("capabilities/foo.md") for w in out["written"]))
+
+
+class InstallRefusal(unittest.TestCase):
+    def test_a_hand_edited_file_is_refused_with_the_reason_and_force_overwrites(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertTrue(install.install("claude", Path(d))["installed"])
+            skill = Path(d) / ".claude" / "skills" / "learn" / "SKILL.md"
+            skill.write_text(skill.read_text(encoding="utf-8") + "\nmine\n", encoding="utf-8")
+            out = install.install("claude", Path(d))
+            self.assertFalse(out["installed"])
+            self.assertEqual(out["refused"], [".claude/skills/learn/SKILL.md"])
+            self.assertIn("changed by hand", out["note"])  # not the generic "MCP server registered" note
+            self.assertTrue(install.install("claude", Path(d), force=True)["installed"])
+
+
 class UserInstall(unittest.TestCase):
     def test_user_level_instructions_go_where_each_client_reads_them(self):
         with tempfile.TemporaryDirectory() as d:  # a project: the root file

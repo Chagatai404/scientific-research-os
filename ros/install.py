@@ -165,7 +165,8 @@ def install(client: str, base: Path | None = None, user: bool = False, force: bo
                                                                            for p in plan.writes),
                 "refused": plan.conflicts(), "note": note}
     out = plan.apply()
-    out.update(base=str(base), client=client, note=note)
+    out.update(base=str(base), client=client)
+    out.setdefault("note", note)  # a refusal keeps its own note: which files, and what to do
     return out
 
 

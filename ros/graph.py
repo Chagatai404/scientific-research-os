@@ -359,7 +359,7 @@ def research_frontier(rec: Record) -> list[dict]:
     accepted = {k for k, n in nodes.items() if n["type"] == "decision" and n["status"] == "accepted" and not bad(n)}
     decided = {d for s, d in rel.get("experiments", []) if s in accepted}
     out = []
-    for key, n in sorted(nodes.items(), key=lambda kv: kv[0].split(":", 1)[1]):
+    for key, n in sorted(nodes.items(), key=lambda kv: kv[0].split(":", 1)[-1]):
         t, status, todo = n["type"], n["status"], []
         if bad(n):
             todo.append("repair-record")
