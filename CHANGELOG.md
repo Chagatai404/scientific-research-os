@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.0.0 — one record, prepared lessons, any agent
+
+The overhaul in `docs/plans/v1.0-overhaul-architecture.md`, M1 to M6.
+
+- **The record.** One per course or project: append-only `events.jsonl`, immutable content-addressed items, a typed
+  graph, and `index.sqlite` as a rebuildable cache. No sidecars, locks, leases or journals; a torn line is skipped.
+- **Importers** for learning notes, the old HTML sessions (questions become items; answers, hints, reviews and asked
+  questions become events) and research records, with parity tests against the old `knowledge.py` and
+  `research.py`. `ros migrate <vault>` imports everything and checks every answer arrived.
+- **Learning engine.** FSRS (unchanged formulas), bracketing probes, and a policy that decides probe, teach, retry,
+  practice, review, recall and close, logged with reasons. Choice and numeric answers grade themselves; written
+  answers wait for a tutor's grade. "I don't know" is a miss, never a guess.
+- **Prepared lessons.** Bundles with narration, voice, looked-at visuals, animations, optional transcript-verified
+  clips and items, and a readiness gate; a lesson starts only on a ready bundle.
+- **Portal.** `ros serve`: Today, Learn, Research, Library, History on one localhost page, five lesson controls,
+  KaTeX vendored, loopback only. Replaces the Obsidian HTML plugin.
+- **Research.** Claims ledger, deterministic number pre-check, six-state audit verdicts (the author cannot audit),
+  human-only approvals, decisions and waivers, commitments, proposals, and defence items with ownership.
+- **Any agent.** One tool table served as the CLI (`--json`), an MCP server and HTTP. `ros install` writes skills,
+  agents and the MCP entry for Claude Code, Codex, Gemini CLI or any `AGENTS.md` agent, refusing to overwrite edits.
+- **Smaller.** Skills 19 → 6, agents 14 → 6, protocols 50 → 8. The session runtime, pedagogy modules, blackboard,
+  supervision and leases, context kernel and their tests are removed; kept engines live in `ros/lib/`. The test
+  suite runs in about ten seconds.
+
 ## Unreleased — P1 teaching behaviors
 
 - Revision compatibility gate (R1-R3). `pedagogy.revisions` (at most 80 exact

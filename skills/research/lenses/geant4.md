@@ -1,9 +1,8 @@
 # Geant4 methodology
 
-Extend `RESEARCH_PROTOCOL.md` and `COMPUTATIONAL_PROTOCOL.md`; use
-`SOURCE_POLICY.md` for physical claims. Route physical reasoning to physics-audit,
-experimental design to design-experiment, and repeatability/reproduction to the
-reproducibility-auditor. Do not duplicate or override those contracts.
+Extend `references/RESEARCH.md` and `references/RESEARCH.md`; use
+`references/EVIDENCE.md` for physical claims. Route physical reasoning to the physics lens,
+experimental design to the research skill's planning step, and repeatability/reproduction to the reproducibility lens. Do not duplicate or override those contracts.
 
 ## Declared simulation and observed environment
 
@@ -61,7 +60,7 @@ are implementation references. Experiment/collaboration documentation is preferr
 for detector-specific geometry, calibration and conventions; primary literature
 supports physical models/results within its stated regime. Even an
 experiment-specific official example is not automatically authoritative for the
-current detector. A guide must never override physics-audit or substitute package
+current detector. A guide must never override the physics lens or substitute package
 documentation for detector evidence.
 
 For framework semantics consult the pinned-release equivalents of

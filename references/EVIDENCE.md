@@ -77,16 +77,15 @@ REASONING_REQUIRED (with reason). Transferred source support is not target suppo
 New adversarial facts return through candidate verification; label new reasoning
 HYPOTHESIS, TEST_PROPOSAL, UNVERIFIED_INTERPRETATION or POSSIBLE_CONFOUNDER.
 The coordinator owns synthesis and selective escalation; humans accept conclusions.
-For record assembly and CLI usage read the full EvidenceAtom reference installed
-with the research skills. Do not load that detail for every retrieval task.
+Record assembly and validation follow below.
 
 ### Storage and tooling
 
-The opt-in v0.8 `LITERATURE_RELIABILITY_PROTOCOL.md` adds referenced access/scope/
+The v0.8 literature reliability layer adds referenced access/scope/
 conflict provenance around these same atoms. EvidenceAtom v1 and existing valid
 receipts remain supported; missing new access data is unknown. New metadata must
 not silently change fingerprint coverage or manufacture independent verification.
-The read-only literature_check.py validates manifest-linked atoms and exports
+The read-only `ros.lib.literature_check` validates manifest-linked atoms and exports
 provenance-bearing facts/qualified support. This existing validator and v1 receipt
 contract remain unchanged for legacy evidence; manifests do not replace atoms.
 

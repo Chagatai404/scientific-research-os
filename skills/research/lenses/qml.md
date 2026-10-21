@@ -1,10 +1,10 @@
 # Quantum machine learning methodology
 
-This protocol explicitly extends `ML_PROTOCOL.md` and
-`COMPUTATIONAL_PROTOCOL.md` within the existing `RESEARCH_PROTOCOL.md` cycle.
+This protocol explicitly extends the ML lens (`ml.md`) and
+`references/RESEARCH.md` within the existing `references/RESEARCH.md` cycle.
 QML remains ML: quantum terminology never bypasses leakage checks, proper splits,
 baselines, test-set discipline, uncertainty, hyperparameter fairness or
-preprocessing controls. Use stats-audit and design-experiment where relevant.
+preprocessing controls. Use the statistics lens and the research skill's planning step where relevant.
 Framework APIs belong in PennyLane/Qiskit packs, not in scientific policy.
 
 ## Declared QML provenance

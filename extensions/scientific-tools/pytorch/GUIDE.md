@@ -1,6 +1,6 @@
 # PyTorch software guide
 
-Use `references/ML_PROTOCOL.md` for methodology. Inspect APIs, release notes and
+Use `skills/research/lenses/ml.md` for methodology. Inspect APIs, release notes and
 reproducibility guidance for the project-pinned version, not automatically latest.
 Record dtype, device, train/eval mode, gradient mode, checkpoints, data-loader
 workers and determinism settings with the declared run configuration. A seed alone

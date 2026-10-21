@@ -1,6 +1,6 @@
 # scikit-learn software guide
 
-Use `references/ML_PROTOCOL.md` for scientific controls and stats-audit for inference.
+Use `skills/research/lenses/ml.md` for scientific controls and the audit skill (statistics lens) for inference.
 The distribution is named `scikit-learn`; the usual import namespace is `sklearn`.
 Discovery reads installed distribution metadata only; it neither imports estimators
 nor executes a fit. Capture the pinned release and Python environment.

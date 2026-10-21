@@ -1,631 +1,79 @@
 # Scientific Research OS
 
-Current release: **v0.9.8** — Adaptive Learning Core.
+Version **1.0.0**. One record per course or project, lessons prepared before you sit down, and research that is
+audited by fresh reviewers and defended by you. It works with any AI agent: Claude, Codex, Gemini or a local
+model.
 
-The mandatory personalized text core (P0) is implemented. See the
-[implementation and verification record](docs/plans/v0.9.8-adaptive-learn-core-and-ink.md)
-and [migration and local acceptance notes](docs/MIGRATION_v0.9.8.md).
-The P1 teaching behaviors (Socratic help, explanation levels, tiered practice,
-source comparison, canonical terms, Bloom activities, honest analogies and the
-deterministic ALTER role selector) are implemented on `main` (merged from `v0.9.8-teaching-quality`, PR #5;
-still listed as unreleased in the changelog); see [the P1 plan](docs/plans/v0.9.8-p1-multi-agent-implementation.md) and
-[P1 migration notes](docs/MIGRATION_P1.md). The staged session uses a course-player
-layout (outline, content, tool rail). P2 tablet ink remains future work; actual
-Obsidian acceptance remains pending.
+The design and its reasons are in [the v1.0 architecture](docs/plans/v1.0-overhaul-architecture.md).
 
-A model-independent research and learning workflow for human-led scientific work with AI assistance.
+## What it does
 
-The system separates two loops:
+- **Learn.** A lesson probes where you are, teaches just above that edge with prepared narration, visuals and
+  animations, practises, and ends with recall. You never pick modes, levels or tiers; the policy does, and logs why.
+  Reviews are scheduled with FSRS across all your lessons.
+- **Prepare.** Agents build each lesson ahead of time: a dependency map, narration with sources, voice, visuals
+  they have looked at, animations for ideas that move, optional verified video clips, and questions at several
+  levels. A lesson starts only when its bundle passes the readiness gate.
+- **Research.** You frame the question, approve the plan, defend the result and decide. Between those points agents
+  scout neutrally, verify sources, build and run, and audit each claim in a fresh context with six-state verdicts.
+  A claim you will present opens defence items, and you own it once you can answer them from memory.
 
-- **Learning:** prepare and verify → check prior retention → probe → map frontier → teach/visualize → retrieve → record → target-appropriate follow-up → reinforce or promote by human choice.
-- **Research:** question → inspect knowledge/retention → independent discovery → separate verification → prepared evidence and lesson sanity check → learn → reconcile → synthesize → specialist validation → full adversarial review → triage → plan → explicit human approval → build/experiment → validate/attack results → human decision → learn again → persist.
+## Start
 
-The human researcher is always the final authority. AI agents may search, explain, implement, critique, reproduce, verify, and propose changes, but they do not silently promote claims into permanent knowledge or accepted research conclusions.
+Python 3.11 or newer, standard library only. From this folder:
 
-## Core design
-
-v0.8.5 adds offline HTML-primary sessions inside Obsidian, preserved Markdown bridges, interactive assessments, persistent raw progress, mathematics and SVG/Canvas. See [HTML sessions](docs/HTML_SESSIONS.md) for usage and [the verified release record](docs/plans/v0.8.5-html-native-sessions.md) for actual-vault and desktop results. Mobile is explicitly gated.
-
-The HTML visual correction pass adds a shared [design system](docs/HTML_DESIGN_SYSTEM.md), semantic educational components, accessible tutor controls and responsive navigation. [Visual acceptance and rollout](docs/v0.8.5-html-visual-parity.md) records the update to existing session views while preserving template structure and canonical content.
-
-v0.8 adds literature reliability, sanitized external access handoffs, durable task
-orchestration, researcher ownership and defense readiness. Its opt-in helpers keep
-scientific evidence, bibliographic storage, research state and human-learning
-evidence separate. Nested lesson checkpoints preserve learner interruptions and
-share a diagnostic budget across branches. Schema 3 adds separate method, tool and
-navigation evidence; see the [offline tutoring example](examples/tutoring/README.md).
-Selective ownership gaps and claim-by-claim defense projections support skeptical
-viva preparation; see the [defense fixture](examples/defense/README.md). See the
-[literature example](examples/literature/README.md) for access-qualified evidence,
-paper identity checks and minimal source-verifier handoffs.
-The [access example](examples/access/README.md) demonstrates credential-free planning
-and manual inbox retrieval; no institutional login or session integration is installed.
-The [task example](examples/tasks/README.md) covers resumable manual execution and
-provider adapter hooks. Built-in task commands do not launch background processes.
-The [integration exercise](examples/release/README.md) joins these contracts and
-includes a read-only real-project context check. Synthetic concurrency and learning
-attestations do not establish live provider performance or human understanding.
-Detailed release gates and limits are in [the implementation record](references/V0.8_IMPLEMENTATION.md).
-
-```text
-Obsidian vault                 Git research repo
-(understanding)                (evidence)
-      │                              │
-      ├─ concepts                    ├─ src/
-      ├─ derivations                 ├─ tests/
-      ├─ quizbook                    ├─ notebooks/
-      ├─ literature notes            ├─ configs/
-      └─ learning maps               └─ results/
-              \                      /
-               \                    /
-                human researcher
-                       │
-              assigns the task/role
-                       │
-        ┌──────────────┼──────────────┐
-        │              │              │
-      Claude         Codex          other AI
-        │              │              │
-        └─────── interchangeable tools ┘
-                       │
-          tutoring / literature / coding
-          experiments / review / audit
-          verification / reproducibility
+```bash
+pip install -e .                       # or use: python -m ros ...
+ros init stat303                       # a record in ~/ResearchOS/projects/stat303
+ros -p stat303 migrate ~/Vault         # bring in your old notes, sessions and research records
+ros -p stat303 serve --open            # the portal, in a browser or Obsidian's Web Viewer
+ros install --client claude            # or codex, gemini, agents: skills, agents and the MCP server
 ```
 
-The user decides which tool performs which task. A project may choose conventions—for example, using one tool more often for tutoring and another for implementation—but those conventions belong to the project or user workflow, not to Scientific Research OS itself.
+Then ask your agent to teach you something, or open **Today** in the portal.
 
-For substantive research, prefer **one coordinating primary agent at a time**, with separate literature discovery and source-verification agents and relevant independent reviewers. Follow the canonical [research protocol](references/RESEARCH_PROTOCOL.md); the summaries here do not replace its gates.
+## How the pieces fit
 
-Cross-validation means independent reconstruction or verification, not asking a second agent whether it agrees with the first.
-
-## Repository layout
-
-```text
-skills/                 Canonical model-independent skills
-agents/                 Canonical specialist/subagent role definitions
-references/             Shared scientific policies
-assets/obsidian/        Obsidian templates
-scripts/                Portable local tooling
-extensions/             Capability contracts and optional integrations
-adapters/                Notes for Claude Code and Codex
-examples/                Example project integration
-tests/                   Lightweight self-checks
-```
-
-## Skills
-
-- `course-study` — university coursework, from syllabus and lectures to practice, exams and prerequisite repair.
-- `notes-to-latex` — faithful handwritten technical notes to LaTeX, with visible ambiguity and disclosed corrections.
-- `tutor` — source-grounded live tutoring with prerequisite probing and retrieval checks, for mathematics, statistics, physics, chemistry and biology.
-- `science-visualize` (formerly `visualize`) — scientific diagrams, plots, interactive exploration, and physics/mathematical animation.
-- `study-source` — deeply study a paper, book chapter, website, lecture, or video.
-- `derive` — reconstruct mathematics/physics from assumptions and sanity checks.
-- `form-hypothesis` — turn ideas into falsifiable scientific hypotheses.
-- `design-experiment` — design reproducible experiments before running them.
-- `stats-audit` — audit statistical validity and leakage.
-- `physics-audit` — audit physical assumptions, units, geometry, and limiting behavior.
-- `code-walkthrough` — teach the researcher the code that was written or inherited: approach first, change units, claims tied to checkable locators and recorded executions, probes, and open ownership gaps for what was skipped.
-- `chemistry-audit` — audit stoichiometry, units, representations, mechanism claims, sources and laboratory safety.
-- `biology-audit` — audit experimental design, replication, model-system scope, sequence/structure sources, small-sample statistics and biosafety.
-- `research-review` — adversarial review of claims and evidence.
-- `research-session` — orchestrate a complete human-led research session.
-- `geant4` — plan and validate detector/particle simulation with explicit physical configuration.
-- `ml-experiment` — classical/deep ML experiments with leakage controls and fair evaluation.
-- `qml-experiment` — QML experiments inheriting ML rigor, with explicit execution regimes and claim limits.
-
-Skills describe workflows and capabilities. They are not tied to a particular model or provider.
-
-## Specialist agents
-
-- literature-scout
-- source-verifier
-- physics-reviewer
-- chemistry-reviewer
-- biology-reviewer
-- walkthrough-verifier
-- statistics-reviewer
-- reproducibility-auditor
-- adversarial-reviewer
-- visualizer
-- simulation-reviewer
-- ml-reviewer
-- qml-reviewer
-
-These are **task roles**, not provider identities. Any compatible AI system may perform them if it has the required capabilities.
-
-Use specialist agents when work benefits from isolated context, independent verification, or parallelizable evidence gathering. Do not spawn them for trivial tasks.
-
-## Research independence and bias control
-
-For hypothesis-sensitive, model-selection, or implementation-defining questions, separate:
-
-```text
-neutral research question
-        ↓
-independent literature discovery
-        ↓
-independent source verification
-        ↓
-prepared evidence + lesson sanity check → learn/probe/visualize
-        ↓
-reconciliation → synthesis → relevant specialist validation
-        ↓
-adversarial review → blocker/relevance triage
-        ↓
-plan → explicit human approval → build/experiment
-        ↓
-result validation/attack → human decision → learning → persist
-```
-
-The initial literature search should not be shaped by the project's preferred implementation, equations, existing citations, or desired conclusion unless those details are genuinely necessary to define the system or regime.
-
-A disagreement between external evidence and the current codebase is a research finding, not something to smooth over.
-
-When practical, an independent reviewer should receive the claim, source, artifact, experiment, or acceptance criteria without being given the authoring agent's full reasoning first.
-
-Standalone tutoring uses prepared authoritative material without requiring a full
-research cycle. Research-linked tutoring uses a compact verified evidence pack;
-its sanity check establishes lesson readiness, not independent corroboration or
-research acceptance. Full adversarial review remains after synthesis. See the
-[entry paths and handoffs](references/RESEARCH_PROTOCOL.md).
-
-## Retention and the knowledge frontier
-
-Working quizbook notes hold one learning record per capability, with stable IDs,
-explicit prerequisites, and retrieval history. These records can exist before
-permanent-note promotion; human-reviewed concept notes link to them. Note existence
-does not imply mastery. The [learning protocol](references/LEARNING_PROTOCOL.md) distinguishes
-`unknown`, `learning`, `demonstrated`, `retained`, `fragile`, and `stale`; stale means
-missing recent evidence, not proven forgetting.
-
-Understanding a capability does not mean every exact detail deserves permanent
-memorization. Choose a separate optional retention target:
-
-- **core:** maintain fluent unaided reconstruction, explanation or application.
-- **working:** understand deeply and refresh around actual future use.
-- **reference:** understand what/why/when and keep a path to recover exact details;
-  no routine spaced-review burden. Reference material can be scientifically critical.
-
-Missing targets remain **unspecified**. The learner decides meaningful choices;
-the tutor may recommend a target with a short rationale. Historical attempts,
-failures and review dates stay intact. A reference record's old horizon is evidence
-context, not an automatic retention-priority warning.
-
-| View | Question |
+| Piece | Where |
 |---|---|
-| Subject | What do I know? |
-| Course | What do I need for this class? |
-| Project | What do I need for this research/project? |
-| Goal | What is worth building and retaining for where I want to go? |
+| The record (append-only events, immutable questions, a typed graph, a rebuildable index) | `ros/store.py`, [DATA_MODEL](references/DATA_MODEL.md) |
+| Queries: readiness, frontier, reviews, claim support, code links | `ros/graph.py` |
+| The learning engine: FSRS, probing, the adaptation policy, the tutor's writes | `ros/learn/` |
+| Prepared bundles and the readiness gate | `ros/prepare.py`, [PREPARATION](references/PREPARATION.md) |
+| Claims, audits, approvals, decisions, ownership | `ros/research.py`, [RESEARCH](references/RESEARCH.md) |
+| One tool table, served as the CLI, MCP and the portal's API | `ros/api.py`, `ros/cli.py`, `ros/mcp.py`, `ros/serve.py` |
+| The portal | `ros/portal/`, [PORTAL](references/PORTAL.md) |
+| Importers, exports, installation | `ros/importers.py`, `ros/export.py`, `ros/install.py` |
+| Carried-over engines: speech, voice, Manim, paper library, scouting, evidence, manifests, code walkthrough | `ros/lib/` |
+| Skills: learn, prepare, research, audit, defend, notes-to-latex | `skills/` |
+| Agent roles: scout, verifier, auditor, adversary, visual-maker, video-scout | `agents/` |
+| Protocols: teaching, preparation, research, evidence, data model, portal, voice, safety | `references/` |
 
-One capability may appear in several courses, projects and goals without being
-duplicated. Membership is explicit. Every view includes required external
-prerequisites and shows evidence state, retention target, freshness and frontier.
-Frontier is eligibility based on conservative prerequisite evidence, not a global
-priority score or an instruction to review every node. Read the
-[metadata and command contract](assets/obsidian/README.md) for state derivation,
-unknown freshness, diagnostics and legacy handling.
+## Any agent
 
-Tutor preparation includes questions, acceptable answers, misconceptions, hints,
-and visual candidates. Diagnostic blocks normally use 3–5 questions, one at a time,
-with hidden balanced MCQ answer positions and symmetric options. Recognition alone
-does not establish retention. For targets needing delayed checks, intervals adapt to retrieval evidence;
-there is no background scheduler or prescribed optimal spacing algorithm.
+Every operation is declared once in `ros/api.py` and exposed three ways: `ros <tool> --json` for agents with a
+shell, the MCP server (`ros mcp`) for agents with MCP, and the portal's local HTTP API. `ros tools --json` lists
+them with their JSON schemas. Skills and agent roles are plain Markdown; `ros install` writes them where each client
+looks. Work only a model can do (grading a written answer, making a visual, auditing a claim) waits as a task
+that any attached agent can claim; with none attached, prepared lessons still play and written answers wait.
 
-## University courses and handwritten notes
+## You decide
 
-Use `course-study` to inspect the syllabus/outcomes, map prerequisites, check prior
-knowledge, study a topic, practice, retrieve/apply, use assignment/exam feedback,
-and update the course map. It supports lecture preparation/review, homework, exam
-preparation, cumulative review and prerequisite repair. Ordinary course study
-follows the [course learning protocol](references/COURSE_LEARNING_PROTOCOL.md),
-without research agents or research approval. Research procedures apply when the
-learner explicitly moves into a substantive research question. Course and session
-templates are optional; no Obsidian setup is required for this workflow.
+Approving a plan, accepting a claim and waiving ownership are your acts. Agents cannot do them over MCP, the CLI asks
+you to confirm at a terminal, and the portal's research view is where you make them. The rules agents follow are in
+[SAFETY](references/SAFETY.md).
 
-Use `notes-to-latex` with visible handwritten pages to get a fragment or full
-LaTeX document. The default is faithful-clean transcription, preserving apparent
-mathematical mistakes and marking meaningful ambiguity. Explicitly requested
-polished output reports substantive corrections separately. Unclear figures get
-placeholders rather than invented geometry. The
-[transcription protocol](references/LATEX_TRANSCRIPTION_PROTOCOL.md) requires no
-OCR engine, external AI API or LaTeX compiler in Research OS.
+## Where things live
 
-## Scientific visual teaching
+Records, questions, audio and video live in `~/ResearchOS/projects/<name>/` (set `ROS_HOME` to move it) or in a
+research repository's `.ros/`. Only curated notes go into your vault, with `ros export --kind obsidian`; a note
+you have edited is never overwritten. `ros export --kind static` writes a read-only single-file snapshot.
 
-The [visualization protocol](references/VISUALIZATION_PROTOCOL.md) selects the
-simplest suitable diagram, plot, interactive view, or animation. It distinguishes
-schematic, model-driven, and simulation/data-driven visuals and requires rendering
-inspection or an explicit unverified-draft disclosure. Quantitative physics must
-come from stated equations, models, simulations, or data, never decorative motion.
-
-Mermaid, Matplotlib, Plotly, SVG, PyVista, Manim Community, and optional Motion Canvas
-are capability recommendations. None is required to install or validate Research OS.
-Manim Community is the default Manim recommendation; no backend is installed automatically.
-
-## Scientific compute
-
-Scientific Compute makes the tools that produce scientific evidence part of the
-existing research workflow: inspect environment and configuration, plan controls
-and resources, obtain approval, run at the approved scale, then validate the actual
-outputs. It adds no second lifecycle and does not change learning, retention,
-course study or transcription.
-
-**Methodology skills** (`geant4`, `ml-experiment`, `qml-experiment`) own scientific
-reasoning through canonical protocols. **Tool packs** hold software-specific
-guides and strictly declarative discovery metadata. The six shipped packs are
-`geant4`, `pytorch`, `sklearn`, `pennylane`, `qiskit` and `root-scikit-hep`.
-Framework packs do not become global skills. Installation and tests work with none
-of these frameworks installed; no automatic dependency installation is provided.
-
-A computational manifest records provenance, not scientific validity. It separates
-observed facts (versions, platform, discovered components) from declared choices
-(physics list, split, model, circuit, shots/backend) and derived calculations.
-Unknown values stay null; the OS never guesses scientific configuration from an
-installed package. Project-pinned versions take precedence over newer releases.
-
-From the repository, or from an installed compute skill directory:
-
-```sh
-python scripts/scientific_tools.py list
-python scripts/scientific_tools.py probe geant4
-python scripts/scientific_tools.py probe --all
-python scripts/scientific_tools.py probe pytorch --accelerator
-python scripts/scientific_tools.py manifest --experiment RQ-001 --repo /path/to/project --tool sklearn --declared /path/to/reviewed-config.json
-python scripts/computational_manifest.py /path/to/saved-manifest.json
-```
-
-Commands print JSON. Save manifest stdout to a UTF-8 file for later inspection.
-`--declared` accepts an explicit JSON mapping; omit it to leave choices unrecorded.
-`--reproduction-command` records an inert string and never runs it. Manifest
-generation probes only named `--tool` entries; no tool flag means Git/Python/OS
-only. No local Research OS config or source checkout is required by these helpers.
-
-Default package discovery reads distribution metadata without importing frameworks.
-Only fixed, code-owned version probes can execute from profiles. The optional
-`--accelerator` flag uses a fixed isolated PyTorch query without a GPU workload;
-unavailable/failed queries remain unknown. Trust the installed interpreter/packages
-and PATH tools: discovery is not a sandbox for malicious installed software.
-Partial HEP environments retain per-component status, such as ROOT absent and
-Uproot present. Availability is not proof of operational or scientific validity.
-
-The scale ladder is environment probe → smoke → toy → pilot → production.
-It grants no authorization: a probe does not permit an experiment and a successful
-pilot does not authorize production. Follow the existing explicit approval gate.
-
-See the [computational protocol](references/COMPUTATIONAL_PROTOCOL.md),
-[manifest and workflow examples](examples/compute/README.md), and
-[tool-pack contribution contract](extensions/scientific-tools/README.md).
-Add software knowledge with `extensions/scientific-tools/<new-tool>/PROFILE.toml`
-and `GUIDE.md`, then run the validator/tests. A new global skill requires distinct
-scientific methodology; a new executable probe requires a reviewed code allowlist
-change, not a command string in TOML.
-
-## Connected research and learning (v0.6)
-
-Opt-in schema-1 research records (`research_schema: 1`: research question,
-hypothesis, experiment, research decision) plus explicit links to EvidenceAtoms,
-computational manifests, learning capabilities, verified visuals and code files
-form a **research graph** that is computed from the plain-Markdown records, never
-stored separately. Legacy notes stay valid and untracked. The research graph, the
-learning graph and the (optional) code graph remain separate; the system exposes
-state and the human researcher decides.
-
-```sh
-python scripts/research.py validate --root <project>          # ERROR / WARNING / INFO diagnostics
-python scripts/research.py status   --root <project> [--json] # states, pending validation/decisions
-python scripts/research.py frontier --root <project>          # unranked mechanical transitions
-python scripts/research.py graph    --root <project> --experiment EXP-001   # Mermaid
-python scripts/research.py context  --root <project> --experiment EXP-001   # bounded, deterministic
-python scripts/knowledge.py --root <vault> --capability <id> --dependencies --json
-python scripts/visuals.py   --root <vault> --reusable         # verified teaching visuals only
-python scripts/vault_health.py --root <vault>                 # read-only structural audit
-python scripts/bootstrap.py --root <vault>                    # dry-run legacy learning proposals
-python scripts/scaffold.py course --root <vault> --course-id stat-101 --title "Statistics 101"
-```
-
-Frontier is not a recommendation; a valid manifest or `EXACT_SUPPORT` evidence is
-not scientific acceptance; a learning dependency is advisory and never blocks
-approved work; a rendered visual is not a verified one; a stale or missing
-capability is never treated as known. `bootstrap.py` and `scaffold.py` propose
-first and write only on an explicit flag; nothing migrates a vault automatically.
-Tutor plans each block from the knowledge graph (TESTS / ASSUMES / INTRODUCES,
-terminology gate, verified inline visuals). Optional adapters for Obsidian Bases,
-Breadcrumbs, Excalidraw and Graphify live in `extensions/obsidian-adapters/` and are
-never required. The [synthetic connected example](examples/connected-research/README.md)
-demonstrates every command; the protocol is
-[RESEARCH_GRAPH_PROTOCOL.md](references/RESEARCH_GRAPH_PROTOCOL.md).
-
-## Quick start
-
-Use Python **3.11+**. Repository scripts and tests use only the standard library;
-PyYAML and visualization packages are not Research OS dependencies.
-
-### 1. Configure your vault
-
-Copy:
-
-```text
-research-os.example.toml -> research-os.toml
-```
-
-Edit the vault path.
-
-### 2. Validate the repo
+## Tests
 
 ```bash
-python scripts/validate.py
-python -m unittest discover -s tests -v
+python -m unittest discover -s tests -p "test_*.py"     # about 10 seconds
+node tests/ros-portal-browser.cjs                        # a whole lesson in Chromium, layout at 320-1920 px
 ```
 
-### 3. Install skills and agents globally
-
-Dry run first:
-
-```bash
-python scripts/install.py --target all --dry-run
-```
-
-Then:
-
-```bash
-python scripts/install.py --target all
-```
-
-This installs:
-
-- skills to `~/.claude/skills/` and `~/.agents/skills/`
-- Claude-compatible subagents to `~/.claude/agents/`
-- Codex custom agents to `~/.codex/agents/`
-
-Each installed skill receives copies of the canonical `references/` documents. In the source tree, resolve skill `references/` paths against the repository root. Installed standalone agents receive the shared agent policy, triage, and approval boundary in their generated instructions; edit canonical sources and reinstall, rather than editing generated copies.
-
-The standalone visualizer also receives the source and visualization policies.
-Reinstallation replaces existing skill directories and agent definitions; review
-any local customizations before installing.
-
-The installed definitions are the same scientific roles expressed through provider-specific adapter formats. Installing them does **not** assign Claude or Codex permanent responsibilities.
-
-**Upgrading from v0.8?** Installing replaces the helpers and keeps a backup of any file whose content differs; it does not change your
-sessions or records. The session runtime and existing pages are rolled forward separately, with a dry run and backups: follow
-[the upgrade guide](docs/MIGRATION_v0.9.md). If something looks wrong afterwards, [troubleshooting](docs/TROUBLESHOOTING.md) lists each
-message, its cause and the fix.
-
-### 4. Install Obsidian templates
-
-```bash
-python scripts/install.py --obsidian
-```
-
-The destination is read from `research-os.toml`. This command also installs the
-default skill/agent targets. Template files with matching names are overwritten;
-existing notes are not migrated. Preserve any template customizations first.
-
-### 5. Start a live tutor session
-
-```bash
-python scripts/vault.py new \
-  --template 00_Tutor_Session.md \
-  --title "Generalized Fractal Dimensions" \
-  --dest "00 Tutor Sessions"
-```
-
-Append a logged teaching turn:
-
-```bash
-python scripts/vault.py append \
-  --note "00 Tutor Sessions/2026-09-20 Generalized Fractal Dimensions.md" \
-  --speaker "Tutor" \
-  --text "Today we will first establish the scaling-law foundation."
-```
-
-Open the note:
-
-```bash
-python scripts/vault.py open \
-  --note "00 Tutor Sessions/2026-09-20 Generalized Fractal Dimensions.md"
-```
-
-### 6. Generate a subject, course, project or goal graph
-
-Try the [synthetic learning example](examples/learning/README.md):
-
-```bash
-python scripts/knowledge.py --root examples/learning --subject probability --as-of 2026-09-29
-python scripts/knowledge.py --root examples/learning --project demo --as-of 2026-09-29
-python scripts/knowledge.py --root examples/learning --goal research-foundations --as-of 2026-09-29
-python scripts/knowledge.py --root examples/learning --course stat-xxx --as-of 2026-09-29
-```
-
-For your records, replace the input directory and scope IDs. The command reads notes
-without editing them and emits Markdown/Mermaid. `--output <new-file.md>` creates a
-file without overwriting an existing one. No Obsidian plugin is needed. Record a fixed
-`--as-of` date for reproducible output; otherwise the local current date is used.
-
-### Upgrading existing learning records
-
-Reinstall reviewed skills/agents/templates to get the new policies. Learning metadata
-is opt-in: old notes remain readable and are skipped as untracked by the generator.
-Existing `status`, confidence, review timestamps, and `solid` labels are not converted
-into mastery evidence. Adopt tracking one capability at a time; preserve old logs.
-There is no bulk vault migration or automatic permanent-note promotion. Existing
-schema-1 records remain valid; `retention_target`, `goals` and `courses` are optional.
-No old record is silently assigned core retention or inferred context membership.
-
-## Tool independence
-
-Scientific Research OS is model- and provider-independent.
-
-The framework defines:
-
-- scientific workflows,
-- evidence standards,
-- specialist task roles,
-- review boundaries,
-- human authority points.
-
-It does **not** prescribe that a particular provider must perform a particular type of work.
-
-For example, `literature-scout` requires capabilities such as:
-
-- scholarly/web search,
-- source retrieval,
-- citation metadata,
-- optional citation-context search.
-
-Claude, Codex, ChatGPT, MCP servers, connectors, or future tools may satisfy those capabilities differently.
-
-Likewise, `tutor`, `physics-reviewer`, `reproducibility-auditor`, and other roles can be assigned to whichever tool the user chooses.
-
-A project may define its own preferred tool conventions in project-local instructions such as `CLAUDE.md`, `AGENTS.md`, or equivalent files.
-
-## Suggested coordination pattern
-
-A simple default for substantial work is:
-
-```text
-human defines question
-        ↓
-primary agent coordinates the canonical research cycle
-        ↓
-human inspects result
-        ↓
-independent result reviewers verify/reproduce as warranted
-        ↓
-human accepts, rejects, or revises
-```
-
-Use simultaneous agents only when true parallelism adds value and their contexts can remain independent.
-
-Git is the coordination layer for reproducible artifacts. Obsidian is the learning/understanding layer. The human researcher is the convergence point.
-
-## Security
-
-- Do not store API keys, tokens, passwords, `.env` contents, or private credentials in this repo.
-- Skills and agents must not read secrets unless the user explicitly requests a task that requires them.
-- Treat skill repositories as executable instructions: review external skills before installing them.
-- Prefer read-only subagents for literature and review work.
-- Never let an AI agent silently rewrite accepted research conclusions.
-
-## Status
-
-**v0.9.6 — Live Blackboard and Voice** (merged to `main` from the `v0.9.6-live-board` branch; not tagged).
-HTML sessions gain a dark chalkboard that any agent can lecture on in real time, with handwriting, formulas, drawings and animation, spoken sentence by sentence
-in a local Kokoro voice, and open questions asked in writing or aloud (push to talk, transcribed locally by Whisper) at any moment. The voice workers are optional
-and run in environments you create. Read [the upgrade guide](docs/MIGRATION_v0.9.6.md) and [the plan](docs/plans/v0.9.6-live-board-plan.md) for what was and was not verified.
-
-**v0.9.5 — Teaching Depth, Domain Breadth, Voice** (merged to `main` from the `v0.9.5-teaching-voice-bio-chem` branch; not tagged).
-Teaching Cards, a learner model, click-to-load resources, chemistry and biology checks and reviewers, diagrams drawn from checked coordinates, code
-walkthroughs, linked library indexes, FSRS review scheduling, notebook coverage and trace for research repos, optional animation and optional voice. The animation and voice engines are yours to install and are never installed
-for you; **no local voice passed the listening test**. Read [the upgrade guide](docs/MIGRATION_v0.9.5.md) and, for what was and was not verified,
-[the plan](docs/plans/v0.9.5-plan.md); the earlier [v0.9 guide](docs/MIGRATION_v0.9.md) still applies to a v0.8 installation.
-
-**v0.9.0 — Scientific Integrity & Knowledge Navigation** (prepared locally on the `v0.9-scientific-integrity` branch; not merged, pushed or tagged).
-Agents consult the project's graphs before they work and cannot build on an assumption the records contradict; scientific claims are
-verified by executed checks; mathematics, figures, widgets and questions render where the lesson puts them; sessions have real
-navigation, a questions panel, concept-first tutoring gates, durable supervision and an optional Listen control; literature scouting
-starts from the paper library and keeps discovery neutral; optional Obsidian plugins are detected and degrade gracefully. Read
-[the upgrade guide](docs/MIGRATION_v0.9.md), [troubleshooting](docs/TROUBLESHOOTING.md),
-[Obsidian integrations](references/OBSIDIAN_INTEGRATIONS.md) and [literature scouting](references/LITERATURE_SCOUTING.md); the
-[implementation record](docs/plans/v0.9-implementation-plan.md) states what was verified and what was not.
-
-**v0.8.7 - Live, Linear HTML Sessions** makes open sessions update in place without reloading, shows "Checking…" until each answer is checked with the verdict and explanation appearing under it, places questions in session order between teaching blocks, and requires a resume brief that loads the research and knowledge graphs before any session continues; see [HTML sessions](docs/HTML_SESSIONS.md) and the [session protocol](references/HTML_SESSION_PROTOCOL.md). It was merged to main and pushed without a release tag.
-
-**v0.8.6 - HTML Session Design v2** replaces the session look with Whiteboard/Chalkboard boards, bundled accessible fonts, a consistent button system and fewer clicks in tutor questions. It was rolled out to the configured vault's 13 existing sessions with backups; see the [design system](docs/HTML_DESIGN_SYSTEM.md).
-
-**v0.8.5 - HTML-native Sessions** is implemented and installed locally. All 12 historical sessions in the configured vault were migrated with exact backups; actual desktop restart checks passed. [Release evidence](docs/plans/v0.8.5-html-native-sessions.md) records all 25 gates and known limits.
-
-**v0.8.0 — Researcher Autonomy & Verified Parallel Research** was prepared locally
-with literature/access reliability, durable bounded task orchestration, interruptible
-schema-3 tutoring, selective ownership and separate scientific/human defense axes.
-The [release exercise](examples/release/README.md) and
-[implementation record](references/V0.8_IMPLEMENTATION.md) document integration,
-provider parity, compatibility gates and remaining live-environment validation.
-The current version is recorded in `VERSION`.
-
-**v0.7.0 — Concept-first learning and connected research** adds the opt-in
-[knowledge model](references/KNOWLEDGE_MODEL.md), [concept-first tutor](references/TUTOR_PLANNING.md),
-[domain retention](references/RETENTION_PROTOCOL.md), [MathJax notes](references/MATH_RENDERING.md),
-intent-based visualization, [managed knowledge maps](references/KNOWLEDGE_MAPS.md)
-and a [screened paper library](references/PAPER_LIBRARY.md). General understanding,
-independent transfer and project application retain separate evidence. Existing
-schema-1 learning and research workflows remain compatible; migration and generated
-artifacts plan by default. See the [synthetic example](examples/ontology/README.md),
-[implementation and verification record](references/V0.7_IMPLEMENTATION.md) and
-[changelog](CHANGELOG.md). The earlier v0.7 release is identified by its existing Git tag.
-
-**v0.6.2 — Installed Obsidian adapters are used** makes Excalidraw, Bases and Breadcrumbs part of every session when a vault has them: schematics through the new `scripts/excalidraw_schematic.py`, dashboards as embedded Base views, and `up` links plus prerequisite trails for navigation. See "Using the vault's installed Obsidian adapters" in the visualization protocol. No schema change.
-
-**v0.6.1 — Visual cadence and verification tiers** makes a visual part of every tutoring block and sets who may mark one `verified`: the producing agent for general mathematical or physical claims after independent recomputation, a separate bounded reviewer for project, literature or reusable claims, and the human for publication figures. See the protocol's *Visual cadence* and *Verification tiers* and the [post-release note](references/V0.6_IMPLEMENTATION.md). No schema or script change.
-
-**v0.6.0 — Connected Research & Learning OS** adds opt-in schema-1 research records
-with a derived research graph, frontier and bounded context; advisory learning
-dependencies; graph-first Tutor planning with a question concept contract and
-terminology gate; a verified-only visual registry with a source-first policy and
-inline Obsidian embeds; a candidate-only legacy bootstrap, a read-only vault
-health audit and course/source scaffolding; and optional Bases, Breadcrumbs,
-Excalidraw and Graphify adapters. See the
-[implementation and verification record](references/V0.6_IMPLEMENTATION.md).
-Standard library only; existing v0.5 behavior, evidence semantics and human
-approval gates are unchanged.
-
-**v0.5.0 — Scientific Compute & Model Validation** adds computational provenance,
-declarative optional tool packs, Geant4/ML/QML methodology, a ROOT/Scikit-HEP bridge
-and provider-symmetric deployment. See the
-[implementation decision and slice record](references/V0.5_IMPLEMENTATION.md).
-The v0.4.5 learning architecture and existing evidence/approval semantics remain
-unchanged. HPC/cloud/QPU automation, experiment tracking services, automatic
-dependency installation, Obsidian plugin installation and synchronization remain out of scope (v0.9 adds optional, detected Obsidian
-integrations that never install anything; see [Obsidian integrations](references/OBSIDIAN_INTEGRATIONS.md)).
-
-**v0.4.5 — Learning Architecture & Academic Workflow** adds selective retention,
-goal maps, dedicated university-course study, and faithful handwritten-note LaTeX
-transcription. Schema 1 remains backward compatible; evidence-state and research
-authorization semantics are unchanged. See the
-[implementation decision](references/V0.4.5_IMPLEMENTATION.md).
-These learning capabilities remain available alongside scientific compute.
-
-
-**v0.4.0 — Evidence integrity and low-token verification** added a small reliability
-layer over the v0.3 research workflow:
-
-- JSON EvidenceAtoms with claim envelopes, comparison semantics and numerical provenance;
-- deterministic validation, independent verification receipts and stale-record checks;
-- bounded scouting/verification, labelled adversarial reasoning and selective escalation;
-- reusable project-local evidence and Markdown rendering;
-- regression fixtures for all five motivating scientific failure categories.
-
-```sh
-python scripts/validate_evidence.py examples/evidence
-python scripts/validate_evidence.py examples/evidence --markdown --facts-only
-python -m unittest discover -s tests -v
-python scripts/validate.py
-python scripts/install.py --target all --dry-run
-```
-
-See [EvidenceAtom format and lifecycle](references/EVIDENCE_FORMAT.md), the
-[synthetic example](examples/evidence/README.md), and the
-[architecture decision](references/V0.4_IMPLEMENTATION.md). Existing Markdown-only
-projects continue to work; adopt structured records for consequential claims as
-they are reused. Installed research-session/research-review skills include the
-standalone validator. No dependency installation is needed.
-
-Validation checks recorded structure and attestations, not scientific truth.
-Independent source reading, scientific interpretation and human acceptance remain
-necessary. Compact handoffs and reusable evidence are intended to reduce repeated
-context; token savings and small-model reliability require actual workflow evaluation.
-
-**v0.3.0 — Retention, Knowledge Frontier & Visual Teaching** introduced:
-
-1. evidence-based long-term retention records;
-2. subject/project knowledge graphs and derived frontier;
-3. a scientific visualization skill and physics-animation contract;
-4. bounded, prepared probing with MCQ quality controls;
-5. verified preparation before research-linked tutoring.
-
-The v0.2 scientific independence, human authority, and explicit build/experiment
-approval boundaries remain in place. This release remains Markdown plus lightweight
-Python: no database, dashboard, LMS, vector store, daemon, or rendering framework.
-
-Future extensions should be added only after a recurring workflow proves it is needed.
+The history of earlier versions is in `docs/history/` and the changelog.

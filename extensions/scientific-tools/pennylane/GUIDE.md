@@ -9,7 +9,7 @@ configuration rather than assuming any method works on every device.
 Record PennyLane and device/plugin versions, interface, wires, measurement order,
 shots and differentiation settings. Distribution metadata discovery does not
 instantiate a device, infer these settings or prove backend availability.
-Use `references/QML_PROTOCOL.md` and its inherited ML contract for scientific
+Use `skills/research/lenses/qml.md` and its inherited ML contract for scientific
 validation. PennyLane has no privileged evidentiary status.
 
 Prefer the pinned equivalents of [QNode API](https://docs.pennylane.ai/en/stable/code/api/pennylane.qnode.html),

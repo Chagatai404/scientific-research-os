@@ -1,8 +1,8 @@
 # Chemistry protocol (v0.9.5)
 
 How the Research OS learns, teaches and reviews chemistry. It adds domain knowledge and checks to the existing workflows; it does not
-change evidence rules (`SOURCE_POLICY.md`), research stages and approval (`RESEARCH_PROTOCOL.md`) or learning evidence
-(`LEARNING_PROTOCOL.md`). Executable checks are in `VERIFICATION_PROTOCOL.md`.
+change evidence rules (`references/EVIDENCE.md`), research stages and approval (`references/RESEARCH.md`) or learning evidence
+(`references/TEACHING.md`). Executable checks are attached to verdicts as evidence.
 
 ## Teach the three levels, and say which one you are on
 
@@ -51,7 +51,7 @@ solvent or phase is a transfer to another, not a fact (`regime-match`).
 Can: that an equation balances, a molar mass sums correctly, a yield follows from mole ratios, units are consistent, a numerical
 limit or integral is right. Cannot: that a mechanism is the real one, that a reaction proceeds under stated conditions, that a
 computed energy is accurate, that a compound is what a label says. Reviewers state both lists. Computational chemistry (electronic
-structure, molecular dynamics) also follows `COMPUTATIONAL_PROTOCOL.md`: method, basis or force field, convergence, versions and seeds
+structure, molecular dynamics) also follows `references/RESEARCH.md`: method, basis or force field, convergence, versions and seeds
 are declared, and a calculation is not an experiment.
 
 ## Safety boundary

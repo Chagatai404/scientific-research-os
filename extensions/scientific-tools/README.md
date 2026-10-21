@@ -26,7 +26,7 @@ distribution metadata, never module import paths. Provenance fields are advisory
 names for a human recorder, not executable expressions or automatic measurements.
 Unknown fields, schema versions and unsupported probe shapes fail validation.
 
-Only exact command arrays owned by `scripts/scientific_tools.py` are executable:
+Only exact command arrays owned by `ros.lib.scientific_tools` are executable:
 `["geant4-config", "--version"]` for geant4 and `["root-config", "--version"]`
 for root-scikit-hep. Environment capture is restricted to known Geant4 dataset
 variables. Other packs can discover package metadata without extending code.
@@ -46,9 +46,9 @@ Runtime discovery never chooses physics, models, splits or quantum configuration
 Run from the repository (or an installed compute skill directory):
 
 ```text
-python scripts/scientific_tools.py list
-python scripts/scientific_tools.py probe --all
-python scripts/scientific_tools.py manifest --experiment RQ-001 --repo .
+python -m ros.lib.scientific_tools list
+python -m ros.lib.scientific_tools probe --all
+python -m ros.lib.scientific_tools manifest --experiment RQ-001 --repo .
 ```
 
 Output is JSON on stdout. Manifest generation probes only explicitly named

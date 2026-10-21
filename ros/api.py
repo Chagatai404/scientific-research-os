@@ -552,6 +552,16 @@ def import_(rec, kind, path, evidence=None, repo=None):
     return {"symbols": graph.import_graphify(rec, path, repo)}
 
 
+@tool("export", "Write curated notes into an Obsidian vault folder, or a read-only single-file HTML snapshot.",
+      writes=True, kind=P("string", "what to write", True, ("obsidian", "static")),
+      path=P("string", "the vault folder (obsidian) or the HTML file (static)", True),
+      folder=P("string", "folder inside the vault (default Research OS/<project>)"))
+def export_(rec, kind, path, folder=None):
+    if kind == "obsidian":
+        return export.obsidian(rec, path, folder)
+    return {"written": str(export.static(rec, path))}
+
+
 @tool("rebuild", "Drop and rebuild the index from the record's files.", writes=True)
 def rebuild(rec):
     rec.rebuild()

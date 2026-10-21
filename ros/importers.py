@@ -291,7 +291,7 @@ def research_id(record_type: str, key: str) -> str:
 
 def research_records(rec: Record, root: Path | str, evidence: Path | str | None = None,
                      graphify: Path | str | None = None) -> dict:
-    """Import research records under ``root`` through ``scripts/research.py`` (so validation is unchanged): each
+    """Import research records under ``root`` through ``ros.lib.research`` (so validation is unchanged): each
     record a node carrying its status fields and diagnostics, each resolved relation an edge, each referenced
     EvidenceAtom a ``claim`` node it cites, each code reference a ``code-symbol`` that implements it, and each learning
     dependency a ``requires`` edge to the capability."""
@@ -363,3 +363,40 @@ def _evidence_board(root: Path, location: Path) -> dict:
             if isinstance(atom, dict) and isinstance(atom.get("claim_id"), str):
                 board[atom["claim_id"]] = atom
     return board
+
+
+# ---- a whole vault -------------------------------------------------------------------------------------------------
+def migrate(rec: Record, vault: Path | str, research_root: Path | str | None = None,
+            evidence: Path | str | None = None, graphify: Path | str | None = None) -> dict:
+    """Import a whole vault (learning notes, sessions, research records) and check the result: every answer in every
+    session's state file must be in the record's history. The report is also written to ``migration-report.json``
+    in the record. Importing again adds nothing."""
+    import json as _json
+    from . import graph
+    vault = Path(vault).resolve()
+    report = {"vault": str(vault), "learning": learning_records(rec, vault), "sessions": sessions(rec, vault),
+              "research": research_records(rec, research_root or vault, evidence, graphify)}
+    imported = {}
+    for a in rec.events(type="attempt"):
+        imported.setdefault(a["data"].get("lesson"), set()).add(a["data"].get("legacy_event"))
+    per_session, missing_total = [], 0
+    for path in sorted(p for p in vault.rglob("*.state.json")
+                       if not any(part.startswith(".") for part in p.relative_to(vault).parts)):
+        try:
+            state = _json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        answers = {e.get("event_id") for e in state.get("events", [])
+                   if isinstance(e, dict) and e.get("type") in ("response", "plan-answer")}
+        have = imported.get(f"lesson:{state.get('session_id')}", set())
+        missing = sorted(answers - have)
+        missing_total += len(missing)
+        per_session.append({"session": path.relative_to(vault).as_posix(), "answers": len(answers),
+                            "imported": len(answers & have), "missing": missing,
+                            "legacy": bool(state.get("migration"))})
+    report["check"] = {"sessions": len(per_session), "answers": sum(s["answers"] for s in per_session),
+                       "missing": missing_total, "history_rows": len(graph.history(rec)), "per_session": per_session,
+                       "ok": missing_total == 0}
+    (rec.root / "migration-report.json").write_text(_json.dumps(report, indent=2, ensure_ascii=False) + "\n",
+                                                    encoding="utf-8")
+    return report

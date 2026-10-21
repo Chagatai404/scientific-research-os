@@ -1,18 +1,25 @@
 # Contributing
 
-This repo intentionally prefers a small number of strong skills over a large catalog.
+Research OS stays small on purpose: six skills, six agent roles, eight protocols, one record format, one tool table.
 
-Before adding a skill, show:
-1. the workflow has repeated,
-2. the trigger can be described clearly,
-3. the skill has a stable procedure,
-4. it does not duplicate another skill,
-5. human authority points are explicit.
+## Before adding something
 
-Every new skill should include at least:
-- one positive trigger example,
-- one non-trigger example,
-- one failure mode,
-- one evaluation task.
+- **A tool** goes in `ros/api.py` with typed parameters and one line of help. It then exists in the CLI, MCP and
+  the portal at once. A person's act (approving, deciding, waiving) is declared `human=True`.
+- **A skill or agent role** needs a workflow that has repeated, a trigger that can be described, a stable procedure,
+  no overlap with an existing one, and explicit points where the researcher decides. Prefer a lens (a Markdown file
+  a skill loads on demand) over a new skill.
+- **A dependency**: the core is standard library only. Engines (TTS, Whisper, Manim) run in their own environments
+  through `ros/lib/`; nothing imports them.
 
-Do not add dependencies merely for convenience.
+## Checks
+
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+node tests/ros-portal-browser.cjs
+```
+
+The suite must stay under five minutes. `tests/test_ros_m6.py` checks that skills, agents and protocols refer only to
+files and tools that exist. Portal code stays under 60 KB of JS and 20 KB of CSS.
+
+Release notes go in `CHANGELOG.md`; there are no per-slice gate records.

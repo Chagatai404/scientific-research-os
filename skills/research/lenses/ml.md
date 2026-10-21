@@ -1,7 +1,7 @@
 # Classical ML methodology
 
-Extend `RESEARCH_PROTOCOL.md` and `COMPUTATIONAL_PROTOCOL.md`; complement
-stats-audit and design-experiment without replacing their statistical or planning
+Extend `references/RESEARCH.md` and `references/RESEARCH.md`; complement
+the statistics lens and the research skill's planning step without replacing their statistical or planning
 contracts. Package knowledge belongs in PyTorch/scikit-learn guides. Research
 approval remains required before implementation/training, including smoke/pilot
 runs. A discovered accelerator does not select a device or authorize a workload.

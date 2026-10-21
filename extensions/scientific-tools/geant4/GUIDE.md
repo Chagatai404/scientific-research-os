@@ -1,6 +1,6 @@
 # Geant4 software guide
 
-Use `references/GEANT4_PROTOCOL.md` for simulation methodology and physics-audit
+Use `skills/research/lenses/geant4.md` for simulation methodology and the audit skill (physics lens)
 for physical validity. This pack provides software awareness only.
 
 Use project-pinned releases and their matching documentation. Record C++ engine

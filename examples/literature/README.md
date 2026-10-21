@@ -8,9 +8,9 @@ vault, authenticated session or external account is required or modified.
 From the repository or a copied provider skill directory:
 
 ```sh
-python scripts/literature_check.py --root <path-to-this-example> --input literature.json
-python scripts/literature_check.py --root <path-to-this-example> --input literature.json --facts-only
-python scripts/literature_check.py --root <path-to-this-example> --input literature.json --handoff C-2
+python -m ros.lib.literature_check --root <path-to-this-example> --input literature.json
+python -m ros.lib.literature_check --root <path-to-this-example> --input literature.json --facts-only
+python -m ros.lib.literature_check --root <path-to-this-example> --input literature.json --handoff C-2
 ```
 
 Expected outcomes:

@@ -5,11 +5,9 @@ One concept serves mathematics/fractal geometry and physics/calorimetry, linked
 to a project and block. Structural records carry no learning/research status.
 
 ```bash
-python scripts/knowledge.py --root examples/ontology --concept box-counting --json --as-of 2026-10-02
-python scripts/knowledge.py --root examples/ontology --domain mathematics --as-of 2026-10-02
-python scripts/knowledge.py --root examples/ontology --block block-9 --json --as-of 2026-10-02
-python scripts/vault_health.py --root examples/ontology --as-of 2026-10-02
-python scripts/tutor_plan.py --root examples/ontology --block block-9 --focus box-counting --as-of 2026-10-02
+python -m ros.lib.knowledge --root examples/ontology --concept box-counting --json --as-of 2026-10-02
+python -m ros.lib.knowledge --root examples/ontology --domain mathematics --as-of 2026-10-02
+python -m ros.lib.knowledge --root examples/ontology --block block-9 --json --as-of 2026-10-02
 ```
 
 Expected: box.explain has conceptual explanation demonstrated, derivation learning,

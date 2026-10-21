@@ -1,7 +1,7 @@
 # Voice
 
-Spoken lessons in English and Turkish: scripts written to be heard, formulas said in words, recordings kept in the vault, and an optional spoken answer. `TEACHING_FORMAT.md` still owns what a
-Teaching Card is. Nothing here installs an engine; engines live in their own virtual environments and are found by name.
+Spoken lessons in English and Turkish: scripts written to be heard, formulas said in words, recordings kept in the
+lesson bundle, and an optional spoken answer. Nothing here installs an engine; engines live in their own virtual environments and are found by name.
 
 ## Pieces
 

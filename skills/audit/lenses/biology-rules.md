@@ -1,8 +1,8 @@
 # Biology protocol (v0.9.5)
 
 How the Research OS learns, teaches and reviews biology. It adds domain knowledge and checks to the existing workflows; it does not
-change evidence rules (`SOURCE_POLICY.md`), research stages and approval (`RESEARCH_PROTOCOL.md`) or learning evidence
-(`LEARNING_PROTOCOL.md`). Executable checks are in `VERIFICATION_PROTOCOL.md`; statistics follow `stats-audit` and the
+change evidence rules (`references/EVIDENCE.md`), research stages and approval (`references/RESEARCH.md`) or learning evidence
+(`references/TEACHING.md`). Executable checks are attached to verdicts as evidence; statistics follow the statistics lens and the
 statistics reviewer.
 
 ## Levels of explanation, and mechanism versus correlation
@@ -57,7 +57,7 @@ Evolution is goal-directed or progress toward a goal; "fittest" means strongest;
 dogma means one gene, one protein, one trait; dominant means common or better; correlation of expression with phenotype shows cause;
 absence of a band or signal shows absence of the thing. A correct recitation is not evidence the misconception is gone.
 
-## Wet-lab design annex (used by `design-experiment`)
+## Wet-lab design annex (used by `the research skill's planning step`)
 
 For an experiment that will be done at a bench or with living material, the plan also lists: materials with identifiers and sources;
 the protocol and its version; controls and replicates as above; randomization and blinding; sample-size justification and exclusion

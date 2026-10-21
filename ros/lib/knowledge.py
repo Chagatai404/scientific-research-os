@@ -1,6 +1,6 @@
 """Read opt-in Markdown learning records and emit an evidence-based Mermaid view.
 
-Only the documented schema in assets/obsidian/README.md is supported, not YAML
+Only the documented schema in docs/LEARNING_NOTES.md is supported, not YAML
 in general. No input notes are modified and no answers are automatically graded.
 """
 from __future__ import annotations

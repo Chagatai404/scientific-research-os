@@ -6,6 +6,8 @@ output), plus:
     ros tools                     list tools with their arguments, as JSON schemas with --json
     ros learn SCOPE               a lesson in the terminal; the log is written when it closes
     ros mcp                       serve the tools to an agent over stdio (Model Context Protocol)
+    ros install --client C        install skills, agents and the MCP server for claude, codex, gemini or any agent
+    ros migrate VAULT             import a whole vault (notes, sessions, research) and check every answer arrived
     ros serve [--port N]          the localhost portal
 """
 from __future__ import annotations
@@ -57,6 +59,17 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--bundle", help="a prepared bundle; the lesson starts only when it is ready")
     s.add_argument("--title")
     add("mcp", help="serve tools over stdio (MCP)")
+    s = add("migrate", help="import a whole vault into the record and check every answer arrived")
+    s.add_argument("vault", help="the Obsidian vault (or any folder of old notes and sessions)")
+    s.add_argument("--research-root", help="where research records live, if not in the vault")
+    s.add_argument("--evidence", help="EvidenceAtom folder")
+    s.add_argument("--graphify", help="a Graphify graph.json to import code symbols from")
+    s = add("install", help="install skills, agents and the MCP server for an agent client")
+    s.add_argument("--client", required=True, choices=("claude", "codex", "gemini", "agents"))
+    s.add_argument("--target", help="project folder (default: here)")
+    s.add_argument("--user", action="store_true", help="install for the user (home folder) instead of a project")
+    s.add_argument("--force", action="store_true", help="overwrite installed files changed by hand")
+    s.add_argument("--dry-run", action="store_true", help="say what would be written")
     s = add("serve", help="the localhost portal")
     s.add_argument("--port", type=int, default=8737)
     s.add_argument("--open", action="store_true", help="open it in the browser")
@@ -94,6 +107,12 @@ def main(argv: list[str] | None = None) -> int:
             emit([{"name": t.name, "help": t.help, "writes": t.writes, "input": t.schema()} for t in api.TOOLS.values()]
                  if args.json else "\n".join(f"{t.name:14} {t.help}" for t in api.TOOLS.values()), args.json)
             return 0
+        if args.command == "install":
+            from . import install
+            out = install.install(args.client, Path(args.target) if args.target else None, args.user, args.force,
+                                  args.dry_run)
+            emit(out, args.json)
+            return 0 if out.get("installed", True) else 4
         if args.command == "mcp":
             from . import mcp
             return mcp.serve(args.project)
@@ -102,6 +121,11 @@ def main(argv: list[str] | None = None) -> int:
         try:
             if args.command == "learn":
                 return learn(rec, args.scope, args.title, bundle=args.bundle)
+            if args.command == "migrate":
+                from . import importers
+                out = importers.migrate(rec, args.vault, args.research_root, args.evidence, args.graphify)
+                emit(out if args.json else _migration_summary(out), args.json)
+                return 0 if out["check"]["ok"] else 5
             if args.command == "serve":
                 from . import serve
                 return serve.run(rec, args.port, args.open)
@@ -121,6 +145,21 @@ def main(argv: list[str] | None = None) -> int:
         else:
             sys.stderr.write(f"ros: {msg}\n")
         return 2
+
+
+def _migration_summary(out: dict) -> str:
+    c, ln, se, rs = out["check"], out["learning"], out["sessions"], out["research"]
+    lines = [f"Vault: {out['vault']}",
+             f"Learning notes: {ln['capabilities']} capabilities, {ln['events_added']} new retrieval rows"
+             + (f", {len(ln['diagnostics'])} diagnostics" if ln["diagnostics"] else ""),
+             f"Sessions: {se['sessions']} imported, {se['items']} new items, {se['events_added']} new events"
+             + (f", {len(se['problems'])} problems" if se["problems"] else ""),
+             f"Research records: {rs['records']}",
+             f"Check: {c['answers']} answers in {c['sessions']} session files, {c['missing']} missing from the history "
+             f"({c['history_rows']} history rows): {'OK' if c['ok'] else 'NOT OK'}"]
+    lines += [f"  {s['session']}: missing {', '.join(s['missing'])}" for s in c["per_session"] if s["missing"]]
+    lines += [f"  problem: {p}" for p in se["problems"]] + [f"  diagnostic: {d}" for d in ln["diagnostics"][:20]]
+    return "\n".join(lines) + "\nFull report: migration-report.json in the record."
 
 
 def _confirm(t, args) -> bool:

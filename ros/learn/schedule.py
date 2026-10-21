@@ -1,5 +1,5 @@
 """FSRS-6 review scheduling over the record. The formulas are those of ``py-fsrs`` 6.3.2 (MIT), checked against its
-golden values in ``tests/fixtures/fsrs-golden.json``; they were carried over unchanged from ``scripts/fsrs_schedule.py``.
+golden values in ``tests/fixtures/fsrs-golden.json``; they were carried over unchanged from the old runtime.
 
 Two kinds of evidence become reviews, each rated by a stated rule and never as *Easy*:
 

@@ -1,0 +1,2 @@
+[console_scripts]
+ros = ros.cli:main
