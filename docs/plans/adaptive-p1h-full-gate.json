@@ -1,0 +1,549 @@
+{
+  "results": [
+    {
+      "gate": "python-unittest",
+      "status": "FAIL",
+      "seconds": 1720.9,
+      "tail": [
+        "warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it",
+        ".warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it",
+        ".warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it",
+        ".warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it",
+        ".warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it",
+        "warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it",
+        "........................................................................................................................................................error: C:\\Users\\ASUS\\AppData\\Local\\Temp\\tmphwfuzzoe\\Plan.excalidraw.md already exists; choose a new name",
+        "error: output must end with .excalidraw.md",
+        "error: directory does not exist: C:\\Users\\ASUS\\AppData\\Local\\Temp\\tmphwfuzzoe\\no",
+        "..............................................................................................................................................................................................................................................F.............................................................................................................................................s............................C:\\Python314\\Lib\\tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 500: 'Internal Server Error'>",
+        "  _warnings.warn(self.warn_message, ResourceWarning)",
+        ".............................................................................................................................................................................................................................................................................................................................................................................................................................................................................C:\\Python314\\Lib\\tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 302: 'Redirect'>",
+        "  _warnings.warn(self.warn_message, ResourceWarning)",
+        "C:\\Python314\\Lib\\tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 403: 'Denied'>",
+        "  _warnings.warn(self.warn_message, ResourceWarning)",
+        "............................................................................................................................................................................................................................................................................................................................................................................................................................sss..............................................................................................................................error: C:\\Users\\ASUS\\AppData\\Local\\Temp\\tmp90a4zsu4\\page.html already exists; choose a new name",
+        ".............................................................................",
+        "======================================================================",
+        "FAIL: test_public_projection_never_exposes_private_binding (test_learning_preferences.LearningPreferenceIntegrationTests.test_public_projection_never_exposes_private_binding)",
+        "----------------------------------------------------------------------",
+        "Traceback (most recent call last):",
+        "  File \"C:\\Users\\ASUS\\.codex\\worktrees\\a81d\\scientific-research-os\\tests\\test_learning_preferences.py\", line 243, in test_public_projection_never_exposes_private_binding",
+        "    self.assertEqual(set(raw['canonical_advice']), learning_advice.FIELDS)",
+        "    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+        "AssertionError: Items in the first set but not the second:",
+        "'for_target'",
+        "",
+        "----------------------------------------------------------------------",
+        "Ran 1819 tests in 1711.238s",
+        "",
+        "FAILED (failures=1, skipped=5)"
+      ]
+    },
+    {
+      "gate": "repository-validate",
+      "status": "PASS",
+      "seconds": 2.9,
+      "tail": [
+        "INFO HTML archival exception: examples/connected-research/tutor-sessions/2026-09-25 gamma shape.md (historical compatibility fixture)",
+        "INFO HTML archival exception: tests/fixtures/legacy-v0.8.7/Sessions/legacy.md (historical compatibility fixture)",
+        "OK: 19 skills, 14 agents, 26 Obsidian templates."
+      ]
+    },
+    {
+      "gate": "node:html-host.test.js",
+      "status": "PASS",
+      "seconds": 7.2,
+      "tail": [
+        "HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions, live voice, lecture position, host-owned video and handout panes."
+      ]
+    },
+    {
+      "gate": "node:html-runtime-unit.js",
+      "status": "PASS",
+      "seconds": 0.2,
+      "tail": [
+        "HTML runtime unit and bundled KaTeX checks passed"
+      ]
+    },
+    {
+      "gate": "node:richtext-conformance.js",
+      "status": "PASS",
+      "seconds": 0.7,
+      "tail": [
+        "Rich text conformance passed: 68 corpus cases, spec, atomic math, DOM safety, pathological and random input, bundle freshness."
+      ]
+    },
+    {
+      "gate": "node:narration-unit.js",
+      "status": "PASS",
+      "seconds": 0.1,
+      "tail": [
+        "narration unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:board-unit.js",
+      "status": "PASS",
+      "seconds": 0.2,
+      "tail": [
+        "board unit tests passed (57 grammar cases, 15 layout cases)"
+      ]
+    },
+    {
+      "gate": "node:stages-unit.js",
+      "status": "PASS",
+      "seconds": 0.1,
+      "tail": [
+        "stages unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:drafts-unit.js",
+      "status": "PASS",
+      "seconds": 0.1,
+      "tail": [
+        "Draft signatures, prepared identity and value bounds passed"
+      ]
+    },
+    {
+      "gate": "node:html-drafts-host.test.js",
+      "status": "PASS",
+      "seconds": 0.2,
+      "tail": [
+        "Draft host: source binding, coalescing, hydration, bounded sidecar, identity, clear and evidence isolation passed."
+      ]
+    },
+    {
+      "gate": "node:pedagogy-host-unit.js",
+      "status": "PASS",
+      "seconds": 0.2,
+      "tail": [
+        "PASS invalid staged costs are rejected rather than defaulted",
+        "PASS real receive rechecks fresh disk budget under lock",
+        "PASS real receive rechecks Bloom practice reference against fresh disk",
+        "PASS real receive saves raw revisions at exhaustion and rejects divergent IDs",
+        "PASS real receive acknowledges old persisted help after a newer answer",
+        "21/21 pedagogy host tests passed."
+      ]
+    },
+    {
+      "gate": "node:socratic-unit.js",
+      "status": "PASS",
+      "seconds": 0.2,
+      "tail": [
+        "Socratic projection, committed help, failure, revision, reload and action tests passed"
+      ]
+    },
+    {
+      "gate": "node:explanations-unit.js",
+      "status": "PASS",
+      "seconds": 0.1,
+      "tail": [
+        "Explanation projection, acknowledged selection, failure, source and reload tests passed."
+      ]
+    },
+    {
+      "gate": "node:practice-unit.js",
+      "status": "PASS",
+      "seconds": 0.1,
+      "tail": [
+        "Practice tier selection, no early approaches, explicit override, ack/refusal/reload and attempt-bound review unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:source-comparison-unit.js",
+      "status": "PASS",
+      "seconds": 0.4,
+      "tail": [
+        "Source comparison projection parity, source refusal, historical binding, revision callback and acknowledged presentation tests passed."
+      ]
+    },
+    {
+      "gate": "node:terms-unit.js",
+      "status": "PASS",
+      "seconds": 0.7,
+      "tail": [
+        "Canonical vocabulary projection parity, bilingual identity, count fallback, native reader reuse and acknowledged presentation tests passed."
+      ]
+    },
+    {
+      "gate": "node:bloom-unit.js",
+      "status": "PASS",
+      "seconds": 0.1,
+      "tail": [
+        "Bloom optional six-view, distinct existing practice, no solutions/approaches, ack/refusal/reload, explicit choice and late-disposal unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:analogies-unit.js",
+      "status": "PASS",
+      "seconds": 0.1,
+      "tail": [
+        "Analogy mappings/limits, no early tasks or solutions, ack/refusal/reload, historical review replacement and disposed late acknowledgement unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:roles-unit.js",
+      "status": "PASS",
+      "seconds": 0.6,
+      "tail": [
+        "Roles/Editor Python-JS parity, one-role ACK/refusal, exact committed payload, pending raw work, revision and disposed-state tests passed."
+      ]
+    },
+    {
+      "gate": "node:advice-freshness-unit.js",
+      "status": "PASS",
+      "seconds": 0.6,
+      "tail": [
+        "advice freshness: Node assertions, 14 Python/JS parity cases, 4 child timezone projections passed"
+      ]
+    },
+    {
+      "gate": "node:prepared-versions-unit.js",
+      "status": "PASS",
+      "seconds": 0.3,
+      "tail": [
+        "prepared versions: Node assertions and 19 Python/JS graph-resolution parity cases passed"
+      ]
+    },
+    {
+      "gate": "browser:html-runtime-browser.js",
+      "status": "PASS",
+      "seconds": 16.8,
+      "tail": [
+        "Real Chromium HTML runtime interactions, offline math, SVG/Canvas, themes and restart passed"
+      ]
+    },
+    {
+      "gate": "browser:html-browser-e2e.cjs",
+      "status": "FAIL",
+      "seconds": 31.9,
+      "tail": [
+        "locator.waitFor: Timeout 30000ms exceeded.",
+        "Call log:",
+        "\u001b[2m  - waiting for locator('iframe.ros-html-frame').contentFrame().getByText('Answers save automatically.') to be visible\u001b[22m",
+        "",
+        "    at main (C:\\Users\\ASUS\\.codex\\worktrees\\a81d\\scientific-research-os\\tests\\html-browser-e2e.cjs:42:73) {",
+        "  log: [",
+        "    \"  - waiting for locator('iframe.ros-html-frame').contentFrame().getByText('Answers save automatically.') to be visible\"",
+        "  ],",
+        "  name: 'TimeoutError'",
+        "}"
+      ]
+    },
+    {
+      "gate": "browser:html-components-browser.cjs",
+      "status": "PASS",
+      "seconds": 9.5,
+      "tail": [
+        "Component checks passed: callouts, preserved formula title, tables, approved image/SVG, disclosure, code copy fallback, no events, light/dark, 1440/1000/700/320px."
+      ]
+    },
+    {
+      "gate": "browser:html-design-browser.cjs",
+      "status": "PASS",
+      "seconds": 4.6,
+      "tail": [
+        "Design checks passed: production sanitizer, unchanged headings/order, inline math, themes, 320/600/1200px, no page errors"
+      ]
+    },
+    {
+      "gate": "browser:html-gallery-browser.cjs",
+      "status": "PASS",
+      "seconds": 1.9,
+      "tail": [
+        "Shipped gallery passed: actual raster, offline math, SVG panels and responsive widths."
+      ]
+    },
+    {
+      "gate": "browser:html-navigation-browser.cjs",
+      "status": "PASS",
+      "seconds": 16.4,
+      "tail": [
+        "Navigation checks passed: authored hierarchy, sticky rail, active section, keyboard focus, narrow disclosure, 44px links, wide visuals, themes, reduced motion and no events."
+      ]
+    },
+    {
+      "gate": "browser:html-tutor-browser.cjs",
+      "status": "PASS",
+      "seconds": 33.2,
+      "tail": [
+        "Tutor checks passed: keyboard/whole-row selection, Checking... until checked, immediate verdict and explanation, live tutor reviews and questions without reload, hints, draft clearing, all-open questions, progress, open questions and restoration."
+      ]
+    },
+    {
+      "gate": "browser:html-richtext-browser.cjs",
+      "status": "PASS",
+      "seconds": 7.7,
+      "tail": [
+        "PASS real Chromium: scientific text typeset on lesson text, equations, numbering, references, prompts, options, hints, explanations, tutor feedback and open-question history; standalone and production host path, light and dark; DOM builder equals recorded HTML for 68 cases; hostile text inert."
+      ]
+    },
+    {
+      "gate": "browser:html-visuals-browser.cjs",
+      "status": "PASS",
+      "seconds": 17.3,
+      "tail": [
+        "PASS real Chromium: schematic and computed figures and a widget appear exactly where the lesson places them, state their evidence class and verification, decode as inline SVG, fit phone width; an unplaced visual is a visible diagnostic and is never appended (explicit sessions) while historical sessions keep their behaviour; standalone and production host path, light and dark; script in an SVG is inert."
+      ]
+    },
+    {
+      "gate": "browser:html-workspace-browser.cjs",
+      "status": "PASS",
+      "seconds": 22.3,
+      "tail": [
+        "PASS real Chromium: hierarchical navigation with current section, per-section progress, previous/next, \"Where am I?\" and related notes; questions panel as an accessible drawer (Escape, focus, return to the originating section) and as a persistent third area at 1600/1920px; wikilinks open through the validating host in a new tab, degrade visibly on a standalone page and refuse hostile or undeclared targets; position survives a rebuilt page; open questions remember where they were asked."
+      ]
+    },
+    {
+      "gate": "browser:html-supervision-browser.cjs",
+      "status": "PASS",
+      "seconds": 14.6,
+      "tail": [
+        "PASS real Chromium: the page tells waiting from disconnected from a lease that expires on its own, shows reviewing and awaiting review, never says \"Checking\" without a live tutor, keeps a submission made while disconnected, shows paused / failed / completed from the saved session, and says nothing on a standalone page."
+      ]
+    },
+    {
+      "gate": "browser:html-narration-browser.cjs",
+      "status": "PASS",
+      "seconds": 7.0,
+      "tail": [
+        "html narration browser tests passed"
+      ]
+    },
+    {
+      "gate": "browser:html-board-browser.cjs",
+      "status": "PASS",
+      "seconds": 54.6,
+      "tail": [
+        "board browser tests passed"
+      ]
+    },
+    {
+      "gate": "browser:html-stages-browser.cjs",
+      "status": "PASS",
+      "seconds": 300.4,
+      "tail": [
+        "staged session browser tests passed"
+      ]
+    },
+    {
+      "gate": "browser:html-handout-browser.cjs",
+      "status": "PASS",
+      "seconds": 30.6,
+      "tail": [
+        "native handout browser checks passed; synthetic offline host timings: [{\"viewport\":{\"width\":1440,\"height\":900},\"first_readable_ms\":690},{\"viewport\":{\"width\":803,\"height\":680},\"first_readable_ms\":629},{\"viewport\":{\"width\":375,\"height\":740},\"first_readable_ms\":637}]",
+        "screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-handout-88OKia"
+      ]
+    },
+    {
+      "gate": "browser:html-text-lecture-browser.cjs",
+      "status": "PASS",
+      "seconds": 34.2,
+      "tail": [
+        "Text lecture missing-board, typed question, reload and mode-switch checks passed; screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-text-lecture-pd993n"
+      ]
+    },
+    {
+      "gate": "browser:html-advice-browser.cjs",
+      "status": "PASS",
+      "seconds": 29.9,
+      "tail": [
+        "Study advice browser checks passed at desktop, tablet and phone sizes; screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-advice-yuQnE3"
+      ]
+    },
+    {
+      "gate": "browser:html-drafts-browser.cjs",
+      "status": "PASS",
+      "seconds": 19.6,
+      "tail": [
+        "Opaque-frame answer/question draft reload, invalidation, submission, denial and late hydration passed"
+      ]
+    },
+    {
+      "gate": "browser:html-drafts-runtime-browser.cjs",
+      "status": "PASS",
+      "seconds": 12.6,
+      "tail": [
+        "Actual runtime draft bridge: authenticated hydration, typing race, reload, acknowledgement/refusal and raw-event stability passed"
+      ]
+    },
+    {
+      "gate": "browser:html-preferences-browser.cjs",
+      "status": "PASS",
+      "seconds": 14.9,
+      "tail": [
+        "Preference browser acceptance passed at desktop and phone widths; screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-preferences-Ip75E6"
+      ]
+    },
+    {
+      "gate": "browser:html-p0-text-flow-browser.cjs",
+      "status": "PASS",
+      "seconds": 13.2,
+      "tail": [
+        "{\"status\":\"PASS\",\"timings\":{\"handout_ms\":612,\"local_choice_ms\":1199},\"requests\":0,\"screenshot\":\"C:\\\\Users\\\\ASUS\\\\AppData\\\\Local\\\\Temp\\\\ros-p0-flow-xYsnvR\\\\p0-text-flow.png\",\"limitations\":\"Scripted reviewer and sandbox host; actual Python persistence. Not live Obsidian or production latency.\"}"
+      ]
+    },
+    {
+      "gate": "browser:html-voice-browser.cjs",
+      "status": "PASS",
+      "seconds": 20.4,
+      "tail": [
+        "voice browser tests passed"
+      ]
+    },
+    {
+      "gate": "browser:html-live-voice-browser.cjs",
+      "status": "FAIL",
+      "seconds": 25.4,
+      "tail": [
+        "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /live voice is not available \\(The live voice is not running/. Input:",
+        "",
+        "'Voice interrupted. Retry voice'",
+        "",
+        "    at C:\\Users\\ASUS\\.codex\\worktrees\\a81d\\scientific-research-os\\tests\\html-live-voice-browser.cjs:132:12 {",
+        "  generatedMessage: true,",
+        "  code: 'ERR_ASSERTION',",
+        "  actual: 'Voice interrupted. Retry voice',",
+        "  expected: /live voice is not available \\(The live voice is not running/,",
+        "  operator: 'match',",
+        "  diff: 'simple'",
+        "}"
+      ]
+    },
+    {
+      "gate": "browser:html-scenarios-browser.cjs",
+      "status": "PASS",
+      "seconds": 14.1,
+      "tail": [
+        "html scenarios browser tests passed (F multimodal lesson, G knowledge navigation, audio under the host)"
+      ]
+    },
+    {
+      "gate": "browser:html-visual-parity.cjs",
+      "status": "SKIPPED",
+      "seconds": 0,
+      "tail": [
+        "requires the externally supplied recitation reference page and the one historical session whose content its later assertions describe (see docs/v0.8.5-html-visual-parity.md); its generic checks (one h1, no fake list items) pass on every current session, but no current session has that content"
+      ]
+    },
+    {
+      "gate": "browser:html-socratic-browser.cjs",
+      "status": "PASS",
+      "seconds": 36.0,
+      "tail": [
+        "Socratic actual-bundle ack/refusal, hint/solution, draft/help reload, raw revision and latest-review acceptance passed; screenshots C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-socratic-qeehqD"
+      ]
+    },
+    {
+      "gate": "browser:html-explanations-browser.cjs",
+      "status": "PASS",
+      "seconds": 27.6,
+      "tail": [
+        "Explanation browser acceptance passed desktop and phone; screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-explanations-ks4Buz"
+      ]
+    },
+    {
+      "gate": "browser:html-practice-browser.cjs",
+      "status": "PASS",
+      "seconds": 59.3,
+      "tail": [
+        "Practice actual-bundle offroute selection, acknowledgement/budget gate, unit labels, assistance/draft reload, raw revision and review acceptance passed; screenshots C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-practice-Aolux6"
+      ]
+    },
+    {
+      "gate": "browser:html-source-comparison-browser.cjs",
+      "status": "PASS",
+      "seconds": 108.7,
+      "tail": [
+        "Source comparison viewport 1440 started.",
+        "Source comparison viewport 1440 passed.",
+        "Source comparison viewport 375 started.",
+        "Source comparison viewport 375 passed.",
+        "Source comparison actual-bundle ACK/rejection/synthesis, raw revision/history, draft reload, missing sources and geometry acceptance passed; screenshots C:\\Users\\ASUS\\.agent-hub\\tmp\\ros-source-comparison-YCTBeu"
+      ]
+    },
+    {
+      "gate": "browser:html-terms-browser.cjs",
+      "status": "PASS",
+      "seconds": 107.4,
+      "tail": [
+        "Vocabulary primary/reload 375 passed.",
+        "Vocabulary waiver/unavailable/review 375 passed.",
+        "Vocabulary viewport 375 passed.",
+        "Vocabulary long labels 1440 passed.",
+        "Vocabulary long labels 375 passed.",
+        "Vocabulary actual canonical writer/waiver, ACK refusal/delay, native reader geometry, diagnostics, drafts/reviews/reload, lecture state, live metadata and disposal passed. Screenshots C:\\Users\\ASUS\\.agent-hub\\test-temp\\ros-terms-Bz2yhK"
+      ]
+    },
+    {
+      "gate": "browser:html-bloom-browser.cjs",
+      "status": "PASS",
+      "seconds": 90.4,
+      "tail": [
+        "Bloom viewport 1440 started.",
+        "Bloom viewport 1440 passed.",
+        "Bloom viewport 375 started.",
+        "Bloom viewport 375 passed.",
+        "Bloom optional all-view, scoped recommendation, exact reference publication, ACK/assignment/budget gates, raw review/revision/draft/reload and geometry passed in 88.24s. Screenshots C:\\Users\\ASUS\\.agent-hub\\test-temp\\ros-bloom-HVrTxa"
+      ]
+    },
+    {
+      "gate": "browser:html-analogies-browser.cjs",
+      "status": "PASS",
+      "seconds": 91.2,
+      "tail": [
+        "Analogy viewport 1440 started.",
+        "Analogy viewport 1440 passed.",
+        "Analogy viewport 375 started.",
+        "Analogy viewport 375 passed.",
+        "Analogy acknowledged maps/limits, qualified sources/novelty, transfer assignment/budget, actual review replacement/history, raw drafts/reload and geometry passed in 88.83s. Screenshots C:\\Users\\ASUS\\.agent-hub\\test-temp\\ros-analogies-J40Wuh"
+      ]
+    },
+    {
+      "gate": "browser:html-roles-browser.cjs",
+      "status": "PASS",
+      "seconds": 92.9,
+      "tail": [
+        "Roles viewport 1440 started.",
+        "Roles viewport 1440 passed.",
+        "Roles viewport 375 started.",
+        "Roles viewport 375 passed.",
+        "Role default/override/reset ACK, scoped canonical/pending work, source inventory, actual anchored critique/raw revision/reload, unavailable source and geometry passed in 81.27s. Screenshots C:\\Users\\ASUS\\.agent-hub\\test-temp\\ros-roles-1x22a5"
+      ]
+    }
+  ],
+  "counts": {
+    "PASS": 50,
+    "FAIL": 3,
+    "SKIPPED": 1
+  }
+}
