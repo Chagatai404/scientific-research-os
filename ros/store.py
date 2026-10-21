@@ -31,10 +31,11 @@ import uuid
 
 SCHEMA_VERSION = 1
 ITEM_KINDS = {"choice", "numeric", "free"}
-NODE_TYPES = {"concept", "capability", "course", "goal", "paper", "claim", "experiment", "decision", "code-symbol",
-              "source", "lesson"}
+# Node ids are "<type>:<key>", so a concept and a capability can share a key without colliding.
+NODE_TYPES = {"domain", "subject", "concept", "capability", "course", "goal", "project", "block", "paper", "question",
+              "hypothesis", "claim", "experiment", "decision", "code-symbol", "source", "lesson"}
 EDGE_TYPES = {"requires", "teaches", "tests", "supports", "invalidates", "implements", "cites", "supersedes",
-              "part-of", "relates"}
+              "part-of", "about", "applied-in", "relates"}
 # Item fields that carry no content and are left out of the hash.
 ITEM_UNHASHED = {"id", "meta"}
 
