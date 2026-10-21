@@ -1852,7 +1852,13 @@ def pending_activity(state):
             items.append({"kind": "plan-answer", "question_id": question_id, "tree": response.get("tree"), "prompt": question.get("prompt", ""), "criteria": question.get("criteria", []),
                           "tests": question.get("tests"), "solution": question.get("solution"), "event_id": event["event_id"], "response": response.get("answer"),
                           "created_at": event.get("created_at"), "attempt": number, "attempts": len(answers)})
-            practice = next((entry for entry in ((state.get("plan") or {}).get("pedagogy") or {}).get("practice", []) if entry["question_id"] == question_id), None)
+            variants = [entry for entry in ((state.get("plan") or {}).get("pedagogy") or {}).get("practice", []) if entry["question_id"] == question_id]
+            practice = variants[0] if len(variants) == 1 else None
+            if len(variants) > 1:
+                # Revised variants: only the last committed assignment before this actual answer counts.
+                import pedagogy_revisions
+                recorded = pedagogy_revisions.practice_for_attempt(state.get("plan") or {}, state.get("events") or [], event["event_id"])
+                practice = next((entry for entry in variants if recorded.get("recorded") and entry["id"] == recorded["entry"]), None)
             if practice:
                 items[-1]["practice"] = {key: practice[key] for key in ("id", "version", "tier", "dimension", "answer_unit", "alternatives", "independent")}
     for record in state.get("open_questions", []):

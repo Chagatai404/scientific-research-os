@@ -111,3 +111,13 @@ Course-player layout: the staged view is an outline card, a content card and a r
 tool rail (Study advice, Teaching roles) on wide screens, and a compact wrapping tab
 row on tablet and phone, with no scrollbars inside a stage. No stage logic changed.
 Real Obsidian lifecycle and physical-device acceptance remain separate.
+
+Revision gate (R1-R3). Update helpers, runtime and companion together; older strict
+validators reject the optional `pedagogy.revisions` relation. Existing plans need no
+rewrite. Add a revised version as a NEW entry id (higher version, same binding) plus
+an exact `{old_id,old_version,new_id,new_version}` edge; never edit a presented
+entry. The reader keeps the version already on screen or last presented, shows a
+"newer version available" note and switches only after the checkpoint is saved. For
+questions with revised practice variants, the answer's attribution is the last
+`pedagogy-practice` checkpoint before it; without one it stays unknown. Calendar-day
+freshness windows (`advice_freshness`) remain a separate, unwired hardening gate.

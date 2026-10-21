@@ -171,6 +171,10 @@ def validate_event(event, state, historical=False):
         if not historical:
             if units != questions[qid].get('units', 1):
                 raise ValueError('Issuance cost must match the prepared question')
+            variants = [e['id'] for e in meta.get('practice', []) if e.get('question_id') == qid]
+            if len(variants) > 1 and not any(e.get('type') == 'checkpoint' and isinstance(e.get('response'), str) and
+                    e['response'].startswith('pedagogy-practice:') and e['response'].split(':')[1] in variants for e in state.get('events', [])):
+                raise ValueError('A committed practice assignment must precede issuing a question with revised variants')
             budget.assert_can_issue(state, qid)
     elif event.get('type') == 'checkpoint' and isinstance(response, str) and response.startswith('pedagogy-level:'):
         fields = response.split(':')

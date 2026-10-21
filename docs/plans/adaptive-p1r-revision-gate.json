@@ -1,0 +1,328 @@
+{
+  "results": [
+    {
+      "gate": "node:html-host.test.js",
+      "status": "PASS",
+      "seconds": 9.6,
+      "tail": [
+        "HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions, live voice, lecture position, host-owned video and handout panes."
+      ]
+    },
+    {
+      "gate": "node:html-runtime-unit.js",
+      "status": "PASS",
+      "seconds": 0.8,
+      "tail": [
+        "HTML runtime unit and bundled KaTeX checks passed"
+      ]
+    },
+    {
+      "gate": "node:richtext-conformance.js",
+      "status": "PASS",
+      "seconds": 3.0,
+      "tail": [
+        "Rich text conformance passed: 68 corpus cases, spec, atomic math, DOM safety, pathological and random input, bundle freshness."
+      ]
+    },
+    {
+      "gate": "node:narration-unit.js",
+      "status": "PASS",
+      "seconds": 0.5,
+      "tail": [
+        "narration unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:board-unit.js",
+      "status": "PASS",
+      "seconds": 0.9,
+      "tail": [
+        "board unit tests passed (57 grammar cases, 15 layout cases)"
+      ]
+    },
+    {
+      "gate": "node:stages-unit.js",
+      "status": "PASS",
+      "seconds": 0.5,
+      "tail": [
+        "stages unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:drafts-unit.js",
+      "status": "PASS",
+      "seconds": 0.4,
+      "tail": [
+        "Draft signatures, prepared identity and value bounds passed"
+      ]
+    },
+    {
+      "gate": "node:html-drafts-host.test.js",
+      "status": "PASS",
+      "seconds": 2.0,
+      "tail": [
+        "Draft host: source binding, coalescing, hydration, bounded sidecar, identity, clear and evidence isolation passed."
+      ]
+    },
+    {
+      "gate": "node:pedagogy-host-unit.js",
+      "status": "PASS",
+      "seconds": 0.6,
+      "tail": [
+        "PASS invalid staged costs are rejected rather than defaulted",
+        "PASS real receive rechecks fresh disk budget under lock",
+        "PASS real receive rechecks Bloom practice reference against fresh disk",
+        "PASS real receive saves raw revisions at exhaustion and rejects divergent IDs",
+        "PASS real receive acknowledges old persisted help after a newer answer",
+        "21/21 pedagogy host tests passed."
+      ]
+    },
+    {
+      "gate": "node:socratic-unit.js",
+      "status": "PASS",
+      "seconds": 0.3,
+      "tail": [
+        "Socratic projection, committed help, failure, revision, reload and action tests passed"
+      ]
+    },
+    {
+      "gate": "node:explanations-unit.js",
+      "status": "PASS",
+      "seconds": 0.3,
+      "tail": [
+        "Explanation projection, acknowledged selection, failure, source and reload tests passed."
+      ]
+    },
+    {
+      "gate": "node:practice-unit.js",
+      "status": "PASS",
+      "seconds": 0.3,
+      "tail": [
+        "Practice tier selection, no early approaches, explicit override, ack/refusal/reload and attempt-bound review unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:source-comparison-unit.js",
+      "status": "PASS",
+      "seconds": 1.4,
+      "tail": [
+        "Source comparison projection parity, source refusal, historical binding, revision callback and acknowledged presentation tests passed."
+      ]
+    },
+    {
+      "gate": "node:terms-unit.js",
+      "status": "PASS",
+      "seconds": 2.4,
+      "tail": [
+        "Canonical vocabulary projection parity, bilingual identity, count fallback, native reader reuse and acknowledged presentation tests passed."
+      ]
+    },
+    {
+      "gate": "node:bloom-unit.js",
+      "status": "PASS",
+      "seconds": 0.5,
+      "tail": [
+        "Bloom optional six-view, distinct existing practice, no solutions/approaches, ack/refusal/reload, explicit choice and late-disposal unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:analogies-unit.js",
+      "status": "PASS",
+      "seconds": 0.3,
+      "tail": [
+        "Analogy mappings/limits, no early tasks or solutions, ack/refusal/reload, historical review replacement and disposed late acknowledgement unit tests passed"
+      ]
+    },
+    {
+      "gate": "node:roles-unit.js",
+      "status": "PASS",
+      "seconds": 1.5,
+      "tail": [
+        "Roles/Editor Python-JS parity, one-role ACK/refusal, exact committed payload, pending raw work, revision and disposed-state tests passed."
+      ]
+    },
+    {
+      "gate": "node:advice-freshness-unit.js",
+      "status": "PASS",
+      "seconds": 1.6,
+      "tail": [
+        "advice freshness: Node assertions, 14 Python/JS parity cases, 4 child timezone projections passed"
+      ]
+    },
+    {
+      "gate": "node:prepared-versions-unit.js",
+      "status": "PASS",
+      "seconds": 1.3,
+      "tail": [
+        "prepared versions: Node assertions and 19 Python/JS graph-resolution parity cases passed"
+      ]
+    },
+    {
+      "gate": "browser:html-stages-browser.cjs",
+      "status": "PASS",
+      "seconds": 400.4,
+      "tail": [
+        "staged session browser tests passed"
+      ]
+    },
+    {
+      "gate": "browser:html-handout-browser.cjs",
+      "status": "PASS",
+      "seconds": 52.7,
+      "tail": [
+        "native handout browser checks passed; synthetic offline host timings: [{\"viewport\":{\"width\":1440,\"height\":900},\"first_readable_ms\":995},{\"viewport\":{\"width\":803,\"height\":680},\"first_readable_ms\":966},{\"viewport\":{\"width\":375,\"height\":740},\"first_readable_ms\":840}]",
+        "screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-handout-KcAcpx"
+      ]
+    },
+    {
+      "gate": "browser:html-text-lecture-browser.cjs",
+      "status": "PASS",
+      "seconds": 51.3,
+      "tail": [
+        "Text lecture missing-board, typed question, reload and mode-switch checks passed; screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-text-lecture-XD4Qbv"
+      ]
+    },
+    {
+      "gate": "browser:html-advice-browser.cjs",
+      "status": "PASS",
+      "seconds": 43.5,
+      "tail": [
+        "Study advice browser checks passed at desktop, tablet and phone sizes; screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-advice-mrHuCt"
+      ]
+    },
+    {
+      "gate": "browser:html-drafts-browser.cjs",
+      "status": "PASS",
+      "seconds": 48.1,
+      "tail": [
+        "Opaque-frame answer/question draft reload, invalidation, submission, denial and late hydration passed"
+      ]
+    },
+    {
+      "gate": "browser:html-drafts-runtime-browser.cjs",
+      "status": "PASS",
+      "seconds": 28.5,
+      "tail": [
+        "Actual runtime draft bridge: authenticated hydration, typing race, reload, acknowledgement/refusal and raw-event stability passed"
+      ]
+    },
+    {
+      "gate": "browser:html-preferences-browser.cjs",
+      "status": "PASS",
+      "seconds": 25.8,
+      "tail": [
+        "Preference browser acceptance passed at desktop and phone widths; screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-preferences-ZJf5qJ"
+      ]
+    },
+    {
+      "gate": "browser:html-p0-text-flow-browser.cjs",
+      "status": "PASS",
+      "seconds": 29.3,
+      "tail": [
+        "{\"status\":\"PASS\",\"timings\":{\"handout_ms\":1008,\"local_choice_ms\":1864},\"requests\":0,\"screenshot\":\"C:\\\\Users\\\\ASUS\\\\AppData\\\\Local\\\\Temp\\\\ros-p0-flow-7fxkJG\\\\p0-text-flow.png\",\"limitations\":\"Scripted reviewer and sandbox host; actual Python persistence. Not live Obsidian or production latency.\"}"
+      ]
+    },
+    {
+      "gate": "browser:html-socratic-browser.cjs",
+      "status": "PASS",
+      "seconds": 57.7,
+      "tail": [
+        "Socratic actual-bundle ack/refusal, hint/solution, draft/help reload, raw revision and latest-review acceptance passed; screenshots C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-socratic-QzBga5"
+      ]
+    },
+    {
+      "gate": "browser:html-explanations-browser.cjs",
+      "status": "PASS",
+      "seconds": 34.3,
+      "tail": [
+        "Explanation browser acceptance passed desktop and phone; screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-explanations-n5DdoN"
+      ]
+    },
+    {
+      "gate": "browser:html-practice-browser.cjs",
+      "status": "PASS",
+      "seconds": 64.6,
+      "tail": [
+        "Practice actual-bundle offroute selection, acknowledgement/budget gate, unit labels, assistance/draft reload, raw revision and review acceptance passed; screenshots C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-practice-7qo8P7"
+      ]
+    },
+    {
+      "gate": "browser:html-source-comparison-browser.cjs",
+      "status": "PASS",
+      "seconds": 133.9,
+      "tail": [
+        "Source comparison viewport 1440 started.",
+        "Source comparison viewport 1440 passed.",
+        "Source comparison viewport 375 started.",
+        "Source comparison viewport 375 passed.",
+        "Source comparison actual-bundle ACK/rejection/synthesis, raw revision/history, draft reload, missing sources and geometry acceptance passed; screenshots C:\\Users\\ASUS\\.agent-hub\\tmp\\ros-source-comparison-Vr1Juf"
+      ]
+    },
+    {
+      "gate": "browser:html-terms-browser.cjs",
+      "status": "PASS",
+      "seconds": 175.4,
+      "tail": [
+        "Vocabulary primary/reload 375 passed.",
+        "Vocabulary waiver/unavailable/review 375 passed.",
+        "Vocabulary viewport 375 passed.",
+        "Vocabulary long labels 1440 passed.",
+        "Vocabulary long labels 375 passed.",
+        "Vocabulary actual canonical writer/waiver, ACK refusal/delay, native reader geometry, diagnostics, drafts/reviews/reload, lecture state, live metadata and disposal passed. Screenshots C:\\Users\\ASUS\\.agent-hub\\test-temp\\ros-terms-PywNtP"
+      ]
+    },
+    {
+      "gate": "browser:html-bloom-browser.cjs",
+      "status": "PASS",
+      "seconds": 165.2,
+      "tail": [
+        "Bloom viewport 1440 started.",
+        "Bloom viewport 1440 passed.",
+        "Bloom viewport 375 started.",
+        "Bloom viewport 375 passed.",
+        "Bloom optional all-view, scoped recommendation, exact reference publication, ACK/assignment/budget gates, raw review/revision/draft/reload and geometry passed in 157.80s. Screenshots C:\\Users\\ASUS\\.agent-hub\\test-temp\\ros-bloom-3ObFNa"
+      ]
+    },
+    {
+      "gate": "browser:html-analogies-browser.cjs",
+      "status": "PASS",
+      "seconds": 103.0,
+      "tail": [
+        "Analogy viewport 1440 started.",
+        "Analogy viewport 1440 passed.",
+        "Analogy viewport 375 started.",
+        "Analogy viewport 375 passed.",
+        "Analogy acknowledged maps/limits, qualified sources/novelty, transfer assignment/budget, actual review replacement/history, raw drafts/reload and geometry passed in 98.38s. Screenshots C:\\Users\\ASUS\\.agent-hub\\test-temp\\ros-analogies-oF24QV"
+      ]
+    },
+    {
+      "gate": "browser:html-roles-browser.cjs",
+      "status": "PASS",
+      "seconds": 75.9,
+      "tail": [
+        "Roles viewport 1440 started.",
+        "Roles viewport 1440 passed.",
+        "Roles viewport 375 started.",
+        "Roles viewport 375 passed.",
+        "Role default/override/reset ACK, scoped canonical/pending work, source inventory, actual anchored critique/raw revision/reload, unavailable source and geometry passed in 67.58s. Screenshots C:\\Users\\ASUS\\.agent-hub\\test-temp\\ros-roles-839o9B"
+      ]
+    },
+    {
+      "gate": "browser:html-revisions-browser.cjs",
+      "status": "PASS",
+      "seconds": 241.1,
+      "tail": [
+        "Revision viewport 1440 started.",
+        "Revision viewport 1440 passed.",
+        "Revision viewport 375 started.",
+        "Revision viewport 375 passed.",
+        "Explanation and comparison revision acceptance passed desktop and phone; screenshots: C:\\Users\\ASUS\\.agent-hub\\tmp\\ros-revisions-4bfT5u"
+      ]
+    }
+  ],
+  "counts": {
+    "PASS": 36,
+    "FAIL": 0,
+    "SKIPPED": 0
+  }
+}

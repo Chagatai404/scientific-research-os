@@ -374,3 +374,14 @@ answer; at most twelve findings, none when the source is unavailable, and explic
 checked/not-checked limits. A new raw revision never inherits an old critique or
 review. The role selector (`pedagogy_roles.py` / `roles.js`, identical rules) is
 read-only: it recommends a behavior, never grades, starts agents or writes ledgers.
+
+## Revisions (R1-R3)
+
+Optional `pedagogy.revisions`: at most 80 edges, each exactly
+`{old_id, old_version, new_id, new_version}` between entries of the same family,
+target and underlying binding (comparison lanes also keep the same source id), with
+strictly increasing versions, no forks, merges or cycles. Only the socratic,
+explanations, practice and comparisons families may hold several entries for one
+object, and only as one connected chain. Presented entries and published links are
+immutable. Critiques, terms, Bloom sets and analogies keep exact-version references
+and never follow lineage.
