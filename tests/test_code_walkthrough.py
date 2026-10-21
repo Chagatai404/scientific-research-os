@@ -1,23 +1,15 @@
 """Code walkthroughs: units, locators, verification, approved execution, code map, ownership proposals, wiring."""
-import io
 import json
-from contextlib import redirect_stdout
 from pathlib import Path
-import re
 import subprocess
 import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'scripts'))
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'tests'))
-import code_walkthrough as cw
-import context_kernel as ck
-import install
-import terms
-from common import parse_frontmatter
-from test_tutor_gate import LITERACY
+from ros.lib import code_walkthrough as cw
 
 GIT = ['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.org', '-c', 'commit.gpgsign=false']
 SPLIT_V1 = '''import util
@@ -216,10 +208,10 @@ class ApprovedExecution(Repo):
     def test_the_cli_writes_the_record_only_when_it_runs(self):
         path = self.repo.parent / 'record.json'
         path.write_text(json.dumps(self.approve()), encoding='utf-8')
-        script = str(ROOT / 'scripts/code_walkthrough.py')
+        script = '-m', 'ros.lib.code_walkthrough'
 
         def run(*args):
-            return subprocess.run([sys.executable, '-S', '-B', script, '--repo', str(self.repo), *args], capture_output=True, text=True, encoding='utf-8')
+            return subprocess.run([sys.executable, '-S', '-B', *script, '--repo', str(self.repo), *args], capture_output=True, text=True, encoding='utf-8')
 
         before = path.read_text(encoding='utf-8')
         self.assertEqual(run('trace', str(path), 'A1').returncode, 0)
@@ -269,71 +261,6 @@ class OwnershipAndBlocks(Repo):
         self.assertEqual(len(first['affected'][0]['ref']['sha256']), 64)
         self.assertEqual(first['requirements_needed'], ['data-leakage'])
         self.assertIn('selection', result['note'])
-
-    def test_blocks_are_declared_only_for_walked_units_that_pass_the_gates(self):
-        card = {'core_idea': 'The split happens before any scaling, so the test rows never inform the training rows.', 'no_visual_reason': 'A sentence carries it.'}
-        walked = {'id': 'U1', 'status': 'walked', 'heading': 'How the split is made', 'target': 'data-leakage', 'card': card, 'literacy': LITERACY}
-        thin = {'id': 'U2', 'status': 'walked', 'heading': 'Loss', 'target': 'loss', 'literacy': {'why_selected': 'short'}}
-        pending = {'id': 'U3', 'status': 'pending'}
-        result = cw.blocks(self.record(units=[walked, thin, pending]))
-        self.assertEqual([b['id'] for b in result['blocks']], ['wt-u1'])
-        self.assertEqual(result['blocks'][0]['kind'], 'implementation')
-        self.assertEqual([p['unit'] for p in result['problems']], ['U2'])
-
-
-class Wiring(unittest.TestCase):
-    def test_the_workflow_is_a_review_context_with_project_and_research_essential(self):
-        policy = ck.POLICY['code-walkthrough']
-        self.assertEqual((policy['research'], policy['project'], policy['learning'], policy['code']), ('essential', 'essential', 'advisory', 'advisory'))
-        self.assertIn('code-walkthrough', ck.WORKFLOWS)
-
-    def test_the_pace_is_a_declared_profile_field_with_valid_values_only(self):
-        self.assertEqual(terms.profile_issues({'checkpoint_pace': 'light'}), [])
-        problems = terms.profile_issues({'checkpoint_pace': 'whenever'})
-        self.assertTrue(problems and 'never lowers a consequential unit' in problems[0])
-
-    def test_the_verifier_is_read_only_independent_and_bundles_the_protocol(self):
-        meta, body = parse_frontmatter((ROOT / 'agents/walkthrough-verifier.md').read_text(encoding='utf-8'))
-        self.assertEqual((meta['name'], meta['mode']), ('walkthrough-verifier', 'read-only'))
-        flat = re.sub(r'\s+', ' ', body)
-        for needle in ('workflow `code-walkthrough`', 'references/CODE_LEARNING_PROTOCOL.md', 'Not verified', 'do not use the word "verified"', 'A-D',
-                       'approved_commands', 'never add an approved command'):
-            self.assertIn(needle, flat)
-        policy = install.agent_policy('walkthrough-verifier')
-        self.assertIn('# Code learning protocol', policy)
-        self.assertIn('Verification Protocol', policy)
-        self.assertNotIn('# Code learning protocol', install.agent_policy('physics-reviewer'))
-
-    def test_the_skill_runs_preflight_and_states_its_limits(self):
-        text = (ROOT / 'skills/code-walkthrough/SKILL.md').read_text(encoding='utf-8')
-        self.assertEqual(parse_frontmatter(text)[0]['name'], 'code-walkthrough')
-        flat = re.sub(r'\s+', ' ', text)
-        for needle in ('context_kernel.py preflight --workflow code-walkthrough ', 'references/CONTEXT_PROTOCOL.md', 'references/HTML_SESSION_PROTOCOL.md',
-                       'consequential unit is always walked through', 'open ownership gap', 'you never write it', 'walkthrough-verifier'):
-            self.assertIn(needle, flat)
-
-    def test_the_protocol_states_the_decisions_made(self):
-        flat = re.sub(r'\s+', ' ', (ROOT / 'references/CODE_LEARNING_PROTOCOL.md').read_text(encoding='utf-8'))
-        for needle in ('default-on', 'open ownership gap', 'approved_commands', 'secrets denylist', 'Viewing a walkthrough is never evidence',
-                       'An agent never writes it'):
-            self.assertIn(needle, flat)
-
-    def test_the_tool_runs_from_the_installed_skill_for_both_providers(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp = Path(tmp)
-            repo = tmp / 'repo'
-            repo.mkdir()
-            (repo / 'a.py').write_text('X = 1\n', encoding='utf-8')
-            for provider in ('claude', 'codex'):
-                with redirect_stdout(io.StringIO()):
-                    install.install_skills(tmp / provider, False)
-                script = tmp / provider / 'code-walkthrough/scripts/code_walkthrough.py'
-                self.assertEqual(script.read_bytes(), (ROOT / 'scripts/code_walkthrough.py').read_bytes())
-                done = subprocess.run([sys.executable, '-S', '-B', str(script), '--repo', str(repo), 'map'], cwd=tmp, capture_output=True, text=True, encoding='utf-8')
-                self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
-                self.assertEqual(json.loads(done.stdout)['files'], 1)
-                self.assertTrue((tmp / provider / 'code-walkthrough/references/CODE_LEARNING_PROTOCOL.md').is_file())
-
 
 if __name__ == '__main__':
     unittest.main()

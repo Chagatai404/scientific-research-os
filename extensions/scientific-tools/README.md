@@ -26,7 +26,7 @@ distribution metadata, never module import paths. Provenance fields are advisory
 names for a human recorder, not executable expressions or automatic measurements.
 Unknown fields, schema versions and unsupported probe shapes fail validation.
 
-Only exact command arrays owned by `scripts/scientific_tools.py` are executable:
+Only exact command arrays owned by `ros.lib.scientific_tools` are executable:
 `["geant4-config", "--version"]` for geant4 and `["root-config", "--version"]`
 for root-scikit-hep. Environment capture is restricted to known Geant4 dataset
 variables. Other packs can discover package metadata without extending code.
@@ -46,9 +46,9 @@ Runtime discovery never chooses physics, models, splits or quantum configuration
 Run from the repository (or an installed compute skill directory):
 
 ```text
-python scripts/scientific_tools.py list
-python scripts/scientific_tools.py probe --all
-python scripts/scientific_tools.py manifest --experiment RQ-001 --repo .
+python -m ros.lib.scientific_tools list
+python -m ros.lib.scientific_tools probe --all
+python -m ros.lib.scientific_tools manifest --experiment RQ-001 --repo .
 ```
 
 Output is JSON on stdout. Manifest generation probes only explicitly named
@@ -63,13 +63,9 @@ CUDA/MPS availability and CUDA build version. Profiles cannot supply its code or
 activate it. Default probes never import frameworks. Timeout or invalid output
 records UNKNOWN; no tensors, GPU workloads or quantum jobs are run.
 
-Guides name files in the references directory relative to the repository or installed skill
-root, not relative to the nested pack directory. The installer bundles the same
-pack tree, helpers and canonical references for Claude and Codex.
+Guides name files relative to the repository root, not to the nested pack directory.
 
-In v0.8, consequential agent-selected methods/tools can be mapped selectively to
-schema-3 learning requirements and ownership gaps. A working tool or computational
-manifest does not demonstrate the researcher's understanding, and unknown learning
-evidence does not revoke an accepted experiment. The
-[release exercise](../../examples/release/README.md) checks these boundaries;
-real scientific tool execution remains separately approved project work.
+A working tool or computational manifest does not demonstrate the researcher's
+understanding: that is what a claim's defence items are for
+([research](../../references/RESEARCH.md)). Running a scientific tool for real
+remains separately approved project work.

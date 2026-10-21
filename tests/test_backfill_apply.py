@@ -7,8 +7,9 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'scripts'))
-import library_index as li
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ros.lib import library_index as li
 
 TABLE = '''# Papers
 
@@ -142,7 +143,7 @@ class CommandLine(unittest.TestCase):
             tmp = Path(tmp)
             index = tmp / 'INDEX.md'
             index.write_text(TABLE, encoding='utf-8')
-            run = lambda *extra: subprocess.run([sys.executable, '-S', '-B', str(ROOT / 'scripts/library_index.py'), 'backfill-apply', '--index', str(index),
+            run = lambda *extra: subprocess.run([sys.executable, '-S', '-B', '-m', 'ros.lib.library_index', 'backfill-apply', '--index', str(index),
                                                  '--backup', str(tmp / 'bk'), *extra], capture_output=True, text=True, encoding='utf-8')
             dry = run()
             self.assertEqual(dry.returncode, 0, dry.stderr)

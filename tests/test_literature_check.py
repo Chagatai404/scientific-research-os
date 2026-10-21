@@ -1,5 +1,6 @@
 from copy import deepcopy
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -7,10 +8,12 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'scripts'))
-import literature_check as lc
-import validate_evidence as ev
-from literature_fixture import atom, reviewed, paper, claim, comparison, write, build
+ENV = dict(os.environ, PYTHONPATH=str(ROOT))  # the CLIs run from other folders
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ros.lib import literature_check as lc
+from ros.lib import validate_evidence as ev
+from literature_fixture import atom, reviewed, paper, claim, write, build
 
 
 class LiteratureTests(unittest.TestCase):
@@ -217,9 +220,9 @@ class LiteratureTests(unittest.TestCase):
 
     def test_read_only_cli_modes_and_path_confinement(self):
         before = {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob('*') if p.is_file()}
-        command = [sys.executable, '-S', '-B', str(ROOT / 'scripts/literature_check.py'), '--root', str(self.root), '--input', 'literature.json']
+        command = [sys.executable, '-S', '-B', '-m', 'ros.lib.literature_check', '--root', str(self.root), '--input', 'literature.json']
         for args in ([], ['--facts-only'], ['--handoff', 'C-1']):
-            result = subprocess.run(command + args, cwd=self.root, capture_output=True, text=True, encoding='utf-8')
+            result = subprocess.run(command + args, cwd=self.root, capture_output=True, text=True, encoding='utf-8', env=ENV)
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
             json.loads(result.stdout)
         self.assertEqual(before, {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob('*') if p.is_file()})

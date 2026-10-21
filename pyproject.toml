@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "research-os"
+version = "1.0.0"
+description = "One record per course or project, prepared lessons, and research with audits and ownership, for any AI agent."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = []
+
+[project.scripts]
+ros = "ros.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ros*"]
+
+[tool.setuptools.package-data]
+ros = ["portal/*.html", "portal/*.css", "portal/*.js", "portal/vendor/**/*"]

@@ -12,8 +12,8 @@ remains untracked despite its old `solid` label.
 From the repository root:
 
 ```bash
-python scripts/knowledge.py --root examples/learning --subject probability --as-of 2026-09-29
-python scripts/knowledge.py --root examples/learning --project demo --as-of 2026-09-29
+python -m ros.lib.knowledge --root examples/learning --subject probability --as-of 2026-09-29
+python -m ros.lib.knowledge --root examples/learning --project demo --as-of 2026-09-29
 ```
 
 On `2026-10-06`, density is stale because its recorded review horizon has passed,
@@ -28,7 +28,7 @@ choices do not change their evidence. Density intentionally has no goal metadata
 `applied-probability` selects gamma-density plus external density.
 
 ```bash
-python scripts/knowledge.py --root examples/learning --goal research-foundations --as-of 2026-09-29
+python -m ros.lib.knowledge --root examples/learning --goal research-foundations --as-of 2026-09-29
 ```
 
 ## Course example
@@ -38,5 +38,5 @@ subject probability, all through one evidence record. Its density prerequisite
 belongs to `math-foundations` and is included as an external course foundation.
 
 ```bash
-python scripts/knowledge.py --root examples/learning --course stat-xxx --as-of 2026-09-29
+python -m ros.lib.knowledge --root examples/learning --course stat-xxx --as-of 2026-09-29
 ```

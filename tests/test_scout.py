@@ -8,10 +8,10 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'scripts'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(ROOT / 'tests'))
-import paper_library as lib
-import scout
+from ros.lib import paper_library as lib
+from ros.lib import scout
 from test_ontology import AS_OF
 from test_paper_library import PDF, paper
 
@@ -406,7 +406,7 @@ class ReconciliationTests(ScoutCase):
 
 class CommandLineTests(ScoutCase):
     def run_cli(self, *args):
-        done = subprocess.run([sys.executable, str(ROOT / 'scripts/scout.py'), *map(str, args)], capture_output=True, text=True, encoding='utf-8')
+        done = subprocess.run([sys.executable, '-m', 'ros.lib.scout', *map(str, args)], capture_output=True, text=True, encoding='utf-8')
         return done.returncode, (json.loads(done.stdout) if done.stdout.strip() else None)
 
     def test_plan_writes_the_neutral_brief_and_the_coordinator_files_once(self):

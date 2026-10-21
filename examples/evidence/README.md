@@ -5,8 +5,8 @@ It is a synthetic fixture, not a physics citation or independently verified
 experimental result. Its acceptance metadata is test data only.
 
 ```sh
-python scripts/validate_evidence.py examples/evidence
-python scripts/validate_evidence.py examples/evidence --markdown --facts-only
+python -m ros.lib.validate_evidence examples/evidence
+python -m ros.lib.validate_evidence examples/evidence --markdown --facts-only
 python -m unittest discover -s tests -v
 ```
 

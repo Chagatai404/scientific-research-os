@@ -3,6 +3,7 @@ from contextlib import redirect_stdout, redirect_stderr
 from datetime import date
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -10,8 +11,10 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
-import knowledge as k
+ENV = dict(os.environ, PYTHONPATH=str(ROOT))  # the CLIs run from other folders
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ros.lib import knowledge as k
 
 AS_OF = date(2026, 9, 29)
 TABLE = "## Retrieval history\n\n| " + " | ".join(k.HEADER) + " |\n|" + "---|" * 8 + "\n"
@@ -192,16 +195,12 @@ class KnowledgeTests(unittest.TestCase):
             self.assertFalse(k.frontier(c.nodes[key], set()))
         self.assertTrue(any("duplicate" in x for x in c.diagnostics))
 
-    def test_legacy_drafts_and_template_collection(self):
+    def test_legacy_notes_and_blank_drafts_are_counted_not_tracked(self):
         self.put("legacy.md", '---\ntype: concept\nstatus: solid\nproject: experiment\n---\n# Existing\n')
         self.put("pointer.md", '---\nlearning_ref: foundation\n---\n# Concept\n')
-        self.put("draft.md", (ROOT / "assets/obsidian/03_Quizbook_Topic.md").read_text(encoding="utf-8"))
+        self.put("draft.md", (ROOT / "tests/fixtures/blank-learning-draft.md").read_text(encoding="utf-8"))
         c = k.discover(self.root, AS_OF)
         self.assertEqual((c.legacy, c.drafts, c.nodes, c.diagnostics), (2, 1, {}, []))
-        templates = k.discover(ROOT / "assets/obsidian", AS_OF)
-        self.assertEqual(templates.drafts, 1)
-        self.assertFalse(templates.nodes)
-        self.assertFalse(templates.diagnostics)
 
     def test_duplicate_with_malformed_history_excludes_other_copy(self):
         self.put("a.md", record(rows=attempt().replace("| pass |", "| oops |")))
@@ -287,9 +286,9 @@ class KnowledgeTests(unittest.TestCase):
 
     def test_cli_subprocess_runs_without_configuration(self):
         self.put("node.md", record(projects=["experiment"], title="Probability Γ — yoğunluk"))
-        result = subprocess.run([sys.executable, "-B", str(ROOT / "scripts/knowledge.py"),
+        result = subprocess.run([sys.executable, "-B", '-m', 'ros.lib.knowledge',
                                  "--root", str(self.root), "--project", "experiment",
-                                 "--as-of", "2026-09-29"], cwd=self.root, capture_output=True, text=True, encoding="utf-8")
+                                 "--as-of", "2026-09-29"], cwd=self.root, capture_output=True, text=True, encoding="utf-8", env=ENV)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Probability Γ", result.stdout)
         self.assertIn("yoğunluk", result.stdout)

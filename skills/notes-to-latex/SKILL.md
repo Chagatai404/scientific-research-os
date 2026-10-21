@@ -5,9 +5,7 @@ description: Convert visible handwritten technical or mathematical notes into fa
 
 # Notes to LaTeX
 
-Read `references/LATEX_TRANSCRIPTION_PROTOCOL.md`. In this repository shared
-references live at `../../references/`; installation bundles them under
-`references/` in each skill.
+Read `PROTOCOL.md` next to this file.
 
 1. Inspect the available handwritten pages with the host's vision/document tools.
    Identify page order and readable scope; request missing input when necessary.
@@ -25,18 +23,5 @@ references live at `../../references/`; installation bundles them under
    mathematics; report substantive corrections in explicitly requested polished work.
 
 Do not build or require OCR, an AI API, or a LaTeX compiler. Use
-`references/VISUALIZATION_PROTOCOL.md` separately if diagram recreation is requested.
+the `prepare` skill's visual rules (`references/PREPARATION.md`) if diagram recreation is requested.
 Transcription alone does not invoke tutoring or the research cycle.
-
-
-## Mandatory session artifacts
-
-When this workflow creates or continues a substantive session, follow
-`references/HTML_SESSION_PROTOCOL.md`: use the centralized
-`scripts/html_sessions.py` API, preserve Markdown backlinks, produce HTML and
-structured state, and validate the artifacts. Before creating or resuming, run
-`scripts/html_sessions.py context <session>`: it lists unchecked answers and open
-questions and loads the project's research and knowledge graphs, which remain the
-memory; the page is only a view. Post questions, checks and teaching through the
-live loop in that protocol so the session reads in order and updates without reload. Ordinary notes, evidence records and source files retain
-their canonical formats. Browser feedback never automatically establishes mastery.

@@ -7,8 +7,9 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "scripts"))
-import validate_evidence as ev
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ros.lib import validate_evidence as ev
 
 
 def candidate(**changes):
@@ -118,7 +119,7 @@ class EvidenceTests(unittest.TestCase):
             root = Path(directory)
             atom = candidate()
             (root / "candidate.json").write_text(ev.EvidenceAtom(atom).serialize(), encoding="utf-8")
-            command = [sys.executable, "-S", str(ROOT / "scripts/validate_evidence.py"), str(root), "--facts-only"]
+            command = [sys.executable, "-S", '-m', 'ros.lib.validate_evidence', str(root), "--facts-only"]
             result = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)["atoms"], [])
@@ -171,7 +172,7 @@ class EvidenceTests(unittest.TestCase):
             atom = reviewed(candidate())
             path = root / "atom.json"
             path.write_text(ev.EvidenceAtom(atom).serialize(), encoding="utf-8")
-            command = [sys.executable, "-S", str(ROOT / "scripts/validate_evidence.py"), str(root), "--markdown", "--facts-only"]
+            command = [sys.executable, "-S", '-m', 'ros.lib.validate_evidence', str(root), "--markdown", "--facts-only"]
             result = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("12.74", result.stdout)

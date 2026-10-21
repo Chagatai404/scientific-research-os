@@ -1,7 +1,5 @@
 """Concept identity, explicit applications and scope-safe evidence; offline fixtures."""
-from contextlib import redirect_stdout
 from datetime import date
-import io
 import json
 from pathlib import Path
 import subprocess
@@ -10,9 +8,9 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'scripts'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(ROOT / 'tests'))
-import knowledge as k
+from ros.lib import knowledge as k
 from test_knowledge import record, attempt
 
 AS_OF = date(2026, 10, 2)
@@ -203,7 +201,7 @@ class OntologyTests(unittest.TestCase):
     def test_cli_determinism_unicode_no_config_and_no_writes(self):
         self.put('learning.md', capability(rows=row()))
         before = {p.name: p.read_bytes() for p in self.root.iterdir()}
-        args = [sys.executable, '-S', '-B', str(ROOT / 'scripts/knowledge.py'), '--root', str(self.root),
+        args = [sys.executable, '-S', '-B', '-m', 'ros.lib.knowledge', '--root', str(self.root),
                 '--concept', 'box-counting', '--json', '--as-of', str(AS_OF)]
         first = subprocess.run(args, capture_output=True, text=True, encoding='utf-8')
         second = subprocess.run(args, capture_output=True, text=True, encoding='utf-8')
@@ -219,7 +217,7 @@ class OntologyTests(unittest.TestCase):
         self.assertEqual(q['diagnostics'], [])
 
     def test_ontology_rejects_nested_unknown_duplicate_fields_and_mixed_identity(self):
-        import ontology
+        from ros.lib import ontology
         source = entity('concept', 'c', subjects=['fractal-geometry'])
         cases = [source.replace('subjects: ["fractal-geometry"]', 'subjects:\n  - fractal-geometry'),
                  source.replace('knowledge_id: c', 'knowledge_id: c\nknowledge_id: d'),
@@ -285,19 +283,6 @@ class OntologyTests(unittest.TestCase):
         self.put('learning.md', capability(rows=row('legacy', 'legacy', method='computation')))
         self.assertFalse(self.collect().nodes['box.explain'].ready)
 
-    def test_bootstrap_proposals_for_schema_two_preserve_unknown_scope(self):
-        import bootstrap
-        from test_bootstrap import session, q
-        self.put('learning.md', capability())
-        self.put('lesson.md', session(q(1, 'Boxes', 'Explain the concept.', 'A short answer.', 'Correct.'),
-                                     refs='["box.explain"]'))
-        report = bootstrap.analyse(self.root)
-        proposed = report['candidates'][0]['row']
-        self.assertTrue(proposed.endswith('| legacy | legacy | |'))
-        rows = k.history('## Retrieval history\n\n| ' + ' | '.join(k.HEADER_V2) + ' |\n|' +
-                         '---|' * 11 + '\n' + proposed, 2)
-        self.assertEqual(rows[0].scope, 'legacy')
-
     def test_shipped_example_exposes_shared_identity_and_disjoint_evidence(self):
         collection = k.discover(ROOT / 'examples/ontology', AS_OF)
         self.assertEqual(collection.diagnostics, [])
@@ -307,13 +292,6 @@ class OntologyTests(unittest.TestCase):
         self.assertEqual(by_id['box.ecal-application']['mastery']['conceptual']['explanation']['state'], 'unknown')
         self.assertEqual(len([r for r in view['ontology'] if r['knowledge_id'] == 'box-counting']), 1)
 
-    def test_vault_health_distinguishes_structural_concepts_from_promoted_explanations(self):
-        import vault_health
-        report = vault_health.audit(self.root, AS_OF)
-        self.assertEqual(report['ontology']['counts']['concept'], 2)
-        self.assertEqual(report['concepts']['gaps'], [])
-        self.assertIn('Knowledge ontology', vault_health.render(report))
-
     def test_schema_two_markdown_exposes_dimension_states(self):
         self.put('learning.md', capability(rows=row()))
         view = k.render(self.collect(), 'concept', 'box-counting', AS_OF)
@@ -321,7 +299,7 @@ class OntologyTests(unittest.TestCase):
         self.assertIn('| box.explain | transfer | transfer | unknown |', view)
 
     def test_research_links_validate_without_changing_human_state(self):
-        import research
+        from ros.lib import research
         from test_research import note
         self.put('rq.md', note(id='RQ-1', project='ecal', status='proposed', concepts=['box-counting'], blocks=['block-9']))
         self.put('learning.md', capability(rows=row(), projects=['ecal']))
@@ -332,7 +310,7 @@ class OntologyTests(unittest.TestCase):
         self.assertTrue(any(d.code == 'LINK_ONTOLOGY' for d in research.validate(self.root).diagnostics))
 
     def test_separate_research_and_learning_roots_resolve_ontology_links(self):
-        import research
+        from ros.lib import research
         from test_research import note
         with tempfile.TemporaryDirectory() as repo:
             path = Path(repo)
@@ -341,13 +319,13 @@ class OntologyTests(unittest.TestCase):
             self.assertEqual(registry.diagnostics, [])
 
     def test_research_cannot_link_a_block_from_another_project(self):
-        import research
+        from ros.lib import research
         from test_research import note
         self.put('rq.md', note(project='other-project', blocks=['block-9']))
         self.assertTrue(any('different project' in d.message for d in research.validate(self.root).diagnostics))
 
     def test_schema_two_research_bridge_exposes_dimensions_without_changing_approval(self):
-        import research
+        from ros.lib import research
         from test_research import note
         self.put('learning.md', capability(rows=row('project_application', 'application', 'computation', context='block-9')))
         self.put('rq.md', note(project='ecal', learning_dependencies=['box.explain']))
@@ -356,135 +334,3 @@ class OntologyTests(unittest.TestCase):
         self.assertEqual(entry['state'], 'unknown')
         self.assertEqual(entry['mastery']['project_application']['application']['state'], 'demonstrated')
         self.assertEqual(registry.records['RQ-1'].meta['status'], 'active')
-
-
-class MigrationTests(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-        seed(self.root)
-        self.path = self.root / 'old.md'
-        self.original = record('box.old', domain='fractal-geometry', rows=attempt(), state='demonstrated').encode('utf-8')
-        self.path.write_bytes(self.original)
-
-    def proposal(self):
-        import migrate_learning as migration
-        return migration.plan(self.root, 'box.old', 'box-counting', 'conceptual', ['explanation'])
-
-    def test_dry_run_deterministic_preserves_original_and_does_not_invent_mastery(self):
-        p = self.proposal()
-        self.assertEqual(p, self.proposal())
-        self.assertEqual(self.path.read_bytes(), self.original)
-        meta, body = k.metadata(p['replacement'])
-        node = k.make_node(meta, body, 'old.md', AS_OF)
-        self.assertEqual(node.assessment.state, 'unknown')
-        self.assertEqual(node.attempts[0].scope, 'legacy')
-        self.assertEqual(node.attempts[0].dimension, 'legacy')
-        self.assertEqual(node.attempts[0].outcome, 'pass')
-        self.assertIn('learning_state: demonstrated', body)
-        self.assertFalse((self.root / '.learning-migration').exists())
-
-    def test_apply_backup_excluded_from_discovery_and_repeat_is_noop(self):
-        import migrate_learning as migration
-        p = self.proposal()
-        self.assertEqual(migration.apply(self.root, p), 'migrated')
-        self.assertEqual((self.root / p['backup']).read_bytes(), self.original)
-        c = k.discover(self.root, AS_OF)
-        self.assertEqual(c.diagnostics, [])
-        self.assertEqual(list(c.nodes), ['box.old'])
-        before = self.path.read_bytes()
-        self.assertEqual(migration.apply(self.root, self.proposal()), 'already-migrated')
-        self.assertEqual(self.path.read_bytes(), before)
-        with self.assertRaisesRegex(ValueError, 'different mapping'):
-            migration.plan(self.root, 'box.old', 'box-counting', 'project_application', ['application'])
-
-    def test_conflicting_subject_map_stale_source_or_modified_proposal_refuse(self):
-        import migrate_learning as migration
-        (self.root / 'other.md').write_text(entity('concept', 'other', subjects=['calorimetry']), encoding='utf-8')
-        with self.assertRaisesRegex(ValueError, 'legacy domain subject'):
-            migration.plan(self.root, 'box.old', 'other', 'conceptual', ['explanation'])
-        p = self.proposal()
-        self.path.write_bytes(self.original + b'\nChanged while planning.\n')
-        with self.assertRaisesRegex(ValueError, 'changed'):
-            migration.apply(self.root, p)
-        self.path.write_bytes(self.original)
-        p['replacement'] += 'injected text'
-        with self.assertRaisesRegex(ValueError, 'changed'):
-            migration.apply(self.root, p)
-        self.assertEqual(self.path.read_bytes(), self.original)
-
-    def test_backup_collision_and_path_escape_do_not_modify_source(self):
-        import migrate_learning as migration
-        p = self.proposal()
-        backup = self.root / p['backup']
-        backup.parent.mkdir()
-        backup.write_bytes(b'existing backup')
-        with self.assertRaisesRegex(ValueError, 'backup already exists'):
-            migration.apply(self.root, p)
-        for relative in ('../old.md', 'C:/outside.md', 'a/../old.md', 'a\\old.md'):
-            with self.assertRaises(ValueError):
-                migration.confined(self.root, relative)
-        self.assertEqual(self.path.read_bytes(), self.original)
-
-    def test_empty_history_and_fenced_examples_migrate_without_rewriting_examples(self):
-        from test_knowledge import TABLE
-        original = record('box.old', domain='fractal-geometry')
-        original += '\n## Examples\n```markdown\n' + TABLE + attempt() + '```\n'
-        self.path.write_text(original, encoding='utf-8')
-        p = self.proposal()
-        self.assertIn('```markdown\n' + TABLE + attempt() + '```', p['replacement'])
-        meta, body = k.metadata(p['replacement'])
-        self.assertEqual(k.history(body, 2), [])
-
-    def test_invalid_scope_profile_and_missing_mapping_are_rejected(self):
-        import migrate_learning as migration
-        for scope, dims in [('invalid', ['explanation']), ('conceptual', []),
-                            ('conceptual', ['explanation', 'explanation'])]:
-            with self.assertRaises(ValueError):
-                migration.plan(self.root, 'box.old', 'box-counting', scope, dims)
-        with self.assertRaisesRegex(ValueError, 'explicit concept mapping'):
-            migration.plan(self.root, 'box.old', 'absent', 'conceptual', ['explanation'])
-
-    def test_explicit_subject_mapping_handles_legacy_domain_collision(self):
-        import migrate_learning as migration
-        self.path.write_text(record('box.old', domain='physics', rows=attempt()), encoding='utf-8')
-        with self.assertRaisesRegex(ValueError, 'legacy domain subject'):
-            self.proposal()
-        p = migration.plan(self.root, 'box.old', 'box-counting', 'conceptual', ['explanation'], 'calorimetry')
-        migration.apply(self.root, p)
-        collection = k.discover(self.root, AS_OF)
-        self.assertEqual(collection.diagnostics, [])
-        self.assertEqual(k.select(collection.nodes, 'subject', 'physics')[0], {'box.old'})
-        self.assertEqual(k.select(collection.nodes, 'subject', 'calorimetry')[0], {'box.old'})
-        self.assertEqual(collection.nodes['box.old'].domains, ['mathematics', 'physics'])
-        self.assertEqual(collection.nodes['box.old'].meta['legacy_subject'], 'physics')
-        with self.assertRaisesRegex(ValueError, 'explicit subject mapping'):
-            migration.plan(self.root, 'box.old', 'box-counting', 'conceptual', ['explanation'], 'absent')
-
-    def test_failed_replace_preserves_source_and_backup(self):
-        from unittest.mock import patch
-        import migrate_learning as migration
-        p = self.proposal()
-        with patch.object(migration.os, 'replace', side_effect=OSError('blocked replacement')):
-            with self.assertRaises(OSError):
-                migration.apply(self.root, p)
-        self.assertEqual(self.path.read_bytes(), self.original)
-        self.assertEqual((self.root / p['backup']).read_bytes(), self.original)
-        self.assertFalse(list(self.root.glob('*.tmp')))
-        self.assertFalse((self.root / 'old.md.lock').exists())
-
-    def test_cli_default_readonly_and_explicit_apply(self):
-        args = [sys.executable, '-S', '-B', str(ROOT / 'scripts/migrate_learning.py'), '--root', str(self.root),
-                '--capability', 'box.old', '--concept', 'box-counting', '--scope', 'conceptual', '--require', 'explanation']
-        p = subprocess.run(args, capture_output=True, text=True, encoding='utf-8')
-        self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertEqual(json.loads(p.stdout)['status'], 'planned')
-        self.assertEqual(self.path.read_bytes(), self.original)
-        p = subprocess.run(args + ['--apply'], capture_output=True, text=True, encoding='utf-8')
-        self.assertEqual(p.returncode, 0, p.stderr)
-        self.assertEqual(json.loads(p.stdout)['status'], 'migrated')
-
-
-if __name__ == '__main__':
-    unittest.main()

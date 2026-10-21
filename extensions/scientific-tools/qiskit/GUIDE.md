@@ -11,7 +11,7 @@ Record logical/executed circuits, bit/observable conventions, transpilation,
 backend/version and shots explicitly. Metadata availability may be partial and
 does not establish a configured simulator or QPU. This pack performs no circuit
 execution, backend connection, credential discovery or quantum job submission.
-Use `references/QML_PROTOCOL.md` and inherited ML methodology for validity.
+Use `skills/research/lenses/qml.md` and inherited ML methodology for validity.
 
 Prefer [the official Machine Learning repository and documentation](https://github.com/qiskit-community/qiskit-machine-learning)
 and [TorchConnector API](https://qiskit-community.github.io/qiskit-machine-learning/stubs/qiskit_machine_learning.connectors.TorchConnector.html),

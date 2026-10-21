@@ -2,8 +2,11 @@
 from copy import deepcopy
 import json
 
-import validate_evidence as ev
-import literature_check as lc
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ros.lib import validate_evidence as ev
+from ros.lib import literature_check as lc
 
 
 def atom(key='C-1', doi='10.1234/synthetic-a', **changes):

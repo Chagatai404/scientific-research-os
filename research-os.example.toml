@@ -1,20 +1,8 @@
-# Copy this file to research-os.toml and edit it.
-# research-os.toml is ignored by git so local paths stay local.
-
-[vault]
-path = "C:/Users/<username>/Obsidian/Knowledge"
-templates_dir = "90 Templates"
-default_session_dir = "00 Tutor Sessions"
-research_session_dir = "40 Research/<project-name>/Sessions"
-
-[install]
-claude_skills = "~/.claude/skills"
-claude_agents = "~/.claude/agents"
-codex_skills = "~/.agents/skills"
-codex_agents = "~/.codex/agents"
+# Copy this file to research-os.toml (ignored by git, so local paths stay local) and edit it.
+# Records themselves live in $ROS_HOME/projects/<name> (default ~/ResearchOS); set ROS_HOME to move them.
 
 [paper_library]
-# Set your own paper directory in the ignored local configuration.
+# The screened local paper library read by `python -m ros.lib.paper_library` and `python -m ros.lib.scout`.
 root = "~/Research/papers"
 organization = "concept"
 max_pdf_bytes = 52428800

@@ -1,8 +1,6 @@
 """Animation: spec, scene lint, backend detection and choice, a recorded render, and the registry record. No renderer is needed to run these."""
-import io
 import json
 import os
-from contextlib import redirect_stdout
 from pathlib import Path
 import shutil
 import subprocess
@@ -12,10 +10,9 @@ import unittest
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'scripts'))
-import animate as an
-import install
-import visuals
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ros.lib import animate as an
 
 REAL_WHICH = shutil.which
 
@@ -214,14 +211,11 @@ class Rendering(Base):
         self.assertEqual(sorted(p.name for p in folder.iterdir()), ['vis-complete-square.animation.json', 'vis-complete-square.keyframes.png', 'vis-complete-square.mp4',
                                                                      'vis-complete-square.poster.png', 'vis-complete-square.render.json', 'vis-complete-square.scene.py',
                                                                      'vis-complete-square.visual.json'])
-        records, diagnostics = visuals.discover(self.vault)
-        self.assertEqual(diagnostics, [])
-        record = records['VIS-complete-square']
+        record = json.loads((folder / 'vis-complete-square.visual.json').read_text(encoding='utf-8'))
         self.assertEqual((record['kind'], record['mode'], record['verification_status'], record['quantitative'], record['source_type']),
                          ('animation', 'animation', 'rendered', True, 'generated'))
         self.assertIn('Rendering is not verification', record['basis'])
         self.assertEqual([e['format'] for e in record['exports']], ['png', 'png'])
-        self.assertEqual(visuals.reusable(records, 'quadratic-formula'), [], 'a rendered visual is not reusable automatically')
         report = json.loads((folder / 'vis-complete-square.render.json').read_text(encoding='utf-8'))
         self.assertEqual((report['backend']['env'], report['video']['duration'], report['video']['width']), ('gx', 9.5, 1280))
         self.assertNotIn(str(self.dir), json.dumps(report), 'no local path leaks into the vault')
@@ -274,7 +268,7 @@ class Rendering(Base):
     def test_a_schematic_animation_is_registered_without_quantitative_claims(self):
         spec = {k: v for k, v in SPEC.items() if k != 'basis'}
         self.run_render(Fake(), [make_env(self.dir, 'gx')], dict(spec, schematic=True))
-        record = visuals.discover(self.vault)[0]['VIS-complete-square']
+        record = json.loads((self.vault / 'Visuals/vis-complete-square/vis-complete-square.visual.json').read_text(encoding='utf-8'))
         self.assertEqual((record['source_type'], record['quantitative']), ('schematic', False))
         self.assertNotIn('basis', record)
 
@@ -429,11 +423,11 @@ class CommandLine(unittest.TestCase):
         self.dir = Path(tmp.name)
         (self.dir / 'scene.py').write_text(SCENE, encoding='utf-8')
         (self.dir / 'spec.json').write_text(json.dumps(SPEC), encoding='utf-8')
-        self.script = str(ROOT / 'scripts/animate.py')
+        self.script = '-m', 'ros.lib.animate'
         self.env = dict(os.environ, PATH=str(self.dir), **{an.ENV_VARIABLE: ''})
 
     def run_cli(self, *args):
-        return subprocess.run([sys.executable, '-S', '-B', self.script, *args], capture_output=True, text=True, encoding='utf-8', env=self.env)
+        return subprocess.run([sys.executable, '-S', '-B', *self.script, *args], capture_output=True, text=True, encoding='utf-8', env=self.env)
 
     def test_validate_and_lint_exit_codes(self):
         self.assertEqual(self.run_cli('validate', str(self.dir / 'spec.json')).returncode, 0)
@@ -459,27 +453,6 @@ class CommandLine(unittest.TestCase):
         self.assertEqual(self.run_cli('render', str(self.dir / 'spec.json'), '--root', str(self.dir / 'vault'), '--directory', '../x').returncode, 2)
 
 
-class Installed(unittest.TestCase):
-    def test_the_tool_and_protocol_reach_the_visualization_skill(self):
-        text = (ROOT / 'skills/science-visualize/SKILL.md').read_text(encoding='utf-8')
-        self.assertIn('references/ANIMATION_PROTOCOL.md', text)
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp = Path(tmp)
-            with redirect_stdout(io.StringIO()):
-                install.install_skills(tmp / 'claude', False)
-            skill = tmp / 'claude' / 'science-visualize'
-            self.assertEqual((skill / 'scripts/animate.py').read_bytes(), (ROOT / 'scripts/animate.py').read_bytes())
-            self.assertTrue((skill / 'references/ANIMATION_PROTOCOL.md').exists())
-            done = subprocess.run([sys.executable, '-S', '-B', str(skill / 'scripts/animate.py'), 'validate', str(ROOT / 'tests/fixtures/animation-spec.json')],
-                                  capture_output=True, text=True, encoding='utf-8')
-            self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
-
-    def test_the_protocol_states_what_was_measured_and_what_was_not(self):
-        text = (ROOT / 'references/ANIMATION_PROTOCOL.md').read_text(encoding='utf-8')
-        for needle in ('Measured here', 'does not test the vendor', 'write_to_movie', 'not a sandbox', 'Not done', 'one-file'):
-            self.assertIn(needle, text)
-
-
 @unittest.skipUnless(os.environ.get('RESEARCH_OS_TEST_MANIMGX_ENV') and REAL_WHICH('ffmpeg'), 'set RESEARCH_OS_TEST_MANIMGX_ENV to a ManimGX virtual environment to render for real')
 class RealManimGX(Base):
     def test_a_real_scene_renders_and_registers(self):
@@ -490,7 +463,6 @@ class RealManimGX(Base):
         self.assertTrue(result['rendered'], result)
         video = self.vault / result['artifact']
         self.assertGreater(video.stat().st_size, 1000)
-        self.assertEqual(visuals.discover(self.vault)[1], [])
         self.assertTrue(an.probe(video)['duration'] > 0)
 
 

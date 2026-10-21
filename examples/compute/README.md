@@ -40,9 +40,9 @@ or seed for a real project. `manifest.json` is an unexecuted example; all runtim
 facts and execution outcome remain unknown. It does not assert a successful run.
 
 ```sh
-python scripts/computational_manifest.py examples/compute/manifest.json
-python scripts/scientific_tools.py list
-python scripts/scientific_tools.py manifest --experiment ILLUSTRATION-NOT-A-RUN --repo . --declared examples/compute/declared-ml.json
+python -m ros.lib.computational_manifest examples/compute/manifest.json
+python -m ros.lib.scientific_tools list
+python -m ros.lib.scientific_tools manifest --experiment ILLUSTRATION-NOT-A-RUN --repo . --declared examples/compute/declared-ml.json
 ```
 
 The last command emits real observed Git/Python/platform facts for the current

@@ -1,8 +1,8 @@
 # ROOT / Scikit-HEP analysis bridge
 
 This is an ecosystem, not one package or a new global skill. Use
-`references/COMPUTATIONAL_PROTOCOL.md` for provenance, physics-audit for physical
-observables and stats-audit for inference. Follow `references/ML_PROTOCOL.md`
+`references/RESEARCH.md` for provenance, the audit skill (physics lens) for physical
+observables and the audit skill (statistics lens) for inference. Follow `skills/research/lenses/ml.md`
 when exporting features for model development.
 
 | Component | Software role |

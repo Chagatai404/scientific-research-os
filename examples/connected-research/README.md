@@ -37,38 +37,19 @@ visual registry), `evidence/`, `results/`, `src/`.
 From the repository root. `--as-of` fixes the date so output is reproducible.
 
 ```bash
-python scripts/research.py validate --root examples/connected-research --as-of 2026-09-30
-python scripts/research.py status   --root examples/connected-research --project connected-demo --as-of 2026-09-30
-python scripts/research.py frontier --root examples/connected-research --as-of 2026-09-30
-python scripts/research.py graph    --root examples/connected-research --experiment EXP-001 --as-of 2026-09-30
-python scripts/research.py context  --root examples/connected-research --experiment EXP-001 --as-of 2026-09-30
-python scripts/knowledge.py --root examples/connected-research --capability physics.shower-profile --dependencies --json --as-of 2026-09-30
-python scripts/visuals.py --root examples/connected-research --reusable
-python scripts/vault_health.py --root examples/connected-research --as-of 2026-09-30
-python scripts/bootstrap.py --root examples/connected-research
+ros init connected-demo
+ros -p connected-demo import --kind research --path examples/connected-research
+ros -p connected-demo import --kind learning --path examples/connected-research
+ros -p connected-demo research
+ros -p connected-demo code --node experiment:EXP-001
+ros -p connected-demo capabilities --scope capability:physics.shower-profile --as-of 2026-09-30
+python -m ros.lib.knowledge --root examples/connected-research --capability physics.shower-profile --dependencies --json --as-of 2026-09-30
 ```
 
-What to expect:
-
-- **validate** — `Tracked: 6`, no diagnostics.
-- **frontier** (unranked, mechanical, not a recommendation):
-  `EXP-001: adversarial-review-required`, `EXP-002: execution-available`.
-- **status / context** — EXP-001 shows `manifest: valid`, `evidence: A-width —
-  EXACT_SUPPORT`, its advisory learning states (retained / demonstrated / stale)
-  and `code implemented-by: src/profile_fit.py`. Those evidence and manifest
-  states are recorded facts, not scientific acceptance.
-- **context** — lists the branch (RQ-001, H-001, EXP-001, DEC-001), the verified
-  visuals VIS-014 and VIS-027, and reports what it omitted (sibling branch, and the
-  unverified VIS-031).
-- **knowledge** — the target's prerequisite closure with state, freshness,
-  retention target and frontier flag.
-- **visuals `--reusable`** — only VIS-014 and VIS-027; VIS-031 is a rendered
-  schematic that has not been verified.
-- **vault_health** — structural summary; no errors.
-- **bootstrap** — a dry run: the session's one answered question is reported as
-  *already recorded in a tracked learning record*, so nothing is proposed twice.
-
-No command writes to this directory.
+What to expect: `research` lists each record's next mechanical transition (unranked; not a recommendation), `code`
+shows `src/profile_fit.py` implementing EXP-001, and `capabilities` shows the shower-profile capability blocked by its
+prerequisites. These are the same answers the old `research.py` and `knowledge.py` gave (checked in
+`tests/test_ros_importers.py` and `tests/test_ros_graph.py`).
 
 ## What this example deliberately does not do
 

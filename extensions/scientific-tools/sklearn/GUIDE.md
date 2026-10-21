@@ -1,6 +1,6 @@
 # scikit-learn software guide
 
-Use `references/ML_PROTOCOL.md` for scientific controls and stats-audit for inference.
+Use `skills/research/lenses/ml.md` for scientific controls and the audit skill (statistics lens) for inference.
 The distribution is named `scikit-learn`; the usual import namespace is `sklearn`.
 Discovery reads installed distribution metadata only; it neither imports estimators
 nor executes a fit. Capture the pinned release and Python environment.
@@ -13,4 +13,4 @@ Inspect actual fitted boundaries and preserve model/transform configuration.
 
 Prefer [official common pitfalls documentation](https://scikit-learn.org/stable/common_pitfalls.html),
 official API/release notes and relevant primary framework papers. Generic leakage,
-test-set and fair-comparison policy belongs in ML_PROTOCOL, not this guide.
+test-set and fair-comparison policy belongs in the ML lens (`skills/research/lenses/ml.md`), not this guide.

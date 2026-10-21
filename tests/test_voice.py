@@ -12,9 +12,9 @@ import wave
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / 'scripts'))
-import speech_text as st
-import voice as vc
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from ros.lib import voice as vc
 
 
 def tone(path, seconds=0.5, rate=22050, channels=1, width=2):
@@ -270,7 +270,7 @@ class Kokoro(unittest.TestCase):
         self.assertIn('GPL', entry['note'])
 
     def test_the_adapter_splits_sentences_and_reads_blends_as_the_blind_test_did(self):
-        import voice_adapter as va
+        from ros.lib import voice_adapter as va
         self.assertEqual(va.split_sentences('One. Two! Three? Four: five.'), ['One.', 'Two!', 'Three?', 'Four:', 'five.'])
         self.assertEqual(va.split_sentences('  no end  '), ['no end'])
         self.assertEqual(va.parse_blend('af_heart:0.6,af_sky:0.4'), [('af_heart', 0.6), ('af_sky', 0.4)])
@@ -299,183 +299,6 @@ class BatchAdapter(FakeAdapter):
                 line = {'ok': False, 'error': 'RuntimeError: out of memory'}
             return {'code': 0, 'stderr': '', 'seconds': 0.1, 'stdout': json.dumps(line)}
         return super().__call__(args, timeout)
-
-
-BOARD = {'board_schema': 1, 'steps': [
-    {'id': 'a', 'say': 'The slope tells us which way is downhill.', 'do': [{'op': 'write', 'text': 'slope', 'at': [5, 5]}]},
-    {'id': 'quiet', 'say': '', 'do': [{'op': 'write', 'text': 'no speech here', 'at': [5, 20]}]},
-    {'id': 'b', 'say': 'Now look at the curve:'},
-    {'id': 'c', 'say': 'The slope tells us which way is downhill.'},
-    {'id': 'd', 'say': 'Gradient {{tr: eğim}} descent.'},
-    {'id': 'e', 'say': r'See {{math: \begin{pmatrix} a \end{pmatrix}}} here.'},
-]}
-
-
-class KokoroBoard(unittest.TestCase):
-    """A blackboard lecture spoken one recording per step: one model load for everything not yet recorded, the same keys as speaking each sentence alone,
-    refusals per step, reuse, and the recordings stored in the board widget without touching its script."""
-
-    def setUp(self):
-        tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(tmp.cleanup)
-        self.dir = Path(tmp.name)
-        self.vault = self.dir / 'vault'
-        self.vault.mkdir()
-        self.env = make_env(self.dir)
-        self.models = self.dir / 'models'
-        self.engines = {'kokoro_onnx': '0.6.1', 'faster_whisper': '1.2.1'}
-        self.voices = {'model_dir': str(self.models)}
-
-    def board(self, fake, script=BOARD, **kwargs):
-        with mock.patch.object(vc, 'run_command', fake):
-            return vc.speak_board(self.vault, script, 'kokoro', [str(self.env)], kwargs.pop('voices', self.voices), **kwargs)
-
-    def synths(self, fake):
-        return [c for c in fake.calls if len(c) > 2 and c[2] == 'synth']
-
-    def test_every_missing_sentence_goes_to_the_engine_in_one_call_with_the_rated_delivery(self):
-        fake = BatchAdapter(engines=self.engines)
-        result = self.board(fake)
-        calls = self.synths(fake)
-        self.assertEqual(len(calls), 1, 'the model loads once for the whole board')
-        call = calls[0]
-        option = lambda name: call[call.index(name) + 1]
-        self.assertEqual((option('--provider'), option('--device')), ('kokoro', 'cpu'))
-        self.assertEqual((option('--voice-blend'), option('--speed'), option('--gap'), option('--colon-gap')), ('af_heart:0.6,af_sky:0.4', '0.95', '0.5', '0.3'))
-        self.assertEqual(option('--model-dir'), str(self.models))
-        self.assertNotIn('--text-file', call)
-        self.assertEqual((result['synthesized'], result['reused']), (2, 0), 'the repeated sentence is spoken once')
-        self.assertEqual(sorted(result['audio']), ['a', 'b', 'c'], 'silent steps get nothing; refused ones are reported instead')
-        self.assertEqual(result['audio']['a']['file'], result['audio']['c']['file'], 'one recording serves the same sentence')
-        self.assertEqual(len(list((self.vault / 'Narration').glob('*.wav'))), 2)
-
-    def test_a_step_is_recorded_exactly_as_the_sentence_alone_would_be_and_the_pause_is_the_deliverys(self):
-        fake = BatchAdapter(engines=self.engines)
-        result = self.board(fake)
-        with mock.patch.object(vc, 'run_command', fake):
-            alone = vc.speak(self.vault, 'Now look at the curve:', 'en', 'kokoro', [str(self.env)], self.voices)
-        self.assertTrue(alone['reused'], 'the same key: speaking the sentence by itself finds the recording the board made')
-        self.assertEqual(alone['audio'], result['audio']['b']['file'])
-        a, b = result['audio']['a'], result['audio']['b']
-        self.assertEqual((a['pause'], b['pause']), (0.5, 0.3), 'a colon is followed by the shorter pause')
-        self.assertEqual(a['say_sha256'], vc.say_digest('The slope tells us which way is downhill.'))
-        self.assertEqual(a['say_sha256'], vc.sha('The slope tells us which way is downhill.'.encode('utf-8')))
-        self.assertGreater(a['seconds'], 0)
-        record = json.loads((self.vault / a['file']).with_suffix('.narration.json').read_text(encoding='utf-8'))
-        self.assertEqual(record['voices'], {'en': 'kokoro-v1.0:af_heart:0.6,af_sky:0.4@0.95/g0.5,0.3'})
-        self.assertNotIn(str(self.dir), json.dumps(record))
-
-    def test_sentences_that_cannot_be_spoken_are_refused_one_by_one_and_the_rest_still_play(self):
-        result = self.board(BatchAdapter(engines=self.engines))
-        self.assertEqual(sorted(result['refused']), ['d', 'e'])
-        self.assertIn('English only', result['refused']['d'])
-        self.assertTrue(result['refused']['e'])
-        self.assertNotIn('d', result['audio'])
-
-    def test_a_second_run_speaks_nothing_and_a_changed_sentence_speaks_only_itself(self):
-        fake = BatchAdapter(engines=self.engines)
-        first = self.board(fake)
-        again = self.board(fake)
-        self.assertEqual(len(self.synths(fake)), 1, 'no engine runs when everything is recorded')
-        self.assertEqual((again['synthesized'], again['reused'], again['audio']), (0, 3, first['audio']))
-        changed = json.loads(json.dumps(BOARD))
-        changed['steps'][2]['say'] = 'Now look at the curve again:'
-        third = self.board(fake, changed)
-        self.assertEqual(len(self.synths(fake)), 2)
-        batch = self.synths(fake)[1]
-        self.assertEqual((third['synthesized'], third['reused']), (1, 2))
-        self.assertNotEqual(third['audio']['b']['file'], first['audio']['b']['file'])
-        self.assertEqual(third['audio']['a'], first['audio']['a'])
-        self.assertTrue((self.vault / first['audio']['b']['file']).is_file(), 'the old recording is never overwritten')
-        self.assertIn('--batch-file', batch)
-
-    def test_refusals_that_affect_the_whole_board_happen_before_any_engine_runs(self):
-        fake = BatchAdapter(engines=self.engines)
-        with self.assertRaisesRegex(vc.VoiceError, 'CPU'):
-            self.board(fake, device='cuda')
-        with self.assertRaisesRegex(vc.VoiceError, 'speed=0.9'):
-            self.board(fake, rate=0.9)
-        with self.assertRaisesRegex(vc.VoiceError, 'model_dir'):
-            self.board(fake, voices={})
-        with self.assertRaisesRegex(vc.VoiceError, 'relative path'):
-            self.board(fake, directory='../out')
-        with self.assertRaisesRegex(ValueError, 'invalid board script'):
-            self.board(fake, {'board_schema': 1, 'steps': []})
-        with self.assertRaisesRegex(vc.VoiceError, 'Kokoro'):
-            with mock.patch.object(vc, 'run_command', fake):
-                vc.speak_board(self.vault, BOARD, 'piper', [str(self.env)], self.voices)
-        with self.assertRaisesRegex(vc.VoiceError, 'no environment with kokoro'):
-            self.board(BatchAdapter(engines={'piper': '1'}))
-        self.assertEqual(self.synths(fake), [])
-        self.assertFalse((self.vault / 'Narration').exists())
-
-    def test_an_engine_failure_is_reported_and_leaves_no_recording_behind(self):
-        with self.assertRaisesRegex(vc.VoiceError, 'out of memory'):
-            self.board(BatchAdapter(engines=self.engines, fail_on='batch'))
-        self.assertEqual(list((self.vault / 'Narration').glob('*')), [])
-
-    def test_a_board_with_nothing_to_say_needs_no_engine(self):
-        silent = {'board_schema': 1, 'steps': [{'id': 'x', 'do': [{'op': 'write', 'text': 'hi', 'at': [1, 1]}]}]}
-        fake = BatchAdapter(engines={})
-        result = self.board(fake, silent)
-        self.assertEqual((result['audio'], result['refused'], fake.calls), ({}, {}, []))
-
-    def test_the_recordings_are_stored_in_the_widget_and_the_script_is_left_alone(self):
-        import html_sessions as hs
-        hs.install_runtime(self.vault)
-        hs.create_session(self.vault, 'Sessions/lecture.md', '# Lecture\n\n<!-- ros-widget: board1 -->\n', title='Lecture',
-                          widgets=[{'id': 'board1', 'kind': 'board', 'title': 'Board', 'script': BOARD}])
-        fake = BatchAdapter(engines=self.engines)
-        with mock.patch.object(vc, 'run_command', fake):
-            result = vc.bind_board_audio(self.vault, 'Sessions/lecture.md', 'board1', provider='kokoro', envs=[str(self.env)], voices=self.voices)
-        widget = hs.load_session(self.vault, 'Sessions/lecture.md')['widgets'][0]
-        self.assertEqual(widget['audio'], result['audio'])
-        self.assertEqual(widget['script'], BOARD, 'the script is exactly what the agent wrote')
-        self.assertIn('media-src', (self.vault / 'Sessions/lecture.html').read_text(encoding='utf-8'))
-        with mock.patch.object(vc, 'run_command', fake), self.assertRaisesRegex(vc.VoiceError, 'no board widget'):
-            vc.bind_board_audio(self.vault, 'Sessions/lecture.md', 'nope', provider='kokoro', envs=[str(self.env)], voices=self.voices)
-
-    def test_steps_added_to_an_open_board_while_it_is_being_narrated_are_not_lost(self):
-        import board_script
-        import html_sessions as hs
-        hs.install_runtime(self.vault)
-        hs.create_session(self.vault, 'Sessions/live.md', '# Live\n\n<!-- ros-widget: board1 -->\n', title='Live',
-                          widgets=[{'id': 'board1', 'kind': 'board', 'script': dict(BOARD, open=True)}])
-        real = vc.speak_board
-
-        def slow(root, script, **kwargs):
-            result = real(root, script, **kwargs)
-            grown = board_script.append_steps(script, [{'id': 'later', 'say': 'Added meanwhile.'}], open_=False)   # the agent writes on while we narrate
-            hs.update_session(root, 'Sessions/live.md', widgets=[{'id': 'board1', 'kind': 'board', 'script': grown}])
-            return result
-        fake = BatchAdapter(engines=self.engines)
-        with mock.patch.object(vc, 'run_command', fake), mock.patch.object(vc, 'speak_board', slow):
-            vc.bind_board_audio(self.vault, 'Sessions/live.md', 'board1', provider='kokoro', envs=[str(self.env)], voices=self.voices)
-        widget = hs.load_session(self.vault, 'Sessions/live.md')['widgets'][0]
-        self.assertEqual([s['id'] for s in widget['script']['steps']][-1], 'later', 'the step added during narration survives')
-        self.assertFalse(widget['script']['open'])
-        self.assertEqual(sorted(widget['audio']), ['a', 'b', 'c'])
-
-    def test_the_command_line_prints_the_map_for_a_script_file_and_changes_nothing_else(self):
-        import contextlib
-        import io
-        script = self.dir / 'board.json'
-        script.write_text(json.dumps(BOARD), encoding='utf-8')
-        out = io.StringIO()
-        with mock.patch.object(vc, 'run_command', BatchAdapter(engines=self.engines)), contextlib.redirect_stdout(out):
-            code = vc.main(['board', '--root', str(self.vault), '--script', str(script), '--env', str(self.env), '--voice', f'model_dir={self.models}'])
-        self.assertEqual(code, 0)
-        self.assertEqual(sorted(json.loads(out.getvalue())['audio']), ['a', 'b', 'c'])
-        with contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(vc.main(['board', '--root', str(self.vault)]), 2, 'a script or a session is needed')
-
-    def test_the_adapter_refuses_a_malformed_batch_before_loading_the_engine(self):
-        import voice_adapter as va
-        bad = self.dir / 'bad.json'
-        for content in ('[]', '{}', '[{"id": "x"}]', '[{"id": "x", "text": "t"}]'):
-            bad.write_text(content, encoding='utf-8')
-            with self.assertRaisesRegex(ValueError, 'non-empty list'):
-                va.synth_kokoro_batch(mock.Mock(batch_file=bad))
 
 
 class Transcription(unittest.TestCase):
@@ -541,7 +364,7 @@ class Bakeoff(unittest.TestCase):
 class CommandLine(unittest.TestCase):
     def run_cli(self, *args):
         env = dict(os.environ, **{vc.ENV_VARIABLE: ''})
-        return subprocess.run([sys.executable, '-S', '-B', str(ROOT / 'scripts/voice.py'), *args], capture_output=True, text=True, encoding='utf-8', env=env)
+        return subprocess.run([sys.executable, '-S', '-B', '-m', 'ros.lib.voice', *args], capture_output=True, text=True, encoding='utf-8', env=env)
 
     def test_prepare_prints_segments_and_exits_one_when_a_formula_cannot_be_said(self):
         good = self.run_cli('prepare', '--lang', 'tr', '--text', 'Enerji {{math: x^2}} olur')
@@ -565,28 +388,3 @@ class CommandLine(unittest.TestCase):
             self.assertEqual(done.returncode, 2)
             self.assertIn('Nothing is installed for you', done.stderr)
             self.assertEqual(list(Path(tmp).iterdir()), [])
-
-
-class Installed(unittest.TestCase):
-    def test_the_voice_tools_and_protocol_reach_the_tutor_skill_and_run_from_there(self):
-        import io
-        from contextlib import redirect_stdout
-        import install
-        self.assertIn('references/VOICE_PROTOCOL.md', (ROOT / 'skills/tutor/SKILL.md').read_text(encoding='utf-8'))
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp = Path(tmp)
-            with redirect_stdout(io.StringIO()):
-                install.install_skills(tmp / 'claude', False)
-            skill = tmp / 'claude' / 'tutor'
-            for name in ('speech_text.py', 'voice.py', 'voice_adapter.py', 'teaching_lint.py'):
-                self.assertEqual((skill / 'scripts' / name).read_bytes(), (ROOT / 'scripts' / name).read_bytes(), name)
-            self.assertTrue((skill / 'references/VOICE_PROTOCOL.md').exists())
-            done = subprocess.run([sys.executable, '-S', '-B', str(skill / 'scripts/voice.py'), 'prepare', '--lang', 'en', '--text', 'The area is {{math: \\pi r^2}}.'],
-                                  capture_output=True, text=True, encoding='utf-8')
-            self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
-            self.assertEqual(json.loads(done.stdout)['text'], 'The area is pi r squared.')
-            self.assertEqual(subprocess.run([sys.executable, '-S', '-B', str(skill / 'scripts/teaching_lint.py'), '--help'], capture_output=True, text=True).returncode, 0)
-
-
-if __name__ == '__main__':
-    unittest.main()

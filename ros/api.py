@@ -1,0 +1,17 @@
+"""The tool table: every operation on a record, declared once in ``ros.tools`` and registered in ``ros.registry``.
+The CLI, the MCP server and the portal's HTTP API are generated from it, so any agent (with a shell, with MCP, or with
+HTTP) sees the same tools with the same arguments. Python code calls a tool with ``call``; arguments are checked the
+same way whichever interface they came from.
+"""
+from __future__ import annotations
+
+from .registry import LOCK, TOOLS, Param, Tool, iso_day, present  # noqa: F401  (the public names of the table)
+from .store import Record
+from .tools import learning, preparation, record, research  # noqa: F401  (importing a module registers its tools)
+
+
+def call(name: str, rec: Record, **args):
+    """Run a tool by name with checked arguments: what the CLI, MCP and HTTP do, for Python callers."""
+    if name not in TOOLS:
+        raise KeyError(f"no tool {name}")
+    return TOOLS[name].call(rec, {k: v for k, v in args.items() if v is not None})
