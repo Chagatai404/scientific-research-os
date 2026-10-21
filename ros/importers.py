@@ -90,3 +90,196 @@ def _sync_edges(rec: Record, edges: dict[str, list[tuple[str, str, str]]]) -> in
     if add or drop:
         rec.put_edges(add + drop)
     return len(add) + len(drop)
+
+
+# ---- sessions -----------------------------------------------------------------------------------------------------
+# Old interaction types and the v1 event type each becomes. Nothing here is evidence of learning by itself: an answer
+# is an ``attempt``, and only a tutor's ``grade`` judges it.
+SESSION_EVENT_TYPES = {"response": "attempt", "plan-answer": "attempt", "hint": "hint", "solution": "reveal",
+                       "confidence": "confidence", "checkpoint": "checkpoint", "reset": "reset", "open-question": "ask",
+                       "explanation-request": "ask", "pedagogy-help": "help"}
+
+
+def session_item(q: dict, concepts: list[str]) -> dict:
+    """An old question as a v1 item. Branching (``on_correct``/``on_wrong``) is routing, which the policy now decides,
+    so it is kept only as unhashed provenance. A choice question with no recorded key becomes a free item that keeps its
+    options: the tutor grades it, nothing guesses the key."""
+    kind = q.get("kind", "free-response")
+    item: dict = {"prompt": q.get("prompt", "")}
+    options = q.get("options")
+    labels = [o.get("text", o.get("label", "")) if isinstance(o, dict) else str(o) for o in options or []]
+    if kind in ("choice", "mcq") and labels:
+        key = None
+        if any(isinstance(o, dict) and o.get("correct") is True for o in options):
+            key = next(i for i, o in enumerate(options) if isinstance(o, dict) and o.get("correct") is True)
+        elif "answer" in q:
+            values = [o.get("value", o.get("id", str(i))) if isinstance(o, dict) else str(i) for i, o in enumerate(options)]
+            for cand in (q["answer"], str(q["answer"])):
+                if cand in values:
+                    key = values.index(cand)
+                elif cand in labels:
+                    key = labels.index(cand)
+                elif isinstance(cand, int) and not isinstance(cand, bool) and 0 <= cand < len(labels):
+                    key = cand
+                if key is not None:
+                    break
+        item["options"] = labels
+        if key is not None:
+            item.update(kind="choice", answer=key)
+            feedback = [o.get("feedback") if isinstance(o, dict) else None for o in options]
+            if any(feedback):
+                item["option_feedback"] = feedback
+        else:
+            item["kind"] = "free"
+    elif kind == "numeric" and isinstance(q.get("answer"), dict) and isinstance(q["answer"].get("value"), (int, float)):
+        item.update(kind="numeric", answer=q["answer"]["value"], tolerance=q["answer"].get("tolerance", 0))
+        if q.get("feedback_wrong"):
+            item["feedback_wrong"] = q["feedback_wrong"]
+    elif kind == "numeric" and isinstance(q.get("answer"), (int, float)) and not isinstance(q.get("answer"), bool):
+        item.update(kind="numeric", answer=q["answer"], tolerance=q.get("tolerance", 0))
+    else:
+        item["kind"] = "free"
+        if labels:
+            item["options"] = labels
+        rubric = {k: q[k] for k in ("criteria",) if q.get(k)}
+        if rubric:
+            item["rubric"] = rubric
+    if q.get("solution"):
+        item["explanation"] = q["solution"]
+    hints = q.get("hints") or ([q["hint"]] if q.get("hint") else [])
+    if hints:
+        item["hints"] = [str(h) for h in hints]
+    for k in ("tests", "assumes", "introduces"):
+        if q.get(k):
+            item[k] = q[k]
+    contract = q.get("contract")
+    if isinstance(contract, dict) and isinstance(contract.get("TESTS"), list):
+        concepts = concepts + [f"capability:{t}" for t in contract["TESTS"] if isinstance(t, str)]
+    if concepts:
+        item["concepts"] = sorted(set(concepts))
+    return item
+
+
+def sessions(rec: Record, root: Path | str) -> dict:
+    """Import every ``*.state.json`` under ``root`` (hidden folders skipped). Each session becomes a ``lesson`` node;
+    its questions and plan questions become items; its interactions, reviews and answered open questions become events
+    with their original timestamps. A question whose content changed since the last import becomes a new item that
+    supersedes the old one."""
+    import json as _json
+    root = Path(root).resolve()
+    report = {"sessions": 0, "items": 0, "events_added": 0, "problems": []}
+    for path in sorted(p for p in root.rglob("*.state.json")
+                       if not any(part.startswith(".") for part in p.relative_to(root).parts)):
+        rel = path.relative_to(root).as_posix()
+        try:
+            state = _json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(state, dict) or not state.get("session_id"):
+                raise ValueError("not a session state")
+        except (OSError, ValueError) as exc:
+            report["problems"].append(f"{rel}: {exc}")
+            continue
+        sid = str(state["session_id"])
+        lesson = f"lesson:{sid}"
+        meta = state.get("metadata") or {}
+        concept = meta.get("concept")
+        concepts = [f"concept:{concept}"] if isinstance(concept, str) and concept else []
+        old = rec.node(lesson) or {}
+        known = dict(old.get("items") or {})
+        hashes: dict[str, str] = {}
+        plan = state.get("plan") or {}
+        sources = [(q.get("id"), q) for q in state.get("questions", []) if isinstance(q, dict)]
+        sources += [(f"plan:{q.get('id')}", q) for tree in ("probe", "check")
+                    for q in ((plan.get(tree) or {}).get("questions") or []) if isinstance(q, dict)]
+        for qid, q in sources:
+            item = session_item(q, concepts)
+            if qid in known:
+                if known[qid] == _item_hash_of(rec, item, known[qid]):
+                    hashes[qid] = known[qid]
+                    continue
+                item["supersedes"] = known[qid]
+            item["meta"] = {"source": rel, "legacy_id": qid}
+            try:
+                hashes[qid] = rec.put_item(item)
+                report["items"] += 1 if qid not in known or hashes[qid] != known[qid] else 0
+            except ValueError as exc:
+                report["problems"].append(f"{rel}: question {qid}: {exc}")
+        node = {"id": lesson, "type": "lesson", "title": state.get("title", path.stem), "path": rel,
+                "session_type": state.get("type"), "lifecycle": state.get("lifecycle"), "items": hashes,
+                "legacy": bool(state.get("migration"))}
+        if rec.node(lesson) != node:
+            rec.put_nodes([node])
+        if concepts:
+            have = {(e["type"], e["dst"]) for e in rec.edges(src=lesson)}
+            new = [{"src": lesson, "type": "teaches", "dst": c} for c in concepts if ("teaches", c) not in have]
+            if new:
+                rec.put_edges(new)
+        events = _session_events(state, sid, lesson, rel, hashes)
+        report["events_added"] += rec.append_many(events)
+        report["sessions"] += 1
+    return report
+
+
+def _item_hash_of(rec: Record, item: dict, h: str) -> str:
+    """The hash ``item`` would have if it superseded nothing, or ``h`` when the stored item has the same content."""
+    from .store import item_hash
+    stored = rec.item(h)
+    if stored is None:
+        return item_hash(item)
+    bare = {k: v for k, v in stored.items() if k != "supersedes"}
+    return h if item_hash(bare) == item_hash(item) else item_hash(item)
+
+
+def _session_events(state: dict, sid: str, lesson: str, rel: str, hashes: dict[str, str]) -> list[dict]:
+    src = f"session:{sid}"
+    out = []
+
+    def ev(key, ts, actor, type, subject, data):
+        out.append({"id": event_id(src, key), "ts": _ts(ts or state.get("created_at")), "actor": actor, "type": type,
+                    "subject": subject, "data": {"lesson": lesson, **data}, "source": rel})
+
+    ev("lesson.start", state.get("created_at"), "system", "lesson.start", lesson,
+       {"title": state.get("title"), "legacy": bool(state.get("migration"))})
+    for e in state.get("events", []):
+        if not isinstance(e, dict):
+            continue
+        kind = SESSION_EVENT_TYPES.get(e.get("type"), "legacy")
+        qid = e.get("question_id")
+        qkey = f"plan:{qid}" if e.get("type") == "plan-answer" else qid
+        subject = hashes.get(qkey, lesson) if qkey else lesson
+        data = {"legacy_type": e.get("type"), "legacy_event": e.get("event_id"), "response": e.get("response")}
+        if e.get("type") == "plan-answer" and isinstance(e.get("response"), dict):
+            data.update(response=e["response"].get("answer"), page_verdict=e["response"].get("verdict"))
+        if e.get("type") == "explanation-request":
+            data["mode"] = e.get("response")
+        if e.get("origin"):
+            data["origin"] = e["origin"]
+        ev(f"event:{e.get('event_id')}", e.get("created_at"), "learner", kind, subject, data)
+    reviews = [(q.get("id"), r) for q in state.get("questions", []) if isinstance(q, dict) for r in q.get("reviews", [])]
+    reviews += [(f"plan:{r.get('question_id')}", r) for r in state.get("plan_reviews", []) if isinstance(r, dict)]
+    for qkey, r in reviews:
+        data = {k: r[k] for k in ("verdict", "feedback", "criteria_met", "rationale", "covers") if k in r}
+        if r.get("response_event_id"):
+            data["attempt"] = event_id(src, f"event:{r['response_event_id']}")
+        ev(f"review:{qkey}:{r.get('response_event_id')}:{r.get('reviewed_at')}", r.get("reviewed_at"),
+           r.get("reviewed_by") or "tutor", "grade", hashes.get(qkey, lesson), data)
+    for oq in state.get("open_questions", []):
+        if isinstance(oq, dict) and oq.get("answer"):
+            ev(f"answer:{oq.get('id')}", oq.get("answered_at") or oq.get("created_at"), "tutor", "answer",
+               event_id(src, f"event:{oq.get('id')}"), {"text": oq["answer"]})
+    if state.get("lifecycle") in ("closed", "complete", "completed", "archived"):
+        ev("lesson.close", state.get("updated_at"), "system", "lesson.close", lesson, {})
+    return out
+
+
+def _ts(value) -> str:
+    """Old timestamps carry microseconds and offsets; the record keeps UTC to the second, which sorts as text."""
+    from datetime import datetime, timezone
+    if not value:
+        return "1970-01-01T00:00:00Z"
+    try:
+        d = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return str(value)
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    return d.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
