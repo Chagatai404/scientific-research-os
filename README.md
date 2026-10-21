@@ -5,8 +5,13 @@ Current release: **v0.9.8** — Adaptive Learning Core.
 The mandatory personalized text core (P0) is implemented. See the
 [implementation and verification record](docs/plans/v0.9.8-adaptive-learn-core-and-ink.md)
 and [migration and local acceptance notes](docs/MIGRATION_v0.9.8.md).
-P1 teaching behaviors and P2 tablet ink remain future work; actual Obsidian
-acceptance of the new core remains pending.
+The P1 teaching behaviors (Socratic help, explanation levels, tiered practice,
+source comparison, canonical terms, Bloom activities, honest analogies and the
+deterministic ALTER role selector) are implemented on the `v0.9.8-teaching-quality`
+branch; see [the P1 plan](docs/plans/v0.9.8-p1-multi-agent-implementation.md) and
+[P1 migration notes](docs/MIGRATION_P1.md). The staged session uses a course-player
+layout (outline, content, tool rail). P2 tablet ink remains future work; actual
+Obsidian acceptance remains pending.
 
 A model-independent research and learning workflow for human-led scientific work with AI assistance.
 

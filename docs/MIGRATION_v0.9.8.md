@@ -1,8 +1,8 @@
 # Migrating to v0.9.8 — Adaptive Learning Core
 
 VERSION is 0.9.8. This release contains the completed P0 implementation, with
-legacy sessions and canonical knowledge records preserved. P1 teaching behaviors,
-P2 ink and broader P3 evaluation are outstanding. Follow the exact test results
+legacy sessions and canonical knowledge records preserved. P1 teaching behaviors
+(now implemented; see MIGRATION_P1.md), P2 ink and broader P3 evaluation are outstanding. Follow the exact test results
 and remaining gates in [the adaptive plan](plans/v0.9.8-adaptive-learn-core-and-ink.md).
 The companion retains its independent version 0.3.1; startup verifies actual
 installed file contents rather than trusting the version label alone.
@@ -122,7 +122,7 @@ status; bind current context before claiming personalized teaching.
 without rewriting prepared questions or lecture checkpoints. Review any subsequent
 plan change through existing stage-boundary guards. Review-driven advice, explicit
 goal/time policy and learner-facing Study advice are included below. Automatic
-lesson-content generation and P1 teaching behaviors remain future work.
+lesson-content generation remains future work; the P1 teaching behaviors are described in `MIGRATION_P1.md`.
 The packaged session helper set now includes `tutor_plan.py`; update complete
 bundles rather than copying the changed context helper alone.
 
@@ -155,7 +155,7 @@ was inspected in dark desktop/phone screenshots; actual Obsidian UI acceptance
 remains pending.
 
 Explicit goal/time preferences are described below. Richer teaching behavior
-selection and automatic guarded lesson-content revision remain later slices; the advice does not pretend to have
+selection is now the P1h selector (`MIGRATION_P1.md`); automatic guarded lesson-content revision remains a later slice; the advice does not pretend to have
 generated or applied a new curriculum. Existing review/promotion gates still own
 canonical evidence and human review of permanent knowledge.
 

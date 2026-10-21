@@ -2,6 +2,17 @@
 
 ## Unreleased — P1 teaching behaviors
 
+- Deterministic ALTER role selector (Advisor, Librarian, Tutor, Editor, Roommate)
+  over existing canonical advice, preferences, prepared content and actual attempts.
+  Pending written work precedes stale advice; currency uses the host-local day.
+  Prepared Editor critiques bind exact lines/quotes with explicit checked and
+  not-checked limits. No agents or providers are started. Release gates now run the
+  P1 Node and browser suites.
+
+- Course-player layout: outline card, content card and right tool rail (Study advice,
+  Teaching roles) on wide screens; a compact wrapping tab row on tablet and phone.
+  No scrollbars inside a stage; stage logic unchanged.
+
 - Prepared analogies retain formal mappings, failure limits, source scope and
   honest novelty declarations. Replacements bind actual historical gap reviews;
   segment-specific Lecture and optional Quiz/Check readers preserve raw work.

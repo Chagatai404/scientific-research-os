@@ -68,7 +68,7 @@ a physical mobile device, or independently recorded speaker output.
 ## Layout acceptance
 
 The complete active stage must fit the available Obsidian pane without vertical or
-horizontal scrolling. Use a course-player layout: Quiz, Handout, Lecture, Video and Check navigation on the left of a desktop teaching surface, with supporting question tools alongside it. Keep the stage navigation, playback and question actions,
+horizontal scrolling. Use a course-player layout: Quiz, Handout, Lecture, Video and Check navigation in an outline card on the left of a desktop teaching surface, with Study advice and Teaching roles in a narrow right tool rail (a wrapping tab row below 1100px). Keep the stage navigation, playback and question actions,
 caption controls, and tutor status visible together. Use the wide lecture layout
 with the board beside its tools on desktop; stack compact tools on smaller panes.
 Size the drawing frame from the remaining height while keeping captions at a stable
@@ -361,3 +361,16 @@ existing append-order/timestamp policy, with no assessment issuance. Opening
 transfer practice separately acknowledges its exact practice assignment, then
 uses the existing card/budget gate. The Lecture launcher filters by current actual
 segment; reading/closing retains lecture path and step.
+
+## P1h teaching roles and Editor critiques
+
+`pedagogy.critiques` entries carry exactly: `id, target, version, sources,
+prepared_by, tree, question_id, question_sha256, answer_event_id, answer_sha256,
+answer, review_sha256, review_snapshot, work_kind, source, findings, checked,
+not_checked`. `work_kind` is `derivation`, `argument` or `code-explanation`
+(summaries use P1d comparisons). Each finding is exactly `location, learner_quote,
+source_quote, locator, feedback, revision_prompt`, anchored to raw lines of the actual
+answer; at most twelve findings, none when the source is unavailable, and explicit
+checked/not-checked limits. A new raw revision never inherits an old critique or
+review. The role selector (`pedagogy_roles.py` / `roles.js`, identical rules) is
+read-only: it recommends a behavior, never grades, starts agents or writes ledgers.
