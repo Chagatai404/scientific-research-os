@@ -93,3 +93,21 @@ authority determines assistance chronology. Historical replacement content stays
 readable after a new raw revision, while the current recommendation no longer
 attributes that old review to new work. No source fetch, detector measurement or
 simulation is performed by the offline illustration.
+
+P1h adds one deterministic ALTER-style selector (Advisor, Librarian, Tutor, Editor,
+Roommate) over existing canonical advice, preferences, prepared pedagogy and actual
+raw attempts. It starts no agents, calls no provider and writes no ledger; choosing a
+role or prepared path only saves an acknowledged checkpoint, and "Ask the tutor"
+actions send an ordinary open question. Pending written work takes precedence over
+stale or unbound advice (stale advice still never authorizes advancement). Advice
+currency uses the host-local calendar day that mints it. Prepared Editor critiques
+bind exact lines/quotes of an actual derivation, argument or code explanation with
+explicit checked/not-checked limits; summaries reuse the P1d comparison. Update the
+complete helper, runtime and host bundles together. `pedagogy_revisions.py` and
+`advice_freshness.py` (with their JS twins) are tested helpers that no production
+path calls yet; they do not change behavior.
+
+Course-player layout: the staged view is an outline card, a content card and a right
+tool rail (Study advice, Teaching roles) on wide screens, and a compact wrapping tab
+row on tablet and phone, with no scrollbars inside a stage. No stage logic changed.
+Real Obsidian lifecycle and physical-device acceptance remain separate.

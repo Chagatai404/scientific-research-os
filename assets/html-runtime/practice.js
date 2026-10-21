@@ -6,7 +6,7 @@
   const questionFor=(entry,plan)=>((plan[entry.tree]||{}).questions||[]).find(q=>q.id===entry.question_id);
   function attempt(entry,plan,events,reviews) {
     const q=questionFor(entry,plan);let latest=null,index=-1,assisted=false;
-    events.forEach((e,i)=>{if(['hint','solution','explanation-request','pedagogy-help'].includes(e.type)||e.type==='checkpoint'&&typeof e.response==='string'&&['handout-solution:','pedagogy-comparison:','pedagogy-comparison-synthesis:','pedagogy-analogy:'].some(prefix=>e.response.startsWith(prefix)))assisted=true;
+    events.forEach((e,i)=>{if(['hint','solution','explanation-request','pedagogy-help'].includes(e.type)||e.type==='checkpoint'&&typeof e.response==='string'&&['handout-solution:','pedagogy-comparison:','pedagogy-comparison-synthesis:','pedagogy-analogy:','pedagogy-editor:'].some(prefix=>e.response.startsWith(prefix)))assisted=true;
       const r=e.response;if(e.question_id!==entry.question_id||!r||typeof r!=='object'||r.tree!==entry.tree)return;
       if(e.type==='plan-answer'&&e.event_id){latest=e;index=i;}
       if(e.type==='pedagogy-help'&&r.question_sha256===entry.question_sha256)assisted=true;

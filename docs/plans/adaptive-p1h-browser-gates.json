@@ -1,0 +1,43 @@
+{
+  "results": [
+    {
+      "gate": "browser:html-stages-browser.cjs",
+      "status": "PASS",
+      "seconds": 381.9,
+      "tail": [
+        "staged session browser tests passed"
+      ]
+    },
+    {
+      "gate": "browser:html-text-lecture-browser.cjs",
+      "status": "PASS",
+      "seconds": 44.5,
+      "tail": [
+        "Text lecture missing-board, typed question, reload and mode-switch checks passed; screenshots: C:\\Users\\ASUS\\AppData\\Local\\Temp\\ros-text-lecture-06eYQT"
+      ]
+    },
+    {
+      "gate": "browser:html-roles-browser.cjs",
+      "status": "FAIL",
+      "seconds": 12.9,
+      "tail": [
+        "Roles viewport 1440 started.",
+        "AssertionError [ERR_ASSERTION]: {\"left\":390,\"right\":1050,\"top\":170,\"bottom\":730,\"height\":900,\"overflow\":20,\"bad\":[]}",
+        "    at read (C:\\Users\\ASUS\\.codex\\worktrees\\a81d\\scientific-research-os\\tests\\html-roles-browser.cjs:34:432)",
+        "    at async C:\\Users\\ASUS\\.codex\\worktrees\\a81d\\scientific-research-os\\tests\\html-roles-browser.cjs:40:288 {",
+        "  generatedMessage: false,",
+        "  code: 'ERR_ASSERTION',",
+        "  actual: false,",
+        "  expected: true,",
+        "  operator: '==',",
+        "  diff: 'simple'",
+        "}"
+      ]
+    }
+  ],
+  "counts": {
+    "PASS": 2,
+    "FAIL": 1,
+    "SKIPPED": 0
+  }
+}

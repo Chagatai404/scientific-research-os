@@ -2452,7 +2452,7 @@
   const questionFor=(entry,plan)=>((plan[entry.tree]||{}).questions||[]).find(q=>q.id===entry.question_id);
   function attempt(entry,plan,events,reviews) {
     const q=questionFor(entry,plan);let latest=null,index=-1,assisted=false;
-    events.forEach((e,i)=>{if(['hint','solution','explanation-request','pedagogy-help'].includes(e.type)||e.type==='checkpoint'&&typeof e.response==='string'&&['handout-solution:','pedagogy-comparison:','pedagogy-comparison-synthesis:','pedagogy-analogy:'].some(prefix=>e.response.startsWith(prefix)))assisted=true;
+    events.forEach((e,i)=>{if(['hint','solution','explanation-request','pedagogy-help'].includes(e.type)||e.type==='checkpoint'&&typeof e.response==='string'&&['handout-solution:','pedagogy-comparison:','pedagogy-comparison-synthesis:','pedagogy-analogy:','pedagogy-editor:'].some(prefix=>e.response.startsWith(prefix)))assisted=true;
       const r=e.response;if(e.question_id!==entry.question_id||!r||typeof r!=='object'||r.tree!==entry.tree)return;
       if(e.type==='plan-answer'&&e.event_id){latest=e;index=i;}
       if(e.type==='pedagogy-help'&&r.question_sha256===entry.question_sha256)assisted=true;
@@ -2903,6 +2903,156 @@
 });
 
 ;
+/* One cheap deterministic role projection. No models, new grades or ledgers. */
+(function(root,factory){'use strict';const api=factory(root);if(typeof module==='object'&&module.exports)module.exports=api;root.ResearchOSRoles=api;})(typeof window!=='undefined'?window:globalThis,function(root){
+ 'use strict';
+ const ROLES=['Advisor','Librarian','Tutor','Editor','Roommate'],copy=v=>JSON.parse(JSON.stringify(v));
+ const text=(s,n)=>typeof s==='string'&&!!s.trim()&&[...s].length<=n&&!/[\x00-\x08\x0b-\x1f\x7f]/.test(s);
+ const stable=v=>v&&typeof v==='object'?(Array.isArray(v)?'['+v.map(stable).join(',')+']':'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}'):JSON.stringify(v);
+ function projectCritique(entry,state={}){
+  const events=state.events||[],attempts=events.filter(e=>e&&e.type==='plan-answer'&&e.question_id===entry.question_id&&e.response&&e.response.tree===entry.tree);
+  const matches=attempts.filter(e=>e.event_id===entry.answer_event_id&&e.response.answer===entry.answer);
+  let bound=matches.length===1&&events.filter(e=>e&&e.event_id===entry.answer_event_id).length===1;
+  if(entry.review_snapshot!==null&&!(state.plan_reviews||[]).some(r=>stable(r)===stable(entry.review_snapshot)))bound=false;
+  const historical=bound&&attempts[attempts.length-1].event_id!==entry.answer_event_id;
+  const status=!bound?'unbound':entry.source.access==='unavailable'?'unavailable':historical?'historical':'prepared';
+  const revealed=['prepared','historical'].includes(status)&&events.some(e=>e&&e.type==='checkpoint'&&e.question_id==null&&e.response==='pedagogy-editor:'+entry.id+':'+entry.version);
+  return copy({entry_id:entry.id,version:entry.version,status,revealed,answer_event_id:entry.answer_event_id,answer:bound?entry.answer:null,
+   prepared_by:entry.prepared_by,work_kind:entry.work_kind,source:entry.source,review_snapshot:bound?entry.review_snapshot:null,
+   findings:revealed?entry.findings:[],checked:revealed?entry.checked:[],not_checked:revealed?entry.not_checked:[],
+   notice:status==='historical'?'A newer raw attempt awaits its own feedback; this critique remains bound to the original work.':status==='unavailable'?'Source unavailable; request the source before a critique can be prepared.':status==='unbound'?'Original work or review binding is unavailable; no critique can be displayed.':'PREPARED pedagogical critique; no grade, independent scientific acceptance or research approval.',
+   scope:'Supplied '+entry.source.access+' snapshot; quoted text checked locally, external source content not independently verified.'});
+ }
+ function available(state){
+  const plan=state.plan||{},p=plan.pedagogy||{},refs=[];
+  for(const [family,role,stage] of [['socratic','Tutor','probe'],['explanations','Tutor','lecture'],['practice','Tutor','check'],['comparisons','Editor','check'],['terms','Librarian','handout'],['bloom','Tutor','check'],['analogies','Roommate','lecture'],['critiques','Editor','check']])for(const entry of p[family]||[]){
+   if(!entry||entry.target!==plan.target)continue;
+   if(['comparisons','terms','critiques'].includes(family)&&!['excerpt','full'].includes((entry.source||{}).access))continue;
+   if(family==='comparisons'){
+    const attempts=(state.events||[]).filter(e=>e&&e.type==='plan-answer'&&e.question_id===entry.question_id&&e.response&&e.response.tree===entry.tree);
+    if(attempts.filter(e=>e.event_id===entry.summary_event_id&&e.response.answer===entry.summary).length!==1||(state.events||[]).filter(e=>e&&e.event_id===entry.summary_event_id).length!==1)continue;
+   }
+   if(family==='critiques'&&!['prepared','historical'].includes(projectCritique(entry,state).status))continue;
+   if(family==='analogies'&&!text(entry.relevance,2000))continue;
+   refs.push({kind:'prepared',role,stage:entry.tree||stage,family,entry_id:entry.id,version:entry.version});
+  }
+  if((((plan.handout||{}).readable||{}).sections||[]).length)refs.push({kind:'stage',role:'Librarian',stage:'handout',family:null,entry_id:null,version:null});
+  return refs;
+ }
+ function attempts(state){
+  const plan=state.plan||{},pending=[],gaps=[];
+  for(const tree of ['probe','check'])for(const q of (plan[tree]||{}).questions||[]){
+   let latest=null;for(const e of state.events||[])if(e&&e.type==='plan-answer'&&e.question_id===q.id&&e.response&&e.response.tree===tree&&e.event_id)latest=e;
+   if(!latest)continue;let verdict='pending',answer=latest.response.answer;
+   if(q.kind==='choice'){const o=(q.options||[]).find(o=>o.id===answer);if(o)verdict=o.correct===true?'correct':'incorrect';}
+   else if(q.kind==='numeric'&&typeof answer==='number')verdict=Math.abs(answer-q.answer.value)<=(q.answer.tolerance||0)?'correct':'incorrect';
+   let review=null;for(const r of state.plan_reviews||[])if(r.question_id===q.id&&r.response_event_id===latest.event_id)review=r;
+   if(review&&['correct','incorrect','partially-correct'].includes(review.verdict)){
+    verdict=review.verdict;const c=review.criteria_met;
+    if(verdict==='correct'&&q.kind==='short'&&(!Array.isArray(c)||c.length!==(q.criteria||[]).length||!c.every(v=>v===true)||!text(review.reviewed_by,200)||!text(review.feedback,32000)))verdict='pending';
+    else if(verdict==='correct'&&c!=null&&(!Array.isArray(c)||!c.length||!c.every(v=>v===true)))verdict='pending';
+   }
+   const item={tree,question_id:q.id,response_event_id:latest.event_id};if(verdict==='pending')pending.push(item);else if(['incorrect','partially-correct'].includes(verdict))gaps.push(item);
+  }
+  return {pending,gaps};
+ }
+ function canonicalFor(canonical,target,today){
+  if(!canonical||typeof canonical!=='object'||!text(target,300))return null;const v=copy(canonical),binding=v.for_target;delete v.for_target;
+  if(binding!==undefined&&!text(binding,300))return null;
+  const keys=['advice_schema','evidence','status','context_outcome','action','reason','as_of','receipt_id'],actual=Object.keys(v).sort();
+  if(stable(actual)!==stable([...keys].sort())&&stable(actual)!==stable([...keys,'target','next'].sort()))return null;
+  if(v.advice_schema!==1||v.evidence!==false||v.status!=='ready'||v.context_outcome!=='ready'||!/^[0-9a-f]{32}$/.test(v.receipt_id||'')||v.as_of!==today||!/^[a-z_]{1,60}$/.test(v.action||'')||typeof v.reason!=='string'||!v.reason.length||[...v.reason].length>600)return null;
+  if((binding!==undefined?binding!==target:v.target!==target)||(v.target!==undefined&&v.target!==target))return null;
+  if(v.target!==undefined){const n=v.next;if(!text(v.target,300)||/[\x00-\x1f\x7f]/.test(v.target)||!n||stable(Object.keys(n).sort())!==stable(['dimension','scope'])||!['conceptual','transfer','project_application'].includes(n.scope)||!['recognition','explanation','derivation','transfer','application'].includes(n.dimension))return null;}
+  return v;
+ }
+ function select(state,canonical=null,preferences=null,request=null,asOf=null){
+  const plan=state.plan||{},today=asOf||(d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'))(new Date()),prefs=validatePreferences(preferences||{}),current=canonicalFor(canonical,plan.target,today),refs=available(state),{pending,gaps}=attempts(state);
+  const inventory=[];for(const family of ['comparisons','terms','critiques'])for(const entry of (plan.pedagogy||{})[family]||[]){const s=entry.source||{};if(entry.target!==plan.target||!['excerpt','full','unavailable'].includes(s.access)||!text(s.id,200)||!text(s.locator,400))continue;const item={id:s.id??null,locator:s.locator??null,access:s.access??null,sha256:s.sha256??null};if(!inventory.some(v=>stable(v)===stable(item)))inventory.push(item);}
+  const cut=Number.isInteger(prefs.time_minutes)&&prefs.time_minutes<=45?[{behavior:'Optional enrichment and additional examples',reason:'Recommend one bounded unit before extra activities; evidence requirements remain unchanged.',overridable:true}]:[];
+  const result=(role,behavior,reason,handoff=null)=>copy({roles_schema:1,evidence:false,role,behavior,reason,pending,handoff,cut_list:cut,available:refs,canonical_current:current!==null,scope:current&&current.next?current.next.scope:null,requested:request,requirements_preserved:true,inventory:inventory.slice(0,12)});
+  if(request!==null){
+   if(request==='all')return result('Advisor','choose_optional_behavior','These are available prepared paths, not a required completion ladder.');
+   const chosen=ROLES.includes(request)?refs.find(r=>r.role===request):refs.find(r=>r.entry_id===request);
+   if(chosen)return result(chosen.role,'open_prepared','Your explicit choice overrides suggested deferral; any pending review remains pending.',chosen);
+   if(request==='Advisor')return result('Advisor','inspect_path','Inspect the current destination and prerequisites; context and evidence still determine advancement.');
+   if(request==='Librarian')return result('Librarian',inventory.some(s=>['excerpt','full'].includes(s.access))?'inspect_sources':'request_source','Inspect supplied snapshot identities and access limits; registered references alone do not prove full source access.');
+   if(request==='Editor'&&pending.length)return result('Editor','await_review','The actual latest written attempt needs its own review or prepared critique.');
+   return result(ROLES.includes(request)?request:'Advisor','request_preparation','That behavior has no usable matching prepared content. Ask the tutor; no integration or scientific result is invented.');
+  }
+  if(pending.length){const editor=refs.find(r=>r.role==='Editor'&&((plan.pedagogy||{})[r.family]||[]).some(e=>e.id===r.entry_id&&pending.some(p=>e.question_id===p.question_id&&(e.answer_event_id||e.summary_event_id)===p.response_event_id)));return result('Editor',editor?'open_prepared':'await_review','The latest actual written work takes priority; old reviews do not settle a new attempt.',editor);}
+  if(!current)return result('Advisor','refresh_context','Current canonical advice for this exact target is unavailable, stale or blocked. Refresh it before claiming advancement.');
+  if(gaps.length){const tutor=refs.find(r=>r.role==='Tutor'&&((plan.pedagogy||{})[r.family]||[]).some(e=>e.id===r.entry_id&&gaps.some(g=>e.question_id===g.question_id||e.segment_id&&(plan.segments||[]).some(s=>s.id===e.segment_id&&s.role==='repair'&&((s.plays_if||{}).wrong||[]).includes(g.question_id)))));return result('Tutor',tutor?'open_prepared':'request_repair','Repair the latest actual gap before recommending advancement.',tutor);}
+  if(current.action==='complete')return result('Advisor','choose_optional_extension','Current scoped advice is complete. Existing extensions are optional; do not automatically reteach or infer another scope.');
+  if(['request_source','inspect_source','select_source'].includes(current.action)){const librarian=refs.find(r=>r.role==='Librarian');return result('Librarian',librarian?'open_prepared':inventory.some(s=>['excerpt','full'].includes(s.access))?'inspect_sources':'request_source','Use existing source inventory first; unavailable material is not fabricated.',librarian);}
+  if(current.action==='offer_analogy'){const roommate=refs.find(r=>r.role==='Roommate');return result('Roommate',roommate?'open_prepared':'request_preparation','Only a prepared analogy for this exact target with an explicit relevance rationale is eligible.',roommate);}
+  const preferred={explain_intuitively:'explanations',explain_intermediate:'explanations',explain_formally:'explanations',derive:'explanations',practice_intermediate:'practice',application:'practice',project_application:'practice',transfer_probe:'practice',critique_work:'critiques'}[current.action];
+  let scoped=refs.filter(r=>preferred&&r.family===preferred);
+  const step=current.next||{},level={explain_intuitively:'intuitive',explain_intermediate:'intermediate',explain_formally:'formal',derive:'formal'}[current.action];
+  if(preferred==='practice'){
+   const dimension=step.scope==='project_application'?'application':step.dimension;
+   const items=((plan.pedagogy||{}).practice||[]).filter(e=>e.dimension===dimension),Practice=typeof module==='object'&&module.exports?require('./practice.js'):root.ResearchOSPractice;
+   const p=Practice?Practice.project(items,plan,state.events||[],state.plan_reviews||[],{canonical:current}):{};scoped=scoped.filter(r=>r.entry_id===p.entry_id);
+  }else if(preferred==='explanations')scoped=scoped.filter(r=>((plan.pedagogy||{}).explanations||[]).some(e=>e.id===r.entry_id&&level in (e.levels||{})));
+  let chosen=scoped[0];if(chosen&&level)chosen={...chosen,level};
+  return result(chosen?chosen.role:'Tutor',chosen?'open_prepared':'request_preparation','Follow the current scoped recommendation using existing prepared teaching; presentation is not evidence.',chosen);
+ }
+ function validatePreferences(p){
+  if(!p||typeof p!=='object'||Array.isArray(p)||Object.keys(p).some(k=>!['objective','goal','time_minutes','language','depth'].includes(k)))throw Error('Invalid explicit preferences');
+  const out=copy(p);if('objective'in out&&!['understand','exam','research','apply','review'].includes(out.objective))throw Error('Invalid objective');if('depth'in out&&!['intuitive','intermediate','formal'].includes(out.depth))throw Error('Invalid depth');
+  if('time_minutes'in out&&(!Number.isInteger(out.time_minutes)||out.time_minutes<1||out.time_minutes>480))throw Error('Invalid minutes');
+  if('goal'in out){if(typeof out.goal!=='string'||![...out.goal.trim()].length||[...out.goal.trim()].length>500||/[\x00-\x1f\x7f]/.test(out.goal))throw Error('Invalid goal');out.goal=out.goal.trim();}
+  if('language'in out){if(typeof out.language!=='string'||out.language.length>35||!/^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/.test(out.language))throw Error('Invalid language');out.language=out.language.toLowerCase();}return out;
+ }
+ function acknowledged(ctx,saved,response){return saved&&typeof saved.event_id==='string'&&saved.type==='checkpoint'&&saved.question_id==null&&saved.response===response&&(ctx.events()||[]).some(e=>e.event_id===saved.event_id&&e.type==='checkpoint'&&e.question_id==null&&e.response===response);}
+ function ui(doc){return{el(tag,text){const n=doc.createElement(tag);if(text!==undefined)n.textContent=text;return n;},button(text,fn){const n=doc.createElement('button');n.textContent=text;n.type='button';n.addEventListener('click',fn);return n;}};}
+ function mount(container,plan,ctx){
+  const {el,button}=ui(ctx.doc);let requested=null,requestedPath=null,busy=false,dead=false,reader=null,message='';
+  for(const e of ctx.events()||[])if(e.type==='checkpoint'&&e.question_id==null){if(ROLES.some(role=>e.response==='pedagogy-role:'+role)){requested=e.response.slice('pedagogy-role:'.length);requestedPath=null;}else if(e.response==='pedagogy-role:recommended'){requested=null;requestedPath=null;}else if(typeof e.response==='string'&&e.response.startsWith('pedagogy-path:')){const f=e.response.split(':');const entry=((plan.pedagogy||{})[f[1]]||[]).find(x=>x.id===f[2]&&String(x.version)===f[3]);if(entry)requestedPath=entry.id;}}
+  const launcher=button('Teaching roles',()=>{dialog.showModal();paint();});container.append(launcher);
+  const dialog=el('dialog');dialog.className='ros-advice-dialog ros-roles-dialog';dialog.setAttribute('aria-label','Teaching roles');container.append(dialog);
+  const current=()=>{const options=(ctx.options&&ctx.options())||{};return select({plan:ctx.plan?ctx.plan():plan,events:ctx.events(),plan_reviews:ctx.reviews?ctx.reviews():[]},options.canonical,options.preferences,requestedPath||requested||options.request||null,options.as_of);};
+  function paint(){if(dead||!dialog.open)return;if(reader)reader.destroy();dialog.replaceChildren();const view=current();dialog.append(el('h2','Teaching roles'));
+   const choose=el('select');choose.setAttribute('aria-label','Teaching role');for(const role of ['',...ROLES]){const o=el('option',role||'Recommended');o.value=role;choose.append(o);}choose.value=requested||'';choose.disabled=busy;
+   choose.addEventListener('change',async()=>{const role=choose.value;if(busy)return;busy=true;message='Saving explicit role choice…';paint();const response='pedagogy-role:'+(role||'recommended');
+    try{const saved=await ctx.persist('checkpoint',null,response);if(!acknowledged(ctx,saved,response))throw Error('Role not committed');if(!dead){requested=role||null;requestedPath=null;message=role?'Role selected explicitly; pending reviews and learning requirements remain unchanged.':'Current recommended behavior restored.';}}
+    catch(_){if(!dead)message='Role choice could not be saved; previous recommendation retained.';}finally{busy=false;paint();}});dialog.append(choose);
+   const paths=el('select');paths.setAttribute('aria-label','Prepared path');const automatic=el('option','Suggested prepared path');automatic.value='';paths.append(automatic);
+   for(const ref of view.available.filter(r=>r.kind==='prepared'&&(!requested||r.role===requested))){const o=el('option',ref.family+' — '+ref.entry_id+' (version '+ref.version+')');o.value=ref.family+':'+ref.entry_id+':'+ref.version;paths.append(o);}const selectedRef=view.available.find(r=>r.entry_id===requestedPath);paths.value=selectedRef?selectedRef.family+':'+selectedRef.entry_id+':'+selectedRef.version:'';paths.disabled=busy;
+   paths.addEventListener('change',async()=>{if(busy)return;const ref=view.available.find(r=>paths.value===r.family+':'+r.entry_id+':'+r.version);if(!ref)return;busy=true;message='Saving prepared path…';paint();const response='pedagogy-path:'+ref.family+':'+ref.entry_id+':'+ref.version;try{const saved=await ctx.persist('checkpoint',null,response);if(!acknowledged(ctx,saved,response))throw Error('Path not committed');if(!dead){requestedPath=ref.entry_id;requested=ref.role;message='Prepared path selected.';}}catch(_){if(!dead)message='Prepared path could not be saved; previous selection retained.';}finally{busy=false;paint();}});dialog.append(paths);
+   const labels={open_prepared:'Open prepared teaching',refresh_context:'Ask the tutor to refresh current advice',await_review:'Await feedback',request_repair:'Request targeted repair',request_preparation:'Request matching teaching',request_source:'Request the source',inspect_sources:'Inspect supplied sources',inspect_path:'Inspect learning path',choose_optional_extension:'Choose an optional extension',choose_optional_behavior:'Choose an optional activity'};
+   const paragraphs=[view.role+': '+(labels[view.behavior]||'Review the suggested next step')+'. '+view.reason,view.pending.length?'Actual written attempts awaiting review: '+view.pending.map(p=>p.question_id+' / '+p.response_event_id).join('; '):'No pending written attempt is inferred by this projection.',...view.cut_list.map(c=>'Suggested deferral (overridable): '+c.behavior+'. '+c.reason),...view.inventory.map(s=>'Supplied source '+s.id+' — '+s.locator+'; access: '+s.access+'. Scope is declared, not independent verification.'),'Available optional paths: '+(view.available.map(r=>r.family||r.stage).join(', ')||'none prepared')+'. No completion ladder.','This dialog starts no five-agent or provider calls; choosing a role only saves your choice or asks the tutor.'];
+   const host=el('div');host.className='ros-reader-host';dialog.append(host);const Reader=(ctx.doc.defaultView||root).ResearchOSReader;if(Reader)reader=Reader.mount(host,{revision:1,sections:[{title:'Selected teaching behavior',paragraphs}],sources:[]},{doc:ctx.doc,rich:ctx.rich,events:()=>[],emit:()=>{},hideSelector:true});else host.append(el('p',paragraphs.join('\n\n')));
+   const status=el('p',message);status.setAttribute('role','status');status.className='ros-advice-status';dialog.append(status);const actions=el('div');actions.className='ros-reader-actions';const use=button('Open selected behavior',async()=>{if(busy||dead)return;const selected=current();if(selected.handoff){const ref=selected.handoff,route=ref.kind==='stage'?ctx.show:ctx.prepared;if(typeof route!=='function'){message='Prepared behavior routing is unavailable. Ask the tutor to connect this behavior.';paint();return;}
+    if(ref.kind==='prepared'){busy=true;message='Saving selected path…';paint();const response='pedagogy-path:'+ref.family+':'+ref.entry_id+':'+ref.version;try{const saved=await ctx.persist('checkpoint',null,response);if(!acknowledged(ctx,saved,response))throw Error('Path not committed');if(dead)return;busy=false;dialog.close();await route(ref);}catch(_){if(!dead){busy=false;message='Prepared path could not be opened. Try again.';if(!dialog.open)dialog.showModal();paint();}}}
+    else{dialog.close();route(ref.stage);}
+   }else if(ctx.request)ctx.request('Please '+(labels[selected.behavior]||'review the next step').toLowerCase()+' for '+plan.target+'. Preserve my actual attempts, pending reviews and running lecture path.');else{message='Tutor request routing is unavailable.';paint();}});use.disabled=busy;actions.append(use,button('Close roles',()=>dialog.close()));dialog.append(actions);
+  }
+  dialog.addEventListener('close',()=>{if(reader){reader.destroy();reader=null;}launcher.focus({preventScroll:true});});return{refresh:paint,destroy(){dead=true;if(reader)reader.destroy();dialog.remove();launcher.remove();}};
+ }
+ function mountCritique(container,entry,ctx){
+  const {el,button}=ui(ctx.doc);let dead=false,busy=false,reader=null;
+  const state=()=>({events:ctx.events(),plan_reviews:ctx.reviews?ctx.reviews():[]});
+  const launcher=button('Prepared Editor critique',async()=>{
+   if(dead||busy)return;const view=projectCritique(entry,state());
+   if(['unbound','unavailable'].includes(view.status)){dialog.showModal();paint();return;}
+   busy=true;launcher.textContent='Saving critique presentation…';const response='pedagogy-editor:'+entry.id+':'+entry.version;
+   try{const saved=await ctx.persist('checkpoint',null,response);if(!acknowledged(ctx,saved,response))throw Error('Critique not committed');if(!dead){dialog.showModal();paint();launcher.textContent='Prepared Editor critique';}}
+   catch(_){if(!dead)launcher.textContent='Prepared Editor critique — could not save; retry';}finally{busy=false;}
+  });container.append(launcher);const dialog=el('dialog');dialog.className='ros-advice-dialog ros-editor-dialog';dialog.setAttribute('aria-label','Prepared Editor critique');container.append(dialog);
+  function paint(){if(dead||!dialog.open)return;if(reader)reader.destroy();dialog.replaceChildren();const view=projectCritique(entry,state());dialog.append(el('h2','Prepared Editor critique'));
+   const sections=[{title:'Scope and provenance',paragraphs:[view.notice,'Prepared by '+view.prepared_by+'. '+view.scope,view.review_snapshot?'A saved session review is cited as provenance only; it is not independent scientific approval.':'No saved review is claimed; this is prepared pedagogical feedback.']}];
+   if(view.answer!==null)sections.push({title:'Original work — '+view.answer_event_id,paragraphs:[view.answer]});
+   if(view.revealed){sections.push({title:'Checks and limits',paragraphs:['Checked: '+view.checked.join('; '),'Not checked: '+view.not_checked.join('; ')]});for(const f of view.findings)sections.push({title:f.location.unit+' '+f.location.label+' (lines '+f.location.line_start+'–'+f.location.line_end+')',paragraphs:['Actual learner quote: '+f.learner_quote,'Supplied source quote: '+f.source_quote+'\nLocator: '+f.locator,'Prepared feedback: '+f.feedback,'Revision challenge: '+f.revision_prompt]});}
+   const host=el('div');host.className='ros-reader-host';dialog.append(host);const Reader=(ctx.doc.defaultView||root).ResearchOSReader;if(Reader)reader=Reader.mount(host,{revision:entry.version,sections,sources:[]},{doc:ctx.doc,rich:ctx.rich,events:()=>[],emit:()=>{},label:'Critique section'});else host.append(el('p',sections.map(s=>s.title+'\n'+s.paragraphs.join('\n\n')).join('\n\n')));
+   const actions=el('div');actions.className='ros-reader-actions';if(view.revealed)actions.append(button('Revise original work',()=>{dialog.close();if(ctx.revise)ctx.revise(entry.question_id);}));else if(ctx.request)actions.append(button('Request source or review',()=>ctx.request('Please provide the source or actual review binding for '+entry.id+' without inventing work or a grade.')));actions.append(button('Close critique',()=>dialog.close()));dialog.append(actions);
+  }
+  dialog.addEventListener('close',()=>{if(reader){reader.destroy();reader=null;}launcher.focus({preventScroll:true});});return{refresh:paint,destroy(){dead=true;if(reader)reader.destroy();dialog.remove();launcher.remove();}};
+ }
+ return{ROLES,select,projectCritique,mount,mountCritique};
+});
+
+;
 /* Research OS staged session: runs a session plan (scripts/session_plan.py) as Quiz, Handout, Lecture, Video and Check environments.
    The logic (judging an answer, choosing the next question, choosing the lecture segments) mirrors session_plan.py and is pinned by tests/fixtures/plan-cases.json;
    the view shows one thing at a time, so nothing inside it scrolls and the questions never sink to the bottom of a page.
@@ -3168,7 +3318,7 @@
     const footer = el('div', {class: 'ros-stages-footer'});
     shell.append(el('header', {class: 'ros-stages-head'}, title, bar), body, footer);
     container.prepend(shell);
-    let advice = null;
+    let advice = null, roles = null;
     if (doc.defaultView.ResearchOSAdvice && doc.defaultView.ResearchOSReader) {
       const opener = button('Study advice', () => {}, {class: 'ros-advice-launcher'});
       bar.append(opener);
@@ -3266,7 +3416,7 @@
           if (entry) view.viewing = entry.question_id;
         }
       }
-      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, reviews(), practiceEntries, (current.pedagogy || {}).comparisons, (current.pedagogy || {}).bloom, (current.pedagogy || {}).analogies, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
+      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, reviews(), practiceEntries, (current.pedagogy || {}).comparisons, (current.pedagogy || {}).bloom, (current.pedagogy || {}).analogies, (current.pedagogy || {}).critiques, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
       if (signature === view.signature) return;
       view.signature = signature;
       if (view.help) {view.help.destroy();view.help=null;}
@@ -3274,6 +3424,7 @@
       if (view.comparison) {view.comparison.destroy();view.comparison=null;}
       if(view.bloom){view.bloom.destroy();view.bloom=null;}
       if(view.analogy){view.analogy.destroy();view.analogy=null;}
+      if(view.critique){view.critique.destroy();view.critique=null;}
       panel.dataset.comparisonOpen='false';
       panel.textContent = '';
       const tree = current[name], questions = new Map(tree.questions.map(q => [q.id, q]));
@@ -3310,8 +3461,18 @@
       const analogyEntries=((current.pedagogy || {}).analogies || []);
       if(analogyEntries.length && doc.defaultView.ResearchOSAnalogies){
         const host=el('div',{class:'ros-analogies'});panel.append(host);
-        view.analogy=doc.defaultView.ResearchOSAnalogies.mount(host,analogyEntries,current,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,options:teachingOptions,
+        view.analogy=doc.defaultView.ResearchOSAnalogies.mount(host,analogyEntries,current,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,options:()=>({...teachingOptions(),requested_id:view.analogyRequestedId}),
           choose:ident=>{const practice=((current.pedagogy || {}).practice || []).find(e=>e.id===ident);if(!practice)return;const target=views[practice.tree]=views[practice.tree] || {};target.viewing=practice.question_id;target.signature='';show(practice.tree);}});
+      }
+
+      const critiques=((current.pedagogy || {}).critiques || []);
+      if(critiques.length && doc.defaultView.ResearchOSRoles){
+        const host=el('div',{class:'ros-critiques'});panel.append(host);
+        const entry=critiques.find(e=>e.id===view.critiqueId) || critiques.find(e=>e.question_id===focusId) || critiques[0];view.critiqueId=entry.id;
+        if(critiques.length>1){const select=el('select',{'aria-label':'Prepared critique'});for(const item of critiques)select.append(el('option',{value:item.id,text:item.id}));select.value=entry.id;select.addEventListener('change',()=>{view.critiqueId=select.value;view.signature='';treeView(name);});host.append(select);}
+        view.critique=doc.defaultView.ResearchOSRoles.mountCritique(host,entry,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,
+          revise:()=>{const target=views[entry.tree]=views[entry.tree] || {};target.viewing=entry.question_id;target.revising=entry.question_id;target.signature='';show(entry.tree);},
+          request:text=>{if(!ctx.requestPending || !ctx.requestPending(text))ctx.emit('open-question',null,text);}});
       }
 
       const comparisons = ((current.pedagogy || {}).comparisons || []);
@@ -3424,6 +3585,7 @@
           revise:()=>{view.revising=focusId;view.signature='';treeView(name);},pause:()=>show('handout')});
       }
       panel.append(card);
+      if(view.pendingHelp && view.help){view.pendingHelp=false;const launcher=card.querySelector('.ros-socratic button');if(launcher)launcher.click();}
     }
 
     function review(question, answered) {
@@ -3735,7 +3897,7 @@
       if(signature===lecture.analogySignature){if(lecture.analogy)lecture.analogy.refresh();return;}
       if(lecture.analogy)lecture.analogy.destroy();lecture.analogy=null;lecture.analogySignature=signature;lecture.analogiesHost.textContent='';
       if(!entries.length)return;
-      lecture.analogy=doc.defaultView.ResearchOSAnalogies.mount(lecture.analogiesHost,entries,current,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,options:teachingOptions,
+      lecture.analogy=doc.defaultView.ResearchOSAnalogies.mount(lecture.analogiesHost,entries,current,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,options:()=>({...teachingOptions(),requested_id:lecture.requestedAnalogyId}),
         choose:ident=>{const item=((current.pedagogy || {}).practice || []).find(e=>e.id===ident);if(!item)return;const target=views[item.tree]=views[item.tree] || {};target.viewing=item.question_id;target.signature='';show(item.tree);}});
       const launcher=lecture.analogiesHost.querySelector('button');if(launcher)launcher.addEventListener('click',()=>{if(lecture.controller && lecture.controller.pause)lecture.controller.pause();sendStep(true);});
     }
@@ -3999,6 +4161,7 @@
       for (const id of Object.keys(panels)) panels[id].hidden = id !== shown;
       renderBar();
       if (advice) advice.refresh();
+      if (roles) roles.refresh();
       if (shown === 'probe') treeView('probe');
       else if (shown === 'handout') renderHandout();
       else if (shown === 'lecture') {
@@ -4047,6 +4210,48 @@
       doc.defaultView.addEventListener('resize', () => { fitLecture(); placeVideo(); for (const view of Object.values(views)) if (view.fit) view.fit(); });
       if (doc.defaultView.requestAnimationFrame) doc.defaultView.requestAnimationFrame(() => doc.defaultView.requestAnimationFrame(fitLecture));   // once fonts and the first layout have settled
     }
+    async function preparedBehavior(ref){
+      if(disposed)return;
+      const entry=((current.pedagogy || {})[ref.family] || []).find(e=>e.id===ref.entry_id && e.version===ref.version);
+      if(!entry)throw Error('Prepared path changed; choose it again.');
+      const launch=(parent,selector)=>{const control=parent.querySelector(selector);if(!control)throw Error('Prepared behavior is unavailable here.');control.click();};
+      if(ref.family==='terms'){
+        panels.handout.dataset.vocabularyEntry=entry.id;delete panels.handout.dataset.signature;show('handout');launch(panels.handout,'.ros-terms summary');return;
+      }
+      if(['explanations','analogies'].includes(ref.family)){
+        show('lecture');
+        const segment=current.segments.find(s=>s.id===entry.segment_id),first=(segment && segment.script && segment.script.steps || [])[0];
+        if(!first || !lecture.script.steps.some(s=>s.id===first.id))throw Error('This prepared segment is outside the current lecture path. Ask the tutor to prepare the matching path.');
+        if(lecture.controller && lecture.controller.pause)lecture.controller.pause();
+        lecture.stepId=first.id;switchLecture('text',false,true);renderExplanation();sendStep(true);
+        if(ref.family==='analogies'){
+          if(lecture.analogy)lecture.analogy.destroy();lecture.analogy=null;lecture.analogySignature='';lecture.requestedAnalogyId=entry.id;renderAnalogy();launch(lecture.analogiesHost,'button');
+        }else{
+          if(ref.level){await ctx.persist('checkpoint',null,'pedagogy-level:'+entry.id+':'+entry.version+':'+ref.level);if(disposed)return;}
+          renderExplanation();launch(lecture.explanationsHost,'summary');
+        }
+        return;
+      }
+      const tree=entry.tree || (ref.stage==='probe'?'probe':'check'),target=views[tree]=views[tree] || {};
+      if(entry.question_id)target.viewing=entry.question_id;
+      if(ref.family==='practice'){
+        await ctx.persist('checkpoint',null,'pedagogy-practice:'+entry.id+':'+entry.version);if(disposed)return;
+      }
+      if(ref.family==='bloom')target.bloomId=entry.id;
+      if(ref.family==='comparisons')target.comparisonId=entry.id;
+      if(ref.family==='critiques')target.critiqueId=entry.id;
+      if(ref.family==='socratic')target.pendingHelp=true;
+      target.signature='';show(tree);
+      if(ref.family==='bloom')launch(panels[tree],'.ros-bloom button');
+      if(ref.family==='comparisons')launch(panels[tree],'.ros-comparison-host summary');
+      if(ref.family==='critiques')launch(panels[tree],'.ros-critiques button');
+    }
+    if(doc.defaultView.ResearchOSRoles){
+      const host=el('div',{class:'ros-teaching-roles'});bar.append(host);
+      roles=doc.defaultView.ResearchOSRoles.mount(host,current,{doc,rich:ctx.rich,plan:()=>current,events:savedEvents,reviews,persist:ctx.persist,show,prepared:preparedBehavior,
+        options:()=>{const prefs=ctx.learningPreferences?ctx.learningPreferences():null;return {canonical:ctx.canonicalAdvice?ctx.canonicalAdvice():null,preferences:prefs && (prefs.preferences || prefs)};},
+        request:text=>{if(!ctx.requestPending || !ctx.requestPending(text))ctx.emit('open-question',null,text);}});
+    }
     render();
     if (ctx.liveVoice) ctx.liveVoice.ask();
 
@@ -4056,9 +4261,10 @@
       update(next) { if(disposed)return;current = next; title.textContent = next.title; adjustLecture(); renderExplanation(); render(); },
       destroy() {
         disposed = true;
-        for (const view of Object.values(views)) for (const key of ['help','practice','comparison','bloom','analogy']) if(view[key]) {view[key].destroy();view[key]=null;}
+        for (const view of Object.values(views)) for (const key of ['help','practice','comparison','bloom','analogy','critique']) if(view[key]) {view[key].destroy();view[key]=null;}
         if (typeof unsubscribeDrafts === 'function') unsubscribeDrafts();
         if (advice) advice.destroy();
+        if (roles) roles.destroy();
         if (lecture.explanation) lecture.explanation.destroy();
         if (lecture.analogy) lecture.analogy.destroy();
         if (nativeReader) nativeReader.destroy();

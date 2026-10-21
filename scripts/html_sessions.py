@@ -557,6 +557,10 @@ def validate_state(state):
             problems = pedagogy_analogies.validate(entry,state['plan'],state)
             if problems:
                 raise ValueError('; '.join(problems))
+        import pedagogy_roles
+        for entry in (state['plan'].get('pedagogy') or {}).get('critiques', []):
+            problems=pedagogy_roles.validate_critique(entry,state['plan'],state)
+            if problems:raise ValueError('; '.join(problems))
         import learning_advice
         learning_advice.public_vocabulary(state)
         plan_ids = frozenset(q["id"] for tree in ("probe", "check") for q in (state["plan"].get(tree) or {}).get("questions", []))

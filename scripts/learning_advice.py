@@ -7,7 +7,7 @@ FIELDS={'advice_schema','evidence','status','context_outcome','action','reason',
 
 
 def validate(value):
-    if not isinstance(value,dict) or set(value) not in (FIELDS, FIELDS | {'target', 'next'}) or type(value['advice_schema']) is not int or value['advice_schema']!=1 or value['evidence'] is not False:
+    if not isinstance(value,dict) or set(value)-{'for_target'} not in (FIELDS, FIELDS | {'target', 'next'}) or type(value['advice_schema']) is not int or value['advice_schema']!=1 or value['evidence'] is not False:
         raise ValueError('Invalid canonical advice snapshot')
     if (not isinstance(value['status'],str) or value['status'] not in {'ready','limited','blocked'}
             or not isinstance(value['context_outcome'],str) or value['context_outcome'] not in {'ready','degraded','blocked'}):
@@ -24,6 +24,8 @@ def validate(value):
         raise ValueError('Ready advice requires a canonical context receipt')
     if (value['context_outcome']=='blocked') != (value['status']=='blocked') or value['status']=='blocked' and value['action']!='repair_context':
         raise ValueError('Blocked context cannot suggest instruction')
+    if 'for_target' in value and (not isinstance(value['for_target'],str) or not 1<=len(value['for_target'])<=300 or re.search(r'[\x00-\x1f\x7f]',value['for_target']) or 'target' in value and value['for_target']!=value['target']):
+        raise ValueError('Invalid canonical advice target identity')
     if 'target' in value:
         target, step = value['target'], value['next']
         if (not isinstance(target, str) or not 1 <= len(target) <= 300 or re.search(r'[\x00-\x1f\x7f]', target)
@@ -42,6 +44,8 @@ def snapshot(receipt):
                      'context_outcome':receipt['outcome'],'action':recommendation['next']['action'],
                      'reason':recommendation['rationale'][:600],'as_of':receipt['as_of'],'receipt_id':receipt['receipt_id']}
     target, step = recommendation.get('target'), recommendation.get('next')
+    if isinstance(target,dict) and isinstance(target.get('id'),str):
+        result['for_target']=target['id']
     if (recommendation['status'] == 'ready' and receipt['outcome'] == 'ready' and isinstance(target,dict)
             and isinstance(target.get('id'),str) and isinstance(step,dict)
             and ((target.get('kind') == 'concept' and step.get('concept') == target['id'])

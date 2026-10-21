@@ -243,6 +243,21 @@ function validatePedagogyEvent(event,state) {
     const parts=r.split(':'),entry=meta && (meta.terms || []).find(e=>e.id===parts[1]);
     if(parts.length!==3 || !entry || event.question_id!=null || parts[2]!==String(entry.version) || entry.source.access==='unavailable')throw new Error('Unknown available vocabulary presentation.');
   }
+  if(event.type==='checkpoint' && typeof r==='string' && r.startsWith('pedagogy-role:')){
+    if(event.question_id!=null || !['Advisor','Librarian','Tutor','Editor','Roommate','recommended'].some(role=>r==='pedagogy-role:'+role))throw new Error('Unknown teaching role choice.');
+  }
+  if(event.type==='checkpoint' && typeof r==='string' && r.startsWith('pedagogy-path:')){
+    const parts=r.split(':'),families=['socratic','explanations','practice','comparisons','terms','bloom','analogies','critiques'];
+    const entry=parts.length===4 && families.includes(parts[1]) && meta && (meta[parts[1]]||[]).find(e=>e.id===parts[2]);
+    if(!entry || event.question_id!=null || parts[3]!==String(entry.version))throw new Error('Unknown exact prepared teaching path.');
+  }
+  if(event.type==='checkpoint' && typeof r==='string' && r.startsWith('pedagogy-editor:')){
+    const parts=r.split(':'),entry=meta && (meta.critiques || []).find(e=>e.id===parts[1]);
+    const matches=entry && (state.events||[]).filter(e=>e.event_id===entry.answer_event_id);
+    const raw=matches && matches[0];
+    const stable=v=>Array.isArray(v)?'['+v.map(stable).join(',')+']':v&&typeof v==='object'?'{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+stable(v[k])).join(',')+'}':JSON.stringify(v);
+    if(parts.length!==3 || !entry || event.question_id!=null || parts[2]!==String(entry.version) || entry.source.access==='unavailable' || matches.length!==1 || raw.type!=='plan-answer' || raw.question_id!==entry.question_id || !raw.response || raw.response.tree!==entry.tree || raw.response.answer!==entry.answer || entry.review_snapshot!==null && !(state.plan_reviews||[]).some(v=>stable(v)===stable(entry.review_snapshot)))throw new Error('Editor critique requires unchanged actual work and review binding.');
+  }
   if(event.type==='checkpoint' && typeof r==='string' && r.startsWith('pedagogy-analogy:')){
     const parts=r.split(':'),entry=meta && (meta.analogies || []).find(e=>e.id===parts[1]);
     const item=entry && (meta.practice || []).find(e=>e.id===entry.transfer.practice_id);
@@ -547,7 +562,7 @@ function vocabularySnapshot(value,plan){
 // Only this bounded presentation projection crosses the context/privacy boundary.
 function adviceSnapshot(value) {
   const fields = ['advice_schema', 'evidence', 'status', 'context_outcome', 'action', 'reason', 'as_of', 'receipt_id'];
-  if (!value || typeof value !== 'object' || Array.isArray(value) || ![fields.length,fields.length+2].includes(Object.keys(value).length) || Object.keys(value).some(k=>!fields.includes(k)&&!['target','next'].includes(k)) || fields.some(k => !(k in value))
+  if (!value || typeof value !== 'object' || Array.isArray(value) || ![fields.length,fields.length+2].includes(Object.keys(value).filter(k=>k!=='for_target').length) || Object.keys(value).some(k=>!fields.includes(k)&&!['target','next','for_target'].includes(k)) || fields.some(k => !(k in value))
       || value.advice_schema !== 1 || value.evidence !== false || !['ready', 'limited', 'blocked'].includes(value.status)
       || !['ready', 'degraded', 'blocked'].includes(value.context_outcome) || typeof value.action !== 'string' || !/^[a-z_]{1,60}$/.test(value.action)
       || typeof value.reason !== 'string' || !value.reason.length || [...value.reason].length > 600
@@ -557,6 +572,10 @@ function adviceSnapshot(value) {
       || value.status === 'ready' && value.receipt_id === null
       || (value.context_outcome === 'blocked') !== (value.status === 'blocked')
       || value.status === 'blocked' && value.action !== 'repair_context') return null;
+  if ('for_target' in value) {
+    if(typeof value.for_target!=='string' || !value.for_target.length || [...value.for_target].length>300 || /[\x00-\x1f\x7f]/.test(value.for_target) || 'target' in value && value.for_target!==value.target)return null;
+    fields.push('for_target');
+  }
   if ('target' in value || 'next' in value) {
     if (typeof value.target !== 'string' || !value.target.length || [...value.target].length > 300 || /[\x00-\x1f\x7f]/.test(value.target) || !value.next || Object.keys(value.next).sort().join(',') !== 'dimension,scope' || !['conceptual','transfer','project_application'].includes(value.next.scope) || !['recognition','explanation','derivation','transfer','application'].includes(value.next.dimension)) return null;
     fields.push('target','next');

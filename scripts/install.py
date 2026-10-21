@@ -46,7 +46,7 @@ GRAPH_HELPERS = ("html_sessions.py", "common.py", "knowledge.py", "ontology.py",
                  "vault_health.py", "computational_manifest.py", "validate_evidence.py", "excalidraw_schematic.py",
                  "retention.py", "math_notes.py", "visual_intent.py", "knowledge_maps.py", "paper_library.py", "library_index.py", "terms.py", "teaching_lint.py", "code_walkthrough.py", "resources.py", "diagram_spec.py", "animate.py", "fsrs_schedule.py", "notebook_coverage.py", "notebook_trace.py", "speech_text.py", "voice.py", "voice_adapter.py",
                  "literature_check.py", "paper_access.py", "tasks.py", "tutor_session.py", "defense.py",
-                 "context_kernel.py", "learning_advice.py", "learning_preferences.py", "plan_evidence.py", "scientific_verify.py", "chembio_verify.py", "structure_verify.py", "rich_text.py", "board_script.py", "session_plan.py", "pedagogy_contract.py", "pedagogy_socratic.py", "pedagogy_explanations.py", "pedagogy_practice.py", "pedagogy_source_comparison.py", "pedagogy_terms.py", "pedagogy_bloom.py", "pedagogy_analogies.py", "pedagogy_budget.py", "tutor_session.py", "paper_access.py", "handout.py", "visual_assets.py", "tutor_gate.py", "supervision.py",
+                 "context_kernel.py", "learning_advice.py", "learning_preferences.py", "plan_evidence.py", "scientific_verify.py", "chembio_verify.py", "structure_verify.py", "rich_text.py", "board_script.py", "session_plan.py", "pedagogy_contract.py", "pedagogy_socratic.py", "pedagogy_explanations.py", "pedagogy_practice.py", "pedagogy_source_comparison.py", "pedagogy_terms.py", "pedagogy_bloom.py", "pedagogy_analogies.py", "pedagogy_roles.py", "pedagogy_revisions.py", "advice_freshness.py", "pedagogy_budget.py", "tutor_session.py", "paper_access.py", "handout.py", "visual_assets.py", "tutor_gate.py", "supervision.py",
                  # tasks.py gates reconciliation on the library inventory receipt that scout.py produces.
                  "scout.py",
                  # Optional Obsidian adapters: detection, vault search, and generated cards/canvas (all degrade to built-in routes).
@@ -66,7 +66,7 @@ SESSION_HELPERS = ("html_sessions.py", "common.py", "research.py", "knowledge.py
                    # A board widget's lecture script is checked by validate_state with the same rules the page uses.
                    "board_script.py",
                    # A session plan (probe tree, lecture segments, handout) is checked with the same board rules.
-                   "session_plan.py", "pedagogy_contract.py", "pedagogy_socratic.py", "pedagogy_explanations.py", "pedagogy_practice.py", "pedagogy_source_comparison.py", "pedagogy_terms.py", "pedagogy_bloom.py", "pedagogy_analogies.py", "pedagogy_budget.py", "tutor_session.py", "paper_access.py",
+                   "session_plan.py", "pedagogy_contract.py", "pedagogy_socratic.py", "pedagogy_explanations.py", "pedagogy_practice.py", "pedagogy_source_comparison.py", "pedagogy_terms.py", "pedagogy_bloom.py", "pedagogy_analogies.py", "pedagogy_roles.py", "pedagogy_revisions.py", "advice_freshness.py", "pedagogy_budget.py", "tutor_session.py", "paper_access.py",
                    # A planned session's study handout (LaTeX body to PDF in the library, vault note, plan status); its template travels in assets/handout.
                    "handout.py",
                    # `voice.py board` records a board's sentences (the session protocol names it); it starts the engine through voice_adapter.py and says text with speech_text.py.

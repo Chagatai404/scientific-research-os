@@ -1,0 +1,16 @@
+[
+ {"name":"Istanbul local midnight with previous UTC date","as_of":"2026-10-21","window":{"day":"2026-10-21","start":"2026-10-20T21:00:00Z","end":"2026-10-21T21:00:00Z"},"now":"2026-10-20T21:30:00Z","valid":true,"current":true},
+ {"name":"start inclusive","as_of":"2026-10-21","window":{"day":"2026-10-21","start":"2026-10-20T21:00:00Z","end":"2026-10-21T21:00:00Z"},"now":"2026-10-20T21:00:00Z","valid":true,"current":true},
+ {"name":"end exclusive","as_of":"2026-10-21","window":{"day":"2026-10-21","start":"2026-10-20T21:00:00Z","end":"2026-10-21T21:00:00Z"},"now":"2026-10-21T21:00:00Z","valid":true,"current":false},
+ {"name":"future window","as_of":"2026-10-21","window":{"day":"2026-10-21","start":"2026-10-20T21:00:00Z","end":"2026-10-21T21:00:00Z"},"now":"2026-10-20T20:59:59Z","valid":true,"current":false},
+ {"name":"explicit past day is stale","as_of":"2026-10-20","window":{"day":"2026-10-20","start":"2026-10-19T21:00:00Z","end":"2026-10-20T21:00:00Z"},"now":"2026-10-20T21:30:00Z","valid":true,"current":false},
+ {"name":"no minted window","as_of":"2026-10-21","window":null,"now":"2026-10-20T21:30:00Z","valid":false,"current":false},
+ {"name":"wrong as-of","as_of":"2026-10-20","window":{"day":"2026-10-21","start":"2026-10-20T21:00:00Z","end":"2026-10-21T21:00:00Z"},"now":"2026-10-20T21:30:00Z","valid":false,"current":false},
+ {"name":"invalid calendar date","as_of":"2026-02-30","window":{"day":"2026-02-30","start":"2026-02-28T00:00:00Z","end":"2026-03-01T00:00:00Z"},"now":"2026-02-28T12:00:00Z","valid":false,"current":false},
+ {"name":"numeric offset forbidden","as_of":"2026-10-21","window":{"day":"2026-10-21","start":"2026-10-20T21:00:00+00:00","end":"2026-10-21T21:00:00Z"},"now":"2026-10-20T21:30:00Z","valid":false,"current":false},
+ {"name":"milliseconds forbidden in window","as_of":"2026-10-21","window":{"day":"2026-10-21","start":"2026-10-20T21:00:00.000Z","end":"2026-10-21T21:00:00Z"},"now":"2026-10-20T21:30:00Z","valid":false,"current":false},
+ {"name":"leap second rejected","as_of":"2026-10-21","window":{"day":"2026-10-21","start":"2026-10-20T21:00:60Z","end":"2026-10-21T21:00:00Z"},"now":"2026-10-20T21:30:00Z","valid":false,"current":false},
+ {"name":"zero duration","as_of":"2026-10-21","window":{"day":"2026-10-21","start":"2026-10-20T21:00:00Z","end":"2026-10-20T21:00:00Z"},"now":"2026-10-20T21:00:00Z","valid":false,"current":false},
+ {"name":"duration over 48 hours","as_of":"2026-10-21","window":{"day":"2026-10-21","start":"2026-10-20T21:00:00Z","end":"2026-10-22T21:00:01Z"},"now":"2026-10-20T21:30:00Z","valid":false,"current":false},
+ {"name":"extra keys rejected","as_of":"2026-10-21","window":{"day":"2026-10-21","start":"2026-10-20T21:00:00Z","end":"2026-10-21T21:00:00Z","trusted":true},"now":"2026-10-20T21:30:00Z","valid":false,"current":false}
+]

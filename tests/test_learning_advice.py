@@ -26,7 +26,7 @@ class Advice(unittest.TestCase):
         page=hs.render_html(state,standalone=True)
         raw=json.loads(re.search(r'<script type="application/json" id="ros-session-data">([\s\S]*?)</script>',page).group(1))
         self.assertNotIn('context',raw)
-        self.assertEqual(set(raw['canonical_advice']),advice.FIELDS)
+        self.assertEqual(set(raw['canonical_advice']),advice.FIELDS|{'for_target'})
         self.assertNotIn(str(self.learning),json.dumps(raw['canonical_advice']))
     def test_optional_practice_binding_is_canonical_bounded_and_legacy_compatible(self):
         self.create(); legacy=advice.public(self.load())

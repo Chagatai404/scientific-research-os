@@ -66,7 +66,7 @@ def _attempt(entry, plan, events, reviews):
     for i, e in enumerate(events):
         if e.get('type') in ('hint', 'solution', 'explanation-request', 'pedagogy-help') or (
                 e.get('type') == 'checkpoint' and isinstance(e.get('response'), str)
-                and e['response'].startswith(('handout-solution:', 'pedagogy-comparison:', 'pedagogy-comparison-synthesis:', 'pedagogy-analogy:'))):
+                and e['response'].startswith(('handout-solution:', 'pedagogy-comparison:', 'pedagogy-comparison-synthesis:', 'pedagogy-analogy:', 'pedagogy-editor:'))):
             # Conservative presentation label, matching the existing evidence
             # authority's cross-question/open-notes caution. Not an evidence grade.
             assisted = True

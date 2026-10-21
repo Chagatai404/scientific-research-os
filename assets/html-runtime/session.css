@@ -791,3 +791,37 @@ body.ros-staged .ros-side-panel,body.ros-staged .ros-panel-toggle,body.ros-stage
 .ros-stage-handout:not([hidden]){display:flex;flex-direction:column}
 .ros-stage-handout>.ros-vocabulary-host{flex:none}
 .ros-stage-handout>.ros-handout{flex:1;height:auto;min-height:0}
+
+/* Coursera-style course shell: top bar, outline card, content card, right tool rail. Layout only; no stage logic. */
+.ros-stages{background:var(--ros-bg);padding:10px;gap:10px}
+.ros-stages .ros-stages-title{font:600 18px/1.25 var(--ros-font-ui,Arial,sans-serif);padding:2px 6px;overflow-wrap:anywhere}
+.ros-stage-body{background:var(--ros-surface);border:1px solid var(--ros-border);border-radius:14px;padding:14px;box-sizing:border-box;min-width:0;min-height:0}
+.ros-stagebar ol{list-style:none}.ros-stagebar button{font-family:var(--ros-font-ui,Arial,sans-serif);font-weight:600}
+.ros-stagebar [aria-current="step"],.ros-stagebar button[aria-pressed="true"],.ros-stagebar [aria-selected="true"]{box-shadow:inset 3px 0 0 var(--ros-accent)}
+.ros-advice-launcher,.ros-teaching-roles>button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font:600 12px/1.15 var(--ros-font-ui,Arial,sans-serif);border-radius:10px}
+.ros-advice-launcher::before{content:"\2726"/"";font-size:18px}.ros-teaching-roles>button::before{content:"\263A"/"";font-size:18px}
+/* Tablet and phone: one scrollable tab row that never wraps into several rows. */
+@media(max-width:1099px){
+.ros-stagebar{flex-direction:row;flex-wrap:wrap;align-items:center;gap:6px;padding:6px;background:var(--ros-surface);border:1px solid var(--ros-border);border-radius:12px}
+.ros-stagebar ol{flex:1 1 auto;flex-wrap:wrap;gap:6px;width:auto}
+.ros-stagebar button,.ros-stagebar>.ros-advice-launcher,.ros-teaching-roles>button{flex:none;white-space:nowrap;max-width:none;width:auto;min-height:36px;padding:4px 10px;flex-direction:row;gap:6px}
+.ros-advice-launcher::before,.ros-teaching-roles>button::before{font-size:14px}
+.ros-teaching-roles{flex:none}
+.ros-stage-body{padding:10px}
+}
+@media(max-width:640px){.ros-stagebar ol button{padding:4px 8px;font-size:13px;min-height:32px}.ros-stagebar{padding:4px;gap:4px}.ros-stages{padding:6px;gap:6px}.ros-stages .ros-stages-title{font-size:16px}.ros-stage-body{padding:8px;border-radius:12px}}
+/* Desktop: outline | content | tool rail, like a course player. */
+@media(min-width:1100px){
+.ros-stages{grid-template-columns:230px minmax(0,1fr) 84px;gap:12px}
+.ros-stages-title{grid-column:1/-1;border-bottom:1px solid var(--ros-border);padding-bottom:8px}
+.ros-stagebar{display:contents}
+.ros-stagebar ol{grid-column:1;grid-row:2;align-self:stretch;padding:12px 10px;background:var(--ros-surface);border:1px solid var(--ros-border);border-radius:14px;box-sizing:border-box}
+.ros-stagebar ol button{text-align:left;padding:10px 12px;min-height:44px;border-radius:10px}
+.ros-stage-body{grid-column:2;grid-row:2}
+.ros-stagebar>.ros-advice-launcher,.ros-teaching-roles{grid-column:3;max-width:none;width:100%;margin:0}
+.ros-stagebar>.ros-advice-launcher{grid-row:2;align-self:start;min-height:64px;padding:8px 4px}
+.ros-teaching-roles{grid-row:2;align-self:start;margin-top:76px}
+.ros-teaching-roles>button{width:100%;min-height:64px;padding:8px 4px}
+}
+@media(min-width:1100px){.ros-stagebar>.ros-advice-launcher,.ros-teaching-roles,.ros-teaching-roles>button{box-sizing:border-box;width:100%}}
+.ros-roles-dialog{height:min(640px,calc(100vh - 24px))}
