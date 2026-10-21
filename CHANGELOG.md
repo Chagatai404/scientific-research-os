@@ -2,6 +2,12 @@
 
 ## Unreleased — P1 teaching behaviors
 
+- Optional Bloom activities offer distinct prepared cognitive demands through
+  existing practice cards and exact content versions. Acknowledged activity and
+  practice selections precede shared-budget issuance; all-activities reading
+  creates no assessment or learning credit. Written evaluation and creation
+  retain the existing substantive review requirements.
+
 - Source-supported key terms and categories retain actual canonical bilingual
   identities, concept/prerequisite links and honest requested-count shortfalls.
   Dated recorded per-language states come from the existing term ledger without

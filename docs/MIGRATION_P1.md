@@ -76,3 +76,11 @@ gain no automatic context waiver/binding. Adopt the full updated helpers, runtim
 and host together; older strict context validators do not understand this field.
 The route override no longer bypasses immutable issued questions or presented
 teaching. Explicit legacy/unissued route changes still use their existing gate.
+
+P1f adds optional Bloom activity sets bound to exact existing practice IDs and
+versions. Update the complete helper/runtime/host bundle together before authoring
+these sets or checkpoints; older strict validators reject the new family. Existing
+sessions need no rewrite. A practice content version change requires an explicit
+matching unpresented activity revision; presented content remains immutable. The
+activity selector reuses raw answers, drafts, criterion reviews and shared budget,
+and does not create six mandatory stages or six new assessments on opening All.

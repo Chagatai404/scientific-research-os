@@ -323,3 +323,20 @@ The browser labels the snapshot date and does not treat it as evidence or policy
 It cannot rewrite issued complete question contracts/digests or already-presented
 teaching metadata. Legacy/unissued route overrides remain available; a changed
 issued question, including its routing digest, requires a new question identity.
+
+P1f optional `bloom` entries contain the common identity/target/version/sources
+plus exactly `prepared_by` and `challenges`. One to six distinct challenges use
+exactly `{level,practice_id,practice_version,purpose,output_requirement}`. Levels
+are remember/understand/apply/analyze/evaluate/create; each references a distinct
+existing practice ID and its exact integer version. Evaluate/create reference
+written questions with at least two existing criteria. Purpose/output are bounded
+prepared instructions, not a second rubric or answer store. A missing activity
+is disclosed; six activities are never a mandatory completion ladder.
+
+`pedagogy-bloom:<id>:<version>:<level|all>` records an exact prepared view with
+null question ID. Opening a challenge awaits that committed checkpoint and the
+referenced `pedagogy-practice:<id>:<version>` checkpoint before choosing the existing
+card. New questions still await the shared probe issuance gate. The all-activities
+view issues no questions. Raw attempts, revisions, drafts and substantive reviews
+remain in their existing streams; activity labels never award understanding or
+evidence. Source/provenance labels require independent scientific vetting.

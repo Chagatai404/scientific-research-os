@@ -337,6 +337,15 @@
       if (destination) { if (!destination.matches('button, textarea, input')) destination.tabIndex = -1; destination.focus({preventScroll: true}); }
     }
 
+    function teachingOptions(){
+      const advice=ctx.canonicalAdvice ? ctx.canonicalAdvice() : null;
+      const today=new Date().toISOString().slice(0,10); // Existing policy; calendar hardening is a separate gate.
+      const step=advice && advice.next;
+      const canonical=advice && advice.advice_schema===1 && advice.evidence===false && typeof advice.receipt_id==='string' && /^[0-9a-f]{32}$/.test(advice.receipt_id) && advice.status==='ready' && advice.context_outcome==='ready' && advice.as_of===today && advice.target===current.target && step && Object.keys(step).sort().join(',')==='dimension,scope' && ['conceptual','transfer','project_application'].includes(step.scope) && ['recognition','explanation','derivation','transfer','application'].includes(step.dimension) ? advice : null;
+      const value=ctx.learningPreferences ? ctx.learningPreferences() : null;
+      return {canonical,preferences:value && (value.preferences || value)};
+    }
+
     // ------------------------------------------------------------------------------------------------- questions (probe and check)
     function treeView(name) {
       if (disposed) return;
@@ -352,12 +361,13 @@
           if (entry) view.viewing = entry.question_id;
         }
       }
-      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, reviews(), practiceEntries, (current.pedagogy || {}).comparisons, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
+      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, reviews(), practiceEntries, (current.pedagogy || {}).comparisons, (current.pedagogy || {}).bloom, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
       if (signature === view.signature) return;
       view.signature = signature;
       if (view.help) {view.help.destroy();view.help=null;}
       if (view.practice) {view.practice.destroy();view.practice=null;}
       if (view.comparison) {view.comparison.destroy();view.comparison=null;}
+      if(view.bloom){view.bloom.destroy();view.bloom=null;}
       panel.dataset.comparisonOpen='false';
       panel.textContent = '';
       const tree = current[name], questions = new Map(tree.questions.map(q => [q.id, q]));
@@ -377,14 +387,18 @@
       if (practiceEntries.length && doc.defaultView.ResearchOSPractice) {
         const host = el('div', {class:'ros-practice'}); panel.append(host);
         view.practice = doc.defaultView.ResearchOSPractice.mount(host,practiceEntries,current,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,
-          options:()=>{
-            const advice = ctx.canonicalAdvice ? ctx.canonicalAdvice() : null;
-            const today = new Date().toISOString().slice(0,10); // Snapshot freshness, not a second evidence policy.
-            const step = advice && advice.next;
-            const canonical = advice && advice.advice_schema===1 && advice.evidence===false && typeof advice.receipt_id==='string' && /^[0-9a-f]{32}$/.test(advice.receipt_id) && advice.status==='ready' && advice.context_outcome==='ready' && advice.as_of===today && advice.target===current.target && step && Object.keys(step).sort().join(',')==='dimension,scope' && ['conceptual','transfer','project_application'].includes(step.scope) && ['recognition','explanation','derivation','transfer','application'].includes(step.dimension) ? advice : null;
-            return {canonical,preferences:ctx.learningPreferences ? ctx.learningPreferences() : null};
-          },
+          options:teachingOptions,
           choose:qid=>{if(questions.has(qid)){view.viewing=qid;view.signature='';treeView(name);}}});
+      }
+
+      const bloomEntries=((current.pedagogy || {}).bloom || []);
+      if(bloomEntries.length && doc.defaultView.ResearchOSBloom){
+        const host=el('div',{class:'ros-bloom'});panel.append(host);
+        const entry=bloomEntries.find(e=>e.id===view.bloomId) || bloomEntries[0];view.bloomId=entry.id;
+        if(bloomEntries.length>1){const select=el('select',{'aria-label':'Prepared Bloom set'});for(const item of bloomEntries)select.append(el('option',{value:item.id,text:item.id}));select.value=entry.id;select.addEventListener('change',()=>{view.bloomId=select.value;view.signature='';treeView(name);});host.append(select);}
+        const mount=el('div');host.append(mount);
+        view.bloom=doc.defaultView.ResearchOSBloom.mount(mount,entry,current,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,options:teachingOptions,
+          choose:ident=>{const practice=((current.pedagogy || {}).practice || []).find(e=>e.id===ident);if(!practice)return;const view=views[practice.tree]=views[practice.tree] || {};view.viewing=practice.question_id;view.signature='';show(practice.tree);}});
       }
 
       const comparisons = ((current.pedagogy || {}).comparisons || []);
@@ -1113,7 +1127,7 @@
       update(next) { if(disposed)return;current = next; title.textContent = next.title; adjustLecture(); renderExplanation(); render(); },
       destroy() {
         disposed = true;
-        for (const view of Object.values(views)) for (const key of ['help','practice','comparison']) if(view[key]) {view[key].destroy();view[key]=null;}
+        for (const view of Object.values(views)) for (const key of ['help','practice','comparison','bloom']) if(view[key]) {view[key].destroy();view[key]=null;}
         if (typeof unsubscribeDrafts === 'function') unsubscribeDrafts();
         if (advice) advice.destroy();
         if (lecture.explanation) lecture.explanation.destroy();

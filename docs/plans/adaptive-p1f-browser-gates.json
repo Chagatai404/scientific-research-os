@@ -1,0 +1,31 @@
+{
+  "command": "node tests/html-bloom-browser.cjs",
+  "exit_code": 0,
+  "seconds": 90.36,
+  "timing_scope": "Browser harness timer; helper setup approximately 4 seconds additional, no measured total.",
+  "reported_by": "p1_socratic; frozen fixture and browser files",
+  "viewports": [
+    [
+      1440,
+      900
+    ],
+    [
+      375,
+      740
+    ]
+  ],
+  "screenshots": "C:/Users/ASUS/.agent-hub/test-temp/ros-bloom-UdGWGV",
+  "network_requests": [],
+  "page_errors": [],
+  "verified": [
+    "Actual disposable trusted writer publishes complete/missing/reviewed/exhausted plans and rejects stale practice versions and over-budget new issuance.",
+    "Opaque exported iframe with authenticated scripted host transport holds/refuses Bloom view, practice selection and assessment reservation independently. Exhaustion rejection in scripted host is explicit; production fresh-disk rejection is covered separately by Python and host tests.",
+    "All six activities are optional; all-view creates no assessment; missing levels are honest. Prepared solution and alternative approaches remain undisclosed.",
+    "Latest actual off-route pending/reviewed work, original raw revision/draft reload, saved all-view, current scoped advice, stale/wrong-target fallback, explicit objective and activity override.",
+    "Desktop and phone native Reader fit, keyboard focus, late ACK after disposal, zero page errors or network requests."
+  ],
+  "notes": [
+    "Default launcher previews challenge instructions without opening an assessment. Activity/practice selection and new assessment display still require their separate committed acknowledgements.",
+    "No live Obsidian vault, physical tablet, learner gain, external scientific vetting or installed bundle verification."
+  ]
+}

@@ -24,6 +24,18 @@ const help = (changes = {}, id = 'help') => ({event_id: id, type: 'pedagogy-help
   entry_id: 'hints', version: 1, tree: 'probe', question_sha256: 'a'.repeat(64), level: 1, prior_response_event_id: null, ...changes}});
 const tests = [];
 function test(name, run) { tests.push({name, run}); }
+
+test('Bloom selection binds exact family, level and referenced practice version', () => {
+ const s=state();s.plan=clone(require('./fixtures/p1f/mse-challenges.json').plan);
+ const e={event_id:'activity',type:'checkpoint',question_id:null,response:'pedagogy-bloom:mse-bloom-family:1:create'};
+ assert.equal(validateEvent(e,s).response,e.response);
+ assert.equal(validateEvent({...e,response:'pedagogy-bloom:mse-bloom-family:1:all'},s).type,'checkpoint');
+ for(const response of ['pedagogy-bloom:mse-bloom-family:01:create','pedagogy-bloom:mse-bloom-family:2:create','pedagogy-bloom:mse-bloom-family:1:unknown','pedagogy-bloom:missing:1:create','pedagogy-bloom:mse-bloom-family:1:create:extra'])assert.throws(()=>validateEvent({...e,response},s),/Bloom/);
+ assert.throws(()=>validateEvent({...e,question_id:'mse-create'},s),/Bloom|question/);
+ for(const version of [true,'1',2]){const bad=clone(s);bad.plan.pedagogy.bloom[0].challenges[0].practice_version=version;assert.throws(()=>validateEvent(e,bad),/Bloom/);}
+ const bad=clone(s);bad.plan.pedagogy.practice[0].version=2;assert.throws(()=>validateEvent(e,bad),/Bloom/);
+ assert.equal(s.events.length,0,'activity validation never creates an answer, review or reservation');
+});
 test('vocabulary presentation records only an available exact version', () => {
  const s=state();s.plan.pedagogy.terms=[{id:'words',version:1,source:{access:'excerpt'}}];
  const e={event_id:'read',type:'checkpoint',question_id:null,response:'pedagogy-terms:words:1'};
@@ -146,6 +158,14 @@ test('real receive rechecks fresh disk budget under lock', async () => {
   const reply = await fixture.send(reserve('parent', 2));
   assert.equal(reply.type, 'error'); assert.match(reply.message, /exhausted/);
   assert.deepEqual(fixture.disk(), before);
+});
+
+test('real receive rechecks Bloom practice reference against fresh disk', async () => {
+ const cached=state();cached.plan=clone(require('./fixtures/p1f/mse-challenges.json').plan);
+ const disk=clone(cached);disk.plan.pedagogy.practice[0].version=2;
+ const fixture=actualHost(cached,disk),before=clone(fixture.disk());
+ const event={event_id:'activity',type:'checkpoint',question_id:null,response:'pedagogy-bloom:mse-bloom-family:1:all'};
+ assert.equal((await fixture.send(event)).type,'error');assert.deepEqual(fixture.disk(),before);
 });
 test('real receive saves raw revisions at exhaustion and rejects divergent IDs', async () => {
   const s = state(); s.events = [reserve('parent', 2), reserve('branch', 1)];

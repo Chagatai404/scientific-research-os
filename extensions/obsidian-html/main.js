@@ -243,6 +243,11 @@ function validatePedagogyEvent(event,state) {
     const parts=r.split(':'),entry=meta && (meta.terms || []).find(e=>e.id===parts[1]);
     if(parts.length!==3 || !entry || event.question_id!=null || parts[2]!==String(entry.version) || entry.source.access==='unavailable')throw new Error('Unknown available vocabulary presentation.');
   }
+  if(event.type==='checkpoint' && typeof r==='string' && r.startsWith('pedagogy-bloom:')){
+    const parts=r.split(':'),entry=meta && (meta.bloom || []).find(e=>e.id===parts[1]);
+    const known=new Map((meta && meta.practice || []).map(e=>[e.id,e]));
+    if(parts.length!==4 || !entry || event.question_id!=null || parts[2]!==String(entry.version) || !['all',...entry.challenges.map(c=>c.level)].includes(parts[3]) || entry.challenges.some(c=>!known.has(c.practice_id)||!Number.isInteger(c.practice_version)||c.practice_version!==known.get(c.practice_id).version))throw new Error('Unknown Bloom selection or referenced practice version.');
+  }
   if (event.type === 'checkpoint' && typeof r === 'string' && r.startsWith('pedagogy-level:')) {
     const parts = r.split(':'), entry = meta && (meta.explanations || []).find(e => e.id === parts[1]);
     if (parts.length !== 4 || !entry || event.question_id != null || parts[2] !== String(entry.version) || !Object.hasOwn(entry.levels,parts[3])) throw new Error('Unknown prepared explanation level.');
