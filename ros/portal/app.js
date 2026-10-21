@@ -215,7 +215,7 @@
     if (state.result) {
       const r = state.result;
       const word = { correct: "Correct.", incorrect: "Not yet.", "partially-correct": "Partly right.", pending: "Saved. Your tutor will read it." }[r.verdict] || r.verdict;
-      field = `<div class="feedback ${esc(r.verdict)}"><p><strong>${word}</strong></p>${r.feedback ? md(r.feedback) : ""}${r.verdict !== "correct" && r.explanation ? md(r.explanation) : ""}</div>`;
+      field = `<div class="feedback ${esc(r.verdict)}"><p><strong>${word}</strong></p>${r.feedback ? md(r.feedback) : ""}${r.verdict !== "correct" && r.explanation ? md(r.explanation) : ""}</div>${state.asking ? askField : ""}`;
     } else if (state.asking) field = askField;
     else if (q.kind === "choice") field = `<fieldset class="choices"><legend class="muted">Choose one</legend>${(q.options || []).map((o, i) => `<label><input type="radio" name="answer" value="${i}" required> <span>${inline(o)}</span></label>`).join("")}</fieldset>`;
     else if (q.kind === "numeric") field = `<label>Your answer<input type="text" name="answer" inputmode="decimal" autocomplete="off" required></label>`;

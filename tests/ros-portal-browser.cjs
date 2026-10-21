@@ -121,7 +121,16 @@ async function main() {
           for (const w of WIDTHS) { await page.setViewportSize({width: w, height: 900}); await layout(page, `question @${w}`); }
           await page.setViewportSize({width: 1280, height: 900});
         }
-      } else seen.add('feedback');
+      } else {
+        seen.add('feedback');
+        if (!seen.has('ask-on-feedback')) {  // the question box must open on the feedback screen too
+          seen.add('ask-on-feedback');
+          await page.getByRole('button', {name: 'Ask'}).click();
+          await page.locator('textarea[name=ask]').waitFor({timeout: 2000});
+          await page.getByRole('button', {name: 'Ask'}).click();
+          await page.locator('textarea[name=ask]').waitFor({state: 'detached', timeout: 2000});
+        }
+      }
       await page.getByRole('button', {name: 'Continue'}).click();
       await page.waitForTimeout(80);
     }
