@@ -164,7 +164,9 @@ class CommitmentAndHumanTests(Fixture):
         self.assertFalse({"approve", "decide", "waive"} & names)
         self.assertIn("verdict", names)
         self.assertIn("person's decision", refused["error"]["message"])
-        self.assertEqual(Record(self.home / "projects" / "ecal").events(type="decision"), [])
+        again = Record(self.home / "projects" / "ecal")
+        self.addCleanup(again.close)
+        self.assertEqual(again.events(type="decision"), [])
 
     def test_proposals_wait_for_a_person(self):
         p = research.propose(self.rec, "Lower the probe budget to 3", "Lessons run long", "agent:tutor")

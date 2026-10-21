@@ -123,7 +123,8 @@ class Plan:
         return {"installed": True, "written": written, "unchanged": len(self.writes) - len(written)}
 
 
-MERGED = {".mcp.json", ".gemini/settings.json", ".codex/config.toml", "AGENTS.md", "GEMINI.md"}
+MERGED = {".mcp.json", ".gemini/settings.json", ".gemini/GEMINI.md", ".codex/config.toml", ".codex/AGENTS.md",
+          "AGENTS.md", "GEMINI.md"}
 
 
 def install(client: str, base: Path | None = None, user: bool = False, force: bool = False,
@@ -138,20 +139,22 @@ def install(client: str, base: Path | None = None, user: bool = False, force: bo
         for name, data in agent_files().items():
             plan.file(f".claude/agents/{name}", data)
         if user:
-            note = ("claude mcp add --scope user research-os -e PYTHONPATH=" + str(REPO) + " -- "
-                    + sys.executable + " -m ros mcp")
+            # forward slashes survive every shell (bash eats backslashes, PowerShell mangles "--")
+            note = ("claude mcp add --scope user research-os -e PYTHONPATH=" + REPO.as_posix() + " -- "
+                    + Path(sys.executable).as_posix() + " -m ros mcp")
         else:
             plan.merged(".mcp.json", lambda old: _merge_json(old, ["mcpServers", "research-os"], server_entry()))
             note = "MCP server registered in .mcp.json"
     elif client == "codex":
         for rel, data in skill_files().items():
             plan.file(f".codex/skills/{rel}", data)
-        plan.merged("AGENTS.md", lambda old: _merge_block(old, instructions()))
+        # a project reads AGENTS.md at its root; the user's global file is ~/.codex/AGENTS.md
+        plan.merged(".codex/AGENTS.md" if user else "AGENTS.md", lambda old: _merge_block(old, instructions()))
         plan.merged(".codex/config.toml", lambda old: _merge_toml(old))
         note = "MCP server registered in .codex/config.toml" + ("" if user else " (project config; Codex reads "
                                                                  "~/.codex/config.toml unless the project is trusted)")
     elif client == "gemini":
-        plan.merged("GEMINI.md", lambda old: _merge_block(old, instructions()))
+        plan.merged(".gemini/GEMINI.md" if user else "GEMINI.md", lambda old: _merge_block(old, instructions()))
         plan.merged(".gemini/settings.json", lambda old: _merge_json(old, ["mcpServers", "research-os"], server_entry()))
         note = "MCP server registered in .gemini/settings.json"
     else:

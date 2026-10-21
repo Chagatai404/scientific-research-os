@@ -84,23 +84,29 @@ def serve(project: str | None = None, stdin=None, stdout=None, portal: int | Non
     port, so the agent and the browser share one writer (calls are serialized by ``api.LOCK``)."""
     stdin, stdout = stdin or sys.stdin, stdout or sys.stdout
     server = Server(project)
-    if portal is not None:
-        from . import serve as portal_server
-        portal_server.start(server.record(None), portal)
-        sys.stderr.write(f"research-os portal: http://127.0.0.1:{portal}/\n")
-    for line in stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            msg = json.loads(line)
-        except ValueError:
-            reply = _error(None, -32700, "parse error")
-        else:
-            reply = server.handle(msg) if isinstance(msg, dict) else _error(None, -32600, "invalid request")
-        if reply is not None:
-            stdout.write(json.dumps(reply, ensure_ascii=False) + "\n")
-            stdout.flush()
-    for rec in server.records.values():
-        rec.close()
+    httpd = None
+    try:
+        if portal is not None:
+            from . import serve as portal_server
+            httpd = portal_server.start(server.record(None), portal)
+            sys.stderr.write(f"research-os portal: http://127.0.0.1:{portal}/\n")
+        for line in stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                msg = json.loads(line)
+            except ValueError:
+                reply = _error(None, -32700, "parse error")
+            else:
+                reply = server.handle(msg) if isinstance(msg, dict) else _error(None, -32600, "invalid request")
+            if reply is not None:
+                stdout.write(json.dumps(reply, ensure_ascii=False) + "\n")
+                stdout.flush()
+    finally:
+        if httpd is not None:  # the portal lives exactly as long as the agent session
+            httpd.shutdown()
+            httpd.server_close()
+        for rec in server.records.values():
+            rec.close()
     return 0
