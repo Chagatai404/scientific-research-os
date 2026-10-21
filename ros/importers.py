@@ -80,16 +80,19 @@ def _sync_nodes(rec: Record, nodes: dict[str, dict]) -> int:
     return len(changed)
 
 
-def _sync_edges(rec: Record, edges: dict[str, list[tuple[str, str, str]]]) -> int:
-    """Make each imported node's outgoing edges exactly the given set: add the new, tombstone the dropped."""
-    add, drop = [], []
+def _sync_edges(rec: Record, edges: dict[str, list]) -> int:
+    """Make each imported node's outgoing edges exactly the given set: add new or changed edges, tombstone dropped ones.
+    An edge is a ``(src, type, dst)`` tuple or a dict with those keys plus its data."""
+    out = []
     for src, want in edges.items():
-        have = {(e["src"], e["type"], e["dst"]) for e in rec.edges(src=src)}
-        add += [{"src": s, "type": t, "dst": d} for s, t, d in want if (s, t, d) not in have]
-        drop += [{"src": s, "type": t, "dst": d, "deleted": True} for s, t, d in sorted(have - set(want))]
-    if add or drop:
-        rec.put_edges(add + drop)
-    return len(add) + len(drop)
+        want = [e if isinstance(e, dict) else {"src": e[0], "type": e[1], "dst": e[2]} for e in want]
+        have = {(e["src"], e["type"], e["dst"]): e for e in rec.edges(src=src)}
+        keys = {(e["src"], e["type"], e["dst"]) for e in want}
+        out += [e for e in want if have.get((e["src"], e["type"], e["dst"])) != e]
+        out += [{"src": s, "type": t, "dst": d, "deleted": True} for s, t, d in sorted(have.keys() - keys)]
+    if out:
+        rec.put_edges(out)
+    return len(out)
 
 
 # ---- sessions -----------------------------------------------------------------------------------------------------
@@ -283,3 +286,94 @@ def _ts(value) -> str:
     if d.tzinfo is None:
         d = d.replace(tzinfo=timezone.utc)
     return d.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+# ---- research records ---------------------------------------------------------------------------------------------
+RESEARCH_TYPES = {"research-question": "question", "hypothesis": "hypothesis", "experiment": "experiment",
+                  "research-decision": "decision"}
+# Old relation -> v1 edge type. The old name is kept on the edge as ``relation`` so nothing is lost.
+RESEARCH_EDGES = {"parent_questions": "part-of", "research_questions": "addresses", "hypotheses": "tests",
+                  "decisions": "relates", "questions": "decides", "experiments": "decides", "supersedes": "supersedes"}
+ONTOLOGY_PREFIX = {"domains": "domain", "subjects": "subject", "concepts": "concept", "blocks": "block"}
+
+
+def research_id(record_type: str, key: str) -> str:
+    return f"{RESEARCH_TYPES[record_type]}:{key}"
+
+
+def research_records(rec: Record, root: Path | str, evidence: Path | str | None = None,
+                     graphify: Path | str | None = None) -> dict:
+    """Import research records under ``root`` through ``scripts/research.py`` (so validation is unchanged): each
+    record a node carrying its status fields and diagnostics, each resolved relation an edge, each referenced
+    EvidenceAtom a ``claim`` node it cites, each code reference a ``code-symbol`` that implements it, and each learning
+    dependency a ``requires`` edge to the capability."""
+    knowledge = _knowledge()  # puts scripts/ on the path
+    import research
+    root = Path(root).resolve()
+    reg = research.validate(root)
+    research.enrich(reg, root, Path(evidence) if evidence else None, as_of=date.max,
+                    graphify=Path(graphify) if graphify else None)
+    del knowledge
+    by_path: dict[str, list] = {}
+    for d in reg.diagnostics:
+        by_path.setdefault(d.path, []).append(d)
+    nodes, edges = {}, {}
+    board = _evidence_board(root, Path(evidence) if evidence else root / "evidence")
+    for key, r in sorted(reg.records.items()):
+        nid = research_id(r.type, key)
+        node = {"id": nid, "type": RESEARCH_TYPES[r.type], "title": r.title, "path": r.path,
+                **{k: v for k, v in r.meta.items() if k not in research.LISTS and k not in ("type", "id")}}
+        diags = [{"severity": d.severity, "code": d.code, "message": d.message} for d in by_path.get(r.path, [])]
+        if diags:
+            node["diagnostics"] = diags
+        links = reg.links.get(key, {})
+        for kind in ("manifests", "verifications"):
+            if links.get(kind):
+                node[kind] = links[kind]
+        for kind in ("artifacts", "visuals"):
+            if r.meta.get(kind):
+                node[kind] = r.meta[kind]
+        nodes[nid] = node
+        out = []
+        for e in reg.edges:
+            if e.source == key:
+                target = reg.records[e.target]
+                out.append((nid, RESEARCH_EDGES[e.relation], research_id(target.type, e.target), e.relation))
+        for ref in r.meta.get("evidence", []):
+            cid = f"claim:{ref}"
+            if cid not in nodes:
+                atom = board.get(ref) or {}
+                nodes[cid] = {"id": cid, "type": "claim", "text": reg.claims.get(ref, atom.get("claim_text")),
+                              "status": links.get("evidence", {}).get(ref, "MISSING"),
+                              **({"atom": atom} if atom else {})}
+            out.append((nid, "cites", cid, "evidence"))
+        for c in reg.code.get(key, []):
+            sid = f"code-symbol:{c['path']}"
+            nodes.setdefault(sid, {"id": sid, "type": "code-symbol", "file": c["path"], "exists": c["exists"]})
+            edges.setdefault(sid, []).append((sid, "implements", nid, c["relation"]))
+        out += [(nid, "requires", f"capability:{dep}", "learning_dependencies")
+                for dep in r.meta.get("learning_dependencies", [])]
+        for field, prefix in ONTOLOGY_PREFIX.items():
+            out += [(nid, "about", f"{prefix}:{x}", field) for x in r.meta.get(field, [])]
+        out.append((nid, "part-of", f"project:{r.meta['project']}", "project"))
+        edges[nid] = edges.get(nid, []) + out
+    written = _sync_nodes(rec, nodes)
+    linked = _sync_edges(rec, {src: [{"src": s, "type": t, "dst": d, "relation": rel} for s, t, d, rel in es]
+                               for src, es in edges.items()})
+    return {"records": len(reg.records), "nodes_written": written, "edges_written": linked,
+            "legacy": reg.legacy,
+            "diagnostics": [f"{d.severity} {d.code} {d.path}: {d.message}" for d in reg.diagnostics]}
+
+
+def _evidence_board(root: Path, location: Path) -> dict:
+    import json as _json
+    board = {}
+    if location.is_dir():
+        for f in sorted(location.glob("*.json")):
+            try:
+                atom = _json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(atom, dict) and isinstance(atom.get("claim_id"), str):
+                board[atom["claim_id"]] = atom
+    return board

@@ -270,6 +270,74 @@ def import_graphify(rec: Record, graph_json: Path | str, repo_root: Path | str |
     return len(edges)
 
 
+def history(rec: Record, lesson: str | None = None, item: str | None = None) -> list[dict]:
+    """Every answer, oldest first, with the question it answered and the tutor's latest grade of it (or ``None``
+    while ungraded). A question that was later edited is shown as it was when answered."""
+    grades: dict[str, dict] = {}
+    for g in rec.events(type="grade"):
+        if g["data"].get("attempt"):
+            grades[g["data"]["attempt"]] = g
+    out = []
+    for a in rec.events(type="attempt"):
+        if lesson and a["data"].get("lesson") != lesson:
+            continue
+        if item and rec.current_item(a["subject"]) != rec.current_item(item):
+            continue
+        q = rec.item(a["subject"]) or {}
+        g = grades.get(a["id"])
+        out.append({"id": a["id"], "ts": a["ts"], "lesson": a["data"].get("lesson"), "item": a["subject"],
+                    "prompt": q.get("prompt"), "kind": q.get("kind"), "response": a["data"].get("response"),
+                    "grade": g["data"].get("verdict") if g else None,
+                    "feedback": g["data"].get("feedback") if g else None})
+    return out
+
+
+def research_frontier(rec: Record) -> list[dict]:
+    """The next mechanical transition of each research record: what a person or agent must do next, unranked. Same
+    rules as ``research.frontier``. A record with an error diagnostic needs repair before anything else."""
+    nodes = {n["id"]: n for t in ("question", "hypothesis", "experiment", "decision") for n in rec.nodes(type=t)}
+    rel: dict[str, list[tuple[str, str]]] = {}
+    for e in rec.edges():
+        if e["src"] in nodes and e["dst"] in nodes and e.get("relation"):
+            rel.setdefault(e["relation"], []).append((e["src"], e["dst"]))
+
+    def bad(n):
+        return any(d["severity"] == "ERROR" for d in n.get("diagnostics", []))
+
+    accepted = {k for k, n in nodes.items() if n["type"] == "decision" and n["status"] == "accepted" and not bad(n)}
+    decided = {d for s, d in rel.get("experiments", []) if s in accepted}
+    out = []
+    for key, n in sorted(nodes.items(), key=lambda kv: kv[0].split(":", 1)[1]):
+        t, status, todo = n["type"], n["status"], []
+        if bad(n):
+            todo.append("repair-record")
+        elif t == "question" and status in {"proposed", "active", "blocked"}:
+            if status == "blocked":
+                unresolved = [d for s, d in rel.get("parent_questions", []) if s == key and nodes[d]["status"] != "resolved"]
+                if unresolved or any(e["relation"] == "learning_dependencies" for e in rec.edges(src=key, type="requires")):
+                    todo.append("inspect-unresolved-dependencies")
+            if not any(d == key and nodes[s]["type"] == "hypothesis" for s, d in rel.get("research_questions", [])):
+                todo.append("hypothesis-missing")
+        elif t == "hypothesis" and status in {"proposed", "active", "survives", "weakened", "inconclusive"}:
+            if not any(d == key and nodes[s]["type"] == "experiment" for s, d in rel.get("hypotheses", [])):
+                todo.append("experiment-missing")
+        elif t == "experiment":
+            if status in {"planned", "ready"}:
+                todo += {"awaiting": ["approval-required"], "approved": ["execution-available"],
+                         "modification-requested": ["plan-revision-required"], "rejected": []}[n["authorization"]]
+            elif status == "completed":
+                validation, review = n.get("result_validation", "pending"), n.get("adversarial_review", "pending")
+                todo.append("validation-required" if validation == "pending" else
+                            "validation-revision-required" if validation == "failed" else
+                            "adversarial-review-required" if review == "pending" else
+                            "review-revision-required" if review == "failed" else
+                            "human-decision-required" if key not in decided else "")
+        elif t == "decision" and status in {"proposed", "revisit"}:
+            todo.append("human-decision-required")
+        out += [{"id": key, "transition": x} for x in sorted(todo) if x]
+    return out
+
+
 # ---- helpers ------------------------------------------------------------------------------------------------------
 def _stale(a: Assessment, as_of: date) -> None:
     # Stale is a dated view of a positive state, never its replacement in the record.

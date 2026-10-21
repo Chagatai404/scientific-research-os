@@ -35,7 +35,7 @@ ITEM_KINDS = {"choice", "numeric", "free"}
 NODE_TYPES = {"domain", "subject", "concept", "capability", "course", "goal", "project", "block", "paper", "question",
               "hypothesis", "claim", "experiment", "decision", "code-symbol", "source", "lesson"}
 EDGE_TYPES = {"requires", "teaches", "tests", "supports", "invalidates", "implements", "cites", "supersedes",
-              "part-of", "about", "applied-in", "relates"}
+              "part-of", "about", "applied-in", "addresses", "decides", "relates"}
 # Item fields that carry no content and are left out of the hash.
 ITEM_UNHASHED = {"id", "meta"}
 

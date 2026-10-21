@@ -10,6 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 
 from ros import importers  # noqa: E402
 from ros.store import Record, validate_item  # noqa: E402
@@ -100,3 +101,76 @@ class SessionImportTests(Fixture):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ResearchImportTests(Fixture):
+    def frontier_pairs(self, root):
+        import research
+        reg = research.validate(root)
+        old = sorted((x["id"], x["transition"]) for x in research.frontier(reg))
+        importers.research_records(self.rec, root)
+        from ros import graph
+        new = sorted((x["id"].split(":", 1)[1], x["transition"]) for x in graph.research_frontier(self.rec))
+        return old, new
+
+    def test_connected_example_frontier_and_links(self):
+        root = ROOT / "examples" / "connected-research"
+        old, new = self.frontier_pairs(root)
+        self.assertEqual(new, old)
+        self.assertTrue(old)
+        from ros import graph
+        self.assertEqual([c["path"] for c in graph.code_links(self.rec, "experiment:EXP-001")], ["src/profile_fit.py"])
+        claim = self.rec.node("claim:A-width")
+        self.assertEqual(claim["status"], "EXACT_SUPPORT")
+        again = importers.research_records(self.rec, root)
+        self.assertEqual((again["nodes_written"], again["edges_written"]), (0, 0))
+
+    def test_synthetic_frontier_covers_every_transition(self):
+        sys.path.insert(0, str(ROOT / "tests"))
+        from test_research import note
+        approved = dict(authorization="approved", authorized_by="human", authorized_at="2026-09-30")
+        root = self.tmp / "research"
+        root.mkdir()
+        (root / "review.md").write_text("# review\n", encoding="utf-8")
+        notes = [
+            note(), note(id="RQ-2", status="blocked", parent_questions=["RQ-1"]),
+            note(id="RQ-3", status="blocked", learning_dependencies=["probability.density"]),
+            note("hypothesis", "H-1", research_questions=["RQ-1"]),
+            note("hypothesis", "H-2", research_questions=["RQ-2"], status="survives"),
+            note("experiment", "EXP-1", status="ready", hypotheses=["H-1"], **approved),
+            note("experiment", "EXP-2", status="planned", authorization="awaiting"),
+            note("experiment", "EXP-3", status="planned", authorization="modification-requested"),
+            note("experiment", "EXP-4", status="ready", authorization="approved"),
+            note("experiment", "EXP-5", status="completed", **approved),
+            note("experiment", "EXP-6", status="completed", result_validation="failed", **approved),
+            note("experiment", "EXP-7", status="completed", result_validation="complete", validation_record="review.md",
+                 **approved),
+            note("experiment", "EXP-8", status="completed", result_validation="complete", validation_record="review.md",
+                 adversarial_review="failed", **approved),
+            note("experiment", "EXP-9", status="completed", result_validation="complete", validation_record="review.md",
+                 adversarial_review="complete", review_record="review.md", **approved),
+            note("experiment", "EXP-10", status="completed", result_validation="complete",
+                 validation_record="review.md", adversarial_review="complete", review_record="review.md", **approved),
+            note("research-decision", "DEC-1", status="accepted", experiments=["EXP-10"], accepted_by="human",
+                 accepted_at="2026-09-30", rationale="because"),
+            note("research-decision", "DEC-2", status="proposed"),
+        ]
+        for i, text in enumerate(notes):
+            (root / f"r{i}.md").write_text(text, encoding="utf-8")
+        old, new = self.frontier_pairs(root)
+        self.assertEqual(new, old)
+        self.assertGreaterEqual(len({t for _, t in old}), 10)
+
+
+class HistoryTests(Fixture):
+    def test_every_session_answer_appears_with_its_grade(self):
+        from ros import graph
+        importers.sessions(self.rec, LEGACY)
+        rows = graph.history(self.rec)
+        self.assertEqual([r["response"] for r in rows], ["It estimates the dimension, I think.",
+                                                        "The slope is the box-counting dimension.",
+                                                        "Because the limit needs small boxes."])
+        self.assertEqual([r["grade"] for r in rows], [None, "correct", None])
+        self.assertEqual(rows[0]["prompt"], "What does the slope estimate?")
+        lesson = self.rec.nodes(type="lesson")[0]
+        self.assertEqual(len(graph.history(self.rec, item=lesson["items"]["scale"])), 1)
