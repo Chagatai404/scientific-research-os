@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -5,6 +6,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+ENV = dict(os.environ, PYTHONPATH=str(ROOT))  # the CLIs run from other folders
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ros.lib import library_index as li
@@ -97,9 +99,9 @@ class LibraryIndexTests(unittest.TestCase):
         good.write_text('- Smith et al. 2020, no identifier\n', encoding='utf-8')
         bad.write_text('- Smith et al. 2020\n', encoding='utf-8')
         script = '-m', 'ros.lib.library_index'
-        ok = subprocess.run([sys.executable, '-S', '-B', *script, 'lint', str(good)], capture_output=True, text=True, cwd=self.base)
+        ok = subprocess.run([sys.executable, '-S', '-B', *script, 'lint', str(good)], capture_output=True, text=True, cwd=self.base, env=ENV)
         self.assertEqual(ok.returncode, 0, ok.stdout + ok.stderr)
-        failed = subprocess.run([sys.executable, '-S', '-B', *script, 'lint', str(bad)], capture_output=True, text=True, cwd=self.base)
+        failed = subprocess.run([sys.executable, '-S', '-B', *script, 'lint', str(bad)], capture_output=True, text=True, cwd=self.base, env=ENV)
         self.assertEqual(failed.returncode, 1)
 
 

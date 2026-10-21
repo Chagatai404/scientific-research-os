@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -8,6 +9,7 @@ from email.message import Message
 from urllib import error
 import unittest
 ROOT = Path(__file__).resolve().parents[1]
+ENV = dict(os.environ, PYTHONPATH=str(ROOT))  # the CLIs run from other folders
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ros.lib import paper_library as lib
@@ -162,16 +164,16 @@ class LibraryTests(unittest.TestCase):
         config.write_text('[paper_library]\nroot = "library"\norganization = "concept"\n', encoding='utf-8')
         manifest = self.source / 'papers.json'; manifest.write_text(json.dumps([paper()]), encoding='utf-8')
         command = [sys.executable, '-S', '-B', '-m', 'ros.lib.paper_library', '--config', str(config), '--input', str(manifest), '--apply', '--as-of', str(AS_OF)]
-        result = subprocess.run(command, cwd=self.source, capture_output=True, text=True)
+        result = subprocess.run(command, cwd=self.source, capture_output=True, text=True, env=ENV)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(self.root.is_dir())
         config.unlink()
-        self.assertEqual(subprocess.run(command, capture_output=True).returncode, 2)
+        self.assertEqual(subprocess.run(command, capture_output=True, env=ENV).returncode, 2)
 
     def test_full_manifest_validation_precedes_any_write(self):
         config = self.base / 'config.toml'; config.write_text('[paper_library]\nroot = "library"\n', encoding='utf-8')
         manifest = self.source / 'papers.json'; manifest.write_text(json.dumps([paper(), paper(year='invented')]), encoding='utf-8')
-        result = subprocess.run([sys.executable, '-S', '-B', '-m', 'ros.lib.paper_library', '--config', str(config), '--input', str(manifest), '--apply'], capture_output=True)
+        result = subprocess.run([sys.executable, '-S', '-B', '-m', 'ros.lib.paper_library', '--config', str(config), '--input', str(manifest), '--apply'], capture_output=True, env=ENV)
         self.assertEqual(result.returncode, 2)
         self.assertFalse(self.root.exists())
 

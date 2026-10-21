@@ -3,6 +3,7 @@ from contextlib import redirect_stdout, redirect_stderr
 from datetime import date
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -10,6 +11,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+ENV = dict(os.environ, PYTHONPATH=str(ROOT))  # the CLIs run from other folders
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ros.lib import knowledge as k
@@ -286,7 +288,7 @@ class KnowledgeTests(unittest.TestCase):
         self.put("node.md", record(projects=["experiment"], title="Probability Γ — yoğunluk"))
         result = subprocess.run([sys.executable, "-B", '-m', 'ros.lib.knowledge',
                                  "--root", str(self.root), "--project", "experiment",
-                                 "--as-of", "2026-09-29"], cwd=self.root, capture_output=True, text=True, encoding="utf-8")
+                                 "--as-of", "2026-09-29"], cwd=self.root, capture_output=True, text=True, encoding="utf-8", env=ENV)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Probability Γ", result.stdout)
         self.assertIn("yoğunluk", result.stdout)
