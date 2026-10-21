@@ -16,4 +16,4 @@ backend does not select it for the experiment. CUDA is never required.
 Prefer [official CUDA API documentation](https://docs.pytorch.org/docs/stable/generated/torch.cuda.is_available.html)
 and [reproducibility notes](https://docs.pytorch.org/docs/stable/notes/randomness.html),
 then official release notes/primary framework papers for framework claims. Scientific
-comparison and uncertainty remain subject to ML_PROTOCOL and SOURCE_POLICY.
+comparison and uncertainty remain subject to the ML lens (`skills/research/lenses/ml.md`) and `references/EVIDENCE.md`.

@@ -1,4 +1,4 @@
-# Biology protocol (v0.9.5)
+# Biology rules
 
 How the Research OS learns, teaches and reviews biology. It adds domain knowledge and checks to the existing workflows; it does not
 change evidence rules (`references/EVIDENCE.md`), research stages and approval (`references/RESEARCH.md`) or learning evidence

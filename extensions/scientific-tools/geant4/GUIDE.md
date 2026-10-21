@@ -18,4 +18,4 @@ Never adopt an example's physics list or geometry as project configuration.
 Source hierarchy for software: [Geant4 application documentation](https://geant4.web.cern.ch/documentation/dev/bfad_html/ForApplicationDevelopers/index.html),
 official release notes/examples, then the [binding project's own documentation](https://github.com/HaarigerHarald/geant4_pybind).
 Examples demonstrate implementation, not current detector truth. Use experiment
-documentation and primary literature for scientific claims under SOURCE_POLICY.
+documentation and primary literature for scientific claims under `references/EVIDENCE.md`.

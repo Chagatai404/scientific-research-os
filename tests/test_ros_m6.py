@@ -157,14 +157,18 @@ class DocsContractTests(unittest.TestCase):
 
     def test_docs_point_only_at_things_that_exist(self):
         docs = list((ROOT / "skills").rglob("*.md")) + list((ROOT / "agents").glob("*.md")) + \
-            list((ROOT / "references").glob("*.md")) + [ROOT / "README.md", ROOT / "CONTRIBUTING.md"]
+            list((ROOT / "references").glob("*.md")) + [ROOT / "README.md", ROOT / "CONTRIBUTING.md"] + \
+            list((ROOT / "docs").glob("*.md")) + list((ROOT / "extensions").rglob("*.md")) + \
+            list((ROOT / "examples").rglob("README.md"))
         for path in docs:
             text = path.read_text(encoding="utf-8")
             with self.subTest(path=path.relative_to(ROOT).as_posix()):
                 self.assertNotRegex(text, r"scripts/[a-z_]+\.py", "the old scripts are gone")
-                self.assertNotRegex(text, r"\b[A-Z_]+_(?:PROTOCOL|POLICY|FORMAT)\.md", "the old protocol files are gone")
+                self.assertNotRegex(text, r"\b[A-Z_]+_(?:PROTOCOL|POLICY|FORMAT)(?:\.md)?\b", "the old protocol files are gone")
                 for ref in re.findall(r"references/([A-Z_]+\.md)", text):
                     self.assertTrue((ROOT / "references" / ref).exists(), ref)
+                for target in re.findall(r"\]\(((?!https?:|#|mailto:)[^)\s]+)\)", text):
+                    self.assertTrue((path.parent / target.split("#")[0]).exists(), f"broken link {target}")
                 for mod in re.findall(r"ros\.lib\.([a-z_]+)", text):
                     self.assertTrue((ROOT / "ros" / "lib" / f"{mod}.py").exists(), mod)
 

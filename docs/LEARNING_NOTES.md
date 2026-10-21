@@ -9,7 +9,7 @@ record as events; these notes are not edited.
 
 Schema 1 and its templates remain supported as documented below. For explicit
 domain/subject/concept/application records and independent scope/dimension evidence,
-use the opt-in [knowledge model and schema 2](../../references/KNOWLEDGE_MODEL.md).
+use the opt-in knowledge model and schema 2 (described below).
 The existing quizbook template remains schema 1; do not merely change its version.
 Schema 2 needs an explicit concept/readiness profile and eleven-column history,
 and derives state/date summaries instead of storing them. The migration helper
@@ -23,7 +23,7 @@ automatically migrated, and lesson checkpoint replay never writes canonical ledg
 
 ## Schema 1
 
-`LEARNING_PROTOCOL.md` owns learning-state and retrieval rules. This section owns
+`references/TEACHING.md` owns learning-state and retrieval rules. This section owns
 the storage format. Records remain ordinary Markdown in the configured vault;
 no fixed folder migration, plugin, database, or scheduled process is required.
 

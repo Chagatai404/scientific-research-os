@@ -13,4 +13,4 @@ Inspect actual fitted boundaries and preserve model/transform configuration.
 
 Prefer [official common pitfalls documentation](https://scikit-learn.org/stable/common_pitfalls.html),
 official API/release notes and relevant primary framework papers. Generic leakage,
-test-set and fair-comparison policy belongs in ML_PROTOCOL, not this guide.
+test-set and fair-comparison policy belongs in the ML lens (`skills/research/lenses/ml.md`), not this guide.
