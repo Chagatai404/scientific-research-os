@@ -228,7 +228,8 @@ class TextOnlyFlow(unittest.TestCase):
                     ('explanation-request', 'simpler', 'hinted'),
                     ('checkpoint', 'handout-solution:1:4', 'open-notes'),
                     ('checkpoint', 'pedagogy-comparison:prepared-summary:1', 'hinted'),
-                    ('checkpoint', 'pedagogy-comparison-synthesis:prepared-summary:1', 'open-notes')]
+                    ('checkpoint', 'pedagogy-comparison-synthesis:prepared-summary:1', 'open-notes'),
+                    ('checkpoint', 'pedagogy-analogy:prepared-mapping:1', 'open-notes')]
         for kind, response, assistance in variants:
             for stamp in ['2026-10-19T11:59:59Z', '2026-10-19T12:00:00Z', None, 'invalid', '2026-10-19T11:00:00']:
                 state = deepcopy(original)

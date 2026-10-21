@@ -243,6 +243,18 @@ function validatePedagogyEvent(event,state) {
     const parts=r.split(':'),entry=meta && (meta.terms || []).find(e=>e.id===parts[1]);
     if(parts.length!==3 || !entry || event.question_id!=null || parts[2]!==String(entry.version) || entry.source.access==='unavailable')throw new Error('Unknown available vocabulary presentation.');
   }
+  if(event.type==='checkpoint' && typeof r==='string' && r.startsWith('pedagogy-analogy:')){
+    const parts=r.split(':'),entry=meta && (meta.analogies || []).find(e=>e.id===parts[1]);
+    const item=entry && (meta.practice || []).find(e=>e.id===entry.transfer.practice_id);
+    if(parts.length!==3 || !entry || event.question_id!=null || parts[2]!==String(entry.version) || !item || !Number.isInteger(entry.transfer.practice_version) || entry.transfer.practice_version!==item.version)throw new Error('Unknown analogy or referenced transfer version.');
+    const replacement=entry.replacement;
+    if(replacement){
+      const stable=value=>Array.isArray(value)?'['+value.map(stable).join(',')+']':value&&typeof value==='object'?'{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+stable(value[k])).join(',')+'}':JSON.stringify(value);
+      const raw=(state.events || []).find(e=>e.type==='plan-answer' && e.event_id===replacement.response_event_id && e.question_id===replacement.question_id);
+      const review=(state.plan_reviews || []).find(v=>v.question_id===replacement.question_id && v.response_event_id===replacement.response_event_id && ['incorrect','partially-correct'].includes(v.verdict) && typeof v.feedback==='string' && !!v.feedback.trim() && stable(v)===stable(replacement.review_snapshot));
+      if(!raw || !review)throw new Error('Analogy replacement requires its unchanged actual gap review.');
+    }
+  }
   if(event.type==='checkpoint' && typeof r==='string' && r.startsWith('pedagogy-bloom:')){
     const parts=r.split(':'),entry=meta && (meta.bloom || []).find(e=>e.id===parts[1]);
     const known=new Map((meta && meta.practice || []).map(e=>[e.id,e]));

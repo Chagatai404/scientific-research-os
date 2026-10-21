@@ -84,3 +84,12 @@ sessions need no rewrite. A practice content version change requires an explicit
 matching unpresented activity revision; presented content remains immutable. The
 activity selector reuses raw answers, drafts, criterion reviews and shared budget,
 and does not create six mandatory stages or six new assessments on opening All.
+
+P1g analogies require matching updated helpers, runtime and companion. Exact
+segment/practice versions and actual replacement review snapshots are immutable
+bindings; old answers/reviews are preserved. Analogy reading is recorded assistance,
+not independent evidence or novelty certification. The existing plan-evidence
+authority determines assistance chronology. Historical replacement content stays
+readable after a new raw revision, while the current recommendation no longer
+attributes that old review to new work. No source fetch, detector measurement or
+simulation is performed by the offline illustration.

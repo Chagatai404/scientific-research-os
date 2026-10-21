@@ -1,0 +1,128 @@
+[
+  {
+    "command": "node tests/html-host.test.js",
+    "exit_code": 0,
+    "seconds": 6.782,
+    "stdout": "HTML host tests passed: state validation, CSP bootstrap, authenticated bridge, serial atomic writes, replay, stale loads, identity conflicts, lock wait, live updates without reload, validated note navigation, remembered position, question origin, spoken questions, live voice, lecture position, host-owned video and handout panes.\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/html-runtime-unit.js",
+    "exit_code": 0,
+    "seconds": 0.406,
+    "stdout": "HTML runtime unit and bundled KaTeX checks passed\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/richtext-conformance.js",
+    "exit_code": 0,
+    "seconds": 0.709,
+    "stdout": "Rich text conformance passed: 68 corpus cases, spec, atomic math, DOM safety, pathological and random input, bundle freshness.\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/narration-unit.js",
+    "exit_code": 0,
+    "seconds": 0.139,
+    "stdout": "narration unit tests passed\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/board-unit.js",
+    "exit_code": 0,
+    "seconds": 0.163,
+    "stdout": "board unit tests passed (57 grammar cases, 15 layout cases)\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/stages-unit.js",
+    "exit_code": 0,
+    "seconds": 0.126,
+    "stdout": "stages unit tests passed\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/drafts-unit.js",
+    "exit_code": 0,
+    "seconds": 0.115,
+    "stdout": "Draft signatures, prepared identity and value bounds passed\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/html-drafts-host.test.js",
+    "exit_code": 0,
+    "seconds": 0.343,
+    "stdout": "Draft host: source binding, coalescing, hydration, bounded sidecar, identity, clear and evidence isolation passed.\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/socratic-unit.js",
+    "exit_code": 0,
+    "seconds": 0.134,
+    "stdout": "Socratic projection, committed help, failure, revision, reload and action tests passed\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/explanations-unit.js",
+    "exit_code": 0,
+    "seconds": 0.125,
+    "stdout": "Explanation projection, acknowledged selection, failure, source and reload tests passed.\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/practice-unit.js",
+    "exit_code": 0,
+    "seconds": 0.14,
+    "stdout": "Practice tier selection, no early approaches, explicit override, ack/refusal/reload and attempt-bound review unit tests passed\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/source-comparison-unit.js",
+    "exit_code": 0,
+    "seconds": 0.532,
+    "stdout": "Source comparison projection parity, source refusal, historical binding, revision callback and acknowledged presentation tests passed.\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/terms-unit.js",
+    "exit_code": 0,
+    "seconds": 0.986,
+    "stdout": "Canonical vocabulary projection parity, bilingual identity, count fallback, native reader reuse and acknowledged presentation tests passed.\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/pedagogy-host-unit.js",
+    "exit_code": 0,
+    "seconds": 0.239,
+    "stdout": "PASS Bloom selection binds exact family, level and referenced practice version\nPASS analogy help binds exact practice and unchanged real replacement review\nPASS vocabulary presentation records only an available exact version\nPASS comparison binds original actual summary and synthesis availability\nPASS practice selection binds exact prepared id/version without spending\nPASS current question cost and tree are checked\nPASS combined trees and nested questions share a budget\nPASS historical answers and route resets never refund spending\nPASS exhaustion preserves already issued raw revisions and help\nPASS duplicate reservations count once and conflicting costs fail\nPASS unknown malformed and nonfinite help fields fail\nPASS help binds the latest actual attempt and progresses in order\nPASS reading levels never spends assessment units\nPASS only actual trusted budget extensions change the limit\nPASS legacy contracted reservations share the same counter\nPASS invalid legacy costs cannot refund the shared counter\nPASS invalid staged costs are rejected rather than defaulted\nPASS real receive rechecks fresh disk budget under lock\nPASS real receive rechecks Bloom practice reference against fresh disk\nPASS real receive saves raw revisions at exhaustion and rejects divergent IDs\nPASS real receive acknowledges old persisted help after a newer answer\n21/21 pedagogy host tests passed.\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/bloom-unit.js",
+    "exit_code": 0,
+    "seconds": 0.134,
+    "stdout": "Bloom optional six-view, distinct existing practice, no solutions/approaches, ack/refusal/reload, explicit choice and late-disposal unit tests passed\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/analogies-unit.js",
+    "exit_code": 0,
+    "seconds": 0.119,
+    "stdout": "Analogy mappings/limits, no early tasks or solutions, ack/refusal/reload, historical review replacement and disposed late acknowledgement unit tests passed\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/html-practice-browser.cjs .",
+    "exit_code": 0,
+    "seconds": 57.407,
+    "stdout": "Practice actual-bundle offroute selection, acknowledgement/budget gate, unit labels, assistance/draft reload, raw revision and review acceptance passed; screenshots C:\\Users\\ASUS\\.agent-hub\\test-temp\\ros-practice-8UgIi4\n",
+    "stderr": ""
+  },
+  {
+    "command": "node tests/html-explanations-browser.cjs .",
+    "exit_code": 0,
+    "seconds": 27.588,
+    "stdout": "Explanation browser acceptance passed desktop and phone; screenshots: C:\\Users\\ASUS\\.agent-hub\\test-temp\\ros-explanations-9KuoSy\n",
+    "stderr": ""
+  }
+]

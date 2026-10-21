@@ -361,13 +361,14 @@
           if (entry) view.viewing = entry.question_id;
         }
       }
-      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, reviews(), practiceEntries, (current.pedagogy || {}).comparisons, (current.pedagogy || {}).bloom, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
+      const signature = JSON.stringify([current[name].questions, r.trail.map(t => [t.id, t.answer, reviewOf(t.id)]), r.current, view.viewing, view.revising, derived, shown, reviews(), practiceEntries, (current.pedagogy || {}).comparisons, (current.pedagogy || {}).bloom, (current.pedagogy || {}).analogies, savedEvents().filter(e => e.type === 'pedagogy-help' || e.type === 'plan-answer').map(e => e.event_id)]);
       if (signature === view.signature) return;
       view.signature = signature;
       if (view.help) {view.help.destroy();view.help=null;}
       if (view.practice) {view.practice.destroy();view.practice=null;}
       if (view.comparison) {view.comparison.destroy();view.comparison=null;}
       if(view.bloom){view.bloom.destroy();view.bloom=null;}
+      if(view.analogy){view.analogy.destroy();view.analogy=null;}
       panel.dataset.comparisonOpen='false';
       panel.textContent = '';
       const tree = current[name], questions = new Map(tree.questions.map(q => [q.id, q]));
@@ -399,6 +400,13 @@
         const mount=el('div');host.append(mount);
         view.bloom=doc.defaultView.ResearchOSBloom.mount(mount,entry,current,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,options:teachingOptions,
           choose:ident=>{const practice=((current.pedagogy || {}).practice || []).find(e=>e.id===ident);if(!practice)return;const view=views[practice.tree]=views[practice.tree] || {};view.viewing=practice.question_id;view.signature='';show(practice.tree);}});
+      }
+
+      const analogyEntries=((current.pedagogy || {}).analogies || []);
+      if(analogyEntries.length && doc.defaultView.ResearchOSAnalogies){
+        const host=el('div',{class:'ros-analogies'});panel.append(host);
+        view.analogy=doc.defaultView.ResearchOSAnalogies.mount(host,analogyEntries,current,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,options:teachingOptions,
+          choose:ident=>{const practice=((current.pedagogy || {}).practice || []).find(e=>e.id===ident);if(!practice)return;const target=views[practice.tree]=views[practice.tree] || {};target.viewing=practice.question_id;target.signature='';show(practice.tree);}});
       }
 
       const comparisons = ((current.pedagogy || {}).comparisons || []);
@@ -777,7 +785,8 @@
       lecture.boardMode = button('Blackboard', () => switchLecture('board'));
       lecture.modeNote = el('p', {class: 'ros-stage-hint', role: 'status'});
       modes.append(lecture.textMode, lecture.boardMode);
-      tools.append(modes, lecture.modeNote, lecture.videoBox, lecture.askButton, lecture.chips, lecture.composer, lecture.offer, lecture.next);
+      lecture.analogiesHost=el('div',{class:'ros-lecture-analogies'});
+      tools.append(modes, lecture.modeNote, lecture.analogiesHost, lecture.videoBox, lecture.askButton, lecture.chips, lecture.composer, lecture.offer, lecture.next);
       lecture.surface = el('div',{class:'ros-lecture-surface'});
       lecture.explanationsHost = el('div',{class:'ros-explanations-host'});
       lecture.surface.append(lecture.explanationsHost,lecture.host);
@@ -810,12 +819,27 @@
       lecture.vocabulary=vocabulary(lecture.vocabularyContainer,open=>{lecture.vocabularyContainer.parentElement.dataset.vocabularyOpen=String(open);if(open&&lecture.controller&&lecture.controller.pause){lecture.controller.pause();sendStep(true);}fitLecture();});
     }
 
+    function lectureSegment(){
+      const anticipated=(current.anticipated || []).find(a=>a.steps.some(step=>step.id===lecture.stepId));
+      return lecture.stepId ? current.segments.find(s=>(s.script && s.script.steps || []).some(step=>step.id===lecture.stepId) || anticipated && s.id===anticipated.segment) : current.segments.find(s=>lecture.path.includes(s.id));
+    }
+    function renderAnalogy(){
+      if(!lecture.analogiesHost || !doc.defaultView.ResearchOSAnalogies)return;
+      const segment=lectureSegment(),entries=((current.pedagogy || {}).analogies || []).filter(e=>segment && e.segment_id===segment.id);
+      const signature=JSON.stringify([entries,reviews(),savedEvents().filter(e=>e.type==='plan-answer').map(e=>e.event_id)]);
+      if(signature===lecture.analogySignature){if(lecture.analogy)lecture.analogy.refresh();return;}
+      if(lecture.analogy)lecture.analogy.destroy();lecture.analogy=null;lecture.analogySignature=signature;lecture.analogiesHost.textContent='';
+      if(!entries.length)return;
+      lecture.analogy=doc.defaultView.ResearchOSAnalogies.mount(lecture.analogiesHost,entries,current,{doc,rich:ctx.rich,events:savedEvents,reviews,persist:ctx.persist,options:teachingOptions,
+        choose:ident=>{const item=((current.pedagogy || {}).practice || []).find(e=>e.id===ident);if(!item)return;const target=views[item.tree]=views[item.tree] || {};target.viewing=item.question_id;target.signature='';show(item.tree);}});
+      const launcher=lecture.analogiesHost.querySelector('button');if(launcher)launcher.addEventListener('click',()=>{if(lecture.controller && lecture.controller.pause)lecture.controller.pause();sendStep(true);});
+    }
     function renderExplanation() {
       renderVocabulary();
+      renderAnalogy();
       if (!lecture.explanationsHost || !doc.defaultView.ResearchOSExplanations) return;
       const entries = ((current.pedagogy || {}).explanations || []);
-      const anticipated = (current.anticipated || []).find(a => a.steps.some(step => step.id === lecture.stepId));
-      const segment = lecture.stepId ? current.segments.find(s => (s.script && s.script.steps || []).some(step => step.id === lecture.stepId) || anticipated && s.id === anticipated.segment) : current.segments.find(s => lecture.path.includes(s.id));
+      const segment = lectureSegment();
       const entry = entries.find(e => segment && e.segment_id === segment.id);
       const signature = JSON.stringify(entry || null);
       if (lecture.explanationSignature === signature) { if (lecture.explanation) lecture.explanation.update(); return; }
@@ -1127,10 +1151,11 @@
       update(next) { if(disposed)return;current = next; title.textContent = next.title; adjustLecture(); renderExplanation(); render(); },
       destroy() {
         disposed = true;
-        for (const view of Object.values(views)) for (const key of ['help','practice','comparison','bloom']) if(view[key]) {view[key].destroy();view[key]=null;}
+        for (const view of Object.values(views)) for (const key of ['help','practice','comparison','bloom','analogy']) if(view[key]) {view[key].destroy();view[key]=null;}
         if (typeof unsubscribeDrafts === 'function') unsubscribeDrafts();
         if (advice) advice.destroy();
         if (lecture.explanation) lecture.explanation.destroy();
+        if (lecture.analogy) lecture.analogy.destroy();
         if (nativeReader) nativeReader.destroy();
         if(handoutVocabulary)handoutVocabulary.destroy();
         if(lecture.vocabulary)lecture.vocabulary.destroy();

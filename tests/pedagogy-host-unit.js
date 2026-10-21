@@ -36,6 +36,17 @@ test('Bloom selection binds exact family, level and referenced practice version'
  const bad=clone(s);bad.plan.pedagogy.practice[0].version=2;assert.throws(()=>validateEvent(e,bad),/Bloom/);
  assert.equal(s.events.length,0,'activity validation never creates an answer, review or reservation');
 });
+
+test('analogy help binds exact practice and unchanged real replacement review', () => {
+ const fixture=require('./fixtures/p1g/box-counting-analogies.json'),s=state();s.plan=clone(fixture.plan);s.events=clone(fixture.state.events);s.plan_reviews=clone(fixture.state.plan_reviews);
+ const entry=s.plan.pedagogy.analogies[1],event={event_id:'analogy',type:'checkpoint',question_id:null,response:'pedagogy-analogy:'+entry.id+':'+entry.version};
+ assert.equal(validateEvent(event,s).response,event.response);
+ for(const response of ['pedagogy-analogy:missing:1','pedagogy-analogy:'+entry.id+':01',event.response+':extra'])assert.throws(()=>validateEvent({...event,response},s),/analogy|Analogy/);
+ for(const version of [true,'1',2]){const bad=clone(s);bad.plan.pedagogy.analogies[1].transfer.practice_version=version;assert.throws(()=>validateEvent(event,bad),/analogy/);}
+ const missing=clone(s);missing.events=[];assert.throws(()=>validateEvent(event,missing),/replacement/);
+ const changed=clone(s);changed.plan_reviews[0].feedback+=' changed';assert.throws(()=>validateEvent(event,changed),/replacement/);
+ s.events.push({...s.events[0],event_id:'newer-raw'});assert.equal(validateEvent(event,s).type,'checkpoint','historical unchanged replacement remains readable');
+});
 test('vocabulary presentation records only an available exact version', () => {
  const s=state();s.plan.pedagogy.terms=[{id:'words',version:1,source:{access:'excerpt'}}];
  const e={event_id:'read',type:'checkpoint',question_id:null,response:'pedagogy-terms:words:1'};

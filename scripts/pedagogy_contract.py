@@ -26,7 +26,7 @@ def validate(plan):
     if value is None and 'pedagogy' not in plan:
         return []
     problems = []
-    if not isinstance(value, dict) or set(value) - {'schema', 'socratic', 'explanations', 'practice', 'comparisons', 'terms', 'bloom'} or type(value.get('schema')) is not int or value.get('schema') != 1:
+    if not isinstance(value, dict) or set(value) - {'schema', 'socratic', 'explanations', 'practice', 'comparisons', 'terms', 'bloom', 'analogies'} or type(value.get('schema')) is not int or value.get('schema') != 1:
         return ['pedagogy: schema 1 object with known teaching families required']
     try:
         if len(json.dumps(value, ensure_ascii=False, allow_nan=False).encode('utf-8')) > MAX_BYTES:
@@ -34,7 +34,7 @@ def validate(plan):
     except (ValueError, TypeError):
         return ['pedagogy: finite JSON content required']
     seen = set()
-    for family in ('socratic', 'explanations', 'practice', 'comparisons', 'terms', 'bloom'):
+    for family in ('socratic', 'explanations', 'practice', 'comparisons', 'terms', 'bloom', 'analogies'):
         entries = value.get(family, [])
         if not isinstance(entries, list) or len(entries) > 40:
             problems.append('pedagogy.' + family + ': at most 40 entries')
@@ -44,22 +44,24 @@ def validate(plan):
             at = 'pedagogy.' + family
             if not isinstance(entry, dict):
                 problems.append(at + ': entry must be an object'); continue
-            if family in ('practice', 'comparisons', 'terms', 'bloom'):
+            if family in ('practice', 'comparisons', 'terms', 'bloom', 'analogies'):
                 if family == 'practice':
                     import pedagogy_practice as behavior
                 elif family == 'comparisons':
                     import pedagogy_source_comparison as behavior
                 elif family == 'terms':
                     import pedagogy_terms as behavior
-                else:
+                elif family == 'bloom':
                     import pedagogy_bloom as behavior
+                else:
+                    import pedagogy_analogies as behavior
                 problems.extend(behavior.validate(entry, plan))
                 ident = entry.get('id')
                 if not isinstance(ident, str) or ident in seen:
                     problems.append(at + ': unique bounded entry id required')
                 else:
                     seen.add(ident)
-                key = (entry.get('id'),) if family in ('terms','bloom') else (entry.get('tree'), entry.get('question_id'))
+                key = (entry.get('id'),) if family in ('terms','bloom','analogies') else (entry.get('tree'), entry.get('question_id'))
                 if family == 'comparisons':
                     key += (entry.get('summary_event_id'),)
                 if not all(isinstance(v, str) for v in key) or key in bound:
@@ -186,6 +188,12 @@ def validate_event(event, state, historical=False):
         entry=next((e for e in meta.get('terms',[]) if len(fields)==3 and e['id']==fields[1]),None)
         if entry is None or event.get('question_id') is not None or fields[2]!=str(entry['version']) or entry['source']['access']=='unavailable':
             raise ValueError('Vocabulary presentation must bind an available prepared entry/version')
+    elif event.get('type')=='checkpoint' and isinstance(response,str) and response.startswith('pedagogy-analogy:'):
+        import pedagogy_analogies
+        fields=response.split(':')
+        entry=next((e for e in meta.get('analogies',[]) if len(fields)==3 and e['id']==fields[1]),None)
+        if entry is None or event.get('question_id') is not None or fields[2]!=str(entry['version']) or pedagogy_analogies.validate(entry,plan,state):
+            raise ValueError('Analogy assistance must bind exact prepared content, practice version and actual replacement review')
     elif event.get('type')=='checkpoint' and isinstance(response,str) and response.startswith('pedagogy-bloom:'):
         import pedagogy_bloom
         fields=response.split(':')
@@ -208,8 +216,8 @@ def revision_problems(old, new, events):
     before, after = questions(old), questions(new)
     problems = ['issued question semantics must be retained: ' + qid for qid in issued if before.get(qid) != after.get(qid)]
     used = {e.get('response', {}).get('entry_id') for e in events if e.get('type') == 'pedagogy-help' and isinstance(e.get('response'), dict)}
-    used.update(e['response'].split(':')[1] for e in events if e.get('type') == 'checkpoint' and isinstance(e.get('response'), str) and e['response'].startswith(('pedagogy-level:', 'pedagogy-practice:', 'pedagogy-comparison:', 'pedagogy-comparison-synthesis:', 'pedagogy-terms:', 'pedagogy-bloom:')))
-    entries = lambda p: {e['id']: e for family in ('socratic', 'explanations', 'practice', 'comparisons', 'terms', 'bloom') for e in (p.get('pedagogy') or {}).get(family, [])}
+    used.update(e['response'].split(':')[1] for e in events if e.get('type') == 'checkpoint' and isinstance(e.get('response'), str) and e['response'].startswith(('pedagogy-level:', 'pedagogy-practice:', 'pedagogy-comparison:', 'pedagogy-comparison-synthesis:', 'pedagogy-terms:', 'pedagogy-bloom:', 'pedagogy-analogy:')))
+    entries = lambda p: {e['id']: e for family in ('socratic', 'explanations', 'practice', 'comparisons', 'terms', 'bloom', 'analogies') for e in (p.get('pedagogy') or {}).get(family, [])}
     b, a = entries(old), entries(new)
     problems.extend('changed pedagogy content requires a new version: ' + ident for ident in b.keys() & a.keys() if b[ident] != a[ident] and a[ident]['version'] <= b[ident]['version'])
     problems.extend('presented pedagogy entry must be retained: ' + ident for ident in used if b.get(ident) != a.get(ident))

@@ -1,0 +1,36 @@
+{
+  "runs": [
+    {
+      "command": "node tests/html-analogies-browser.cjs",
+      "exit_code": 0,
+      "seconds": 78.15,
+      "timing_scope": "Browser harness phase; total setup duration not measured.",
+      "viewports": [
+        1440,
+        375
+      ],
+      "screenshots": "C:/Users/ASUS/.agent-hub/test-temp/ros-analogies-wijUXg",
+      "scope": "Actual disposable writer publishes base/replacement/pending fixtures; exported opaque iframe tests mapping/limits only after ACK, exact practice+probe gates, raw revisions/reviews/drafts, historical replacement, focus/geometry and disposal.",
+      "reported_by": "p1_socratic",
+      "page_errors": [],
+      "network_requests": []
+    },
+    {
+      "command": "node tests/html-analogies-browser.cjs --lecture-only",
+      "exit_code": 0,
+      "seconds": 27.96,
+      "timing_scope": "Browser harness phase; total setup duration not measured.",
+      "viewports": [
+        1440,
+        375
+      ],
+      "screenshots": "C:/Users/ASUS/.agent-hub/test-temp/ros-analogies-kEew22",
+      "scope": "Later refreshed bundle adds exact current-segment Lecture access; actual second unrelated segment excludes launcher, retains path/step through reading, restores acknowledged matching content on return and remains unrelated after reload.",
+      "reported_by": "p1_socratic",
+      "page_errors": [],
+      "network_requests": []
+    }
+  ],
+  "final_followup": "After both runs, matching pedagogy-analogy assistance prefix was added to Python/JS practice presentation; targeted projection/unit and final bundle/regression checks cover this conservative session label.",
+  "limits": "No live vault, real Obsidian, physical tablet, learner gain, MC replication, detector measurement or learner-history novelty certification."
+}

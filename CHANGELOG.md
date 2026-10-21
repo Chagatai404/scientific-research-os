@@ -2,6 +2,11 @@
 
 ## Unreleased — P1 teaching behaviors
 
+- Prepared analogies retain formal mappings, failure limits, source scope and
+  honest novelty declarations. Replacements bind actual historical gap reviews;
+  segment-specific Lecture and optional Quiz/Check readers preserve raw work.
+  Acknowledged assistance and existing transfer practice retain canonical gates.
+
 - Optional Bloom activities offer distinct prepared cognitive demands through
   existing practice cards and exact content versions. Acknowledged activity and
   practice selections precede shared-budget issuance; all-activities reading

@@ -39,7 +39,7 @@ function setup(seed=[]) {
   const review={question_id:entries[2].question_id,response_event_id:'a1',verdict:'correct',criteria_met:[true,true,true],feedback:'All stated claims supported.',reviewed_by:'reviewer: unit fixture'};
   assert.equal(P.project(entries,plan,[raw(2)],[review]).action,'practice');
   assert.equal(P.project(entries,plan,[raw(2),raw(2,'a2')],[review]).action,'await_review','old review cannot approve new raw attempt');
-  assert.equal(P.project(entries,plan,[{type:'checkpoint',response:'handout-solution:1:2'},raw(2)],[review]).assisted,true);
+  for(const response of ['handout-solution:1:2','pedagogy-analogy:mapping:1'])assert.equal(P.project(entries,plan,[{type:'checkpoint',response},raw(2)],[review]).assisted,true);
   const disposed=setup(),wait={};disposed.button('Practice tiers').click();disposed.delay(wait);const outstanding=disposed.button('Open practice item').click();disposed.ui.destroy();wait.resolve();await outstanding;assert.equal(disposed.chosen.length,0,'a disposed view cannot navigate after a late acknowledgement');
   normal.ui.destroy();assert.equal(normal.container.children.length,0);
   console.log('Practice tier selection, no early approaches, explicit override, ack/refusal/reload and attempt-bound review unit tests passed');

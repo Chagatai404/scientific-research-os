@@ -94,7 +94,7 @@ class Practice(unittest.TestCase):
         self.entries[1]['answer_unit']='cm²'
         p=self.project([exact],requested_tier='intermediate')
         self.assertTrue(p['requires_review']);self.assertEqual(p['action'],'practice','no unsupported numeric-review workflow is fabricated')
-        for help_event in (dict(type='hint'),dict(type='solution'),dict(type='explanation-request'),dict(type='checkpoint',response='handout-solution:1:2')):
+        for help_event in (dict(type='hint'),dict(type='solution'),dict(type='explanation-request'),dict(type='checkpoint',response='handout-solution:1:2'),dict(type='checkpoint',response='pedagogy-analogy:mapping:1')):
             p=self.project([help_event,exact],requested_tier='intermediate');self.assertTrue(p['assisted']);self.assertFalse(p['evidence'])
 
     def test_restore_exact_selection_and_no_mutation(self):

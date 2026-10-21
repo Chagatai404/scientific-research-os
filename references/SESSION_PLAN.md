@@ -340,3 +340,24 @@ card. New questions still await the shared probe issuance gate. The all-activiti
 view issues no questions. Raw attempts, revisions, drafts and substantive reviews
 remain in their existing streams; activity labels never award understanding or
 evidence. Source/provenance labels require independent scientific vetting.
+
+P1g `analogies` entries contain common identity/target/version/sources plus
+`prepared_by,segment_id,segment_sha256,domain,relevance,correspondences,limits,
+worked,transfer,replacement`. They bind an unchanged segment, explicit formal
+mapping and failure limits. Transfer references exact existing practice ID/version,
+an independent written transfer item with at least two criteria, distinct worked
+and transfer structure IDs, substantive differences and a digest-bound novelty
+declaration. Declared reviewer identity and reviewed-different status do not
+authenticate independence or award evidence. Each entry is at most 60000 bytes
+within the shared 120 KiB teaching budget.
+
+A replacement retains the original same-target analogy and exact actual original
+answer ID plus immutable substantive gap-review snapshot/hash. Newer pending work
+does not erase historical feedback; automatic replacement suggestions require the
+bound review still concern the latest actual attempt. Both publication and locked
+checkpoint validation reject fabricated provenance. `pedagogy-analogy:<id>:<version>`
+commits before mapping/limits display; reading records open-notes assistance under
+existing append-order/timestamp policy, with no assessment issuance. Opening
+transfer practice separately acknowledges its exact practice assignment, then
+uses the existing card/budget gate. The Lecture launcher filters by current actual
+segment; reading/closing retains lecture path and step.
