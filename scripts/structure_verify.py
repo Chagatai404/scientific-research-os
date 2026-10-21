@@ -17,7 +17,7 @@ import math
 from pathlib import Path
 import re
 
-from chembio_verify import ChemError, ELEMENTS, WEIGHTS, molar_mass
+from chembio_verify import ChemError, ELEMENTS, molar_mass
 
 PASS, FAIL, INCONCLUSIVE = 'pass', 'fail', 'inconclusive'
 DEFAULT_TOLERANCE = {'abs': 1e-6, 'rel': 1e-9, 'deg': 1e-6}
