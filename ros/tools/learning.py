@@ -1,7 +1,7 @@
 """Tools for learning: the capability graph, due reviews, and the lesson loop (start, next, answer, hint, ask, reply,
 grade, teach, close).
 
-Each tool is declared with ``@tool``; see ``ros.api`` and ``docs/ARCHITECTURE.md``."""
+Each tool is declared with ``@tool`` from ``ros.registry``; see ``docs/ARCHITECTURE.md``."""
 from __future__ import annotations
 
 from datetime import date
@@ -9,7 +9,7 @@ import uuid
 
 from .. import export, graph, prepare, tasks
 from ..learn import policy, schedule, tutor
-from ..api import P, iso_day, present, tool
+from ..registry import P, iso_day, present, tool
 
 
 @tool("capabilities", "Each capability in a scope with its state, readiness, frontier flag and what blocks it.",

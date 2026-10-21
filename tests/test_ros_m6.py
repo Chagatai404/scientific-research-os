@@ -156,7 +156,7 @@ class DocsContractTests(unittest.TestCase):
 
     def test_docs_point_only_at_things_that_exist(self):
         docs = list((ROOT / "skills").rglob("*.md")) + list((ROOT / "agents").glob("*.md")) + \
-            list((ROOT / "references").glob("*.md")) + [ROOT / "README.md", ROOT / "CONTRIBUTING.md"] + \
+            list((ROOT / "references").glob("*.md")) + [ROOT / "README.md", ROOT / "CONTRIBUTING.md", ROOT / "AGENTS.md"] + \
             list((ROOT / "docs").glob("*.md")) + list((ROOT / "extensions").rglob("*.md")) + \
             list((ROOT / "examples").rglob("README.md"))
         for path in docs:

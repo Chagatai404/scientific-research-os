@@ -4,7 +4,8 @@ Version **1.0.0**. One record per course or project, lessons prepared before you
 audited by fresh reviewers and defended by you. It works with any AI agent: Claude, Codex, Gemini or a local
 model.
 
-The design and its reasons are in [the v1.0 architecture](docs/plans/v1.0-overhaul-architecture.md).
+The design and its reasons are in [the v1.0 plan](docs/plans/v1.0-overhaul-architecture.md); how the code is built and
+how to add to it is in [ARCHITECTURE](docs/ARCHITECTURE.md).
 
 ## What it does
 
@@ -25,7 +26,7 @@ Python 3.11 or newer, standard library only. From this folder:
 ```bash
 pip install -e .                       # or use: python -m ros ...
 ros init stat303                       # a record in ~/ResearchOS/projects/stat303
-ros -p stat303 migrate ~/Vault         # bring in your old notes, sessions and research records
+ros -p stat303 migrate --vault ~/Vault         # bring in your old notes, sessions and research records
 ros -p stat303 serve --open            # the portal, in a browser or Obsidian's Web Viewer
 ros install --client claude            # or codex, gemini, agents: skills, agents and the MCP server
 ```
@@ -38,10 +39,10 @@ Then ask your agent to teach you something, or open **Today** in the portal.
 |---|---|
 | The record (append-only events, immutable questions, a typed graph, a rebuildable index) | `ros/store.py`, [DATA_MODEL](references/DATA_MODEL.md) |
 | Queries: readiness, frontier, reviews, claim support, code links | `ros/graph.py` |
-| The learning engine: FSRS, probing, the adaptation policy, the tutor's writes | `ros/learn/` |
+| The learning engine: FSRS, incremental evidence, probing, the adaptation policy, the tutor's writes | `ros/learn/` |
 | Prepared bundles and the readiness gate | `ros/prepare.py`, [PREPARATION](references/PREPARATION.md) |
 | Claims, audits, approvals, decisions, ownership | `ros/research.py`, [RESEARCH](references/RESEARCH.md) |
-| One tool table, served as the CLI, MCP and the portal's API | `ros/api.py`, `ros/cli.py`, `ros/mcp.py`, `ros/serve.py` |
+| One tool table, served as the CLI, MCP and the portal's API | `ros/api.py`, `ros/registry.py`, `ros/tools/`, `ros/cli.py`, `ros/mcp.py`, `ros/serve.py` |
 | The portal | `ros/portal/`, [PORTAL](references/PORTAL.md) |
 | Importers, exports, installation | `ros/importers.py`, `ros/export.py`, `ros/install.py` |
 | Carried-over engines: speech, voice, Manim, paper library, scouting, evidence, manifests, code walkthrough | `ros/lib/` |
@@ -51,7 +52,7 @@ Then ask your agent to teach you something, or open **Today** in the portal.
 
 ## Any agent
 
-Every operation is declared once in `ros/api.py` and exposed three ways: `ros <tool> --json` for agents with a
+Every operation is declared once (in `ros/tools/`, registered by `ros/registry.py`) and exposed three ways: `ros <tool> --json` for agents with a
 shell, the MCP server (`ros mcp`) for agents with MCP, and the portal's local HTTP API. `ros tools --json` lists
 them with their JSON schemas. Skills and agent roles are plain Markdown; `ros install` writes them where each client
 looks. Work only a model can do (grading a written answer, making a visual, auditing a claim) waits as a task

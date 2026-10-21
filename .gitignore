@@ -15,3 +15,6 @@ baseline-*.log
 
 # Local listening-test and demo output
 voice-listening/
+*.egg-info/
+build/
+dist/

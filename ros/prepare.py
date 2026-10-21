@@ -23,6 +23,7 @@ import subprocess
 from typing import Callable
 
 from . import tasks
+from .lib import speech_text
 from .store import Record, canonical, validate_item
 
 PLAN_SCHEMA = 1
@@ -226,7 +227,7 @@ ROWS: list[Row] = [
 
 def verdict(rec: Record, bundle: str) -> dict:
     """Run every gate row and hash every file. Writes nothing; ``check`` stores the result."""
-    gate = Gate(rec, bundle_dir(rec, bundle), load_plan(rec, bundle), _speech_text())
+    gate = Gate(rec, bundle_dir(rec, bundle), load_plan(rec, bundle), speech_text)
     rows = []
     for row in ROWS:
         for node in (gate.plan["nodes"] if row.per_node else [None]):
@@ -308,7 +309,7 @@ def render_voice(rec: Record, bundle: str, provider: str = "kokoro", envs: list[
                  voices: dict | None = None) -> dict:
     """Speak every segment that has text and no audio, with a local engine through ``ros.lib.voice``. Segments
     that fail stay without audio and are reported; the gate keeps the bundle unready until they have it."""
-    voice = _script("voice")
+    from .lib import voice  # engines are started only when something is rendered
     d, plan = bundle_dir(rec, bundle), load_plan(rec, bundle)
     done, failed = [], []
     for n in plan["nodes"]:
@@ -330,7 +331,7 @@ def render_voice(rec: Record, bundle: str, provider: str = "kokoro", envs: list[
 def render_animation(rec: Record, bundle: str, node: str, spec: str, envs: list[str] | None = None) -> dict:
     """Render a node's Manim scene through ``ros.lib.animate`` and attach the video, poster and key-frame strip.
     ``spec`` is the animation spec's path inside the bundle. The key frames still have to be looked at."""
-    animate = _script("animate")
+    from .lib import animate
     d, plan = bundle_dir(rec, bundle), load_plan(rec, bundle)
     target = next((n for n in plan["nodes"] if n["id"] == node), None)
     if target is None:
@@ -464,13 +465,3 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _script(name: str):
-    import importlib
-    return importlib.import_module(f"ros.lib.{name}")
-
-
-def _speech_text():
-    try:
-        return _script("speech_text")
-    except ImportError:
-        return None

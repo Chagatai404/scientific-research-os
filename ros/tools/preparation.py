@@ -1,13 +1,13 @@
 """Tools for prepared lessons: bundles, their plans and files, the readiness gate, the tasks it opens, and local voice
 and animation renders.
 
-Each tool is declared with ``@tool``; see ``ros.api`` and ``docs/ARCHITECTURE.md``."""
+Each tool is declared with ``@tool`` from ``ros.registry``; see ``docs/ARCHITECTURE.md``."""
 from __future__ import annotations
 
 import base64
 
 from .. import prepare
-from ..api import P, tool
+from ..registry import P, tool
 
 
 @tool("bundles", "Prepared bundles with their goal and whether each is ready.")

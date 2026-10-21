@@ -1,11 +1,13 @@
 # Contributing
 
 Research OS stays small on purpose: six skills, six agent roles, eight protocols, one record format, one tool table.
+The architecture, its rules and a recipe for every kind of addition are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md);
+[AGENTS.md](AGENTS.md) is the short version for people and agents alike.
 
 ## Before adding something
 
-- **A tool** goes in `ros/api.py` with typed parameters and one line of help. It then exists in the CLI, MCP and
-  the portal at once. A person's act (approving, deciding, waiving) is declared `human=True`.
+- **A tool** goes in the matching `ros/tools/*.py` module with typed parameters and one line of help. It then exists
+  in the CLI, MCP and the portal at once. A person's act (approving, deciding, waiving) is declared `human=True`.
 - **A skill or agent role** needs a workflow that has repeated, a trigger that can be described, a stable procedure,
   no overlap with an existing one, and explicit points where the researcher decides. Prefer a lens (a Markdown file
   a skill loads on demand) over a new skill.
@@ -19,7 +21,7 @@ python -m unittest discover -s tests -p "test_*.py"
 node tests/ros-portal-browser.cjs
 ```
 
-The suite must stay under five minutes. `tests/test_ros_m6.py` checks that skills, agents and protocols refer only to
-files and tools that exist. Portal code stays under 60 KB of JS and 20 KB of CSS.
+The suite must stay under five minutes. `tests/test_architecture.py` enforces the layering and the tool contract;
+`tests/test_ros_m6.py` checks that skills, agents and protocols refer only to files and tools that exist. Portal code stays under 60 KB of JS and 20 KB of CSS.
 
 Release notes go in `CHANGELOG.md`; there are no per-slice gate records.

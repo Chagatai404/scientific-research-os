@@ -1,13 +1,13 @@
-"""Tools on the record itself: what it holds, single items and tasks, adding and removing graph entries, imports, exports
+"""Tools for the record itself: what it holds, single items and tasks, adding and removing graph entries, imports, exports
 and the index.
 
-Each tool is declared with ``@tool``; see ``ros.api`` and ``docs/ARCHITECTURE.md``."""
+Each tool is declared with ``@tool`` from ``ros.registry``; see ``docs/ARCHITECTURE.md``."""
 from __future__ import annotations
 
 from .. import export, graph, importers, tasks
 from ..learn import schedule
 from ..store import validate_item
-from ..api import P, iso_day, present, tool
+from ..registry import P, iso_day, present, tool
 
 
 @tool("status", "What is in this record: capabilities and their states, due reviews, open tasks, lessons, problems.",
@@ -143,6 +143,14 @@ def export_(rec, kind, path, folder=None):
     if kind == "obsidian":
         return export.obsidian(rec, path, folder)
     return {"written": str(export.static(rec, path))}
+
+
+@tool("migrate", "Import a whole vault (notes, sessions, research records) and check every answer arrived.",
+      writes=True, vault=P("string", "the vault folder", True),
+      research_root=P("string", "where research records live, if not in the vault"),
+      evidence=P("string", "EvidenceAtom folder"), graphify=P("string", "a Graphify graph.json"))
+def migrate(rec, vault, research_root=None, evidence=None, graphify=None):
+    return importers.migrate(rec, vault, research_root, evidence, graphify)
 
 
 @tool("rebuild", "Drop and rebuild the index from the record's files.", writes=True)

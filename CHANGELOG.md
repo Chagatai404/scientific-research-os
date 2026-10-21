@@ -8,7 +8,7 @@ The overhaul in `docs/plans/v1.0-overhaul-architecture.md`, M1 to M6.
   graph, and `index.sqlite` as a rebuildable cache. No sidecars, locks, leases or journals; a torn line is skipped.
 - **Importers** for learning notes, the old HTML sessions (questions become items; answers, hints, reviews and asked
   questions become events) and research records, with parity tests against the old `knowledge.py` and
-  `research.py`. `ros migrate <vault>` imports everything and checks every answer arrived.
+  `research.py`. `ros migrate --vault <vault>` imports everything and checks every answer arrived.
 - **Learning engine.** FSRS (unchanged formulas), bracketing probes, and a policy that decides probe, teach, retry,
   practice, review, recall and close, logged with reasons. Choice and numeric answers grade themselves; written
   answers wait for a tutor's grade. "I don't know" is a miss, never a guess.
@@ -20,6 +20,13 @@ The overhaul in `docs/plans/v1.0-overhaul-architecture.md`, M1 to M6.
   human-only approvals, decisions and waivers, commitments, proposals, and defence items with ownership.
 - **Any agent.** One tool table served as the CLI (`--json`), an MCP server and HTTP. `ros install` writes skills,
   agents and the MCP entry for Claude Code, Codex, Gemini CLI or any `AGENTS.md` agent, refusing to overwrite edits.
+- **Built to grow.** `docs/ARCHITECTURE.md` sets four layers (core, domain, tools, interfaces) and a recipe for every
+  kind of addition; `tests/test_architecture.py` enforces the layering, the absence of import cycles and the tool
+  contract. Extension points are registries: tools (`ros/tools/*`), policy rules (`RULES`), readiness checks
+  (`ROWS`), importers (`IMPORTERS`), task kinds, audit steps. `AGENTS.md` tells people and agents how to work here.
+- **Fast at scale.** Learning evidence is an incremental fold: on a record of 93,000 events a policy decision takes
+  about 20 ms and an append about 2 ms, and both stay flat as history grows. Every read checks the files once per
+  call, so writes from another process are always seen.
 - **Smaller.** Skills 19 → 6, agents 14 → 6, protocols 50 → 8. The session runtime, pedagogy modules, blackboard,
   supervision and leases, context kernel and their tests are removed; kept engines live in `ros/lib/`. The test
   suite runs in about ten seconds.

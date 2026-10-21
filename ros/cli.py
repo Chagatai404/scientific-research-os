@@ -7,7 +7,7 @@ output), plus:
     ros learn SCOPE               a lesson in the terminal; the log is written when it closes
     ros mcp                       serve the tools to an agent over stdio (Model Context Protocol)
     ros install --client C        install skills, agents and the MCP server for claude, codex, gemini or any agent
-    ros migrate VAULT             import a whole vault (notes, sessions, research) and check every answer arrived
+    ros migrate --vault PATH      import a whole vault (notes, sessions, research) and check every answer arrived
     ros serve [--port N]          the localhost portal
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 import sys
 
-from . import api, home
+from . import __version__, api, home
 from .store import Record
 
 
@@ -42,6 +42,7 @@ def parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="ros", description="Research OS: one record per course or project.")
     ap.add_argument("--project", "-p", help="project name or record folder (default: $ROS_PROJECT, ./.ros, the only one)")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument("--version", action="version", version=f"ros {__version__}")
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="machine-readable output")
     sub = ap.add_subparsers(dest="command", required=True, metavar="command")
@@ -60,11 +61,6 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--title")
     s = add("mcp", help="serve tools over stdio (MCP)")
     s.add_argument("--portal", type=int, metavar="PORT", help="also serve the portal for this project on PORT")
-    s = add("migrate", help="import a whole vault into the record and check every answer arrived")
-    s.add_argument("vault", help="the Obsidian vault (or any folder of old notes and sessions)")
-    s.add_argument("--research-root", help="where research records live, if not in the vault")
-    s.add_argument("--evidence", help="EvidenceAtom folder")
-    s.add_argument("--graphify", help="a Graphify graph.json to import code symbols from")
     s = add("install", help="install skills, agents and the MCP server for an agent client")
     s.add_argument("--client", required=True, choices=("claude", "codex", "gemini", "agents"))
     s.add_argument("--target", help="project folder (default: here)")
@@ -122,11 +118,6 @@ def main(argv: list[str] | None = None) -> int:
         try:
             if args.command == "learn":
                 return learn(rec, args.scope, args.title, bundle=args.bundle)
-            if args.command == "migrate":
-                from . import importers
-                out = importers.migrate(rec, args.vault, args.research_root, args.evidence, args.graphify)
-                emit(out if args.json else _migration_summary(out), args.json)
-                return 0 if out["check"]["ok"] else 5
             if args.command == "serve":
                 from . import serve
                 return serve.run(rec, args.port, args.open)
@@ -134,8 +125,11 @@ def main(argv: list[str] | None = None) -> int:
             if t.human and not _confirm(t, args):
                 sys.stderr.write(f"ros: {t.name} is a person's decision; it was not recorded\n")
                 return 3
-            emit(t.call(rec, {k: getattr(args, k) for k in t.params if getattr(args, k, None) not in (None, False)}),
-                 args.json)
+            out = t.call(rec, {k: getattr(args, k) for k in t.params if getattr(args, k, None) not in (None, False)})
+            if t.name == "migrate":
+                emit(out if args.json else _migration_summary(out), args.json)
+                return 0 if out["check"]["ok"] else 5
+            emit(out, args.json)
         finally:
             rec.close()
         return 0

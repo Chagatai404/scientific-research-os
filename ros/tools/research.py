@@ -1,13 +1,13 @@
 """Tools for research: the old records' frontier, claim support and code links, the claims ledger, audits and verdicts,
 commitments, proposals, the decision queue, and the researcher's own acts.
 
-Each tool is declared with ``@tool``; see ``ros.api`` and ``docs/ARCHITECTURE.md``."""
+Each tool is declared with ``@tool`` from ``ros.registry``; see ``docs/ARCHITECTURE.md``."""
 from __future__ import annotations
 
 from pathlib import Path
 
 from .. import graph, research as rsc
-from ..api import P, iso_day, tool
+from ..registry import P, iso_day, tool
 
 
 @tool("support", "What supports or invalidates a claim or other node.", node=P("string", "node id", True))

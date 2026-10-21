@@ -185,3 +185,32 @@ class PolicyTests(Fixture):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IncrementalTests(Fixture):
+    """Cost must follow what changed, not the size of the history."""
+
+    def test_a_new_answer_folds_only_the_new_events(self):
+        items = self.ladder()
+        for i in range(30):
+            tutor.answer(self.rec, f"L{i}", items[1 + i % 5], 1)
+        evidence.of(self.rec)
+        seen = []
+        original = evidence.Evidence.step
+        evidence.Evidence.step = lambda state, ev: (seen.append(ev["type"]), original(state, ev))[1]
+        self.addCleanup(setattr, evidence.Evidence, "step", original)
+        tutor.answer(self.rec, "L-new", items[2], 2)
+        policy.decide(self.rec, "L-new", CAP)
+        self.assertEqual(sorted(seen), ["attempt", "grade"])
+
+    def test_a_read_only_tool_call_does_no_index_work(self):
+        from ros import api
+        items = self.ladder()
+        for i in range(10):
+            tutor.answer(self.rec, f"L{i}", items[1 + i % 5], 1)
+        api.call("status", self.rec)
+        db = self.rec.index()
+        before = db.total_changes
+        for name in ("status", "due", "capabilities", "history", "today"):
+            api.call(name, self.rec)
+        self.assertEqual(db.total_changes, before)
