@@ -302,16 +302,6 @@ class BatchAdapter(FakeAdapter):
         return super().__call__(args, timeout)
 
 
-BOARD = {'board_schema': 1, 'steps': [
-    {'id': 'a', 'say': 'The slope tells us which way is downhill.', 'do': [{'op': 'write', 'text': 'slope', 'at': [5, 5]}]},
-    {'id': 'quiet', 'say': '', 'do': [{'op': 'write', 'text': 'no speech here', 'at': [5, 20]}]},
-    {'id': 'b', 'say': 'Now look at the curve:'},
-    {'id': 'c', 'say': 'The slope tells us which way is downhill.'},
-    {'id': 'd', 'say': 'Gradient {{tr: eğim}} descent.'},
-    {'id': 'e', 'say': r'See {{math: \begin{pmatrix} a \end{pmatrix}}} here.'},
-]}
-
-
 class Transcription(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()

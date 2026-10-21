@@ -514,6 +514,26 @@ def finish(rec, task, result, by="agent"):
     return tasks.finish(rec, task, result, by)
 
 
+@tool("cancel", "Withdraw an open task that is no longer needed, with the reason.", writes=True,
+      task=P("string", "task id", True), reason=P("string", "why", True))
+def cancel(rec, task, reason):
+    tasks.cancel(rec, task, reason)
+    return {"task": task, "state": "cancelled"}
+
+
+@tool("remove", "Remove a graph node (id) or an edge (src, type, dst). The removal is recorded; history is kept.",
+      writes=True, id=P("string", "node id"), src=P("string", "edge source"), type=P("string", "edge type"),
+      dst=P("string", "edge target"))
+def remove(rec, id=None, src=None, type=None, dst=None):
+    if id and not (src or type or dst):
+        rec.delete_node(id)
+        return {"removed": id}
+    if src and type and dst and not id:
+        rec.delete_edge(src, type, dst)
+        return {"removed": {"src": src, "type": type, "dst": dst}}
+    raise ValueError("give a node id, or an edge's src, type and dst")
+
+
 @tool("add_item", "Add an immutable item. Returns its hash; the same content is the same item.", writes=True,
       item=P("object", "kind (choice|numeric|free), prompt, options+answer | answer+tolerance | rubric, explanation, "
                        "hints, concepts, difficulty, supersedes", True))

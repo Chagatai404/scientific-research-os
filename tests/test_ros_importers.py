@@ -16,7 +16,7 @@ from ros import importers  # noqa: E402
 from ros.store import Record, validate_item  # noqa: E402
 
 LEGACY = ROOT / "tests" / "fixtures" / "legacy-v0.8.7"
-PLAN = json.loads((ROOT / "tests" / "fixtures" / "p1c" / "tiered-variance.json").read_text(encoding="utf-8"))["plan"]
+PLAN = json.loads((ROOT / "tests" / "fixtures" / "session-plan.json").read_text(encoding="utf-8"))["plan"]
 
 
 class Fixture(unittest.TestCase):

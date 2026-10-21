@@ -153,9 +153,40 @@ class RecordTest(unittest.TestCase):
         other = Record(self.root)
         self.rec.append("a", "s")
         other.append("b", "s")
-        self.rec.refresh()
-        self.assertEqual(len(self.rec.events()), 2)
+        self.assertEqual(len(self.rec.events()), 2)  # no explicit refresh: reads notice the file grew
+        h = other.put_item(dict(CHOICE, prompt="Var(bX) = ?"))
+        other.put_node("n", "concept")
+        self.assertIsNotNone(self.rec.item(h))
+        self.assertIsNotNone(self.rec.node("n"))
         other.close()
+
+    def test_lesson_and_type_filters(self):
+        self.rec.append("attempt", "item1", {"lesson": "lesson:a"})
+        self.rec.append("hint", "item1", {"lesson": "lesson:b"})
+        self.rec.append("lesson.start", "lesson:a")
+        self.assertEqual([e["type"] for e in self.rec.events(lesson="lesson:a")], ["attempt", "lesson.start"])
+        self.assertEqual(len(self.rec.events(types=("attempt", "hint"))), 2)
+
+    def test_problems_persist_until_the_index_is_rebuilt_from_a_clean_log(self):
+        self.rec.append("a", "s")
+        with (self.root / "events.jsonl").open("ab") as f:
+            f.write(b"not json\n")
+        self.rec.append("b", "s")
+        self.rec.close()
+        reopened = Record(self.root)
+        self.addCleanup(reopened.close)
+        reopened.events()
+        self.assertTrue(any("unreadable line" in p for p in reopened.problems))
+
+    def test_unchanged_files_cost_no_reindex(self):
+        for i in range(50):
+            self.rec.append("a", f"s{i}")
+        db = self.rec.index()
+        before = db.total_changes
+        for _ in range(20):
+            self.rec.events()
+            self.rec.items()
+        self.assertEqual(db.total_changes, before)
 
 
 if __name__ == "__main__":

@@ -29,7 +29,6 @@ SCOPES = ("conceptual", "project_application", "transfer")
 DIMENSIONS = ("recognition", "explanation", "derivation", "transfer", "application")
 LITERACY_DIMENSIONS = ("method_understanding", "tool_operation", "implementation_navigation")
 STATE_ORDER = ("unknown", "learning", "fragile", "stale", "demonstrated", "retained")
-SCOPE_TYPES = {"course", "goal", "project", "subject", "domain", "block"}
 
 
 @dataclass

@@ -12,8 +12,9 @@ Rules that keep it robust:
 
 * Files are only ever appended to. One call writes whole lines, then flushes and fsyncs, under a short OS file lock.
 * Readers skip a truncated last line or an unparsable line and report it; they never crash on a damaged tail.
-* The index remembers how many bytes of each file it has consumed and a hash of that prefix. If the prefix changed
-  (the file was rewritten or truncated) or the schema version moved, the index is dropped and rebuilt from scratch.
+* The index remembers how many bytes of each file it has consumed and a hash of the last few kilobytes before that
+  point. If they changed (the file was rewritten or truncated) or the schema version moved, the index is dropped and
+  rebuilt from scratch. Reads first check whether the files grew, so another process's appends are always seen.
 * Event ids are unique. Importers derive them from their source (``event_id(source, key)``), so importing twice adds
   nothing. Imported events keep their original timestamps, so the log is not in time order; queries sort by ``ts``.
 """
@@ -29,7 +30,10 @@ from pathlib import Path
 import sqlite3
 import uuid
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+# How much of each log's consumed end is hashed to notice a rewrite: constant work, however long the log grows.
+PREFIX_WINDOW = 4096
+MAX_PROBLEMS = 200
 ITEM_KINDS = {"choice", "numeric", "free"}
 # Node ids are "<type>:<key>", so a concept and a capability can share a key without colliding.
 NODE_TYPES = {"domain", "subject", "concept", "capability", "course", "goal", "project", "block", "paper", "question",
@@ -175,9 +179,10 @@ def _append_lines(path: Path, records: list[dict]) -> None:
 _SCHEMA = """
 CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE events(seq INTEGER PRIMARY KEY, id TEXT UNIQUE, ts TEXT, actor TEXT, type TEXT, subject TEXT,
-                    data TEXT, source TEXT);
+                    lesson TEXT, data TEXT, source TEXT);
 CREATE INDEX events_type ON events(type, ts);
 CREATE INDEX events_subject ON events(subject, ts);
+CREATE INDEX events_lesson ON events(lesson, ts);
 CREATE TABLE nodes(id TEXT PRIMARY KEY, type TEXT, data TEXT);
 CREATE INDEX nodes_type ON nodes(type);
 CREATE TABLE edges(src TEXT, type TEXT, dst TEXT, data TEXT, PRIMARY KEY(src, type, dst));
@@ -201,6 +206,7 @@ class Record:
         self.lock_path = self.root / ".write.lock"
         self.problems: list[str] = []
         self._db: sqlite3.Connection | None = None
+        self._seen: tuple = ((), "")  # log sizes and items stamp the index has consumed, kept in memory for sync()
 
     # ---- writing -------------------------------------------------------------------------------------------
     def append(self, type: str, subject: str, data: dict | None = None, *, actor: str = "system",
@@ -240,7 +246,9 @@ class Record:
             tmp = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
             tmp.write_bytes(canonical({**item, "id": h}))
             os.replace(tmp, path)
-        self.refresh()
+        db = self.index()
+        with db:
+            self._index_item(h, {**item, "id": h})
         return h
 
     def put_node(self, id: str, type: str, **data) -> None:
@@ -310,12 +318,45 @@ class Record:
             self.index_path.unlink()
             self.index()
             return
-        self.problems = []
+        found: list[str] = []
         with db:
-            self._consume("events", self.events_path, self._index_event)
-            self._consume("nodes", self.nodes_path, self._index_node)
-            self._consume("edges", self.edges_path, self._index_edge)
-            self._index_items()
+            self._consume("events", self.events_path, self._index_event, found)
+            self._consume("nodes", self.nodes_path, self._index_node, found)
+            self._consume("edges", self.edges_path, self._index_edge, found)
+            self._index_items(found)
+            # A damaged line is kept on the list for good; an unfinished last line only while it is unfinished.
+            lasting = [p for p in found if "incomplete last line" not in p]
+            if lasting:
+                kept = json.loads(self._meta("problems") or "[]")
+                self._set_meta("problems", json.dumps((kept + lasting)[-MAX_PROBLEMS:], ensure_ascii=False))
+        self.problems = json.loads(self._meta("problems") or "[]") + [p for p in found if p not in self.problems
+                                                                        and "incomplete last line" in p]
+        self._seen = (tuple(int(self._meta(f"{name}.end") or 0) for name, _ in self._logs()),
+                      self._meta("items.stamp") or "")
+
+    def sync(self) -> None:
+        """Refresh only if a log grew or the items folder changed since the index last read them. Costs four
+        stat calls and no query, so every read can afford it."""
+        if self._db is None:
+            self.index()
+            return
+        sizes = tuple(path.stat().st_size if path.exists() else 0 for _, path in self._logs())
+        if sizes != self._seen[0] or self._items_stamp() != self._seen[1]:
+            if all(size == int(self._meta(f"{name}.end") or 0) or self._only_torn_tail(name, path, size)
+                   for (name, path), size in zip(self._logs(), sizes)) \
+                    and self._items_stamp() == (self._meta("items.stamp") or ""):
+                self._seen = (sizes, self._items_stamp())
+                return
+            self.refresh()
+
+    def _only_torn_tail(self, name: str, path: Path, size: int) -> bool:
+        """A file larger than what was consumed only by an unfinished last line needs no refresh."""
+        end = int(self._meta(f"{name}.end") or 0)
+        if size < end or size - end > 1 << 16:
+            return False
+        with path.open("rb") as f:
+            f.seek(end)
+            return b"\n" not in f.read()
 
     def _logs(self):
         return (("events", self.events_path), ("nodes", self.nodes_path), ("edges", self.edges_path))
@@ -329,16 +370,11 @@ class Record:
 
     @staticmethod
     def _hash_prefix(path: Path, end: int) -> str:
-        h = hashlib.sha256()
+        """The hash of the window of bytes just before ``end``: enough to notice a rewrite or truncation."""
+        start = max(0, end - PREFIX_WINDOW)
         with path.open("rb") as f:
-            remaining = end
-            while remaining:
-                chunk = f.read(min(remaining, 1 << 20))
-                if not chunk:
-                    break
-                h.update(chunk)
-                remaining -= len(chunk)
-        return h.hexdigest()
+            f.seek(start)
+            return hashlib.sha256(f.read(end - start)).hexdigest()
 
     def _prefix_ok(self, name: str, path: Path) -> bool:
         end = int(self._meta(f"{name}.end") or 0)
@@ -348,21 +384,26 @@ class Record:
             return False
         return self._hash_prefix(path, end) == self._meta(f"{name}.hash")
 
-    def _consume(self, name: str, path: Path, handle) -> None:
+    def _consume(self, name: str, path: Path, handle, found: list[str]) -> None:
         start = int(self._meta(f"{name}.end") or 0)
         res = read_jsonl(path, start)
         for rec in res.records:
             handle(rec)
-        self.problems.extend(res.problems)
+        found.extend(res.problems)
         if res.end != start:
             self._set_meta(f"{name}.end", str(res.end))
             self._set_meta(f"{name}.hash", self._hash_prefix(path, res.end))
 
     def _index_event(self, ev: dict) -> None:
+        data = ev.get("data") or {}
+        subject = ev.get("subject")
+        lesson = data.get("lesson") if isinstance(data, dict) else None
+        if lesson is None and isinstance(subject, str) and subject.startswith("lesson:"):
+            lesson = subject
         self._db.execute(
-            "INSERT OR IGNORE INTO events(id, ts, actor, type, subject, data, source) VALUES(?,?,?,?,?,?,?)",
-            (ev.get("id"), ev.get("ts"), ev.get("actor"), ev.get("type"), ev.get("subject"),
-             json.dumps(ev.get("data") or {}, ensure_ascii=False), ev.get("source")))
+            "INSERT OR IGNORE INTO events(id, ts, actor, type, subject, lesson, data, source) VALUES(?,?,?,?,?,?,?,?)",
+            (ev.get("id"), ev.get("ts"), ev.get("actor"), ev.get("type"), subject, lesson,
+             json.dumps(data, ensure_ascii=False), ev.get("source")))
 
     def _index_node(self, n: dict) -> None:
         if n.get("deleted"):
@@ -380,8 +421,17 @@ class Record:
         self._db.execute("INSERT OR REPLACE INTO edges VALUES(?,?,?,?)",
                          (e["src"], e["type"], e["dst"], json.dumps(data, ensure_ascii=False)))
 
-    def _index_items(self) -> None:
-        if not self.items_dir.exists():
+    def _items_stamp(self) -> str:
+        try:
+            st = self.items_dir.stat()
+        except OSError:
+            return ""
+        return f"{st.st_mtime_ns}:{st.st_nlink}"
+
+    def _index_items(self, found: list[str]) -> None:
+        """Index item files written by another process. Skipped unless the folder changed since the last scan."""
+        stamp = self._items_stamp()
+        if not stamp or stamp == self._meta("items.stamp"):
             return
         known = {r[0] for r in self._db.execute("SELECT id FROM items")}
         for path in self.items_dir.glob("*.json"):
@@ -391,23 +441,37 @@ class Record:
             try:
                 item = json.loads(path.read_text(encoding="utf-8"))
             except ValueError as exc:
-                self.problems.append(f"items/{path.name}: unreadable ({exc})")
+                found.append(f"items/{path.name}: unreadable ({exc})")
                 continue
             if item_hash(item) != h:
-                self.problems.append(f"items/{path.name}: content does not match its hash; left out")
+                found.append(f"items/{path.name}: content does not match its hash; left out")
                 continue
-            self._db.execute("INSERT INTO items VALUES(?,?,?,?,?)",
-                             (h, item.get("kind"), item.get("difficulty"), item.get("supersedes"),
-                              json.dumps(item, ensure_ascii=False)))
-            for c in item.get("concepts") or []:
-                self._db.execute("INSERT OR IGNORE INTO item_concepts VALUES(?,?)", (h, c))
+            self._index_item(h, item)
+        self._set_meta("items.stamp", stamp)
+
+    def _index_item(self, h: str, item: dict) -> None:
+        self._db.execute("INSERT OR IGNORE INTO items VALUES(?,?,?,?,?)",
+                         (h, item.get("kind"), item.get("difficulty"), item.get("supersedes"),
+                          json.dumps(item, ensure_ascii=False)))
+        for c in item.get("concepts") or []:
+            self._db.execute("INSERT OR IGNORE INTO item_concepts VALUES(?,?)", (h, c))
 
     # ---- reading -------------------------------------------------------------------------------------------
-    def events(self, type: str | None = None, subject: str | None = None, since: str | None = None) -> list[dict]:
+    def events(self, type: str | None = None, subject: str | None = None, since: str | None = None,
+               lesson: str | None = None, types: tuple[str, ...] | list[str] | None = None) -> list[dict]:
+        """Events in time order. ``type`` matches a type and its dotted subtypes ("lesson" matches "lesson.start");
+        ``types`` matches any of several exact types; ``lesson`` keeps one lesson's events (indexed)."""
+        self.sync()
         sql, args = "SELECT * FROM events WHERE 1=1", []
-        if type is not None:  # "lesson" matches "lesson" and "lesson.start", "lesson.close", ...
+        if type is not None:
             sql += " AND (type=? OR type LIKE ?)"
             args += [type, type + ".%"]
+        if types is not None:
+            sql += f" AND type IN ({','.join('?' * len(types))})"
+            args += list(types)
+        if lesson is not None:
+            sql += " AND lesson=?"
+            args.append(lesson)
         if subject is not None:
             sql += " AND subject=?"
             args.append(subject)
@@ -418,10 +482,12 @@ class Record:
         return [_event_row(r) for r in self.index().execute(sql, args)]
 
     def item(self, h: str) -> dict | None:
+        self.sync()
         row = self.index().execute("SELECT data FROM items WHERE id=?", (h,)).fetchone()
         return json.loads(row[0]) if row else None
 
     def items(self, concept: str | None = None) -> list[dict]:
+        self.sync()
         if concept is None:
             rows = self.index().execute("SELECT data FROM items ORDER BY difficulty, id")
         else:
@@ -432,6 +498,7 @@ class Record:
 
     def current_item(self, h: str) -> str:
         """Follow ``supersedes`` forward to the newest version of an item."""
+        self.sync()
         db = self.index()
         seen = {h}
         while True:
@@ -442,10 +509,12 @@ class Record:
             seen.add(h)
 
     def node(self, id: str) -> dict | None:
+        self.sync()
         row = self.index().execute("SELECT * FROM nodes WHERE id=?", (id,)).fetchone()
         return _node_row(row) if row else None
 
     def nodes(self, type: str | None = None) -> list[dict]:
+        self.sync()
         if type is None:
             rows = self.index().execute("SELECT * FROM nodes ORDER BY id")
         else:
@@ -453,6 +522,7 @@ class Record:
         return [_node_row(r) for r in rows]
 
     def edges(self, src: str | None = None, type: str | None = None, dst: str | None = None) -> list[dict]:
+        self.sync()
         sql, args = "SELECT * FROM edges WHERE 1=1", []
         for col, val in (("src", src), ("type", type), ("dst", dst)):
             if val is not None:
