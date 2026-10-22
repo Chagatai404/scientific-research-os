@@ -2,7 +2,7 @@
 Markdown (``skills/``, ``agents/``, ``references/``); every client gets generated copies, never hand-edited ones.
 
     ros install --client claude    .claude/skills/<skill>/, .claude/agents/<agent>.md, .mcp.json
-    ros install --client codex     .codex/skills/<skill>/, AGENTS.md (managed block), .codex/config.toml
+    ros install --client codex     .agents/skills/<skill>/, AGENTS.md (managed block), .codex/config.toml
     ros install --client gemini    GEMINI.md (managed block), .gemini/settings.json
     ros install --client agents    AGENTS.md (managed block) for any agent that reads it
 
@@ -123,7 +123,8 @@ class Plan:
         return {"installed": True, "written": written, "unchanged": len(self.writes) - len(written)}
 
 
-MERGED = {".mcp.json", ".gemini/settings.json", ".codex/config.toml", "AGENTS.md", "GEMINI.md"}
+MERGED = {".mcp.json", ".gemini/settings.json", ".gemini/GEMINI.md", ".codex/config.toml", ".codex/AGENTS.md",
+          "AGENTS.md", "GEMINI.md"}
 
 
 def install(client: str, base: Path | None = None, user: bool = False, force: bool = False,
@@ -138,20 +139,22 @@ def install(client: str, base: Path | None = None, user: bool = False, force: bo
         for name, data in agent_files().items():
             plan.file(f".claude/agents/{name}", data)
         if user:
-            note = ("claude mcp add --scope user research-os -e PYTHONPATH=" + str(REPO) + " -- "
-                    + sys.executable + " -m ros mcp")
+            # forward slashes survive every shell (bash eats backslashes, PowerShell mangles "--")
+            note = ("claude mcp add --scope user research-os -e PYTHONPATH=" + REPO.as_posix() + " -- "
+                    + Path(sys.executable).as_posix() + " -m ros mcp")
         else:
             plan.merged(".mcp.json", lambda old: _merge_json(old, ["mcpServers", "research-os"], server_entry()))
             note = "MCP server registered in .mcp.json"
     elif client == "codex":
         for rel, data in skill_files().items():
-            plan.file(f".codex/skills/{rel}", data)
-        plan.merged("AGENTS.md", lambda old: _merge_block(old, instructions()))
+            plan.file(f".agents/skills/{rel}", data)  # Codex's skills folder, in a project and in ~
+        # a project reads AGENTS.md at its root; the user's global file is ~/.codex/AGENTS.md
+        plan.merged(".codex/AGENTS.md" if user else "AGENTS.md", lambda old: _merge_block(old, instructions()))
         plan.merged(".codex/config.toml", lambda old: _merge_toml(old))
         note = "MCP server registered in .codex/config.toml" + ("" if user else " (project config; Codex reads "
                                                                  "~/.codex/config.toml unless the project is trusted)")
     elif client == "gemini":
-        plan.merged("GEMINI.md", lambda old: _merge_block(old, instructions()))
+        plan.merged(".gemini/GEMINI.md" if user else "GEMINI.md", lambda old: _merge_block(old, instructions()))
         plan.merged(".gemini/settings.json", lambda old: _merge_json(old, ["mcpServers", "research-os"], server_entry()))
         note = "MCP server registered in .gemini/settings.json"
     else:
@@ -162,7 +165,8 @@ def install(client: str, base: Path | None = None, user: bool = False, force: bo
                                                                            for p in plan.writes),
                 "refused": plan.conflicts(), "note": note}
     out = plan.apply()
-    out.update(base=str(base), client=client, note=note)
+    out.update(base=str(base), client=client)
+    out.setdefault("note", note)  # a refusal keeps its own note: which files, and what to do
     return out
 
 
@@ -172,7 +176,7 @@ def _merge_json(old: str, keys: list[str], value) -> str:
     for k in keys[:-1]:
         node = node.setdefault(k, {})
     node[keys[-1]] = value
-    return json.dumps(data, indent=2) + "\n"
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"  # the user's own non-ASCII text stays as written
 
 
 def _merge_block(old: str, block: str) -> str:

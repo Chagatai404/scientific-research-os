@@ -17,7 +17,10 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
+import os
 from pathlib import Path
+import socket
+import sys
 import threading
 import time
 from urllib.parse import parse_qs, unquote, urlparse
@@ -103,7 +106,10 @@ def make_handler(rec: Record):
             if self.headers.get("X-ROS") != "1":
                 return self._send(HTTPStatus.FORBIDDEN, {"error": "writes need the X-ROS header"})
             path = urlparse(self.path).path
-            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                return self._send(HTTPStatus.BAD_REQUEST, {"error": "Content-Length is not a number"})
             if length > 32 << 20:
                 return self._send(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "too large"})
             try:
@@ -122,6 +128,11 @@ def make_handler(rec: Record):
                 return self._send(HTTPStatus.NOT_FOUND, {"error": f"no tool {name}"})
             if t.writes and not write:
                 return self._send(HTTPStatus.METHOD_NOT_ALLOWED, {"error": f"{name} writes: use POST"})
+            if t.human and self.headers.get("Sec-Fetch-Site") != "same-origin":
+                # a browser sets this header on a page's own requests and a script cannot take it from the page, so
+                # a decision made by `curl` or an agent's HTTP client is not taken for the researcher's click
+                return self._send(HTTPStatus.FORBIDDEN, {"error": f"{name} is a person's decision: make it in the "
+                                                                  "portal page"})
             try:
                 result = t.call(rec, args)
             except (ValueError, KeyError) as exc:
@@ -192,17 +203,40 @@ def _arg(text: str):
         return text
 
 
+class PortalServer(ThreadingHTTPServer):
+    """Refuses a port another process already listens on. Windows lets a second listener share a port (the default
+    ``SO_REUSEADDR`` there), so two portals, possibly for different records, would answer the same URL."""
+    allow_reuse_address = os.name != "nt"
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        if not isinstance(sys.exc_info()[1], ConnectionError):  # a browser that left is not worth a traceback
+            super().handle_error(request, client_address)
+
+    def server_bind(self):
+        if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+def _bind(rec: Record, port: int) -> PortalServer:
+    try:
+        return PortalServer(("127.0.0.1", port), make_handler(rec))
+    except OSError as exc:
+        raise ValueError(f"port {port} is in use (is another 'ros serve' running?): pass --port N, or 0 for any "
+                         f"free port") from exc
+
+
 def start(rec: Record, port: int = 8737) -> ThreadingHTTPServer:
     """Start the portal in a background thread (used by ``ros mcp --portal``) and return the server."""
-    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(rec))
+    server = _bind(rec, port)
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 
 
 def run(rec: Record, port: int = 8737, open_browser: bool = False) -> int:
-    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(rec))
-    server.daemon_threads = True
+    server = _bind(rec, port)
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"Research OS portal for {rec.root.name}: {url}  (Ctrl+C to stop)", flush=True)
     if open_browser:

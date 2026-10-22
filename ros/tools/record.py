@@ -4,7 +4,9 @@ and the index.
 Each tool is declared with ``@tool`` from ``ros.registry``; see ``docs/ARCHITECTURE.md``."""
 from __future__ import annotations
 
-from .. import export, graph, importers, tasks
+from pathlib import Path
+
+from .. import export, graph, importers, research, tasks
 from ..learn import schedule
 from ..store import validate_item
 from ..registry import P, iso_day, present, tool
@@ -23,7 +25,7 @@ def status(rec, as_of=None):
         open_tasks[t["kind"]] = open_tasks.get(t["kind"], 0) + 1
     return {"record": str(rec.root), "as_of": day.isoformat(), "capabilities": len(learning.caps), "states": states,
             "ready": len(learning.ready), "frontier": len(learning.frontier()), "due": len(schedule.due(rec, day)),
-            "items": len(rec.items()), "lessons": len(rec.nodes(type="lesson")), "open_tasks": open_tasks,
+            "items": len(rec.items()), "lessons": sum(1 for n in rec.nodes(type="lesson") if not n["id"].startswith("bundle:")), "open_tasks": open_tasks,
             "research": len(graph.research_frontier(rec)), "problems": rec.problems}
 
 
@@ -38,6 +40,8 @@ def history(rec, lesson=None, item=None, limit=200):
       id=P("string", "item hash", True), reveal=P("boolean", "include the key and explanation"))
 def item(rec, id, reveal=False):
     it = rec.item(id)
+    if it is None:
+        raise KeyError(f"no item {id}")
     return it if reveal else present(it)
 
 
@@ -55,6 +59,8 @@ def list_tasks(rec, kind=None, state="open"):
 
 @tool("log", "The Markdown log of a lesson.", lesson=P("string", "lesson id", True))
 def log(rec, lesson):
+    if rec.node(lesson) is None:
+        raise KeyError(f"no lesson {lesson}")
     return export.lesson_log(rec, lesson)
 
 
@@ -65,7 +71,7 @@ def library(rec):
     closed = {e["subject"] for e in rec.events(type="lesson.close")}
     rows = []
     for lid, n in lessons.items():
-        log = rec.root / "logs" / (lid.split(":", 1)[1] + ".md")
+        log = rec.root / "logs" / (lid.split(":", 1)[-1] + ".md")
         rows.append({"id": lid, "title": n.get("title"), "started": started.get(lid), "closed": lid in closed,
                      "log": f"logs/{log.name}" if log.exists() else None, "legacy": n.get("legacy", False)})
     return sorted(rows, key=lambda r: r["started"] or "", reverse=True)
@@ -79,8 +85,9 @@ def claim(rec, task, by):
 
 @tool("finish", "Finish a task with its result.", writes=True, task=P("string", "task id", True),
       result=P("any", "the result", True), by=P("string", "agent name"))
-def finish(rec, task, result, by="agent"):
-    return tasks.finish(rec, task, result, by)
+def finish(rec, task, result, by=None):
+    research.check_task_result(rec, task, result)
+    return tasks.finish(rec, task, result, by, owner_only=True)
 
 
 @tool("cancel", "Withdraw an open task that is no longer needed, with the reason.", writes=True,
@@ -108,6 +115,16 @@ def remove(rec, id=None, src=None, type=None, dst=None):
                        "hints, concepts, difficulty, supersedes", True))
 def add_item(rec, item):
     problems = validate_item(item)
+    for c in item.get("concepts", []):
+        if isinstance(c, str) and ":" not in c:  # a lesson finds an item by the node id it tests
+            problems.append(f"concept {c!r} is not a node id; use <type>:<key>, e.g. capability:{c}")
+    if "defence" in item:  # an item that defends a claim: the kind is fixed, and it names the claim and a rubric
+        if item["defence"] not in research.DEFENCE:
+            problems.append(f"defence is one of {', '.join(research.DEFENCE)}")
+        if item.get("kind") != "free" or not (item.get("rubric") or {}).get("criteria"):
+            problems.append("a defence item is a free item with a rubric of criteria")
+        if not any(str(c).startswith("claim:") for c in item.get("concepts", [])):
+            problems.append('a defence item lists its claim in concepts, e.g. ["claim:width"]')
     if problems:
         raise ValueError("; ".join(problems))
     return {"id": rec.put_item(item)}
@@ -116,23 +133,24 @@ def add_item(rec, item):
 @tool("add_node", "Add or update a graph node.", writes=True, id=P("string", "<type>:<key>", True),
       type=P("string", "node type", True), data=P("object", "fields"))
 def add_node(rec, id, type, data=None):
-    rec.put_node(id, type, **(data or {}))
-    return rec.node(id)
+    return graph.add_node(rec, id, type, data)
 
 
 @tool("add_edge", "Add a typed edge between nodes.", writes=True, src=P("string", "source id", True),
       type=P("string", "edge type", True), dst=P("string", "target id", True), data=P("object", "fields"))
 def add_edge(rec, src, type, dst, data=None):
-    rec.put_edge(src, type, dst, **(data or {}))
-    return {"src": src, "type": type, "dst": dst}
+    return graph.add_edge(rec, src, type, dst, data)
 
 
 @tool("import", "Import old files into this record (idempotent).", writes=True,
       kind=P("string", "what to import", True, tuple(importers.IMPORTERS)),
       path=P("string", "folder (or graph.json for graphify)", True),
-      evidence=P("string", "EvidenceAtom folder for research"), repo=P("string", "repository root for graphify"))
-def import_(rec, kind, path, evidence=None, repo=None):
-    return importers.IMPORTERS[kind](rec, path, evidence=evidence, repo=repo)
+      evidence=P("string", "EvidenceAtom folder for research"), repo=P("string", "repository root for graphify"),
+      project=P("string", "documents: the project id, project:<key>, they are about"))
+def import_(rec, kind, path, evidence=None, repo=None, project=None):
+    if not Path(path).expanduser().exists():
+        raise ValueError(f"no such path: {path}")
+    return importers.IMPORTERS[kind](rec, path, evidence=evidence, repo=repo, project=project)
 
 
 @tool("export", "Write curated notes into an Obsidian vault folder, or a read-only single-file HTML snapshot.",

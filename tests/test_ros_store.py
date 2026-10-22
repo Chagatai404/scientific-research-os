@@ -174,9 +174,11 @@ class RecordTest(unittest.TestCase):
         self.rec.append("b", "s")
         self.rec.close()
         reopened = Record(self.root)
-        self.addCleanup(reopened.close)
-        reopened.events()
-        self.assertTrue(any("unreadable line" in p for p in reopened.problems))
+        try:  # closed here: tearDown removes the folder before any addCleanup would run
+            reopened.events()
+            self.assertTrue(any("unreadable line" in p for p in reopened.problems))
+        finally:
+            reopened.close()
 
     def test_unchanged_files_cost_no_reindex(self):
         for i in range(50):

@@ -369,6 +369,14 @@ class Record:
         finally:
             self._held -= 1
 
+    def stamp(self, *logs: str) -> tuple:
+        """A key for caching what is derived from some of the logs (``events``, ``nodes``, ``edges``): it changes when
+        one of them grows or the index is rebuilt, and not when the others do. The graph's structure is cached on
+        ``stamp("nodes", "edges")``, so an answer, which only appends an event, never throws it away (``derived`` is
+        thrown away by every write)."""
+        self.sync()
+        return (self._meta("epoch"), *(self._meta(f"{name}.end") for name in logs))
+
     def derived(self, name: str, build):
         """``build(self)``, computed once per state of the index and reused until anything is written or read in
         from the files. For views derived from the whole record (the answer log, every item by id)."""
@@ -603,6 +611,16 @@ class Record:
         else:
             rows = self.index().execute("SELECT * FROM nodes WHERE type=? ORDER BY id", (type,))
         return [_node_row(r) for r in rows]
+
+    def nodes_in(self, ids) -> list[dict]:
+        """The nodes with these ids (those that exist), fetched in chunks, in id order."""
+        self.sync()
+        ids, out = sorted(set(ids)), []
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            out += [_node_row(r) for r in self.index().execute(
+                f"SELECT * FROM nodes WHERE id IN ({','.join('?' * len(chunk))}) ORDER BY id", chunk)]
+        return out
 
     def edges(self, src: str | None = None, type: str | None = None, dst: str | None = None) -> list[dict]:
         self.sync()

@@ -89,6 +89,11 @@ def grade(rec: Record, attempt_id: str, verdict: str, feedback: str = "", by: st
         raise KeyError(f"no attempt {attempt_id}")
     data = {"lesson": a["data"].get("lesson"), "attempt": attempt_id, "verdict": verdict, "feedback": feedback}
     if criteria_met is not None:
+        criteria = ((rec.item(a["subject"]) or {}).get("rubric") or {}).get("criteria")
+        if criteria is not None and len(criteria_met) != len(criteria):
+            raise ValueError(f"the rubric has {len(criteria)} criteria: say whether each is met, in order")
+        if verdict == "correct" and not all(criteria_met):
+            raise ValueError("correct needs every criterion met; use partially-correct")
         data["criteria_met"] = criteria_met
     rec.append("grade", a["subject"], data, actor=by)
     for t in tasks.tasks(rec, kind="grade", state=None):

@@ -9,9 +9,20 @@ The researcher works at four points: **Frame**, **Plan approval**, **Defend**, *
 as agent work and ends in the decision queue (`queue`). Contract: `references/RESEARCH.md`; evidence rules:
 `references/EVIDENCE.md`.
 
+## Start from the context
+
+`context` first. In a project's record it gives the research graph's next steps and the state of each user capability
+the project depends on (`untracked` ones are not yet in the user-wide graph); in the user-wide record it summarises every
+linked project. A project's record is joined to the user-wide one with `link --user <record>`, and its existing
+research repository is read in with `import --kind research --path <repo>`; reports become sources with
+`import --kind documents --path <folder> --project project:<key>`. Details: `references/DATA_MODEL.md`. Before planning an experiment, `gaps --target experiment:<key>` says which capabilities
+its steps still need and which research steps they block; `roadmap` orders them, and the researcher learns them with the
+`learn` skill. State what the researcher wants to master with `goal`.
+
 ## The cycle
 
-1. **Frame.** The researcher states the question. Record it (`add_node --type question`). In the non-generation mode
+1. **Frame.** The researcher states the question. Record it (`add_node --id question:<key> --type question`, with a
+   `status`; hypotheses, experiments and how they link: `references/RESEARCH.md`, "Framing nodes"). In the non-generation mode
    (when they ask for it) you only ask and mirror; you do not propose hypotheses until they say so.
 2. **Scout and verify.** Send neutral briefs to `scout` agents in parallel (competing models, null results, validity
    limits, reviews, primary work). Send each candidate claim to a `verifier`. Record verified claims as EvidenceAtoms.

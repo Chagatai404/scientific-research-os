@@ -64,13 +64,25 @@ def bundle_tasks(rec, bundle, clips=False):
 
 
 @tool("bundle_voice", "Speak every narration segment without audio with a local engine.", writes=True,
-      bundle=P("string", "bundle id", True), provider=P("string", "kokoro (default), piper or chatterbox"))
-def bundle_voice(rec, bundle, provider="kokoro"):
-    return prepare.render_voice(rec, bundle, provider)
+      bundle=P("string", "bundle id", True), provider=P("string", "kokoro (default), piper or chatterbox"),
+      env=P("string", "a virtual environment holding the engine (or set RESEARCH_OS_VOICE_ENVS)"),
+      model_dir=P("string", "Kokoro: the folder with kokoro-v1.0.onnx and voices-v1.0.bin"))
+def bundle_voice(rec, bundle, provider="kokoro", env=None, model_dir=None):
+    out = prepare.render_voice(rec, bundle, provider, envs=[env] if env else None,
+                               voices={"model_dir": model_dir} if model_dir else None)
+    if out["failed"] and not out["spoken"]:  # nothing was spoken: that is a failed command, not a report
+        raise ValueError(f"no segment could be spoken ({out['failed'][0]['error']}). Pass env= and, for Kokoro, "
+                         "model_dir=, or set RESEARCH_OS_VOICE_ENVS; nothing is installed for you.")
+    return out
 
 
 @tool("bundle_animate", "Render a node's Manim animation from its spec and attach it.", writes=True,
       bundle=P("string", "bundle id", True), node=P("string", "node id", True),
-      spec=P("string", "animation spec path inside the bundle", True))
-def bundle_animate(rec, bundle, node, spec):
-    return prepare.render_animation(rec, bundle, node, spec)
+      spec=P("string", "animation spec path inside the bundle", True),
+      env=P("string", "a virtual environment holding Manim"))
+def bundle_animate(rec, bundle, node, spec, env=None):
+    out = prepare.render_animation(rec, bundle, node, spec, envs=[env] if env else None)
+    if not out.get("rendered"):
+        raise ValueError("the animation was not rendered: " + str(out.get("note") or out.get("error") or out)
+                         + " (pass env=<a virtual environment with Manim>; nothing is installed for you)")
+    return out

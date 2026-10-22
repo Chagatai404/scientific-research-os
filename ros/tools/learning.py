@@ -111,6 +111,8 @@ def start(rec, scope=None, bundle=None, title=None, actor="learner"):
       lesson=P("string", "lesson id", True), scope=P("string", "scope (default: the lesson's)"),
       as_of=P("string", "ISO date (default today)"))
 def next_step(rec, lesson, scope=None, as_of=None):
+    if rec.node(lesson) is None:
+        raise KeyError(f"no lesson {lesson}")
     return _next(rec, lesson, scope or (rec.node(lesson) or {}).get("scope", ""), as_of)
 
 

@@ -23,7 +23,7 @@ arXiv ID / other ID (whatever is genuinely known), an HTTPS `source_url`, an exa
 (`{"text", "locator", "excerpt"?}`). If you read only an abstract, a locator may only point to the abstract. Mark competing
 or contradicting work with `competing: true`. A candidate is **unverified**: do not set a verification status, screening
 decision or verdict on what the project should conclude. Check your report with
-`python -m ros.lib.scout check report.json --brief brief.json`. Finish the task with the report (`finish`).
+`python -m ros.lib.scout check report.json --brief brief.json`. There is no scout task in the record: write the checked report next to the brief and return it to the coordinator in your final message, who sends each candidate claim to a `verifier`.
 
 Your first job is to map the external evidence landscape, not to justify the current project.
 

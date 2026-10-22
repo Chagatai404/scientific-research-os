@@ -156,12 +156,18 @@ class McpTests(Fixture):
         with socket.socket() as sock:
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
-        out = io.StringIO()
-        mcp.serve("demo", io.StringIO('{"jsonrpc":"2.0","id":1,"method":"ping"}\n'), out, portal=port)
-        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-        c.request("GET", "/api/status", headers={"Host": f"127.0.0.1:{port}"})
-        self.assertEqual(json.loads(c.getresponse().read())["result"]["items"], 1)
-        c.close()
+        out, seen = io.StringIO(), {}
+
+        def session():  # the agent stays connected while the browser asks, then leaves
+            yield '{"jsonrpc":"2.0","id":1,"method":"ping"}\n'
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            c.request("GET", "/api/status", headers={"Host": f"127.0.0.1:{port}"})
+            seen["items"] = json.loads(c.getresponse().read())["result"]["items"]
+            c.close()
+        mcp.serve("demo", session(), out, portal=port)
+        self.assertEqual(seen["items"], 1)
+        with self.assertRaises(OSError):  # ... and the portal leaves with it
+            socket.create_connection(("127.0.0.1", port), timeout=1).close()
 
     def test_garbage_does_not_end_the_session(self):
         os.environ["ROS_HOME"] = str(self.home)

@@ -176,14 +176,21 @@ def _animation(g: Gate, n: dict):
     return p, []
 
 
+def _clip_left_out(clip: dict | None) -> str | None:
+    """Why a clip is not played, or None when it is usable: one predicate for the gate and for the player."""
+    if not clip:
+        return None
+    if not clip.get("transcript_verified"):
+        return "its transcript was not verified"
+    if not (isinstance(clip.get("start"), (int, float)) and isinstance(clip.get("end"), (int, float))
+            and 0 <= clip["start"] < clip["end"] <= clip["start"] + MAX_CLIP_SECONDS):
+        return "a clip is one segment of at most 3 minutes"
+    return None
+
+
 def _clip(g: Gate, n: dict):
-    clip = n.get("clip")
-    if clip and not clip.get("transcript_verified"):
-        return [], ["clip left out: its transcript was not verified"]
-    if clip and not (isinstance(clip.get("start"), (int, float)) and isinstance(clip.get("end"), (int, float))
-                     and 0 <= clip["start"] < clip["end"] <= clip["start"] + MAX_CLIP_SECONDS):
-        return [], ["clip left out: a clip is one segment of at most 3 minutes"]
-    return [], []
+    why = _clip_left_out(n.get("clip"))
+    return [], ([f"clip left out: {why}"] if why else [])
 
 
 def _check_items(g: Gate, n: dict):
@@ -358,7 +365,7 @@ def segments_for(rec: Record, bundle: str, node: str) -> dict | None:
     n = next((x for x in plan["nodes"] if x["id"] == node), None)
     if n is None:
         return None
-    clip = n.get("clip") if (n.get("clip") or {}).get("transcript_verified") else None
+    clip = None if _clip_left_out(n.get("clip")) else n.get("clip")
     return {"node": node, "title": n.get("title"), "segments": n.get("segments", []), "visuals": n.get("visuals", []),
             "animation": n.get("animation"), "clip": clip, "base": f"bundles/{bundle}/"}
 

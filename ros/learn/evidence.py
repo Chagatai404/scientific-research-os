@@ -138,7 +138,10 @@ class Evidence:
 
     def assessed(self, cap: str, day: date, node: dict, compute):
         """``compute()`` for a capability on a day, cached until its evidence or its node changes."""
-        key = (cap, day, hashlib.sha256(json.dumps(node, sort_keys=True, default=str).encode()).hexdigest())
+        # only these fields of the node change an assessment (see graph._assess); hashing the whole node for every
+        # capability on every call is what made a large record slow
+        key = (cap, day, node.get("schema", 1), node.get("initial_state"), node.get("learning_scope"),
+               tuple(node.get("required_dimensions") or ()))
         version = self.versions.get(cap, 0)
         hit = self._assessed.get(key)
         if hit and hit[0] == version:

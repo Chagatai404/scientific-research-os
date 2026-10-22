@@ -75,7 +75,7 @@ class InstallTests(Fixture):
         toml = (self.tmp / ".codex/config.toml").read_text()
         self.assertTrue(toml.startswith('model = "x"'))
         self.assertEqual(toml.count("[mcp_servers.research-os]"), 1)
-        self.assertTrue((self.tmp / ".codex/skills/research/lenses/geant4.md").exists())
+        self.assertTrue((self.tmp / ".agents/skills/research/lenses/geant4.md").exists())
         install.install("gemini", self.tmp)
         settings = json.loads((self.tmp / ".gemini/settings.json").read_text())
         self.assertIn("research-os", settings["mcpServers"])
