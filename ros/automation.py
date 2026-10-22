@@ -140,33 +140,83 @@ def _bundle_tasks(look: Look):
 
 
 def _course_handouts(look: Look):
-    """Study material follows the lessons: a lecture note for each of the next capabilities of a course or project, a
-    recitation once its lecture is ready, and a chapter once the course has enough capabilities."""
+    """Study material follows the lessons: for each course in the user-wide record, a lecture note for each of its next
+    capabilities, a recitation once its lecture is ready, and a chapter once the course has enough capabilities."""
     rec = look.rec
-    lay = vault.layout(rec)
-    if lay["is_user"] or not (look.first or look.changed):
+    if not vault.layout(rec)["is_user"] or not (look.first or look.changed):
         return None
-    caps = rec.nodes(type="capability")
-    if not caps:
-        return None
-    opened = 0
     learning = graph.Learning(rec)
     have = {n["id"]: n for n in rec.nodes(type="handout")}
-    for cap in learning.frontier()[:NEXT_LESSONS]:
-        title = (rec.node(cap) or {}).get("title") or cap.split(":", 1)[-1]
-        hid = handouts.hid(f"lecture-{_slug(title)}")
-        if hid not in have and not (handouts.folder(rec, hid) / "source.json").exists():
-            handouts.create(rec, "lecture", [cap], title)
+    opened = 0
+
+    def missing(hid: str) -> bool:
+        return hid not in have and not (handouts.folder(rec, hid) / "source.json").exists()
+
+    for hub, members in sorted(learning.members.items()):
+        caps = sorted(m for m in members if m in learning.caps)
+        if not hub.startswith("course:") or not caps:
+            continue
+        course = (rec.node(hub) or {}).get("title") or hub.split(":", 1)[-1]
+        for cap in learning.frontier(hub)[:NEXT_LESSONS]:
+            title = (rec.node(cap) or {}).get("title") or cap.split(":", 1)[-1]
+            hid = handouts.hid(f"lecture-{_slug(course)}-{_slug(title)}")
+            if missing(hid):
+                handouts.create(rec, "lecture", [cap], title, key=hid.split(":", 1)[1], hub=hub)
+                opened += 1
+            rid = handouts.hid(f"recitation-{_slug(course)}-{_slug(title)}")
+            if (rec.node(hid) or {}).get("status") in ("ready", "built") and missing(rid):
+                handouts.create(rec, "recitation", [cap], f"{title}: recitation", key=rid.split(":", 1)[1], hub=hub)
+                opened += 1
+        cid = handouts.hid(f"chapter-{_slug(course)}")
+        if len(caps) >= 6 and missing(cid):
+            handouts.create(rec, "chapter", [hub], f"{course}: chapter", key=cid.split(":", 1)[1], hub=hub)
             opened += 1
-        lecture = rec.node(hid)
-        rid = handouts.hid(f"recitation-{_slug(title)}")
-        if lecture and lecture.get("status") in ("ready", "built") and rid not in have \
-                and not (handouts.folder(rec, rid) / "source.json").exists():
-            handouts.create(rec, "recitation", [cap], f"{title}: recitation")
+    return {"opened": opened} if opened else None
+
+
+def _candidates(result) -> list[dict]:
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except ValueError:
+            return []
+    if isinstance(result, dict):
+        result = result.get("candidates") or result.get("sources") or []
+    return [c for c in result if isinstance(c, dict) and (c.get("title") or c.get("doi"))] if isinstance(result, list) else []
+
+
+def _literature_flow(look: Look):
+    """What the scouts found is verified candidate by candidate, and once every search and verification of a question has
+    finished, the literature brief is asked for: the document the researcher judges the evidence from."""
+    rec = look.rec
+    if not (look.first or look.changed):
+        return None
+    opened = 0
+    for t in tasks.tasks(rec, "scout", state="done"):
+        q = t.get("question") or t["ref"]
+        for c in _candidates(t.get("result"))[:12]:
+            ident = c.get("doi") or c.get("arxiv") or c.get("source_url") or c.get("title")
+            tasks.open_task(rec, "verify", q,
+                            f"Verify this candidate source and the claims attributed to it against the source itself: "
+                            f"{c.get('title') or ident}. Return one verdict with notes and the locator you checked; if it "
+                            "is genuine and relevant, add a paper node for it (add_node paper:<key> with title, authors, "
+                            "year, doi, url, how much you read) linked to the question with an `about` edge.",
+                            data={"question": q, "candidate": c, "scout": t["id"]}, key=f"cand|{ident}")
             opened += 1
-    if len(caps) >= 6 and lay["hub_id"] and not any(n.get("kind") == "chapter" for n in have.values()):
-        handouts.create(rec, "chapter", [lay["hub_id"]], f"{lay['title']}: chapter")
-        opened += 1
+    everything = tasks.tasks(rec, state=None)
+    for q in rec.nodes(type="question"):
+        mine = [t for t in everything if t.get("question") == q["id"] and t["kind"] in ("scout", "verify")]
+        scouts = [t for t in mine if t["kind"] == "scout"]
+        if not scouts or any(t["state"] in ("open", "claimed") for t in mine):
+            continue
+        # a scout finished after the list was made may have added verifications: look again before asking
+        if any(t.get("question") == q["id"] and t["kind"] == "verify" and t["state"] in ("open", "claimed")
+               for t in tasks.tasks(rec, state=None)):
+            continue
+        hid = handouts.hid(f"literature-{_slug(q['id'].split(':', 1)[-1])}")
+        if hid not in {n["id"] for n in rec.nodes(type="handout")} and not (handouts.folder(rec, hid) / "source.json").exists():
+            handouts.create(rec, "literature", [q["id"]], q.get("title") or q.get("text") or q["id"], key=hid.split(":", 1)[1])
+            opened += 1
     return {"opened": opened} if opened else None
 
 
@@ -282,6 +332,7 @@ TRIGGERS: list[Trigger] = [
     Trigger("approval_runs", ("call", "tick"), _approval_runs),
     Trigger("bundle_tasks", ("tick",), _bundle_tasks),
     Trigger("course_handouts", ("tick",), _course_handouts),
+    Trigger("literature_flow", ("tick",), _literature_flow),
     Trigger("bundle_gate", ("tick",), _bundle_gate),
     Trigger("handout_gate", ("tick",), _handout_gate),
     Trigger("renders", ("tick",), _renders),

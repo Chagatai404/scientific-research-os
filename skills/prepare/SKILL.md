@@ -9,6 +9,14 @@ A lesson starts only when its bundle is ready. Preparation runs unattended; the 
 is generated live except answers and grades. Contract: `references/PREPARATION.md`. `roadmap_tasks` opens one `item` task for each step of a roadmap that has no
 questions and no prepared lesson, so preparation follows what the researcher needs next.
 
+## Tasks you receive
+
+`work --by <you>` gives you the next task across every record, with the skill and the tool that finishes it. Here:
+`outline` (read the material, add the capabilities and `requires` edges of a course or topic), `bundle` (prepare one
+lesson), `item`, `narration`, `visual`, `animation`, `video` (one piece of a bundle) and `handout` (a study document, below).
+`ingest` (a file the researcher dropped into the vault) is for the `librarian`: classify it, link it to what it is
+about. When a task is done, `finish` it with the record `work` named and call `work` again.
+
 ## 1. The dependency map
 
 1. Ask a `scout` (agent) to check the field for the topic first; use its source map, not memory, for claims.

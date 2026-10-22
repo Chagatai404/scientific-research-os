@@ -75,7 +75,10 @@ KINDS = {
                        {}, ("evidence", "synthesis"),
                        "A literature brief for the researcher's judgement: the question as asked, which searches were "
                        "run, what each verified source says with its locator, competing models and null results, the "
-                       "gaps, and what to read next. Say plainly what was not found."),
+                       "gaps, and what to read next. Say plainly what was not found. If the evidence supports a test, end by proposing "
+                       "the experiment: add_node experiment:<key> with a title, the plan, the scale ladder (smallest "
+                       "rung first), a compute budget and authorization 'awaiting'. The researcher approves it; you "
+                       "never do."),
     "findings": Kind("findings", (("plan", "Plan and approval", 20), ("results", "Results", 60),
                                   ("claims", "Claims and their audits", 40), ("interpretation", "Interpretation", 60),
                                   ("limitations", "Limitations", 30), ("decision", "Decision memo (a proposal)", 20)),
@@ -121,7 +124,9 @@ def _lib():
 
 def meta(rec: Record, src: dict) -> dict:
     lay = vault.layout(rec)
-    return {"title": src["title"], "course": lay["title"] if not lay["is_user"] else "", "date": date.today().isoformat(),
+    hub = src.get("hub")
+    course = (rec.node(hub) or {}).get("title") if hub else None
+    return {"title": src["title"], "course": course or (lay["title"] if not lay["is_user"] else ""), "date": date.today().isoformat(),
             "line": f"{src['kind'].capitalize()} handout", "subtitle": ""}
 
 
@@ -208,7 +213,8 @@ def compose(rec: Record, kind: str, scope: list[str]) -> dict:
 
 
 # ---- tools' domain functions --------------------------------------------------------------------------------------
-def create(rec: Record, kind: str, scope: list[str], title: str, key: str | None = None) -> dict:
+def create(rec: Record, kind: str, scope: list[str], title: str, key: str | None = None,
+           hub: str | None = None) -> dict:
     """Start a handout: compose its context, lay out its sections and open the task that asks an agent to write it.
     Asking again for the same key changes nothing."""
     if kind not in KINDS:
@@ -223,7 +229,7 @@ def create(rec: Record, kind: str, scope: list[str], title: str, key: str | None
         return {**describe(rec, handout), "existing": True}
     spec = KINDS[kind]
     src = {"schema": SCHEMA, "id": handout, "kind": kind, "title": title.strip(), "scope": scope,
-           "hub": vault.layout(rec)["hub_id"], "revision": 0, "created": date.today().isoformat(),
+           "hub": hub or vault.layout(rec)["hub_id"], "revision": 0, "created": date.today().isoformat(),
            "sections": [{"id": r, "role": r, "title": t, "text": "", "locators": [], "derivation": False, "by": ""}
                         for r, t, _ in spec.sections], "sources": [], "context": compose(rec, kind, scope)}
     _save(rec, src)
@@ -529,7 +535,7 @@ def _note_stub(rec: Record, src: dict, status: str, pdf_rel: str | None):
             extra["pdf"] = vault.wikilink(pdf_rel)
         return extra, ["ros/handout", f"handout/{src['kind']}"], "\n".join(head) + body_md + (
             f"\n\n[Open in the portal]({ctx.portal(src['id'])})")
-    return vault.custom_stub(rec, src["id"], "handout", "Handouts", src["title"], build)
+    return vault.custom_stub(rec, src["id"], "handout", "Handouts", src["title"], build, hub=src.get("hub"))
 
 
 def publish_note(rec: Record, handout: str, pdf_rel: str | None = None) -> dict | None:
@@ -629,6 +635,6 @@ def handouts(rec: Record) -> list[dict]:
              "revision": n.get("revision"), "pdf": n.get("pdf")} for n in rec.nodes(type="handout")]
 
 
-def open_for(rec: Record, kind: str, scope: list[str], title: str) -> str:
-    """Ask for a handout once (used by the automation): returns its id, opening it when it does not exist."""
-    return create(rec, kind, scope, title)["handout"]
+def toolchain() -> dict:
+    """What this computer can build a PDF with (``python -m ros.lib.pdf detect``)."""
+    return _lib().detect()

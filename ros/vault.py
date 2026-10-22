@@ -474,24 +474,45 @@ def _props(ctx: Ctx, stub: Stub, **more) -> dict:
             "title": stub.title, **more}
 
 
-def _up(ctx: Ctx) -> str:
+def _up(ctx: Ctx, hub: str | None = None) -> str:
+    if hub and hub != ctx.hub_id:  # a course or project whose own record may write its note
+        return _hub_link(ctx, hub)
     return ctx.link("moc:knowledge" if ctx.is_user else ctx.hub_id, ctx.hub_title)
 
 
-def _group(ctx: Ctx, nid: str) -> str:
+def _hub_link(ctx: Ctx, hub: str) -> str:
+    """A link to the map of content of a hub held in another record (found by the record that names it)."""
+    node = ctx.rec.node(hub) or {}
+    title = node.get("title") or hub.split(":", 1)[-1]
+    for name in home.projects():
+        if home.config(home.home() / "projects" / name).get("project") == hub:
+            row = ctx.mf.by_key(f"{name}|{hub}")
+            if row:
+                return wikilink(row["path"], title)
+    return title
+
+
+def _cap_folder(ctx: Ctx, nid: str) -> str:
+    """Below the root: a capability of a course or project sits in that hub's folder (the course's own record, if it has
+    one, lists it too); any other lives under Knowledge, grouped by its first hub."""
+    if not ctx.is_user:
+        return f"{ctx.hub_folder}/Capabilities"
+    first = None
     for e in ctx.rec.edges(src=nid, type="part-of"):
-        node = ctx.rec.node(e["dst"])
-        return (node or {}).get("title") or e["dst"].split(":", 1)[-1]
-    return "General"
+        node = ctx.rec.node(e["dst"]) or {}
+        title = node.get("title") or e["dst"].split(":", 1)[-1]
+        if e["dst"].startswith(("course:", "project:")):
+            top = "Courses" if e["dst"].startswith("course:") else "Projects"
+            return f"{top}/{safe_name(title)}/Capabilities"
+        first = first or title
+    return f"Knowledge/Capabilities/{safe_name(first or 'General')}"
 
 
 def _cap_stub(ctx: Ctx, nid: str) -> Stub | None:
     n = ctx.rec.node(nid)
     if not n or n["type"] != "capability":
         return None
-    folder = ctx.rel(f"{ctx.hub_folder}/Capabilities" if not ctx.is_user
-                     else f"Knowledge/Capabilities/{safe_name(_group(ctx, nid))}")
-    return Stub(nid, "capability", folder, n.get("title") or nid.split(":", 1)[-1], _build_cap)
+    return Stub(nid, "capability", ctx.rel(_cap_folder(ctx, nid)), n.get("title") or nid.split(":", 1)[-1], _build_cap)
 
 
 def _build_cap(ctx: Ctx, stub: Stub):
@@ -683,6 +704,8 @@ def _build_moc(ctx: Ctx, stub: Stub):
         if len(learning.caps) > 400:
             body.append(f"\nand {len(learning.caps) - 400} more: see the Knowledge base view.")
         body.append("")
+    if not ctx.is_user and ctx.cfg.get("user"):
+        body += _from_user_record(ctx)
     sections = (("Lessons", "lesson"), ("Questions", "question"), ("Hypotheses", "hypothesis"),
                 ("Experiments", "experiment"), ("Claims", "claim"), ("Papers", "paper"), ("Handouts", "handout"))
     for title, ntype in sections:
@@ -711,6 +734,29 @@ def _build_moc(ctx: Ctx, stub: Stub):
         if not ctx.dry:
             (ctx.vault / ctx.rel(ctx.hub_folder, "Inbox")).mkdir(parents=True, exist_ok=True)
     return props, [f"ros/{stub.kind}"], "\n".join(body)
+
+
+def _from_user_record(ctx: Ctx) -> list[str]:
+    """What the user-wide record holds that belongs to this course or project: its capabilities with their state, and the
+    handouts about it, linked to the notes the user-wide record writes."""
+    try:
+        urec = context.user_record(ctx.cfg)
+    except (ValueError, KeyError):
+        return []
+    user = urec.root.name
+    ids = [e["src"] for e in urec.edges(dst=ctx.hub_id, type="part-of") if e["src"].startswith("capability:")]
+    out: list[str] = []
+    if ids:
+        learning = graph.Learning(urec, ctx.as_of, within=ids)
+        rows = []
+        for key in learning.order([k for k in ids if k in learning.caps])[:400]:
+            v = learning.view(key)
+            rows.append(f"| {ctx.link(key, v['title'], user)} | {v['state']} | {v['next_review'] or '—'} |")
+        out += [f"## Capabilities ({len(ids)})", "", "| Capability | State | Next review |", "|---|---|---|", *rows, ""]
+    hand = [e["src"] for e in urec.edges(dst=ctx.hub_id, type="about") if e["src"].startswith("handout:")]
+    if hand:
+        out += [f"## Study handouts ({len(hand)})", "", *[f"- {ctx.link(h, record=user)}" for h in sorted(hand)], ""]
+    return out
 
 
 def _home_stub(ctx: Ctx) -> Stub:
@@ -1214,15 +1260,21 @@ def _drop_v11(ctx: Ctx, vault: Path) -> int:
 
 # ---- placing files, finding notes ---------------------------------------------------------------------------------
 def custom_stub(rec: Record, rid: str, kind: str, sub: str, title: str,
-                build: Callable[[Ctx], tuple[dict, list, str]]) -> Stub:
-    """A note another module writes (a handout) in this record's folder ``sub``. ``build(ctx)`` returns its extra
-    properties, tags and body; the ownership, hashing, links and flow-back are those of every note."""
+                build: Callable[[Ctx], tuple[dict, list, str]], hub: str | None = None) -> Stub:
+    """A note another module writes (a handout) in the folder ``sub`` of this record's hub, or of ``hub`` (a course or
+    project the user-wide record holds material for). ``build(ctx)`` returns its extra properties, tags and body; the
+    ownership, hashing, links and flow-back are those of every note."""
     root = home.settings()["vault_root"]
-    folder = "/".join([root, layout(rec)["folder"], sub])
+    lay = layout(rec)
+    base = lay["folder"]
+    if hub and hub != lay["hub_id"] and hub.startswith(("course:", "project:")):
+        title_ = (rec.node(hub) or {}).get("title") or hub.split(":", 1)[-1]
+        base = f"{'Courses' if hub.startswith('course:') else 'Projects'}/{safe_name(title_)}"
+    folder = "/".join([root, base, sub])
 
     def wrapped(ctx: Ctx, stub: Stub):
         extra, tags, body = build(ctx)
-        return {**_props(ctx, stub, up=_up(ctx)), **extra}, tags, body
+        return {**_props(ctx, stub, up=_up(ctx, hub)), **extra}, tags, body
     return Stub(rid, kind, folder, title, wrapped)
 
 

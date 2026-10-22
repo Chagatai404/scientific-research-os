@@ -10,7 +10,7 @@ A claim is owned when the researcher can defend it from memory, and still can at
 
 ## Defence items
 
-For each open `item` task on a claim (`tasks --kind item`), write one free item with `add_item`:
+For each open `item` task on a claim (`work --by <you> --kinds '["item"]'`), write one free item with `add_item`:
 `kind: free`, `concepts: ["claim:<id>"]`, `defence: <kind>`, a rubric with checkable criteria, and the explanation.
 The five kinds:
 

@@ -63,7 +63,8 @@ def instructions() -> str:
         BEGIN, "## Research OS", "",
         "The researcher's courses and projects live in Research OS records. Use the `ros` tools: over MCP (server "
         "`research-os`) or the shell (`python -m ros <tool> --json ...`, with this repository on PYTHONPATH: "
-        f"`{REPO.as_posix()}`). `ros tools` lists them. Start with `status` and `today`.", "",
+        f"`{REPO.as_posix()}`). `ros tools` lists them. Call `brief` first; when the researcher says what they want to learn or find "
+        "out, call `engage` with their words, then loop `work`.", "",
         "Read the skill that fits the task before acting:", "", *skills, "",
         "Roles to give to a separate, fresh agent when the skill asks for one:", "", *agents, "",
         "Approving plans, deciding on claims and waiving ownership are the researcher's own acts; never do them for "
@@ -123,12 +124,33 @@ class Plan:
         return {"installed": True, "written": written, "unchanged": len(self.writes) - len(written)}
 
 
-MERGED = {".mcp.json", ".gemini/settings.json", ".gemini/GEMINI.md", ".codex/config.toml", ".codex/AGENTS.md",
+MERGED = {".claude/settings.json", ".mcp.json", ".gemini/settings.json", ".gemini/GEMINI.md", ".codex/config.toml", ".codex/AGENTS.md",
           "AGENTS.md", "GEMINI.md"}
 
 
+def brief_hook_command() -> str:
+    """What a SessionStart hook runs: ``ros brief --text`` from this repository, so the agent starts a session knowing
+    what needs the researcher and what to do next. Quoted for sh and cmd alike."""
+    code = f"import sys; sys.path.insert(0, r'{REPO}'); from ros.cli import main; main(['brief', '--text'])"
+    return f'"{Path(sys.executable)}" -c "{code}"'
+
+
+def _merge_hooks(old: str) -> str:
+    """Add the briefing to ``hooks.SessionStart`` without touching any other hook or setting."""
+    data = json.loads(old) if old.strip() else {}
+    groups = data.setdefault("hooks", {}).setdefault("SessionStart", [])
+    cmd = brief_hook_command()
+    for g in groups:
+        for h in g.get("hooks", []):
+            if "from ros.cli import main; main(['brief', '--text'])" in h.get("command", ""):
+                h["command"] = cmd  # ours: keep it pointing at this install
+                return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    groups.append({"hooks": [{"type": "command", "command": cmd}]})
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+
+
 def install(client: str, base: Path | None = None, user: bool = False, force: bool = False,
-            dry_run: bool = False) -> dict:
+            dry_run: bool = False, hooks: bool = False) -> dict:
     if client not in CLIENTS:
         raise ValueError(f"client is one of {', '.join(CLIENTS)}")
     base = (Path.home() if user else Path(base or Path.cwd())).resolve()
@@ -145,6 +167,9 @@ def install(client: str, base: Path | None = None, user: bool = False, force: bo
         else:
             plan.merged(".mcp.json", lambda old: _merge_json(old, ["mcpServers", "research-os"], server_entry()))
             note = "MCP server registered in .mcp.json"
+        if hooks:
+            plan.merged(".claude/settings.json", _merge_hooks)
+            note += "; a SessionStart hook runs `ros brief --text` in .claude/settings.json"
     elif client == "codex":
         for rel, data in skill_files().items():
             plan.file(f".agents/skills/{rel}", data)  # Codex's skills folder, in a project and in ~
@@ -164,6 +189,8 @@ def install(client: str, base: Path | None = None, user: bool = False, force: bo
         return {"dry_run": True, "base": str(base), "would_write": sorted(p.relative_to(base).as_posix()
                                                                            for p in plan.writes),
                 "refused": plan.conflicts(), "note": note}
+    if hooks and client != "claude":
+        raise ValueError("hooks are a Claude Code feature: use --client claude")
     out = plan.apply()
     out.update(base=str(base), client=client)
     out.setdefault("note", note)  # a refusal keeps its own note: which files, and what to do

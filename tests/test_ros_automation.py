@@ -137,12 +137,14 @@ class MaterialTests(Fixture):
         self.assertEqual(len(tasks.tasks(self.rec, "bundle")), 1)
 
     def test_a_course_gets_lecture_notes_for_its_next_capabilities_then_recitations(self):
-        home.set_config(self.rec.root, role="project", user="me", project="course:stat")
-        self.rec.put_node("course:stat", "course", title="Statistics")
+        home.set_config(self.rec.root, role="user")
+        self.rec.put_node("course:stat-demo", "course", title="Statistics")
         out = api.call("reconcile", self.rec, mode="tick")
         self.assertIn("course_handouts", out["ran"], out)
-        self.assertEqual([n["kind"] for n in self.rec.nodes(type="handout")], ["lecture"])  # Mean; Variance waits on it
-        hid = self.rec.nodes(type="handout")[0]["id"]
+        notes = self.rec.nodes(type="handout")
+        self.assertEqual([n["kind"] for n in notes], ["lecture"])  # Mean; Variance waits on it
+        hid = notes[0]["id"]
+        self.assertTrue(self.rec.edges(src=hid, type="about", dst="course:stat-demo"))
         api.call("handout_write", self.rec, handout=hid, section="gist", text="x " * 9, by="a")
         api.call("reconcile", self.rec, mode="tick")
         self.assertEqual(len(self.rec.nodes(type="handout")), 1)  # still a draft: no recitation yet

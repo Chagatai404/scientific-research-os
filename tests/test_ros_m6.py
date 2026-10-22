@@ -18,9 +18,9 @@ from ros.store import Record  # noqa: E402
 import support_ros_demo as demo  # noqa: E402
 
 SKILLS = {"learn", "prepare", "research", "audit", "defend", "notes-to-latex"}
-AGENTS = {"scout", "verifier", "auditor", "adversary", "visual-maker", "video-scout"}
+AGENTS = {"scout", "verifier", "auditor", "adversary", "visual-maker", "video-scout", "librarian"}
 REFERENCES = {"TEACHING", "PREPARATION", "RESEARCH", "EVIDENCE", "DATA_MODEL", "PORTAL", "VOICE", "SAFETY",
-              "VAULT", "HANDOUTS"}
+              "VAULT", "HANDOUTS", "DIRECTOR"}
 
 
 class Fixture(unittest.TestCase):
@@ -149,7 +149,7 @@ class DocsContractTests(unittest.TestCase):
         self.assertTrue(m, f"{path} has no frontmatter")
         return dict(line.split(":", 1) for line in m.group(1).splitlines() if ":" in line)
 
-    def test_six_skills_six_agents_eight_protocols(self):
+    def test_the_skills_agents_and_protocols_are_all_present(self):
         self.assertEqual({p.name for p in (ROOT / "skills").iterdir() if p.is_dir()}, SKILLS)
         self.assertEqual({p.stem for p in (ROOT / "agents").glob("*.md")}, AGENTS)
         self.assertEqual({p.stem for p in (ROOT / "references").glob("*.md")}, REFERENCES)

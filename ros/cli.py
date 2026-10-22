@@ -103,6 +103,7 @@ def parser(only: str | None = None) -> argparse.ArgumentParser:
     s.add_argument("--user", action="store_true", help="install for the user (home folder) instead of a project")
     s.add_argument("--force", action="store_true", help="overwrite installed files changed by hand")
     s.add_argument("--dry-run", action="store_true", help="say what would be written")
+    s.add_argument("--hooks", action="store_true", help="claude: also add a SessionStart hook that shows `ros brief`")
     s = add("serve", help="the localhost portal")
     s.add_argument("--port", type=int, default=8737)
     s.add_argument("--open", action="store_true", help="open it in the browser")
@@ -158,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "install":
             from . import install
             out = install.install(args.client, Path(args.target) if args.target else None, args.user, args.force,
-                                  args.dry_run)
+                                  args.dry_run, args.hooks)
             if not args.json and len(out.get("written", [])) > 10:  # a person wants the count, not 75 file names
                 out = {**out, "written": f"{len(out['written'])} files (--json lists them)"}
             emit(out, args.json)

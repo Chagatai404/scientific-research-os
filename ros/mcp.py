@@ -13,6 +13,32 @@ from . import __version__, api, home, runner
 from .store import Record
 
 PROTOCOL = "2025-06-18"
+INSTRUCTIONS = (
+    "Research OS: the person directs, you work. Call `brief` first in every session: it says what needs the person's "
+    "judgement, what is happening and what to do next. When they ask to learn a course or topic or to find something "
+    "out, call `engage` with their own words; the records, lessons, notes, handouts and literature searches follow on "
+    "their own. Then loop: `work` (say who you are) gives you the next task with the skill to read and the tool that "
+    "finishes it; do it, finish it (pass `record` as `work` says), and call `work` again until it returns nothing. Then "
+    "tell the person what now needs their judgement and where (the portal link in `brief`). Approving, deciding and "
+    "waiving are theirs alone: you present the evidence (`evidence`), never decide. Teach with `start`, `answer` and "
+    "`next`; grade what is waiting; never reveal a key before an answer.")
+PROMPTS = {
+    "continue": {"description": "Carry on: see what needs attention and do the waiting work.", "arguments": [],
+                 "text": "Call `brief`, then loop `work` (by=your name) doing each task with the skill it names and "
+                         "finishing it, until `work` returns no task. Then tell me what needs my judgement."},
+    "learn": {"description": "Teach me a course or topic and prepare everything for it.",
+              "arguments": [{"name": "what", "description": "the course or topic, in your words", "required": True}],
+              "text": "I want to learn: {what}. Call `engage` with my words as the intent, then do the work it opens "
+                      "(`work` in a loop). Decide how to teach it and what to prepare; tell me when the first lesson is ready."},
+    "investigate": {"description": "Investigate a research question end to end.",
+                    "arguments": [{"name": "question", "description": "the question, in your words", "required": True}],
+                    "text": "I want to find out: {question}. Call `engage` with my words (kind research), then do the work "
+                            "it opens (`work` in a loop): neutral literature searches, verification, the brief, the "
+                            "experiment plan. Stop where I must judge, and show me the evidence."},
+    "review": {"description": "Quiz me on what is due.", "arguments": [],
+               "text": "Call `brief`; if reviews are due, `start` a review lesson (scope review:due) and teach it, grading "
+                       "as you go."},
+}
 
 
 class Server:
@@ -55,10 +81,9 @@ class Server:
         try:
             if method == "initialize":
                 asked = (msg.get("params") or {}).get("protocolVersion")
-                result = {"protocolVersion": asked or PROTOCOL, "capabilities": {"tools": {"listChanged": False}},
-                          "serverInfo": {"name": "research-os", "version": __version__},
-                          "instructions": "Research OS record tools. Start with status; run a lesson with start, "
-                                          "answer and next; agents pick up work with tasks, claim and finish."}
+                result = {"protocolVersion": asked or PROTOCOL,
+                          "capabilities": {"tools": {"listChanged": False}, "prompts": {"listChanged": False}},
+                          "serverInfo": {"name": "research-os", "version": __version__}, "instructions": INSTRUCTIONS}
                 try:
                     self.follow_up(self.record(None))
                 except ValueError:
@@ -67,6 +92,20 @@ class Server:
                 result = {}
             elif method == "tools/list":
                 result = {"tools": self.tools()}
+            elif method == "prompts/list":
+                result = {"prompts": [{"name": n, "description": p["description"], "arguments": p["arguments"]}
+                                      for n, p in PROMPTS.items()]}
+            elif method == "prompts/get":
+                params = msg.get("params") or {}
+                p = PROMPTS.get(params.get("name"))
+                if p is None:
+                    return _error(mid, -32602, f"unknown prompt {params.get('name')}")
+                given = params.get("arguments") or {}
+                missing = [a["name"] for a in p["arguments"] if a["required"] and not str(given.get(a["name"], "")).strip()]
+                if missing:
+                    return _error(mid, -32602, f"the prompt needs {', '.join(missing)}")
+                text = p["text"].format(**{a["name"]: given.get(a["name"], "") for a in p["arguments"]})
+                result = {"description": p["description"], "messages": [{"role": "user", "content": {"type": "text", "text": text}}]}
             elif method == "tools/call":
                 params = msg.get("params") or {}
                 name, args = params.get("name"), dict(params.get("arguments") or {})
