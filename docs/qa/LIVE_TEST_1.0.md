@@ -58,10 +58,10 @@ inefficient process), **friction** (a person is inconvenienced).
 
 ## Result
 
-Forty-seven findings (F01-F46 above, plus the flake below): 35 fixed with regression tests (`tests/test_ros_live_fixes.py`,
-`tests/test_ros_live_research.py`), 2 documented, 9 left open and listed as such (F37, F38, F39, F45, F46: clip
-transcript attestation, evidence-locator strictness, verifier and video-scout tooling, plan-authoring ergonomics, answer
-ordering). After the fixes: 486 unit tests pass, the Chromium portal test passes (a whole lesson, Ask on every screen,
+Forty-six findings plus one flake: 38 fixed (two only in part) with regression tests (`tests/test_ros_live_fixes.py`,
+`tests/test_ros_live_research.py`), 2 documented in the README, and 5 left open and listed as such (F37, F38, F45, F46
+and the remainder of F39: clip transcript attestation, evidence-locator strictness, verifier and video-scout tooling,
+plan-authoring ergonomics, answer ordering). After the fixes: 486 unit tests pass, the Chromium portal test passes (a whole lesson, Ask on every screen,
 layout at 320-1920 px), the MCP server answers from the installed command and lists no person-only tool.
 
 **F47 (flake, open).** `tests/ros-portal-browser.cjs` timed out at "waiting for `.player`" twice, each time while another
