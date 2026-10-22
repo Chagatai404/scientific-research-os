@@ -23,6 +23,9 @@ jobs:
           echo '<p>hi</p>' > /tmp/d.html
           google-chrome --headless --disable-gpu --user-data-dir=/tmp/p1 --print-to-pdf=/tmp/d.pdf file:///tmp/d.html 2>&1 | tail -15; ls -la /tmp/d.pdf || true
           sysctl kernel.apparmor_restrict_unprivileged_userns || true
+          ls -la /usr/bin/chromium /usr/bin/chromium-browser; readlink -f /usr/bin/chromium
+          /usr/bin/chromium --version 2>&1 | tail -3 || true
+          /usr/bin/chromium --headless --disable-gpu --user-data-dir=/tmp/p2 --print-to-pdf=/tmp/d2.pdf file:///tmp/d.html 2>&1 | grep -v dbus | tail -8; ls -la /tmp/d2.pdf || true
       - name: Unit tests
         env:
           PYTHONPATH: ${{ github.workspace }}
