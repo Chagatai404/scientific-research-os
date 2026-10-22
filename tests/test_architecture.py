@@ -16,10 +16,10 @@ from ros import api, importers  # noqa: E402
 CORE = {"store", "home"}
 PURE = {"store", "learn.fsrs", "home", "install"}
 DOMAIN = {"tasks", "graph", "learn.evidence", "learn.schedule", "learn.probe", "learn.tutor", "learn.policy",
-          "prepare", "research", "importers", "export", "learn.fsrs", "context", "roadmap"}
+          "prepare", "research", "importers", "export", "learn.fsrs", "context", "roadmap", "vault", "handouts", "automation", "director", "atlas"}
 TOOLS_LAYER = {"api", "registry"} | {f"tools.{p.stem}" for p in (ROOT / "ros" / "tools").glob("*.py") if p.stem != "__init__"}
-INTERFACES = {"cli", "mcp", "serve", "__main__"}
-LIB_USERS = {"importers", "prepare"}
+INTERFACES = {"cli", "mcp", "serve", "__main__", "runner"}
+LIB_USERS = {"importers", "prepare", "handouts"}
 
 
 def modules() -> dict[str, set[str]]:
@@ -83,7 +83,7 @@ class LayeringTests(unittest.TestCase):
 
     def test_carried_over_engines_are_used_only_where_documented(self):
         users = {name for name, deps in self.mods.items() if any(top(d) == "lib" for d in deps)}
-        self.assertEqual(users, LIB_USERS, "ros.lib is used only by importers and prepare")
+        self.assertEqual(users, LIB_USERS, "ros.lib is used only by importers, prepare and handouts")
 
     def test_no_import_cycles(self):
         graph = {n: {d for d in deps if d in self.mods} for n, deps in self.mods.items()}
@@ -105,7 +105,7 @@ class LayeringTests(unittest.TestCase):
 class GuideTests(unittest.TestCase):
     def test_the_names_the_guide_relies_on_exist(self):
         """docs/ARCHITECTURE.md tells contributors where to add things; those places must exist."""
-        from ros import importers, prepare, registry, research, store, tasks
+        from ros import automation, director, handouts, importers, prepare, registry, research, store, tasks, vault
         from ros.learn import evidence, policy, probe
         guide = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
         for owner, names in ((store.Record, ("events", "event", "item", "node", "items_by_id", "current_items",
@@ -113,6 +113,8 @@ class GuideTests(unittest.TestCase):
                              (store, ("NODE_TYPES", "EDGE_TYPES", "event_id")), (registry, ("present", "LOCK", "tool")),
                              (policy, ("RULES", "Context")), (prepare, ("ROWS", "Row", "Gate")),
                              (importers, ("IMPORTERS",)), (tasks, ("KINDS", "open_task")),
+                             (automation, ("TRIGGERS", "THEN")), (director, ("PLAYBOOKS",)),
+                             (handouts, ("KINDS", "ROWS")), (vault, ("NODE_STUBS",)),
                              (research, ("STEPS", "ASSURANCE")), (evidence, ("of", "TYPES")), (probe, ("LessonView",))):
             for name in names:
                 with self.subTest(name=name):

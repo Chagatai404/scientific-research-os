@@ -1,0 +1,13 @@
+{
+  "resource_schema": 1,
+  "id": "RES-box-video",
+  "title": "Box counting explained",
+  "url": "https://example.org/video",
+  "kind": "video",
+  "authority": "university",
+  "license": "CC-BY",
+  "concepts": [
+    "box-counting"
+  ],
+  "status": "checked"
+}

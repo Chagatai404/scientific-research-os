@@ -139,7 +139,7 @@ class TaskOwnership(Fixture):
             api.call("finish", self.rec, task=tid, result="done", by="agent:b")
         self.assertEqual(api.call("finish", self.rec, task=tid, result="done")["by"], "agent:a")  # defaults to the claimer
         with self.assertRaises(ValueError):
-            api.call("tasks", self.rec, kind="scout")
+            api.call("tasks", self.rec, kind="nonsense")
 
 
 if __name__ == "__main__":

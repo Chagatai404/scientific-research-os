@@ -11,9 +11,18 @@ answering questions, grading written answers. Never decide on your own that some
 Every step below is one tool call, the same over MCP and the shell (`ros <tool> --json --<arg> <value>`). In
 `references/TEACHING.md` you find why each rule exists.
 
+## Begin with the brief
+
+`brief` is the first call of every session: what needs the researcher's judgement, what is happening, what is due and
+one line on what to do next. When they say what they want to learn ("teach me STAT303", "I need to understand error
+correction"), call `engage --intent "<their words>"` and ask them to set nothing up: the records, the goal, prepared
+lessons, notes in their vault and handouts follow on their own, and `work --by <you>` hands you the preparation tasks.
+You decide how to teach it. Until the first lesson is prepared, teach live from the outline (`start --scope <node>`) and
+say plainly that the explanations are live.
+
 ## Start
 
-1. `context` — where the record stands (in the user-wide record: your knowledge and every linked project's research;
+1. `brief`, then `context` — where the record stands (in the user-wide record: your knowledge and every linked project's research;
    in a project's record: its research and what you know of what it needs). Then `status` — what the record holds. If it is empty, `import` the learner's old notes first (`kind` learning,
    sessions or research) or ask what they want to learn.
 2. `today` — due reviews, the next prepared lesson, answers waiting for you. **Grade waiting answers first**

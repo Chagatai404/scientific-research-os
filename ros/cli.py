@@ -1,6 +1,10 @@
-"""``ros``: the command line. Every tool in ``ros.api`` is a subcommand with the same arguments (``--json`` for machine
+"""``ros``: the command line. With nothing after it, ``ros`` says what needs you and what to do next (and sets itself up
+the first time). ``ros ask "teach me STAT303"`` (or ``go``) says what you want and stays until the work that can run
+without an agent is done. Every tool in ``ros.api`` is a subcommand with the same arguments (``--json`` for machine
 output), plus:
 
+    ros ask "WORDS"               what you want to learn or find out; the records, lessons, notes and handouts follow
+    ros go [WORDS]                the same, or with no words: carry on with what is waiting
     ros init NAME [--here]        create a record (in ~/ResearchOS/projects, or ./.ros with --here)
     ros projects                  list records
     ros tools                     list tools with their arguments, as JSON schemas with --json
@@ -17,8 +21,28 @@ import json
 from pathlib import Path
 import sys
 
-from . import __version__, api, home
+from . import __version__, api, home, runner
 from .store import Record
+
+
+ALIASES = {"b": ["brief"], "st": ["status"], "q": ["queue"], "w": ["work"], "d": ["doctor"], "v": ["vault_status"],
+           "r": ["learn", "review:due"], "open": ["serve", "--open"]}
+SPECIAL = ("init", "projects", "tools", "learn", "mcp", "install", "serve", "go")
+
+
+def expand(argv: list[str]) -> list[str]:
+    """A short name (``ros b``) becomes its command; global options before it stay where they are."""
+    skip = False
+    for i, a in enumerate(argv):
+        if skip:
+            skip = False
+        elif a in ("--project", "-p"):
+            skip = True
+        elif not a.startswith("-"):
+            if a == "ask" and i + 1 < len(argv) and not argv[i + 1].startswith("-"):
+                return argv[:i] + ["go"] + argv[i + 1:]  # `ros ask "teach me STAT303"`; `ask --lesson ...` stays the tool
+            return argv[:i] + ALIASES.get(a, [a]) + argv[i + 1:]
+    return argv
 
 
 def _value(p: api.Param):
@@ -91,6 +115,16 @@ def parser(only: str | None = None) -> argparse.ArgumentParser:
     s.add_argument("--no-link", action="store_true", help="do not join the user-wide knowledge graph")
     add("projects", help="list records")
     add("tools", help="list tools")
+    for name, what in (("go", "say what you want to learn or find out, or carry on (ros ask \"words\" is the same)"),):
+        s = add(name, help=what, description=what)
+        s.add_argument("intent", nargs="*", help="your words (for go: none means carry on)")
+        s.add_argument("--kind", choices=("course", "topic", "research", "review", "continue"),
+                       help="what it is (default: worked out from your words)")
+        s.add_argument("--deadline", help="ISO date to finish by")
+        s.add_argument("--pace", type=int, help="minutes a week")
+        s.add_argument("--materials", help="where the course material is, or what it is")
+        s.add_argument("--timeout", type=float, default=600, help="seconds to wait for local jobs (default 600)")
+        s.add_argument("--watch", action="store_true", help="keep running, keeping the record in step, until Ctrl+C")
     s = add("learn", help="a lesson in the terminal")
     s.add_argument("scope", nargs="?", help="capability:x, course:y, concept:z ... (default: the bundle's goal)")
     s.add_argument("--bundle", help="a prepared bundle; the lesson starts only when it is ready")
@@ -103,6 +137,7 @@ def parser(only: str | None = None) -> argparse.ArgumentParser:
     s.add_argument("--user", action="store_true", help="install for the user (home folder) instead of a project")
     s.add_argument("--force", action="store_true", help="overwrite installed files changed by hand")
     s.add_argument("--dry-run", action="store_true", help="say what would be written")
+    s.add_argument("--hooks", action="store_true", help="claude: also add a SessionStart hook that shows `ros brief`")
     s = add("serve", help="the localhost portal")
     s.add_argument("--port", type=int, default=8737)
     s.add_argument("--open", action="store_true", help="open it in the browser")
@@ -130,8 +165,16 @@ def emit(value, as_json: bool) -> None:
 def main(argv: list[str] | None = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
-    argv = sys.argv[1:] if argv is None else argv
-    args = parser(command_of(argv)).parse_args(argv)
+    argv = expand(sys.argv[1:] if argv is None else argv)
+    if not any(not a.startswith("-") for a in argv) and not {"--help", "-h", "--version"} & set(argv):
+        return _bare(argv)
+    cmd = command_of(argv)
+    if cmd and cmd not in SPECIAL and cmd not in api.TOOLS:
+        close = home.suggest(cmd, [*SPECIAL, *api.TOOLS, *ALIASES])
+        sys.stderr.write(f"ros: unknown command {cmd!r}" + (f" (did you mean {', '.join(close)}?)" if close else "")
+                         + ". `ros tools` lists them, `ros` says what to do next.\n")
+        return 2
+    args = parser(cmd).parse_args(argv)
     try:
         if args.command == "init":
             root = home.init(args.name, Path.cwd() if args.here else None)
@@ -158,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "install":
             from . import install
             out = install.install(args.client, Path(args.target) if args.target else None, args.user, args.force,
-                                  args.dry_run)
+                                  args.dry_run, args.hooks)
             if not args.json and len(out.get("written", [])) > 10:  # a person wants the count, not 75 file names
                 out = {**out, "written": f"{len(out['written'])} files (--json lists them)"}
             emit(out, args.json)
@@ -166,7 +209,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "mcp":
             from . import mcp
             return mcp.serve(args.project, portal=args.portal)
-        root = home.resolve(args.project)
+        if args.command == "go":
+            return _ask(args)
+        try:
+            root = home.resolve(args.project)
+        except ValueError as exc:
+            if not home.projects() and not args.project:
+                raise ValueError("no records yet: run `ros` to set yourself up (or `ros init <name>`)") from exc
+            raise
         rec = Record(root)
         try:
             if args.command == "learn":
@@ -175,6 +225,8 @@ def main(argv: list[str] | None = None) -> int:
                 from . import serve
                 return serve.run(rec, args.port, args.open)
             t = api.TOOLS[args.command]
+            if t.name == "brief" and not args.json and not getattr(args, "as_of", None) and not getattr(args, "compact", False):
+                args.text = True  # people read a few lines; `--json` is for programs
             if t.human and not _confirm(t, args):
                 sys.stderr.write(f"ros: {t.name} is a person's decision and was not recorded: run it at a terminal and "
                                  "type yes, or make it in the portal (ros serve)\n")
@@ -182,9 +234,17 @@ def main(argv: list[str] | None = None) -> int:
             # `0 in (None, False)` is true in Python: compare by identity so an answer of 0 is not dropped
             out = t.call(rec, {k: getattr(args, _dest(k)) for k in t.params
                                if getattr(args, _dest(k), None) is not None and getattr(args, _dest(k)) is not False})
+            if t.writes and t.name not in ("reconcile", "job_done"):
+                try:  # what follows from the change happens now (see ros.automation)
+                    api.call("reconcile", rec, mode="call")
+                except Exception:
+                    pass
             if t.name == "migrate":
                 emit(out if args.json else _migration_summary(out), args.json)
                 return 0 if out["check"]["ok"] else 5
+            if t.name == "doctor" and not args.json:
+                emit(_doctor_text(out), False)
+                return 0 if out["ok"] else 1
             emit(out, args.json)
         finally:
             rec.close()
@@ -192,7 +252,7 @@ def main(argv: list[str] | None = None) -> int:
     except (ValueError, KeyError) as exc:
         msg = exc.args[0] if exc.args else str(exc)
         if isinstance(exc, KeyError):  # str(KeyError('status')) is just "status"; say what it means
-            msg = f"not found: {msg}"
+            msg = f"not found: {msg}" + _nearest(args, str(msg))
         if args.json:
             sys.stdout.write(json.dumps({"error": str(msg)}) + "\n")
         else:
@@ -200,20 +260,166 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
 
+def _nearest(args, missing: str) -> str:
+    """For a node id that does not exist, the ones that do and look like it."""
+    try:
+        rec = Record(home.resolve(args.project))
+        try:
+            word = missing.split(":", 1)[-1].replace("-", " ")
+            found = [n["id"] for n in rec.search_nodes(word, limit=3)] or [
+                n["id"] for n in rec.search_nodes(word[: max(3, len(word) // 2)], limit=3)]
+        finally:
+            rec.close()
+        return f" (did you mean {', '.join(found)}?)" if found else ""
+    except Exception:
+        return ""
+
+
+def _doctor_text(out: dict) -> str:
+    lines = []
+    for c in out["checks"]:
+        mark = "ok " if c["ok"] else ("!! " if c["level"] == "needed" else ".. ")
+        lines.append(f"{mark}{c['check']}: {c['detail']}" + (f"\n     fix: {c['fix']}" if c.get("fix") else ""))
+    return "\n".join(lines + ["", "Everything needed is set up." if out["ok"] else "Something needed is not set up (the lines marked !!)."])
+
+
+# ---- zero configuration: ros, ros ask, ros go ---------------------------------------------------------------------
+def _zero_config(project: str | None, quiet: bool = False) -> Record:
+    """The record to work on. On a first run, with no record anywhere, make the user-wide one (``me``), and tell the person
+    what was done and the one thing left to choose (their Obsidian vault)."""
+    try:
+        return Record(home.resolve(project))
+    except ValueError:
+        if project or home.projects():
+            raise
+    root = home.init("me")
+    rec = Record(root)
+    api.call("link", rec, user_wide=True)
+    if not quiet:
+        found = api.call("vault_set", rec)
+        lines = [f"Welcome. Your records live in {home.home()}; the one that holds everything you know is 'me'."]
+        if found.get("vault"):
+            lines.append(f"Your notes and PDFs go to the Obsidian vault {found['vault']}.")
+        elif found.get("detected"):
+            lines.append("Obsidian knows these vaults: " + "; ".join(v["path"] for v in found["detected"][:3])
+                         + ". Choose one with `ros vault_set --path <vault>`.")
+        else:
+            lines.append("Choose your Obsidian vault with `ros vault_set --path <vault>` so notes and PDFs have a home.")
+        sys.stdout.write("\n".join(lines) + "\n\n")
+    return rec
+
+
+def _bare(argv: list[str]) -> int:
+    """``ros`` alone: what needs you, what is happening, one line on what to do next."""
+    project, as_json = None, "--json" in argv
+    for i, a in enumerate(argv):
+        if a in ("--project", "-p") and i + 1 < len(argv):
+            project = argv[i + 1]
+    try:
+        rec = _zero_config(project)
+    except (ValueError, KeyError) as exc:
+        sys.stderr.write(f"ros: {exc.args[0] if exc.args else exc}\n")
+        return 2
+    try:
+        out = api.call("brief", rec, text=not as_json)
+        emit(out, as_json)
+        return 0
+    finally:
+        rec.close()
+        api.release()
+
+
+def _open_all(rec: Record) -> list[Record]:
+    out = [rec]
+    for r in api.call("records", rec):
+        if not r["current"]:
+            out.append(Record(home.home() / "projects" / r["name"]))
+    return out
+
+
+def _ask(args) -> int:
+    """``ros ask "..."``: say it, then stay until what can run without an agent has run, and show where things stand."""
+    from . import runner
+    rec = _zero_config(args.project)
+    opened: list[Record] = []
+    say = (lambda *a: None) if args.json else (lambda *a: print(*a, flush=True))
+    try:
+        text = " ".join(args.intent).strip()
+        out = api.call("engage", rec, intent=text, kind=args.kind or ("continue" if not text else None),
+                       deadline=args.deadline, pace=args.pace, materials=args.materials)
+        say(_engaged_text(out))
+        opened = _open_all(rec)
+        timer = runner.Runner(lambda: opened)
+
+        def progress(r: dict) -> None:
+            say(f"  {'ok' if r['ok'] else 'failed'}: {r.get('brief') or r['job']} ({r['seconds']} s)" + (
+                f" — {r['output'].strip().splitlines()[-1][:100]}" if not r["ok"] and r.get("output", "").strip() else ""))
+        total = timer.until_idle(args.timeout, progress)
+        if args.watch:
+            say("Keeping everything in step; Ctrl+C to stop.")
+            try:
+                import time
+                while True:
+                    timer.tick_once(scan=True)
+                    for r in timer.run_jobs_once(limit=3):
+                        progress(r)
+                    time.sleep(5)
+            except KeyboardInterrupt:
+                pass
+        brief = api.call("brief", rec, text=not args.json)
+        if args.json:
+            emit({"engaged": out, "ran": total, "brief": brief}, True)
+        else:
+            say("\n" + brief)
+        return 0
+    finally:
+        for r in opened:
+            if r is not rec:
+                r.close()
+        rec.close()
+        api.release()
+
+
+def _engaged_text(out: dict) -> str:
+    lines = {"course": "Set up the course", "topic": "Set up the topic", "research": "Set up the question",
+             "review": "Review", "continue": "Carrying on"}
+    head = lines.get(out["kind"], out["kind"]) + (f" ({out['hub']})" if out.get("hub") else "")
+    rows = [head + "."]
+    tasks_ = out.get("agent_tasks") or []
+    if tasks_:
+        kinds: dict[str, int] = {}
+        for t in tasks_:
+            kinds[t["kind"]] = kinds.get(t["kind"], 0) + 1
+        rows.append("For your agent: " + ", ".join(f"{n} {k}" for k, n in kinds.items()) + ". Open it and say \"continue\".")
+    rows += [f"For you: {x}" for x in out.get("for_you", [])]
+    if out.get("vault", {}).get("inbox"):
+        rows.append(f"Drop material into the vault at {out['vault']['inbox']}.")
+    return "\n".join(rows)
+
+
 def _migration_summary(out: dict) -> str:
-    c, ln, se, rs = out["check"], out["learning"], out["sessions"], out["research"]
+    c, ln, se, rs, cov = out["check"], out["learning"], out["sessions"], out["research"], out["coverage"]
     lines = [f"Vault: {out['vault']}",
              f"Learning notes: {ln['capabilities']} capabilities, {ln['events_added']} new retrieval rows"
              + (f", {len(ln['diagnostics'])} diagnostics" if ln["diagnostics"] else ""),
              f"Sessions: {se['sessions']} imported, {se['items']} new items, {se['events_added']} new events"
              + (f", {len(se['problems'])} problems" if se["problems"] else ""),
-             f"Research records: {rs['records']}",
-             f"Check: {c['answers']} answers in {c['sessions']} session files, {c['missing']} missing from the history "
-             f"({c['history_rows']} history rows): {'OK' if c['ok'] else 'NOT OK'}"]
+             f"Research records: {rs['records']}"
+             + (f", {rs['unreferenced_atoms']} uncited claims kept" if rs.get("unreferenced_atoms") else "")]
+    more = [("notes", "notes", "notes"), ("session_notes", "session_notes", "session pages"), ("projects", "projects", "projects"),
+            ("papers", "papers", "papers"), ("legacy_tasks", "tasks", "research tasks"), ("visuals", "visuals", "visuals"),
+            ("resources", "resources", "resources"), ("handouts", "handouts", "handouts")]
+    lines.append("Also: " + ", ".join(f"{out[k][f]} {label}" for k, f, label in more if out.get(k, {}).get(f)) + ".")
+    lines.append(f"Check: {c['answers']} answers in {c['sessions']} session files, {c['missing']} missing from the history "
+                 f"({c['history_rows']} history rows).")
+    lines.append(f"Coverage: {cov['files']} files: {cov['imported']} read in, {cov['derived']} derived, {cov['retired']} retired "
+                 f"(each with its reason), {cov['unknown']} unknown"
+                 + (f", {cov['not_imported']} not found in the record" if cov["not_imported"] else "") + f": {'OK' if c['ok'] else 'NOT OK'}")
+    lines += [f"  unknown: {f}" for f in cov["unknown_files"][:20]] + [f"  not in the record: {f}" for f in cov["not_imported_files"][:20]]
     lines += [f"  {s['session']}: missing {', '.join(s['missing'])}" for s in c["per_session"] if s["missing"]]
     lines += [f"  problem: {p}" for p in se["problems"]] + [f"  diagnostic: {d}" for d in ln["diagnostics"][:20]]
     lines += [f"  warning: {w}" for w in out.get("warnings", [])]
-    return "\n".join(lines) + "\nFull report: migration-report.json in the record."
+    return "\n".join(lines) + "\nFull report: migration-report.json in the record; `ros migrate_check` re-checks without writing."
 
 
 def _confirm(t, args) -> bool:

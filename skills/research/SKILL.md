@@ -9,6 +9,15 @@ The researcher works at four points: **Frame**, **Plan approval**, **Defend**, *
 as agent work and ends in the decision queue (`queue`). Contract: `references/RESEARCH.md`; evidence rules:
 `references/EVIDENCE.md`.
 
+## Direct it
+
+The researcher says what they want to find out: `engage --intent "<their words>"` frames the question verbatim and opens
+three neutral literature searches. Then `work --by <you>` in a loop: scout, verify what the scouts found (the record opens
+one verification per candidate), write the literature brief (lens `lenses/literature-brief.md`), propose the experiment
+(`authorization: awaiting`, with a scale ladder and a compute budget), and when it is approved the record opens the
+`run` task. Claims are audited automatically (the record requests the audits when a claim is added). Stop where the
+researcher must judge, and show them `evidence --subject <id>`; `approve`, `decide` and `waive` are theirs alone.
+
 ## Start from the context
 
 `context` first. In a project's record it gives the research graph's next steps and the state of each user capability

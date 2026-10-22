@@ -18,8 +18,9 @@ from ros.store import Record  # noqa: E402
 import support_ros_demo as demo  # noqa: E402
 
 SKILLS = {"learn", "prepare", "research", "audit", "defend", "notes-to-latex"}
-AGENTS = {"scout", "verifier", "auditor", "adversary", "visual-maker", "video-scout"}
-REFERENCES = {"TEACHING", "PREPARATION", "RESEARCH", "EVIDENCE", "DATA_MODEL", "PORTAL", "VOICE", "SAFETY"}
+AGENTS = {"scout", "verifier", "auditor", "adversary", "visual-maker", "video-scout", "librarian"}
+REFERENCES = {"TEACHING", "PREPARATION", "RESEARCH", "EVIDENCE", "DATA_MODEL", "PORTAL", "VOICE", "SAFETY",
+              "VAULT", "HANDOUTS", "DIRECTOR"}
 
 
 class Fixture(unittest.TestCase):
@@ -89,24 +90,29 @@ class InstallTests(Fixture):
 
 class ExportTests(Fixture):
     def test_obsidian_notes_and_edits_are_kept(self):
+        import os
+        from unittest import mock
         rec, _ = demo.build(self.tmp / "rec")
         self.addCleanup(rec.close)
         research.decide(rec, "claim:width", "revise", "Researcher", "Needs the integrity audit.")
         vault = self.tmp / "vault"
-        out = export.obsidian(rec, vault)
-        base = vault / out["folder"]
-        self.assertTrue((base / "rec.md").exists())
-        note = (base / "capabilities" / "variance.md").read_text()
-        self.assertIn("[[mean|Mean]]", note)
-        self.assertEqual(len(list((base / "decisions").glob("*.md"))), 1)
-        self.assertEqual(export.obsidian(rec, vault)["written"], [])
-        (base / "capabilities" / "variance.md").write_text(note + "\nMy own insight.\n")
-        rec.append("retrieval", "capability:variance", {"day": "2026-09-01", "period": "p", "timing": "same-session",
-                                                        "method": "explanation", "outcome": "fail",
-                                                        "assistance": "none", "evidence": "e", "review": None})
-        again = export.obsidian(rec, vault)
-        self.assertIn(f"{out['folder']}/capabilities/variance.md", again["kept_edited"])
-        self.assertIn("My own insight.", (base / "capabilities" / "variance.md").read_text())
+        vault.mkdir()
+        with mock.patch.dict(os.environ, {"ROS_HOME": str(self.tmp / "home")}):
+            out = api.call("export", rec, kind="obsidian", path=str(vault))
+            base = vault / "Research OS" / "Projects" / "rec"
+            self.assertTrue((base / "rec.md").exists())
+            note = (base / "Capabilities" / "Variance.md").read_text()
+            self.assertIn("[[Research OS/Projects/rec/Capabilities/Mean|Mean]]", note)
+            self.assertEqual(len(list((base / "Decisions").glob("*.md"))), 1)
+            self.assertEqual(api.call("export", rec, kind="obsidian", path=str(vault))["created"], [])
+            (base / "Capabilities" / "Variance.md").write_text(note.replace("## Requires", "## My reading"))
+            rec.append("retrieval", "capability:variance", {"day": "2026-09-01", "period": "p", "timing": "same-session",
+                                                            "method": "explanation", "outcome": "fail",
+                                                            "assistance": "none", "evidence": "e", "review": None})
+            again = api.call("export", rec, kind="obsidian", path=str(vault))
+            self.assertIn("Research OS/Projects/rec/Capabilities/Variance.md", again["kept_edited"])
+            self.assertIn("## My reading", (base / "Capabilities" / "Variance.md").read_text())
+            self.assertGreater(out["created_count"], 3)
 
     def test_static_snapshot_is_self_contained_and_says_read_only(self):
         rec, bundle = demo.build(self.tmp / "rec")
@@ -143,7 +149,7 @@ class DocsContractTests(unittest.TestCase):
         self.assertTrue(m, f"{path} has no frontmatter")
         return dict(line.split(":", 1) for line in m.group(1).splitlines() if ":" in line)
 
-    def test_six_skills_six_agents_eight_protocols(self):
+    def test_the_skills_agents_and_protocols_are_all_present(self):
         self.assertEqual({p.name for p in (ROOT / "skills").iterdir() if p.is_dir()}, SKILLS)
         self.assertEqual({p.stem for p in (ROOT / "agents").glob("*.md")}, AGENTS)
         self.assertEqual({p.stem for p in (ROOT / "references").glob("*.md")}, REFERENCES)

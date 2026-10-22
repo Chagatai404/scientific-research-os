@@ -6,10 +6,13 @@ writer for as long as it runs. Open it in any browser or in Obsidian's core Web 
     GET  /api/<tool>?a=b    a read-only tool from ``ros.api``
     POST /api/<tool>        any tool, JSON body; requires the header ``X-ROS: 1``
     GET  /media/<path>      bundle media and lesson logs, with byte ranges for seeking
+    GET  /vault/<path>      a note, PDF or image from the Obsidian vault's Research OS folder (read only)
     GET  /events            server-sent events: ``change`` whenever the record grows (a grade arrives, a task is done)
 
-Only loopback clients are served, and only with a loopback ``Host`` header (no DNS rebinding). Writes need the
-custom header, which a cross-site form cannot send.
+Every tool call takes an optional ``record`` (a record's name) to work on another record the person has: the page shows
+one at a time and switches. Only loopback clients are served, and only with a loopback ``Host`` header (no DNS
+rebinding). Writes need the custom header, which a cross-site form cannot send. ``/vault`` serves only files below the
+vault's Research OS folder, of a short list of types, never a hidden file and never through a link that leaves it.
 """
 from __future__ import annotations
 
@@ -26,11 +29,12 @@ import time
 from urllib.parse import parse_qs, unquote, urlparse
 import webbrowser
 
-from . import api
+from . import api, home, runner
 from .store import Record
 
 STATIC = Path(__file__).resolve().parent / "portal"
 MEDIA_DIRS = ("bundles", "logs")
+VAULT_TYPES = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".md", ".canvas", ".base"}
 LOOPBACK = {"127.0.0.1", "localhost", "[::1]"}
 TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".woff2": "font/woff2",
          ".html": "text/html; charset=utf-8", ".svg": "image/svg+xml", ".md": "text/markdown; charset=utf-8",
@@ -38,7 +42,41 @@ TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf
          ".webm": "video/webm", ".json": "application/json"}
 
 
-def make_handler(rec: Record):
+class Pool:
+    """The records a portal can work on: the one it was started for, and any other record of the home, opened on first use
+    and kept (each a single writer inside this process, serialized by ``api.LOCK``)."""
+
+    def __init__(self, default: Record):
+        self.default = default
+        self._records = {default.root.name: default}
+        self._lock = threading.Lock()
+
+    def get(self, name: str | None = None) -> Record:
+        if not name or name == self.default.root.name:
+            return self.default
+        if not isinstance(name, str) or name not in home.projects():
+            raise ValueError(f"no record {name!r}")
+        with self._lock:
+            if name not in self._records:
+                self._records[name] = Record(home.home() / "projects" / name)
+            return self._records[name]
+
+    def all(self) -> list[Record]:
+        with self._lock:
+            return list(self._records.values())
+
+    def close(self) -> None:
+        with self._lock:
+            for r in self._records.values():
+                if r is not self.default:
+                    r.close()
+            self._records = {self.default.root.name: self.default}
+
+
+def make_handler(rec: "Record | Pool"):
+    pool = rec if isinstance(rec, Pool) else Pool(rec)
+    rec = pool.default
+
     class Handler(BaseHTTPRequestHandler):
         server_version = "ResearchOS"
         protocol_version = "HTTP/1.1"
@@ -93,7 +131,13 @@ def make_handler(rec: Record):
                 parts = rel.split("/")
                 if parts[0] not in MEDIA_DIRS or any(p in ("", ".", "..") for p in parts) or "\\" in rel:
                     return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
-                return self._file(rec.root / rel, cache=False, base=rec.root / parts[0])
+                try:
+                    mine = pool.get(parse_qs(url.query).get("record", [None])[-1])
+                except ValueError:
+                    return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
+                return self._file(mine.root / rel, cache=False, base=mine.root / parts[0])
+            if path.startswith("/vault/"):
+                return self._vault(path[len("/vault/"):])
             if path == "/events":
                 return self._events()
             self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
@@ -122,10 +166,29 @@ def make_handler(rec: Record):
                 return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
             self._tool(path[5:], args, write=True)
 
+        def _vault(self, rel: str):
+            """A file from the vault's Research OS folder: confined, typed, never hidden, never through a link out."""
+            try:
+                root = api.call("vault_root", rec)
+            except (ValueError, KeyError):
+                root = None
+            parts = rel.split("/")
+            if not root or any(p in ("", ".", "..") or p.startswith(".") for p in parts) or "\\" in rel \
+                    or Path(rel).suffix.lower() not in VAULT_TYPES:
+                return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
+            base = Path(root)
+            # the page asks for paths as they appear in the vault ("Research OS/Courses/..."): drop the folder itself
+            sub = "/".join(parts[1:]) if parts[0] == base.name else rel
+            return self._file(base / sub, cache=False, base=base)
+
         def _tool(self, name, args, write):
             t = api.TOOLS.get(name)
             if t is None:
                 return self._send(HTTPStatus.NOT_FOUND, {"error": f"no tool {name}"})
+            try:
+                target = pool.get(args.pop("record", None))
+            except ValueError as exc:
+                return self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
             if t.writes and not write:
                 return self._send(HTTPStatus.METHOD_NOT_ALLOWED, {"error": f"{name} writes: use POST"})
             if t.human and self.headers.get("Sec-Fetch-Site") != "same-origin":
@@ -134,7 +197,7 @@ def make_handler(rec: Record):
                 return self._send(HTTPStatus.FORBIDDEN, {"error": f"{name} is a person's decision: make it in the "
                                                                   "portal page"})
             try:
-                result = t.call(rec, args)
+                result = t.call(target, args)
             except (ValueError, KeyError) as exc:
                 return self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc.args[0] if exc.args else exc)})
             self._send(HTTPStatus.OK, {"result": result})
@@ -219,10 +282,31 @@ class PortalServer(ThreadingHTTPServer):
         super().server_bind()
 
 
-def _bind(rec: Record, port: int) -> PortalServer:
+class AlreadyRunning(ValueError):
+    """Another portal of ours already answers on the port; ``url`` is where. ``run`` opens it instead of failing."""
+
+    def __init__(self, url: str):
+        super().__init__(f"a Research OS portal already runs at {url}: use it, or pass --port N (0 for any free port)")
+        self.url = url
+
+
+def _ours(port: int) -> bool:
+    """Whether what listens on this port is a Research OS portal (it says so in its ``Server`` header)."""
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=1.5) as c:
+            c.sendall(b"GET /api/records HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n")
+            c.settimeout(1.5)
+            return b"Server: ResearchOS" in c.recv(2048)
+    except OSError:
+        return False
+
+
+def _bind(rec: "Record | Pool", port: int) -> PortalServer:
     try:
         return PortalServer(("127.0.0.1", port), make_handler(rec))
     except OSError as exc:
+        if port and _ours(port):
+            raise AlreadyRunning(f"http://127.0.0.1:{port}/") from exc
         raise ValueError(f"port {port} is in use (is another 'ros serve' running?): pass --port N, or 0 for any "
                          f"free port") from exc
 
@@ -236,15 +320,25 @@ def start(rec: Record, port: int = 8737) -> ThreadingHTTPServer:
 
 
 def run(rec: Record, port: int = 8737, open_browser: bool = False) -> int:
-    server = _bind(rec, port)
+    pool = Pool(rec)
+    try:
+        server = _bind(pool, port)
+    except AlreadyRunning as other:  # one portal is enough: open it
+        print(f"Research OS is already running: {other.url}", flush=True)
+        if open_browser:
+            webbrowser.open(other.url)
+        return 0
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"Research OS portal for {rec.root.name}: {url}  (Ctrl+C to stop)", flush=True)
     if open_browser:
         webbrowser.open(url)
+    timer = runner.Runner(pool.all).start()  # the portal keeps every record it has open in step on its own
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        timer.stop()
         server.server_close()
+        pool.close()
     return 0

@@ -9,7 +9,7 @@ You read artifacts cold. You are given a claim's text and file paths; you are ne
 the author's reasoning. If you authored the claim, stop: the record refuses your verdict. Contract:
 `references/RESEARCH.md`.
 
-1. `tasks --kind audit` (or `verify`), pick one, `claim` it with your agent name.
+1. `work --by <you> --kinds '["audit","verify"]'` takes the next audit (or `tasks --kind audit`, then `claim` it with your agent name).
 2. Load the domain lens the claim needs from `lenses/` (statistics, physics, mathematics, chemistry, biology, ml, qml,
    simulation, reproducibility).
 3. Do the step:

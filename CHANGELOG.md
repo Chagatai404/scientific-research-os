@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.2.0: the director
+
+You are the director: you say what you want to learn or find out, an agent does the rest, and you judge the findings.
+The plan and its reasons are in `docs/plans/v1.2-director.md`.
+
+- **Say it in words.** `ros` alone shows what needs you; `ros go "teach me STAT303 by December"` (or `ros ask`) and the
+  same words to an agent through MCP (`engage`) set up the course or the research question, its records, its goal and the
+  first tasks. Agents take work with `work`; nothing is started or stopped by hand. First run creates your record.
+- **Automation.** `reconcile` (after every agent write, on a timer, on scan, daily) audits new claims, opens `run` tasks
+  for approved experiments, prepares the next lessons, writes course handouts, verifies scouted literature and asks for
+  the literature brief, runs the readiness gates, builds PDFs and syncs the vault. Cursors make a quiet record cost one
+  comparison; every trigger is idempotent. The `Runner` lives exactly as long as `ros mcp` or `ros serve`: no daemon, no
+  pidfiles. Jobs (PDF builds, voice) run outside the write lock with allowlisted commands.
+- **Handouts are back**: lecture notes (layered: gist, recall questions, lecture, derivation), recitations, course
+  chapters, literature briefs and experiment-findings reports; Markdown to Obsidian callouts, LaTeX (`xelatex`, with the
+  old `roshandout` class) or headless Chromium (KaTeX vendored), behind a gate (sources, no internal keys, math, structure,
+  figures, PDF, review).
+- **The Obsidian vault is the knowledge base.** One `Research OS/` folder (auto-detected vault; legacy notes linked
+  read-only): per-course folders, capability, claim, decision, question, paper and handout notes with PDFs, Home, MOCs,
+  Bases and canvases, a daily review, and a decision log. Notes carry frontmatter and a generated region; your own text
+  below it is never touched and flows back as events (`note.annotate`, `note.reviewed`, `note.dismiss`, `note.release`).
+  Files dropped in the Inbox are read in (`inbox.found`, `ingest` tasks). Incremental sync, one stat per file on scan.
+- **Portal**: Director home (what needs you, what is moving, what changed), Learn, Research, **Graphs** (knowledge,
+  research, chain from a lesson to a claim, progress, with evidence), **Vault** (state, find, open any note or PDF),
+  History; a record switcher and one search. Server-side layered layout, linear time.
+- **CLI**: `ros`, `go`, `brief`, `work`, `evidence`, `doctor`, `vault_*`, short aliases, did-you-mean for mistyped
+  commands, `ros install --hooks` for a briefing at session start (changes `.claude/settings.json` only on request).
+- **Migration**: every pre-1.0 file is read in or named as retired (`migrate_check`): projects, notes, session notes,
+  papers, legacy tasks, visuals, resources, handouts and uncited evidence, with proof of coverage and a `legacy_sync`
+  trigger for notes that keep arriving.
+- **Changed**: `export --kind obsidian` is now the vault sync (v1.0 decision 5, "only curated notes", is superseded);
+  `tasks` fold incrementally with first-claim-wins and priorities; the MCP server accepts `record` to choose a record.
+- **Tests**: 675 unit tests, prompt-only end-to-end scenarios (`tests/test_ros_e2e_director.py`), benchmarks
+  (`tests/test_ros_director_bench.py`, `ROS_BENCH=1` for large sizes), the portal browser test.
+
 ## 1.1.0: the two graphs, gaps and roadmaps
 
 - **Gaps and roadmap** (`gaps`, `roadmap`, `roadmap_tasks`, `goal`): what a target needs that you do not have, and the

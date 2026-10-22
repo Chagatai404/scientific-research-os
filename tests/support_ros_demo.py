@@ -35,6 +35,7 @@ def build(root: Path) -> tuple[Record, str]:
     rec.put_node(BASE, "capability", title="Mean", retention_target="core")
     rec.put_node(GOAL, "capability", title="Variance", retention_target="core")
     rec.put_edge(GOAL, "requires", BASE)
+    rec.put_node("course:stat-demo", "course", title="Statistics")
     rec.put_edge(GOAL, "part-of", "course:stat-demo")
     rec.put_edge(BASE, "part-of", "course:stat-demo")
     probe = [rec.put_item({"kind": "numeric", "prompt": f"Level {d}: $Var({d}X)$ when $Var(X)=1$?", "answer": d * d,

@@ -1,8 +1,8 @@
 """Views written out of the record: Markdown lesson logs (math stays as LaTeX, so any Markdown viewer with KaTeX
-renders it) and curated Obsidian notes. A view is regenerated from events each time; editing it changes nothing."""
+renders it) and a read-only snapshot. The Obsidian notes are ``ros.vault``. A view is regenerated from events each
+time; editing it changes nothing."""
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 import re
 
@@ -79,77 +79,8 @@ def _show(item: dict, response) -> str:
     return str(response)
 
 
-# ---- curated Obsidian notes -----------------------------------------------------------------------------------------
-MARK = "ros_export"
-
-
-def obsidian(rec: Record, vault: Path | str, folder: str | None = None, as_of=None) -> dict:
-    """Write the curated view of a record into a vault folder: one note for the course or project, one per capability
-    (state, prerequisites as links), one per human decision. A note carries a hash of what was exported; if the
-    researcher has edited it since, it is left alone and reported. Nothing else in the vault is touched."""
-    from datetime import date
-    from . import graph, research
-    vault = Path(vault).resolve()
-    base = vault / (folder or f"Research OS/{rec.root.name}")
-    learning = graph.Learning(rec, as_of or date.today())
-    notes: dict[Path, str] = {}
-
-    def link(cap: str) -> str:
-        return f"[[{_slug(cap)}|{learning.caps[cap].node.get('title', cap.split(':', 1)[-1])}]]" if cap in learning.caps \
-            else cap.split(":", 1)[-1]
-
-    rows = ["| Capability | State | Next review | Ready |", "|---|---|---|---|"]
-    for key in learning.order(learning.caps):
-        v = learning.view(key)
-        rows.append(f"| {link(key)} | {v['state']} | {v['next_review'] or '—'} | {'yes' if v['ready'] else 'no'} |")
-        body = [f"# {v['title']}", "", f"State: **{v['state']}**" + (f", next review {v['next_review']}" if v["next_review"] else ""),
-                "", "Requires: " + (", ".join(link(p) for p in v["prerequisites"]) or "nothing"), ""]
-        if v["blocked_by"]:
-            body += ["Blocked by: " + ", ".join(link(p) for p in v["blocked_by"]), ""]
-        notes[base / "capabilities" / f"{_slug(key)}.md"] = "\n".join(body)
-    claims = research.claims(rec)
-    lessons = [n for n in rec.nodes(type="lesson") if not n["id"].startswith("bundle:")]
-    index = [f"# {rec.root.name}", "", "Exported from the Research OS record; edit the record, not this note.", "",
-             "## Capabilities", "", *(rows if learning.caps else ["None yet."]), ""]
-    if claims:
-        index += ["## Claims", "", "| Claim | Verdict | Ownership |", "|---|---|---|"]
-        index += [f"| {c['text'] or c['id']} | {c['verdict']} | {c['ownership']} |" for c in claims]
-        index.append("")
-    if lessons:
-        index += ["## Lessons", "", *[f"- {n.get('title') or n['id']}" for n in lessons], ""]
-    notes[base / f"{rec.root.name}.md"] = "\n".join(index)
-    for e in rec.events(type="decision"):
-        d = e["data"]
-        notes[base / "decisions" / f"{e['ts'][:10]}-{_slug(e['subject'])}.md"] = "\n".join(
-            [f"# Decision: {e['subject']}", "", f"**{d.get('outcome')}** by {e['actor']} on {e['ts'][:10]}.", "",
-             d.get("rationale", ""), ""])
-    written, kept = [], []
-    for path, body in notes.items():
-        text = _with_mark(body)
-        if path.exists():
-            old = path.read_text(encoding="utf-8")
-            if old == text:
-                continue
-            if not _unedited(old):
-                kept.append(path.relative_to(vault).as_posix())
-                continue
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8", newline="\n")
-        written.append(path.relative_to(vault).as_posix())
-    return {"folder": base.relative_to(vault).as_posix(), "written": written, "kept_edited": kept}
-
-
-def _with_mark(body: str) -> str:
-    return f"---\n{MARK}: {hashlib.sha256(body.encode('utf-8')).hexdigest()[:16]}\n---\n{body.rstrip()}\n"
-
-
-def _unedited(text: str) -> bool:
-    m = re.match(rf"---\n{MARK}: ([0-9a-f]{{16}})\n---\n(.*)\Z", text, re.S)
-    return bool(m) and hashlib.sha256(m.group(2).rstrip().encode("utf-8")).hexdigest()[:16] == m.group(1)
-
-
-def _slug(node_id: str) -> str:
-    return re.sub(r"[^A-Za-z0-9._-]+", "-", node_id.split(":", 1)[-1]).strip("-") or "node"
+# ---- the mark version 1.1's Obsidian export wrote -------------------------------------------------------------------
+MARK = "ros_export"  # notes carrying it are replaced by ``vault`` when unedited; the writer is now ``ros.vault``
 
 
 # ---- a read-only snapshot -------------------------------------------------------------------------------------------
