@@ -44,6 +44,7 @@ Then ask your agent to teach you something, or open **Today** in the portal.
 |---|---|
 | The record (append-only events, immutable questions, a typed graph, a rebuildable index) | `ros/store.py`, [DATA_MODEL](references/DATA_MODEL.md) |
 | Queries: readiness, frontier, reviews, claim support, code links | `ros/graph.py` |
+| The two graphs (the user-wide knowledge record and each project's research record) and `context`, which joins them | `ros/context.py`, [DATA_MODEL](references/DATA_MODEL.md) |
 | The learning engine: FSRS, incremental evidence, probing, the adaptation policy, the tutor's writes | `ros/learn/` |
 | Prepared bundles and the readiness gate | `ros/prepare.py`, [PREPARATION](references/PREPARATION.md) |
 | Claims, audits, approvals, decisions, ownership | `ros/research.py`, [RESEARCH](references/RESEARCH.md) |
@@ -75,6 +76,12 @@ you to confirm at a terminal, and the portal's research view is where you make t
 Records, questions, audio and video live in `~/ResearchOS/projects/<name>/` (set `ROS_HOME` to move it) or in a
 research repository's `.ros/`. Only curated notes go into your vault, with `ros export --kind obsidian`; a note
 you have edited is never overwritten. `ros export --kind static` writes a read-only single-file snapshot.
+
+Two kinds of record keep your context: one **user-wide** record (`ros -p knowledge link`) holds everything you know, by
+domain, subject, course, goal and project; each research project has its own **project** record
+(`ros init ams; ros -p ams import --kind research --path <repo>; ros -p ams link --user knowledge`) holding its
+questions, hypotheses, experiments, decisions and sources. `ros -p <either> context` shows an agent where things stand
+in both.
 
 ## Tests
 

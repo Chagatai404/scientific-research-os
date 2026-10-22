@@ -61,6 +61,11 @@ def command_of(argv: list[str]) -> str | None:
     return None
 
 
+def _dest(name: str) -> str:
+    """Where a tool argument is stored. A tool's ``project`` argument must not overwrite the global ``--project``."""
+    return "tool_" + name if name in ("project", "json", "command") else name
+
+
 def parser(only: str | None = None) -> argparse.ArgumentParser:
     """The argument parser. With ``only`` naming a tool, just that tool's subparser is built: constructing all sixty
     costs about 0.15 s, paid on every call for nothing."""
@@ -102,9 +107,9 @@ def parser(only: str | None = None) -> argparse.ArgumentParser:
         for name, p in t.params.items():
             flag = "--" + name.replace("_", "-")
             if p.type == "boolean":
-                s.add_argument(flag, dest=name, action="store_true", help=p.help)
+                s.add_argument(flag, dest=_dest(name), action="store_true", help=p.help)
             else:
-                s.add_argument(flag, dest=name, type=_value(p), required=p.required, help=p.help,
+                s.add_argument(flag, dest=_dest(name), type=_value(p), required=p.required, help=p.help,
                                choices=list(p.enum) or None)
     return ap
 
@@ -157,8 +162,8 @@ def main(argv: list[str] | None = None) -> int:
                                  "type yes, or make it in the portal (ros serve)\n")
                 return 3
             # `0 in (None, False)` is true in Python: compare by identity so an answer of 0 is not dropped
-            out = t.call(rec, {k: getattr(args, k) for k in t.params
-                               if getattr(args, k, None) is not None and getattr(args, k) is not False})
+            out = t.call(rec, {k: getattr(args, _dest(k)) for k in t.params
+                               if getattr(args, _dest(k), None) is not None and getattr(args, _dest(k)) is not False})
             if t.name == "migrate":
                 emit(out if args.json else _migration_summary(out), args.json)
                 return 0 if out["check"]["ok"] else 5
@@ -196,7 +201,7 @@ def _confirm(t, args) -> bool:
     """A human act needs a person at a terminal who types yes."""
     if not (sys.stdin.isatty() and sys.stdout.isatty()):
         return False
-    shown = ", ".join(f"{k}={getattr(args, k)}" for k in t.params if getattr(args, k, None))
+    shown = ", ".join(f"{k}={getattr(args, _dest(k))}" for k in t.params if getattr(args, _dest(k), None))
     return input(f"Record {t.name} ({shown})? Type yes: ").strip().lower() == "yes"
 
 

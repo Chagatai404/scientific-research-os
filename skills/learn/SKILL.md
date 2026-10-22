@@ -13,7 +13,8 @@ Every step below is one tool call, the same over MCP and the shell (`ros <tool> 
 
 ## Start
 
-1. `status` — what the record holds. If it is empty, `import` the learner's old notes first (`kind` learning,
+1. `context` — where the record stands (in the user-wide record: your knowledge and every linked project's research;
+   in a project's record: its research and what you know of what it needs). Then `status` — what the record holds. If it is empty, `import` the learner's old notes first (`kind` learning,
    sessions or research) or ask what they want to learn.
 2. `today` — due reviews, the next prepared lesson, answers waiting for you. **Grade waiting answers first**
    (`tasks --kind grade`, then `grade`), and answer waiting questions (`tasks --kind answer`, then `reply`).

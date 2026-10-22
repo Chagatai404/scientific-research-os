@@ -9,6 +9,14 @@ The researcher works at four points: **Frame**, **Plan approval**, **Defend**, *
 as agent work and ends in the decision queue (`queue`). Contract: `references/RESEARCH.md`; evidence rules:
 `references/EVIDENCE.md`.
 
+## Start from the context
+
+`context` first. In a project's record it gives the research graph's next steps and the state of each user capability
+the project depends on (`untracked` ones are not yet in the user-wide graph); in the user-wide record it summarises every
+linked project. A project's record is joined to the user-wide one with `link --user <record>`, and its existing
+research repository is read in with `import --kind research --path <repo>`; reports become sources with
+`import --kind documents --path <folder> --project project:<key>`. Details: `references/DATA_MODEL.md`.
+
 ## The cycle
 
 1. **Frame.** The researcher states the question. Record it (`add_node --id question:<key> --type question`, with a

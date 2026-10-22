@@ -145,11 +145,12 @@ def add_edge(rec, src, type, dst, data=None):
 @tool("import", "Import old files into this record (idempotent).", writes=True,
       kind=P("string", "what to import", True, tuple(importers.IMPORTERS)),
       path=P("string", "folder (or graph.json for graphify)", True),
-      evidence=P("string", "EvidenceAtom folder for research"), repo=P("string", "repository root for graphify"))
-def import_(rec, kind, path, evidence=None, repo=None):
+      evidence=P("string", "EvidenceAtom folder for research"), repo=P("string", "repository root for graphify"),
+      project=P("string", "documents: the project id, project:<key>, they are about"))
+def import_(rec, kind, path, evidence=None, repo=None, project=None):
     if not Path(path).expanduser().exists():
         raise ValueError(f"no such path: {path}")
-    return importers.IMPORTERS[kind](rec, path, evidence=evidence, repo=repo)
+    return importers.IMPORTERS[kind](rec, path, evidence=evidence, repo=repo, project=project)
 
 
 @tool("export", "Write curated notes into an Obsidian vault folder, or a read-only single-file HTML snapshot.",

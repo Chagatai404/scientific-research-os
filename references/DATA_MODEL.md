@@ -16,6 +16,20 @@ repository's `.ros/`. Plain files are the truth; `index.sqlite` is a cache that 
 Writes append whole lines, flush and fsync under a short OS lock. Readers skip a torn last line and report it. The
 index remembers how far it has read each file and a hash of that prefix; if a prefix changed, it rebuilds.
 
+## Two graphs, two kinds of record
+
+Records are of two roles, set in `record.json` (the `link` tool writes it):
+
+| Role | Holds | `record.json` |
+|---|---|---|
+| user-wide | the researcher's **knowledge graph**: every domain, subject, course, goal and project; the capabilities under them with prerequisites; the learning history and lessons | `{"role": "user"}` |
+| project | one project's **research graph**: questions, hypotheses, experiments, decisions, claims, sources (a reading of a repository's `research/graph` plus its reports) | `{"role": "project", "user": "<record>", "project": "project:<key>"}` |
+
+The graphs share ids, not files: a research node that `requires capability:x` names capability `x` of the user-wide
+record. `context` joins them for an agent: a project's next research steps with the user's state in each capability it
+needs (`untracked` when the user-wide graph has no such capability), or, in the user-wide record, a summary of every
+linked project. Every `part-of` target (`subject:`, `course:`, `goal:`, `project:`) has a node of its own.
+
 ## Node types
 
 domain, subject, concept, capability, course, goal, project, block, paper, question, hypothesis, claim, experiment,

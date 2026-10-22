@@ -11,7 +11,7 @@ document and that test in the same commit.
      │  only through api.call / the tool table
  tools         api · registry · tools/{record, learning, preparation, research}
      │  one declaration per operation, shared by every interface
- domain        graph · learn/{fsrs, evidence, schedule, probe, policy, tutor} · tasks
+ domain        graph · learn/{fsrs, evidence, schedule, probe, policy, tutor} · tasks · context
                prepare · research · importers · export
      │
  core          store (the record) · home (where records live)

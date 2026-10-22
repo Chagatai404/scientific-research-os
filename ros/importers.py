@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
+import re
 
 from .store import Record, event_id
 
@@ -54,10 +55,58 @@ def learning_records(rec: Record, root: Path | str) -> dict:
                            "subject": cid, "data": data, "source": n.path})
     written = _sync_nodes(rec, nodes)
     linked = _sync_edges(rec, edges)
+    written += _hubs(rec, edges)
     added = rec.append_many(events)
     return {"capabilities": len(nodes), "nodes_written": written, "edges_written": linked, "events_added": added,
             "diagnostics": sorted(set(collection.diagnostics)), "legacy": collection.legacy,
             "drafts": collection.drafts}
+
+
+HUBS = {"domain", "subject", "course", "goal", "project", "block"}
+
+
+def _hubs(rec: Record, edges: dict[str, list]) -> int:
+    """The places imported nodes belong to (a subject, course, goal or project) get a node of their own when they have
+    none, so ``part-of`` never points at nothing and the graph can be read from the top down. An existing node, with
+    whatever title it was given, is left alone."""
+    want = {}
+    for out in edges.values():
+        for e in out:
+            dst = e["dst"] if isinstance(e, dict) else e[2]
+            kind, _, key = dst.partition(":")
+            if kind in HUBS and key and rec.node(dst) is None:
+                title = key.replace("-", " ").replace("_", " ").strip()
+                title = title.upper() if re.fullmatch(r"[a-z]{2,5}\d{2,4}", key) else title[:1].upper() + title[1:]
+                want[dst] = {"id": dst, "type": kind, "title": title}  # a course code like ceng301 reads CENG301
+    if want:
+        rec.put_nodes(list(want.values()))
+    return len(want)
+
+
+def documents(rec: Record, root: Path | str, project: str | None = None) -> dict:
+    """Markdown documents (reports, evidence maps, session pages) as ``source`` nodes: title from the first heading, a
+    date from a ``YYYY-MM-DD`` filename, and an ``about`` edge to ``project`` when given. The text stays in the file;
+    the graph records that it exists and what it is about."""
+    root = Path(root).resolve()
+    files = [root] if root.is_file() else sorted(root.rglob("*.md"))
+    nodes, edges = {}, {}
+    for f in files:
+        rel = f.name if root.is_file() else f.relative_to(root).as_posix()
+        text = f.read_text(encoding="utf-8", errors="replace")
+        heading = re.search(r"^#\s+(.+)$", text, re.M)
+        sid = "source:" + re.sub(r"[^A-Za-z0-9._-]+", "-", f"{root.name}/{rel}".rsplit(".", 1)[0]).strip("-").lower()
+        node = {"id": sid, "type": "source", "title": (heading.group(1) if heading else f.stem).strip(),
+                "path": str(f), "collection": root.name if root.is_dir() else f.parent.name}
+        date_ = re.match(r"\d{4}-\d{2}-\d{2}", f.stem)
+        if date_:
+            node["date"] = date_.group(0)
+        nodes[sid] = node
+        if project:
+            edges[sid] = [(sid, "about", project)]
+    written = _sync_nodes(rec, nodes)
+    linked = _sync_edges(rec, edges)
+    written += _hubs(rec, edges)
+    return {"documents": len(nodes), "nodes_written": written, "edges_written": linked}
 
 
 def _sync_nodes(rec: Record, nodes: dict[str, dict]) -> int:
@@ -346,6 +395,7 @@ def research_records(rec: Record, root: Path | str, evidence: Path | str | None 
     written = _sync_nodes(rec, nodes)
     linked = _sync_edges(rec, {src: [{"src": s, "type": t, "dst": d, "relation": rel} for s, t, d, rel in es]
                                for src, es in edges.items()})
+    written += _hubs(rec, edges)
     return {"records": len(reg.records), "nodes_written": written, "edges_written": linked,
             "legacy": reg.legacy,
             "diagnostics": [f"{d.severity} {d.code} {d.path}: {d.message}" for d in reg.diagnostics]}
@@ -414,4 +464,5 @@ IMPORTERS = {
     "sessions": lambda rec, path, **_: sessions(rec, path),
     "research": lambda rec, path, evidence=None, **_: research_records(rec, path, evidence),
     "graphify": _graphify,
+    "documents": lambda rec, path, project=None, **_: documents(rec, path, project),
 }
