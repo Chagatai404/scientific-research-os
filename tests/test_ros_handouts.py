@@ -103,6 +103,48 @@ class MarkdownTests(unittest.TestCase):
 
 
 class ComposeAndGateTests(Fixture):
+    def test_lecture_uses_study_order_without_layer_codes(self):
+        out = api.call("handout_create", self.rec, kind="lecture", scope=["capability:variance"], title="Variance")
+        self.assertEqual([s["title"] for s in out["sections"]], [
+            "Scope and learning goals", "Notation and prerequisites", "Core ideas", "Completed derivations",
+            "Worked examples", "Gap fills and corrections", "Practice questions"])
+        self.write_lecture(out["handout"])
+        src = handouts.read(self.rec, out["handout"])
+        sections = handouts.display_sections(src)
+        self.assertEqual([s["id"] for s in sections], ["gist", "lecture", "derivation", "recall"])
+        self.assertTrue(api.call("handout_check", self.rec, handout=out["handout"])["ready"])
+        md = handouts.markdown(self.rec, src)
+        html = pdf.html_document({}, sections, src["sources"])
+        tex = pdf.tex_document({}, sections, src["sources"])
+        for rendered in (md, html, tex):
+            self.assertLess(rendered.index("Core ideas"), rendered.index("Practice questions"))
+            self.assertNotIn("Notation and prerequisites", rendered)  # optional, unwritten
+            self.assertNotIn("L0 Gist", rendered)
+        self.assertNotIn("\\section{", tex)
+        self.assertLess(html.index("Practice questions"), html.index('<section class="solutions">'))
+
+    def test_old_lecture_presentation_preserves_source_and_custom_content(self):
+        hid = api.call("handout_create", self.rec, kind="lecture", scope=["capability:variance"], title="Old")["handout"]
+        self.write_lecture(hid)
+        src = handouts.load(self.rec, hid)
+        titles = {"gist": "L0 Gist", "recall": "L1 Core in 60 seconds", "lecture": "L2 Lecture",
+                  "derivation": "L3 Derivation and sources"}
+        src["sections"] = [next(s for s in src["sections"] if s["id"] == role) for role in titles]
+        for section in src["sections"]:
+            section["title"] = titles[section["id"]]
+        handouts._save(self.rec, src)
+        path = handouts.folder(self.rec, hid) / "source.json"
+        before = path.read_bytes()
+        view = api.call("handout_read", self.rec, handout=hid)
+        self.assertEqual([s["id"] for s in view["sections"]], ["gist", "lecture", "derivation", "recall"])
+        self.assertEqual({s["id"]: s["text"] for s in view["sections"]}, {
+            key: value.strip()+"\n" for key, value in LECTURE.items()})
+        self.assertNotIn("L1 Core", handouts.markdown(self.rec, src))
+        self.assertEqual(path.read_bytes(), before)
+        api.call("handout_write", self.rec, handout=hid, section="lecture", title="My L2 physics notes",
+                 text=LECTURE["lecture"], by="person")
+        self.assertIn("My L2 physics notes", handouts.markdown(self.rec, handouts.load(self.rec, hid)))
+
     def test_create_composes_from_the_record_and_is_idempotent(self):
         out = api.call("handout_create", self.rec, kind="lecture", scope=["capability:variance"], title="Variance")
         self.assertEqual(out["handout"], "handout:lecture-variance")
@@ -111,7 +153,8 @@ class ComposeAndGateTests(Fixture):
         self.assertEqual(ctx["capabilities"][0]["requires"], ["Mean"])
         self.assertTrue(any("balance point" in n["text"] for n in ctx["narration"]) or ctx["narration"])
         self.assertTrue(ctx["prompts"])
-        self.assertEqual([s["id"] for s in out["sections"]], ["gist", "recall", "lecture", "derivation"])
+        self.assertEqual([s["id"] for s in out["sections"]],
+                         ["gist", "notation", "lecture", "derivation", "examples", "corrections", "recall"])
         self.assertEqual(len(tasks.tasks(self.rec, "handout")), 1)
         again = api.call("handout_create", self.rec, kind="lecture", scope=["capability:variance"], title="Variance")
         self.assertTrue(again["existing"])
