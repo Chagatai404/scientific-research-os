@@ -398,19 +398,28 @@ def _engaged_text(out: dict) -> str:
 
 
 def _migration_summary(out: dict) -> str:
-    c, ln, se, rs = out["check"], out["learning"], out["sessions"], out["research"]
+    c, ln, se, rs, cov = out["check"], out["learning"], out["sessions"], out["research"], out["coverage"]
     lines = [f"Vault: {out['vault']}",
              f"Learning notes: {ln['capabilities']} capabilities, {ln['events_added']} new retrieval rows"
              + (f", {len(ln['diagnostics'])} diagnostics" if ln["diagnostics"] else ""),
              f"Sessions: {se['sessions']} imported, {se['items']} new items, {se['events_added']} new events"
              + (f", {len(se['problems'])} problems" if se["problems"] else ""),
-             f"Research records: {rs['records']}",
-             f"Check: {c['answers']} answers in {c['sessions']} session files, {c['missing']} missing from the history "
-             f"({c['history_rows']} history rows): {'OK' if c['ok'] else 'NOT OK'}"]
+             f"Research records: {rs['records']}"
+             + (f", {rs['unreferenced_atoms']} uncited claims kept" if rs.get("unreferenced_atoms") else "")]
+    more = [("notes", "notes", "notes"), ("session_notes", "session_notes", "session pages"), ("projects", "projects", "projects"),
+            ("papers", "papers", "papers"), ("legacy_tasks", "tasks", "research tasks"), ("visuals", "visuals", "visuals"),
+            ("resources", "resources", "resources"), ("handouts", "handouts", "handouts")]
+    lines.append("Also: " + ", ".join(f"{out[k][f]} {label}" for k, f, label in more if out.get(k, {}).get(f)) + ".")
+    lines.append(f"Check: {c['answers']} answers in {c['sessions']} session files, {c['missing']} missing from the history "
+                 f"({c['history_rows']} history rows).")
+    lines.append(f"Coverage: {cov['files']} files: {cov['imported']} read in, {cov['derived']} derived, {cov['retired']} retired "
+                 f"(each with its reason), {cov['unknown']} unknown"
+                 + (f", {cov['not_imported']} not found in the record" if cov["not_imported"] else "") + f": {'OK' if c['ok'] else 'NOT OK'}")
+    lines += [f"  unknown: {f}" for f in cov["unknown_files"][:20]] + [f"  not in the record: {f}" for f in cov["not_imported_files"][:20]]
     lines += [f"  {s['session']}: missing {', '.join(s['missing'])}" for s in c["per_session"] if s["missing"]]
     lines += [f"  problem: {p}" for p in se["problems"]] + [f"  diagnostic: {d}" for d in ln["diagnostics"][:20]]
     lines += [f"  warning: {w}" for w in out.get("warnings", [])]
-    return "\n".join(lines) + "\nFull report: migration-report.json in the record."
+    return "\n".join(lines) + "\nFull report: migration-report.json in the record; `ros migrate_check` re-checks without writing."
 
 
 def _confirm(t, args) -> bool:

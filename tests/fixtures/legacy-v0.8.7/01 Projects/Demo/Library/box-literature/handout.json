@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "versions": [
+    {
+      "n": 1,
+      "stem": "box-lit",
+      "session": "Sessions/legacy.md",
+      "status": "draft",
+      "built_at": "2026-10-02T09:00:00+00:00"
+    }
+  ]
+}

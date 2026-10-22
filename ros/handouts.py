@@ -635,6 +635,16 @@ def handouts(rec: Record) -> list[dict]:
              "revision": n.get("revision"), "pdf": n.get("pdf")} for n in rec.nodes(type="handout")]
 
 
+def import_source(rec: Record, src: dict) -> bool:
+    """Keep an imported handout (written by the old runtime) as a handout of the record, unless it is already there:
+    returns whether it was added. Its text is the old text; the new gate decides whether it is ready."""
+    if (folder(rec, src["id"]) / "source.json").exists():
+        return False
+    _save(rec, src)
+    _node(rec, src, "draft")
+    return True
+
+
 def toolchain() -> dict:
     """What this computer can build a PDF with (``python -m ros.lib.pdf detect``)."""
     return _lib().detect()

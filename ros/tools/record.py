@@ -164,12 +164,21 @@ def export_(rec, kind, path, folder=None):
     return {"written": str(export.static(rec, path))}
 
 
-@tool("migrate", "Import a whole vault (notes, sessions, research records) and check every answer arrived.",
+@tool("migrate", "Import a whole old vault (learning notes, sessions and their pages, research records, projects, notes, "
+      "papers, research tasks, visuals, resources, handouts) and prove it: every answer arrived and every file is "
+      "accounted for. Importing again adds only what is new.",
       writes=True, vault=P("string", "the vault folder", True),
       research_root=P("string", "where research records live, if not in the vault"),
       evidence=P("string", "EvidenceAtom folder"), graphify=P("string", "a Graphify graph.json"))
 def migrate(rec, vault, research_root=None, evidence=None, graphify=None):
     return importers.migrate(rec, vault, research_root, evidence, graphify)
+
+
+@tool("migrate_check", "Is everything in the old vault accounted for (read in, derived or retired, with the reason), and has "
+      "anything been added or changed since the last migration? Changes nothing.",
+      vault=P("string", "the old vault (default: the one migrated)"))
+def migrate_check(rec, vault=None):
+    return importers.migrate_check(rec, vault)
 
 
 @tool("rebuild", "Drop and rebuild the index from the record's files.", writes=True)

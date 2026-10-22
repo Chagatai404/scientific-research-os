@@ -23,7 +23,7 @@ import sys
 import time
 from typing import Callable
 
-from . import graph, handouts, home, prepare, research, roadmap, tasks, vault
+from . import graph, handouts, home, importers, prepare, research, roadmap, tasks, vault
 from .store import Record
 
 WATCH = ("approval", "handout.revise", "handout.built")
@@ -301,6 +301,31 @@ def _renders(look: Look):
     return {"opened": opened} if opened else None
 
 
+LEGACY_EVERY = 120  # seconds between looks at an old vault (it only changes when the person edits it)
+
+
+def _legacy_sync(look: Look):
+    """What was added to or changed in the old vault after it was migrated is brought in (the importers are idempotent)."""
+    cfg = home.config(look.rec.root)
+    vault_dir = cfg.get("legacy_vault")
+    if not vault_dir or not Path(vault_dir).is_dir():
+        return None
+    now = time.time()
+    if now - look.state.get("legacy_looked", 0) < LEGACY_EVERY and not look.first:
+        return None
+    look.state["legacy_looked"] = now
+    try:
+        check = importers.migrate_check(look.rec)
+    except ValueError:
+        return None
+    n = check["coverage"]["since_last"]["count"]
+    if not n:
+        return None
+    importers.migrate(look.rec, vault_dir)
+    return {"opened": 0, "wrote": n, "new": len(check["coverage"]["since_last"]["new"]),
+            "changed": len(check["coverage"]["since_last"]["changed"])}
+
+
 def _vault_sync(look: Look):
     """Notes follow the record: incremental, only what changed, and only when a vault is set."""
     if not vault.configured() or not (look.first or look.changed):
@@ -338,6 +363,7 @@ TRIGGERS: list[Trigger] = [
     Trigger("renders", ("tick",), _renders),
     Trigger("vault_sync", ("tick",), _vault_sync),
     Trigger("vault_scan", ("scan",), _vault_scan),
+    Trigger("legacy_sync", ("scan",), _legacy_sync),
     Trigger("review_note", ("daily",), _review_note),
 ]
 

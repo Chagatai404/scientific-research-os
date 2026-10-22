@@ -65,6 +65,11 @@ GUIDE = {
 }
 
 
+def task_id(kind: str, ref: str, key: str) -> str:
+    """The id of the task with this kind, ref and key: what makes opening it twice the same task."""
+    return "task:" + hashlib.sha256(f"{kind}\x00{ref}\x00{key}".encode()).hexdigest()[:16]
+
+
 def open_task(rec: Record, kind: str, ref: str, brief: str = "", *, data: dict | None = None,
               key: str | None = None) -> str:
     """Open a task and return its id. ``key`` makes it idempotent: the same kind, ref and key is the same task."""
@@ -73,7 +78,7 @@ def open_task(rec: Record, kind: str, ref: str, brief: str = "", *, data: dict |
     if key is None:
         tid = "task:" + uuid.uuid4().hex[:16]
     else:
-        tid = "task:" + hashlib.sha256(f"{kind}\x00{ref}\x00{key}".encode()).hexdigest()[:16]
+        tid = task_id(kind, ref, key)
         if tid in _fold(rec):
             return tid
     rec.append("task.open", tid, {**(data or {}), "kind": kind, "ref": ref, "brief": brief})
