@@ -1130,7 +1130,8 @@ def _canvas(ctx: Ctx, report: dict, dry_run: bool) -> None:
 
 
 # ---- sync ---------------------------------------------------------------------------------------------------------
-def sync(rec: Record, dry_run: bool = False, full: bool = False, as_of: date | None = None) -> dict:
+def sync(rec: Record, dry_run: bool = False, full: bool = False, as_of: date | None = None,
+         rescan: bool = True) -> dict:
     """Bring the vault in step with this record: first what the person did there (scan), then the notes the record
     changed. Incremental after the first pass: the cost follows the change. ``dry_run`` writes nothing and says what
     would be."""
@@ -1142,7 +1143,8 @@ def sync(rec: Record, dry_run: bool = False, full: bool = False, as_of: date | N
         ctx = Ctx(rec, mf, vault, as_of, dry_run)
         if not dry_run:
             (vault / ctx.root_name).mkdir(parents=True, exist_ok=True)
-        found = scan(ctx, apply=not dry_run)
+        found = scan(ctx, apply=not dry_run) if rescan else {k: [] for k in (
+            "annotate", "edited", "found", "moved", "missing", "dismissed", "reviewed", "v11")}
         report["annotations"], report["found"] = len(found["annotate"]), len(found["found"])
         ch = rec.since(mf.cursor(ctx.record), types=SYNC_EVENTS)
         ids = None if (ch["full"] or full or found["missing"]) else _affected(ctx, ch)

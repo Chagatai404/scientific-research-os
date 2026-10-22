@@ -26,7 +26,7 @@ import time
 from urllib.parse import parse_qs, unquote, urlparse
 import webbrowser
 
-from . import api
+from . import api, runner
 from .store import Record
 
 STATIC = Path(__file__).resolve().parent / "portal"
@@ -241,10 +241,12 @@ def run(rec: Record, port: int = 8737, open_browser: bool = False) -> int:
     print(f"Research OS portal for {rec.root.name}: {url}  (Ctrl+C to stop)", flush=True)
     if open_browser:
         webbrowser.open(url)
+    timer = runner.Runner(lambda: [rec]).start()  # the portal keeps the record in step on its own
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        timer.stop()
         server.server_close()
     return 0

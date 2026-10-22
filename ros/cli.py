@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 import sys
 
-from . import __version__, api, home
+from . import __version__, api, home, runner
 from .store import Record
 
 
@@ -182,6 +182,11 @@ def main(argv: list[str] | None = None) -> int:
             # `0 in (None, False)` is true in Python: compare by identity so an answer of 0 is not dropped
             out = t.call(rec, {k: getattr(args, _dest(k)) for k in t.params
                                if getattr(args, _dest(k), None) is not None and getattr(args, _dest(k)) is not False})
+            if t.writes and t.name not in ("reconcile", "job_done"):
+                try:  # what follows from the change happens now (see ros.automation)
+                    api.call("reconcile", rec, mode="call")
+                except Exception:
+                    pass
             if t.name == "migrate":
                 emit(out if args.json else _migration_summary(out), args.json)
                 return 0 if out["check"]["ok"] else 5

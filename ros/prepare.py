@@ -16,6 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -310,6 +311,12 @@ def open_tasks(rec: Record, bundle: str, clips: bool = False) -> list[str]:
                     "and end against the transcript, or return NONE.", data={"bundle": bundle, "node": n["id"]},
                     key=f"clip|{n['id']}"))
     return opened
+
+
+def voice_configured() -> bool:
+    """Whether a local voice engine has been set up (``RESEARCH_OS_VOICE_ENVS``): nothing is installed for you."""
+    from .lib import voice
+    return bool(os.environ.get(voice.ENV_VARIABLE))
 
 
 def render_voice(rec: Record, bundle: str, provider: str = "kokoro", envs: list[str] | None = None,

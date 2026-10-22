@@ -8,7 +8,7 @@ from __future__ import annotations
 from .registry import LOCK, TOOLS, Param, Tool, iso_day, present  # noqa: F401  (the public names of the table)
 from .store import Record
 from .tools.context import release  # noqa: F401  (closes the user-wide records kept open between calls)
-from .tools import context, handouts, learning, planning, preparation, record, research, vault  # noqa: F401  (importing a module registers its tools)
+from .tools import automation, context, handouts, learning, planning, preparation, record, research, vault  # noqa: F401  (importing a module registers its tools)
 
 
 def call(name: str, rec: Record, **args):
