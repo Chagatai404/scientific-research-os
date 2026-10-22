@@ -15,6 +15,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - name: Diagnose the headless browser
+        continue-on-error: true
+        run: |
+          which google-chrome chromium chromium-browser xelatex || true
+          google-chrome --version || true
+          echo '<p>hi</p>' > /tmp/d.html
+          google-chrome --headless --disable-gpu --user-data-dir=/tmp/p1 --print-to-pdf=/tmp/d.pdf file:///tmp/d.html 2>&1 | tail -15; ls -la /tmp/d.pdf || true
+          sysctl kernel.apparmor_restrict_unprivileged_userns || true
       - name: Unit tests
         env:
           PYTHONPATH: ${{ github.workspace }}
