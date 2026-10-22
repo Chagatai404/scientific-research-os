@@ -85,6 +85,11 @@ def open_task(rec: Record, kind: str, ref: str, brief: str = "", *, data: dict |
     return tid
 
 
+def known(rec: Record, tid: str) -> bool:
+    """Whether the task exists (in any state): automation counts only what it newly opens."""
+    return tid in _fold(rec)
+
+
 def _fold(rec: Record) -> dict[str, dict]:
     def step(out, e):
         t = out.get(e["subject"])

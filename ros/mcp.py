@@ -47,10 +47,30 @@ class Server:
         self.records: dict[str, Record] = {}
 
     def record(self, project: str | None) -> Record:
-        root = str(home.resolve(project or self.default))
+        try:
+            root = str(home.resolve(project or self.default))
+        except ValueError:
+            if project or self.default or home.projects():
+                raise
+            # a person starting from nothing: the record that holds what they know is made for them, as `ros` does
+            created = Record(home.init("me"))
+            api.call("link", created, user_wide=True)
+            created.close()
+            root = str(home.resolve("me"))
         if root not in self.records:
             self.records[root] = Record(root)
         return self.records[root]
+
+    def everything(self) -> list[Record]:
+        """Every record of the home, opened once and kept: what the automation looks after, not only what the agent asked for."""
+        for name in home.projects():
+            root = str(home.home() / "projects" / name)
+            if root not in self.records:
+                try:
+                    self.records[root] = Record(root)
+                except Exception:  # a folder that is not (yet) a record is not the agent's problem
+                    continue
+        return list(self.records.values())
 
     def follow_up(self, rec: Record) -> None:
         """What follows from a change happens now, not when someone remembers to ask (see ``ros.automation``)."""
@@ -150,7 +170,7 @@ def serve(project: str | None = None, stdin=None, stdout=None, portal: int | Non
                 server.record(None)
             except ValueError:
                 pass
-            timer = runner.Runner(lambda: list(server.records.values())).start()
+            timer = runner.Runner(server.everything).start()
         if portal is not None:
             from . import serve as portal_server
             httpd = portal_server.start(server.record(None), portal)

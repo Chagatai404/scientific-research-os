@@ -83,7 +83,7 @@ def _claims_audit(look: Look):
     """A claim that is new or changed gets its numbers checked against its files, then its audits requested."""
     rec = look.rec
     ids = [n["id"] for n in rec.nodes(type="claim")] if look.first else sorted(n for n in look.ch["nodes"] if n.startswith("claim:"))
-    repo = home.config(rec.root).get("repo")
+    repo = home.config(rec.root).get("repo") or (str(rec.root / "work") if (rec.root / "work").is_dir() else None)
     opened = 0
     for cid in ids:
         node = rec.node(cid)
@@ -105,10 +105,13 @@ def _approval_runs(look: Look):
         if e["data"].get("decision") != "approved" or not node or node.get("type") != "experiment":
             continue
         plan = {k: v for k, v in node.items() if k not in ("id", "type") and isinstance(v, (str, int, float, bool, list))}
+        if tasks.known(rec, tasks.task_id("run", node["id"], e["id"])):
+            continue
         tasks.open_task(rec, "run", node["id"],
                         f"Run the approved experiment {node.get('title') or node['id']!r} as planned: every rung of its "
                         "scale ladder, within its stated compute budget and no further. Save the results with a "
-                        "manifest (hashes, command, versions), add each claim with add_claim (you are its author), and "
+                        "manifest (hashes, command, versions) under " + str(rec.root / "work") + " (create it; claims "
+                        "name files relative to it), add each claim with add_claim (you are its author), and "
                         "stop at anything the plan does not cover and ask the researcher. Do not approve or decide. "
                         f"Plan: {json.dumps(plan, ensure_ascii=False)[:1500]}",
                         data={"experiment": node["id"], "approval": e["id"]}, key=e["id"])
@@ -125,17 +128,21 @@ def _bundle_tasks(look: Look):
         a = roadmap.analyse(rec, None)
     except (ValueError, KeyError):
         return None
-    opened = 0
+    opened = queued = 0
     for s in a["steps"]:
-        if opened >= NEXT_LESSONS:
+        if queued >= NEXT_LESSONS:
             break
         if s["kind"] in ("new", "continue") and s["available"] and not s["prepared"]["bundle"]:
+            if tasks.known(a["user"], tasks.task_id("bundle", s["capability"], f"next|{s['capability']}")):
+                queued += 1  # still waiting for an agent: it counts against the few prepared ahead
+                continue
             tasks.open_task(a["user"], "bundle", s["capability"],
                             f"Prepare the lesson on {s['title']} ({s['capability']}): the dependency map, narration with "
                             "sources, visuals, an animation if the idea moves, and questions at several levels; then "
                             "run the readiness gate (skill prepare).",
                             data={"capability": s["capability"], "roadmap": True}, key=f"next|{s['capability']}")
             opened += 1
+            queued += 1
     return {"opened": opened} if opened else None
 
 
@@ -196,6 +203,8 @@ def _literature_flow(look: Look):
         q = t.get("question") or t["ref"]
         for c in _candidates(t.get("result"))[:12]:
             ident = c.get("doi") or c.get("arxiv") or c.get("source_url") or c.get("title")
+            if tasks.known(rec, tasks.task_id("verify", q, f"cand|{ident}")):
+                continue
             tasks.open_task(rec, "verify", q,
                             f"Verify this candidate source and the claims attributed to it against the source itself: "
                             f"{c.get('title') or ident}. Return one verdict with notes and the locator you checked; if it "
@@ -248,7 +257,9 @@ def _bundle_gate(look: Look):
         if not any(n.get("segments") for n in p["nodes"]):
             continue  # nothing written yet: not the gate's business
         prepare.check(rec, d.name)
-        opened += len(prepare.open_tasks(rec, d.name))
+        before = set(tasks._fold(rec))
+        prepare.open_tasks(rec, d.name)
+        opened += len(set(tasks._fold(rec)) - before)
     return {"opened": opened} if opened else None
 
 
