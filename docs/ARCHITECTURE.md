@@ -7,12 +7,15 @@ document and that test in the same commit.
 ## The shape
 
 ```
- interfaces    cli · mcp · serve (portal)            how people and agents reach the system
+ interfaces    cli · mcp · serve (portal) · runner   how people and agents reach the system; the runner is the
+     │                                       background that ticks automation and runs jobs while one of them is open
      │  only through api.call / the tool table
- tools         api · registry · tools/{record, learning, preparation, research}
+ tools         api · registry · tools/{record, learning, preparation, research, vault, handouts, automation,
+     │                               director, atlas}
      │  one declaration per operation, shared by every interface
  domain        graph · learn/{fsrs, evidence, schedule, probe, policy, tutor} · tasks · context
                prepare · research · importers · export
+               vault · handouts · automation · director · atlas
      │
  core          store (the record) · home (where records live)
  engines       lib/ (speech, voice, Manim, papers, scouting, evidence atoms, manifests, walkthrough, old readers)
@@ -134,6 +137,34 @@ tool's choices come from that registry **(checked)**. Use deterministic event id
 Add it to `tasks.KINDS`, open it with `tasks.open_task(..., key=...)` (the key makes it idempotent), and describe in
 the relevant skill which agent takes it and which tool finishes it.
 
+### An automation (something the system does so that nobody has to ask)
+
+Write `def _name(look: Look) -> dict | None` in `ros/automation.py` and add a `Trigger(name, modes, run)` to `TRIGGERS` with the modes it
+runs in (`call` after an agent's write, `tick` on the runner's timer, `scan` for files, `daily`). `look` carries the
+record and what changed since this trigger's cursor (`Record.since`), so a quiet record costs one comparison. It must be
+idempotent: key every task, count only what it newly opens (`tasks.known`), write nothing when nothing changed; the
+end-to-end tests tick twice and compare event counts. Work that takes minutes is a `job` task with an allowlisted argv,
+run by the `Runner` outside `registry.LOCK`; what follows a finished job goes in `THEN`.
+
+### A director playbook (what an agent does when told something in words)
+
+Write `def _name(user, text, target, title, deadline, pace, materials) -> dict` in `ros/director.py` and add it to
+`PLAYBOOKS` under a word of `director.KINDS`. It creates the hubs and records the person's request needs, states the goal,
+opens the first tasks and returns what it did; `parse_intent` chooses the playbook from the person's words. Agents then take work with `work`, not by being told a plan.
+
+### A handout kind or gate row
+
+A kind is a `Kind(...)` entry in `handouts.KINDS` (its sections with word budgets, minimum counts, the writer's brief). A
+gate row is `Row(name, check(doc) -> (problems, warnings))` in `handouts.ROWS`; a failing row opens a `handout` task. Rendering stays in
+`ros/lib/pdf.py` (Markdown subset to Obsidian callouts, LaTeX and HTML); add syntax there once, for all three.
+
+### A vault note type
+
+Add a stub function to `vault.NODE_STUBS` (or a node type to `vault.GENERIC`): frontmatter the system owns (`ros_*` keys
+hashed with `ros_hash`), a generated region between the markers, and the person's "My notes" below it, which is never
+touched. Sync is incremental by node version; scanning is one stat per file. Nothing is written outside the vault's
+`Research OS/` folder and only unedited generated files are ever deleted.
+
 ### An audit step or assurance level
 
 Add the step to `research.STEPS` and to the levels in `research.ASSURANCE` that require it; describe it in
@@ -160,6 +191,9 @@ it, and make its absence a reported problem, not an exception that escapes.
 
 - Unit tests: `python -m unittest discover -s tests -p "test_*.py"` (about 10 s). Name new files `test_ros_<area>.py`.
 - Browser: `node tests/ros-portal-browser.cjs`.
+- Whole workflows by prompting only: `tests/test_ros_e2e_director.py` drives an agent through `mcp.Server.handle` and a
+  person through the portal's HTTP API, and fails if an agent had to call a tool the system should have called itself.
+- Speed: `tests/test_ros_director_bench.py` (small by default; `ROS_BENCH=1` for the large cases).
 - Every new tool, rule, gate row or importer comes with a test; behaviour shared with the old runtime keeps its parity
   test (`test_ros_graph.py`, `test_ros_importers.py`).
 - The suite stays under five minutes; the portal under 60 KB of JS and 20 KB of CSS.

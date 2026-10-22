@@ -1,42 +1,47 @@
 # Scientific Research OS
 
-Version **1.1.0**. One record per course or project, lessons prepared before you sit down, and research that is
-audited by fresh reviewers and defended by you. It works with any AI agent: Claude, Codex, Gemini or a local
-model.
+Version **1.2.0**. You are the director: say what you want to learn or find out, and agents set it up, prepare it
+and keep your Obsidian vault current. You learn, and you judge the findings. It works with any AI agent: Claude, Codex,
+Gemini or a local model.
 
-The design and its reasons are in [the v1.0 plan](docs/plans/v1.0-overhaul-architecture.md); how the code is built and
-how to add to it is in [ARCHITECTURE](docs/ARCHITECTURE.md).
+The design and its reasons are in [the v1.2 plan](docs/plans/v1.2-director.md) (and [v1.0](docs/plans/v1.0-overhaul-architecture.md));
+how the code is built and how to add to it is in [ARCHITECTURE](docs/ARCHITECTURE.md).
 
 ## What it does
 
-- **Learn.** A lesson probes where you are, teaches just above that edge with prepared narration, visuals and
-  animations, practises, and ends with recall. You never pick modes, levels or tiers; the policy does, and logs why.
-  Reviews are scheduled with FSRS across all your lessons.
-- **Prepare.** Agents build each lesson ahead of time: a dependency map, narration with sources, voice, visuals
-  they have looked at, animations for ideas that move, optional verified video clips, and questions at several
-  levels. A lesson starts only when its bundle passes the readiness gate.
-- **Research.** You frame the question, approve the plan, defend the result and decide. Between those points agents
-  scout neutrally, verify sources, build and run, and audit each claim in a fresh context with six-state verdicts.
-  A claim you will present opens defence items, and you own it once you can answer them from memory.
+- **Learn.** Tell an agent "teach me STAT303 by December". It creates the course, the goal and a roadmap, prepares
+  lessons ahead of time (narration, visuals, animations, questions), writes lecture notes, recitations and chapters as
+  PDFs, and schedules reviews with FSRS. A lesson probes where you are, teaches just above that edge and ends with
+  recall; you never pick modes or levels.
+- **Research.** Tell an agent the question. Agents search the literature, verify each source, write a literature brief,
+  build the plan, run the experiments you approve and audit every claim in a fresh context. You read the handouts,
+  approve plans, accept or reject claims and defend what you present.
+- **Remember.** Everything is kept in one Obsidian folder (`Research OS/`): notes with your own text left untouched,
+  PDFs, decision logs, maps and bases. Drop a file into its Inbox and it is read in. The portal links to any note.
+- **See.** The portal's Graphs show what you know and what a project rests on, with the evidence behind each node.
 
 ## Start
 
 Python 3.11 or newer, standard library only. From this folder:
 
 ```bash
-pip install -e .                       # or use: python -m ros ...
-ros init stat303                       # a record in ~/ResearchOS/projects/stat303
-ros -p stat303 migrate --vault ~/Vault         # bring in your old notes, sessions and research records
-ros -p stat303 serve --open            # the portal, in a browser or Obsidian's Web Viewer
-ros install --client claude            # or codex, gemini, agents: skills, agents and the MCP server
+pip install -e .                  # or use: python -m ros ...
+ros install --client claude --hooks   # or codex, gemini, agents; --hooks adds a briefing when a session starts
+ros                               # what needs you today (the first run sets up your record)
+ros go "teach me STAT303 by December"      # or just say it to your agent
+ros open                          # the portal
 ```
 
-If `ros` is "not found" after `pip install -e .` (on Windows the script folder, for example
-`%APPDATA%\Python\Python3xx\Scripts`, is often not on PATH), use `python -m ros ...` instead; every command in this
-document works that way. `ros install --client claude --user` also prints the `claude mcp add` command that registers the
-MCP server; Codex reads its skills from `~/.agents/skills` and its MCP entry from `~/.codex/config.toml`.
+Your vault is found from Obsidian's own list (or `ros vault_set --path ~/Vault`); only the `Research OS/` folder in it
+is ever written. `ros doctor` says what is missing (a LaTeX install, a voice, a vault) and what it will do instead.
 
-Then ask your agent to teach you something, or open **Today** in the portal.
+If `ros` is "not found" after `pip install -e .` (on Windows the script folder, for example
+`%APPDATA%\Python\Python3xx\Scripts`, is often not on PATH), use `python -m ros ...` instead. `ros install --client claude
+--user` also prints the `claude mcp add` command that registers the MCP server; Codex reads its skills from
+`~/.agents/skills` and its MCP entry from `~/.codex/config.toml`.
+
+Coming from the earlier version? `ros migrate --vault ~/Vault` reads in your old notes, sessions, research records,
+papers, handouts and uncited evidence, and `ros migrate_check` shows where every file went.
 
 ## How the pieces fit
 
@@ -50,10 +55,14 @@ Then ask your agent to teach you something, or open **Today** in the portal.
 | Claims, audits, approvals, decisions, ownership | `ros/research.py`, [RESEARCH](references/RESEARCH.md) |
 | One tool table, served as the CLI, MCP and the portal's API | `ros/api.py`, `ros/registry.py`, `ros/tools/`, `ros/cli.py`, `ros/mcp.py`, `ros/serve.py` |
 | The portal | `ros/portal/`, [PORTAL](references/PORTAL.md) |
-| Importers, exports, installation | `ros/importers.py`, `ros/export.py`, `ros/install.py` |
+| The vault, handouts and PDFs | `ros/vault.py`, `ros/handouts.py`, `ros/lib/pdf.py`, [VAULT](references/VAULT.md), [HANDOUTS](references/HANDOUTS.md) |
+| Automation: triggers, the runner, jobs | `ros/automation.py`, `ros/runner.py` |
+| The director: intent, playbooks, the brief, work, evidence, doctor | `ros/director.py`, [DIRECTOR](references/DIRECTOR.md) |
+| Graph views and layout | `ros/atlas.py` |
+| Importers, installation | `ros/importers.py`, `ros/install.py` |
 | Carried-over engines: speech, voice, Manim, paper library, scouting, evidence, manifests, code walkthrough | `ros/lib/` |
 | Skills: learn, prepare, research, audit, defend, notes-to-latex | `skills/` |
-| Agent roles: scout, verifier, auditor, adversary, visual-maker, video-scout | `agents/` |
+| Agent roles: scout, librarian, verifier, auditor, adversary, visual-maker, video-scout | `agents/` |
 | Protocols: teaching, preparation, research, evidence, data model, portal, voice, safety | `references/` |
 
 ## Any agent
@@ -74,8 +83,9 @@ you to confirm at a terminal, and the portal's research view is where you make t
 ## Where things live
 
 Records, questions, audio and video live in `~/ResearchOS/projects/<name>/` (set `ROS_HOME` to move it) or in a
-research repository's `.ros/`. Only curated notes go into your vault, with `ros export --kind obsidian`; a note
-you have edited is never overwritten. `ros export --kind static` writes a read-only single-file snapshot.
+research repository's `.ros/`. The vault's `Research OS/` folder is a generated view of them plus what you write there;
+a note you have edited is never overwritten, and a file the system did not write is never deleted. `ros export --kind
+static` writes a read-only single-file snapshot.
 
 Two kinds of record keep your context. One **user-wide** record (`ros init me --user-wide`) holds everything you
 know, by domain, subject, course, goal and project. Each course or research project has its own record,
@@ -94,7 +104,7 @@ notes (see the benchmark in `tests/test_ros_roadmap_bench.py`).
 ## Tests
 
 ```bash
-python -m unittest discover -s tests -p "test_*.py"     # about 10 seconds
+python -m unittest discover -s tests -p "test_*.py"     # about a minute
 node tests/ros-portal-browser.cjs                        # a whole lesson in Chromium, layout at 320-1920 px
 ```
 
@@ -102,4 +112,4 @@ The browser test needs the `playwright` module and a Chromium. Point it at them 
 folder, if it is not installed next to the repository), `ROS_BROWSER` (the Chromium executable) and `PYTHON` (default
 `python3`; on Windows `python`).
 
-Version 1.1 adds the user-wide and per-project graphs with `gaps` and `roadmap` (see the changelog). The history of earlier versions is in `docs/history/` and the changelog.
+Benchmarks: `ROS_BENCH=1 python -m unittest tests.test_ros_director_bench tests.test_ros_roadmap_bench`. The history of earlier versions is in `docs/history/` and the changelog.

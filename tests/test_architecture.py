@@ -105,7 +105,7 @@ class LayeringTests(unittest.TestCase):
 class GuideTests(unittest.TestCase):
     def test_the_names_the_guide_relies_on_exist(self):
         """docs/ARCHITECTURE.md tells contributors where to add things; those places must exist."""
-        from ros import importers, prepare, registry, research, store, tasks
+        from ros import automation, director, handouts, importers, prepare, registry, research, store, tasks, vault
         from ros.learn import evidence, policy, probe
         guide = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
         for owner, names in ((store.Record, ("events", "event", "item", "node", "items_by_id", "current_items",
@@ -113,6 +113,8 @@ class GuideTests(unittest.TestCase):
                              (store, ("NODE_TYPES", "EDGE_TYPES", "event_id")), (registry, ("present", "LOCK", "tool")),
                              (policy, ("RULES", "Context")), (prepare, ("ROWS", "Row", "Gate")),
                              (importers, ("IMPORTERS",)), (tasks, ("KINDS", "open_task")),
+                             (automation, ("TRIGGERS", "THEN")), (director, ("PLAYBOOKS",)),
+                             (handouts, ("KINDS", "ROWS")), (vault, ("NODE_STUBS",)),
                              (research, ("STEPS", "ASSURANCE")), (evidence, ("of", "TYPES")), (probe, ("LessonView",))):
             for name in names:
                 with self.subTest(name=name):
