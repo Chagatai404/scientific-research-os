@@ -15,6 +15,27 @@ from . import graph, home, research
 from .store import Record
 
 
+_USERS: dict[str, Record] = {}
+
+
+def user_record(cfg: dict) -> Record:
+    """The user-wide record a project record is linked to, kept open between calls (at most four) so its evidence is
+    folded once and then only extended; opening it afresh for every question would replay its whole history. It
+    still sees writes other processes make. ``release`` closes them (an exiting process does not need to)."""
+    root = str(home.resolve(cfg["user"]).resolve())
+    rec = _USERS.pop(root, None) or Record(root)
+    _USERS[root] = rec  # most recently used last
+    while len(_USERS) > 4:
+        _USERS.pop(next(iter(_USERS))).close()
+    return rec
+
+
+def release() -> None:
+    for rec in _USERS.values():
+        rec.close()
+    _USERS.clear()
+
+
 def link(rec: Record, user: str | None = None, project: str | None = None) -> dict:
     """Without ``user``: mark this record as the user-wide knowledge record. With it: this is a project's research
     record, and ``user`` names the user-wide one (marked as such if it has no role yet)."""
@@ -70,20 +91,16 @@ def _needs(rec: Record, cfg: dict, as_of: date) -> dict:
     user_root = home.resolve(cfg["user"]) if cfg.get("user") else None
     if not needed or user_root is None or not user_root.is_dir():
         return {"capabilities": [], "summary": {}, "note": None if not needed else "no user-wide record is linked"}
-    user = Record(user_root)
-    try:
-        learning = graph.Learning(user, as_of)
-        rows = []
-        for cap in sorted(needed):
-            if cap in learning.caps:
-                v = learning.view(cap)
-                rows.append({"capability": cap, "title": v["title"], "state": v["state"], "ready": v["ready"],
-                             "next_review": v["next_review"], "needed_by": sorted(needed[cap])})
-            else:
-                rows.append({"capability": cap, "title": None, "state": "untracked", "ready": False,
-                             "next_review": None, "needed_by": sorted(needed[cap])})
-    finally:
-        user.close()
+    learning = graph.Learning(user_record(cfg), as_of, within=list(needed))  # only what these nodes need
+    rows = []
+    for cap in sorted(needed):
+        if cap in learning.caps:
+            v = learning.view(cap)
+            rows.append({"capability": cap, "title": v["title"], "state": v["state"], "ready": v["ready"],
+                         "next_review": v["next_review"], "needed_by": sorted(needed[cap])})
+        else:
+            rows.append({"capability": cap, "title": None, "state": "untracked", "ready": False,
+                         "next_review": None, "needed_by": sorted(needed[cap])})
     summary: dict[str, int] = {}
     for r in rows:
         summary[r["state"]] = summary.get(r["state"], 0) + 1

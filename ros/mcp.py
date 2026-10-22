@@ -109,4 +109,5 @@ def serve(project: str | None = None, stdin=None, stdout=None, portal: int | Non
             httpd.server_close()
         for rec in server.records.values():
             rec.close()
+        api.release()  # the user-wide records kept open for project records
     return 0

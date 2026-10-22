@@ -13,7 +13,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from ros import api, cli, home, importers  # noqa: E402
+from ros import api, cli, context, home, importers  # noqa: E402
 from ros.store import Record  # noqa: E402
 
 
@@ -24,6 +24,7 @@ class Graphs(unittest.TestCase):
         self.home = Path(self._tmp.name)
         os.environ["ROS_HOME"] = str(self.home)
         self.addCleanup(os.environ.pop, "ROS_HOME", None)
+        self.addCleanup(context.release)  # the user-wide record kept open for project records
         self.user = Record(home.init("knowledge"))
         self.addCleanup(self.user.close)
         self.proj = Record(home.init("ams"))

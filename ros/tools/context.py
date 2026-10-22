@@ -19,3 +19,8 @@ def context(rec, as_of=None):
       user=P("string", "the user-wide record's name"), project=P("string", "this record's project id, project:<key>"))
 def link(rec, user=None, project=None):
     return ctx.link(rec, user, project)
+
+
+def release() -> None:
+    """Close the user-wide records kept open for project records (what a long-running interface does when it ends)."""
+    ctx.release()

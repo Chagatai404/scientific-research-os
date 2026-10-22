@@ -16,7 +16,7 @@ from ros import api, importers  # noqa: E402
 CORE = {"store", "home"}
 PURE = {"store", "learn.fsrs", "home", "install"}
 DOMAIN = {"tasks", "graph", "learn.evidence", "learn.schedule", "learn.probe", "learn.tutor", "learn.policy",
-          "prepare", "research", "importers", "export", "learn.fsrs", "context"}
+          "prepare", "research", "importers", "export", "learn.fsrs", "context", "roadmap"}
 TOOLS_LAYER = {"api", "registry"} | {f"tools.{p.stem}" for p in (ROOT / "ros" / "tools").glob("*.py") if p.stem != "__init__"}
 INTERFACES = {"cli", "mcp", "serve", "__main__"}
 LIB_USERS = {"importers", "prepare"}
