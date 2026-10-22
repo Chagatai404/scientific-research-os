@@ -15,20 +15,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: Diagnose the headless browser
-        continue-on-error: true
-        run: |
-          which google-chrome chromium chromium-browser xelatex || true
-          google-chrome --version || true
-          echo '<p>hi</p>' > /tmp/d.html
-          google-chrome --headless --disable-gpu --user-data-dir=/tmp/p1 --print-to-pdf=/tmp/d.pdf file:///tmp/d.html 2>&1 | tail -15; ls -la /tmp/d.pdf || true
-          sysctl kernel.apparmor_restrict_unprivileged_userns || true
-          ls -la /usr/bin/chromium /usr/bin/chromium-browser; readlink -f /usr/bin/chromium
-          /usr/bin/chromium --version 2>&1 | tail -3 || true
-          /usr/bin/chromium --headless --disable-gpu --user-data-dir=/tmp/p2 --print-to-pdf=/tmp/d2.pdf file:///tmp/d.html 2>&1 | grep -v dbus | tail -8; ls -la /tmp/d2.pdf || true
       - name: Unit tests
         env:
           PYTHONPATH: ${{ github.workspace }}
+          # /usr/bin/chromium on the runner crashes; the preinstalled Chrome prints PDFs
+          ROS_BROWSER: /usr/bin/google-chrome
         run: python -m unittest discover -s tests -p "test_*.py"
 
   portal:
