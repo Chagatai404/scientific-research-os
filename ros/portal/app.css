@@ -38,7 +38,8 @@ a { color: var(--accent); }
 .rail a { display: flex; align-items: center; min-height: 44px; padding: 0 var(--s2); border-radius: 8px;
   text-decoration: none; color: var(--ink); }
 .rail a[aria-current="page"] { background: var(--panel); box-shadow: inset 3px 0 0 var(--accent); font-weight: 700; }
-.pace { display: flex; flex-direction: column; gap: var(--s1); font-size: var(--t-sm); color: var(--muted); }
+.pace, .field { display: flex; flex-direction: column; gap: var(--s1); font-size: var(--t-sm); color: var(--muted); }
+.field input, .field select { width: 100%; }
 .status { font-size: var(--t-sm); color: var(--muted); margin: 0; min-height: 1.5em; }
 
 main { padding: var(--s4) var(--s3) var(--s6); max-width: calc(72ch + 2 * var(--s3)); width: 100%; outline: none; }
@@ -73,18 +74,51 @@ textarea { min-height: 120px; resize: vertical; }
 .feedback.pending { border-color: var(--warn); }
 .live-note { color: var(--warn); font-size: var(--t-sm); }
 
-.map svg { width: 100%; height: auto; display: block; }
-.map .n rect { stroke: var(--line); stroke-width: 1.5; rx: 8; }
-.map .n text { fill: var(--ink); font-size: 13px; }
-.map .n { cursor: pointer; } .map .n:focus rect { stroke: var(--focus); stroke-width: 3; }
-.map line { stroke: var(--muted); stroke-width: 1.5; }
-.st-unknown rect { fill: var(--panel); } .st-learning rect { fill: #dbeafe; } .st-demonstrated rect { fill: #ccfbf1; }
-.st-retained rect { fill: #dcfce7; } .st-fragile rect { fill: #ffedd5; } .st-stale rect { fill: #f3e8ff; }
-@media (prefers-color-scheme: dark) {
-  .st-learning rect { fill: #1e3a5f; } .st-demonstrated rect { fill: #134e4a; } .st-retained rect { fill: #14532d; }
-  .st-fragile rect { fill: #7c2d12; } .st-stale rect { fill: #4c1d95; }
-}
+.graph { overflow: auto; max-width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: var(--s1); }
+.graph svg { display: block; height: auto; max-width: none; }
+.graph path { fill: none; stroke: var(--muted); stroke-width: 1.3; opacity: 0.7; }
+.graph .n rect { stroke: var(--line); stroke-width: 1.5; fill: var(--panel); }
+.graph .n text, .graph text { fill: var(--ink); font-size: 12px; }
+.graph .n { cursor: pointer; } .graph .n:focus rect { stroke: var(--focus); stroke-width: 3; }
+.graph .focus rect { stroke: var(--accent); stroke-width: 3; }
+.zoom { display: flex; gap: var(--s1); margin-bottom: var(--s1); }
+.zoom button { min-width: 44px; padding: 0; }
+main.wide { max-width: none; }
+.tabs { display: flex; flex-wrap: wrap; gap: var(--s1); margin-bottom: var(--s2); }
+.tabs a[aria-current="page"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.st-unknown rect, .seg.st-unknown { fill: var(--panel); background: var(--panel); }
+.st-learning rect, .seg.st-learning { fill: #dbeafe; background: #dbeafe; }
+.st-demonstrated rect, .seg.st-demonstrated { fill: #ccfbf1; background: #ccfbf1; }
+.st-retained rect, .seg.st-retained { fill: #dcfce7; background: #dcfce7; }
+.st-fragile rect, .seg.st-fragile { fill: #ffedd5; background: #ffedd5; }
+.st-stale rect, .seg.st-stale { fill: #f3e8ff; background: #f3e8ff; }
+.hub rect { fill: #e8eef4; } .hub.m1 rect { fill: #dbeafe; } .hub.m2 rect { fill: #ccfbf1; } .hub.m3 rect { fill: #bbf7d0; } .hub.m4 rect { fill: #86efac; }
+.claim.v-pass rect, .verdict.v-pass rect, .experiment.auth-approved rect { fill: #dcfce7; }
+.claim.v-warn rect, .verdict.v-warn rect, .experiment.auth-awaiting rect { fill: #fef3c7; }
+.claim.v-fail rect, .claim.v-blocked rect, .claim.v-error rect, .verdict.v-fail rect, .verdict.v-blocked rect, .experiment.auth-rejected rect { fill: #fee2e2; }
+.claim.v-pending rect, .verdict.v-pending rect { fill: var(--panel); stroke-dasharray: 4 3; }
+.claim.own-owned rect, .claim.own-waived rect { stroke: var(--good); stroke-width: 3; }
+.handout rect, .paper rect, .source rect, .artifact rect { fill: #f1f5f9; } .decision rect { fill: #e0e7ff; }
 .legend { display: flex; flex-wrap: wrap; gap: var(--s2); font-size: var(--t-sm); color: var(--muted); }
+.legend i { display: inline-block; width: 12px; height: 12px; margin-right: 4px; border-radius: 2px; }
+.b-all { fill: #cbd5e1; background: #cbd5e1; } .b-ok { fill: #22863a; background: #22863a; }
+.stack { display: flex; height: 24px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); margin-bottom: var(--s1); }
+.seg { display: block; min-width: 2px; }
+.chip { display: inline-block; padding: 0 var(--s1); border: 1px solid var(--line); border-radius: 999px; font-size: var(--t-sm);
+  background: var(--panel); line-height: 1.6; }
+.chip.v-pass { background: #dcfce7; border-color: #86efac; color: #14532d; } .chip.v-warn, .chip.v-pending { background: #fef3c7; border-color: #fcd34d; color: #78350f; }
+.chip.v-fail, .chip.v-blocked, .chip.v-error { background: #fee2e2; border-color: #fca5a5; color: #7f1d1d; }
+.next { font-size: var(--t-lg); } .warn { color: var(--warn); } .notice { border-left: 4px solid var(--accent); padding: var(--s1) var(--s2); }
+.need .evidence { margin: var(--s1) 0 var(--s2); padding: var(--s1) var(--s2); border-left: 3px solid var(--line); }
+@media (prefers-color-scheme: dark) {
+  .st-learning rect, .seg.st-learning { fill: #1e3a5f; background: #1e3a5f; } .st-demonstrated rect, .seg.st-demonstrated { fill: #134e4a; background: #134e4a; }
+  .st-retained rect, .seg.st-retained { fill: #14532d; background: #14532d; } .st-fragile rect, .seg.st-fragile { fill: #7c2d12; background: #7c2d12; }
+  .st-stale rect, .seg.st-stale { fill: #4c1d95; background: #4c1d95; } .hub rect { fill: #243442; }
+  .claim.v-pass rect, .verdict.v-pass rect, .experiment.auth-approved rect { fill: #14532d; } .claim.v-warn rect, .verdict.v-warn rect, .experiment.auth-awaiting rect { fill: #713f12; }
+  .claim.v-fail rect, .claim.v-blocked rect, .claim.v-error rect, .verdict.v-fail rect { fill: #7f1d1d; }
+  .handout rect, .paper rect, .source rect, .artifact rect { fill: #27272a; } .decision rect { fill: #312e81; }
+  .chip.v-pass { background: #14532d; color: #dcfce7; } .chip.v-warn, .chip.v-pending { background: #713f12; color: #fef3c7; } .chip.v-fail, .chip.v-blocked, .chip.v-error { background: #7f1d1d; color: #fee2e2; }
+}
 
 table { border-collapse: collapse; width: 100%; font-size: var(--t-sm); }
 th, td { text-align: left; padding: var(--s1); border-bottom: 1px solid var(--line); vertical-align: top;

@@ -17,9 +17,9 @@ const WIDTHS = [320, 768, 1280, 1920];
 const MAX_CONTROLS = 6;
 const debug = process.env.ROS_DEBUG ? (...a) => console.error(...a) : () => {};
 
-function startServer(record) {
+function startServer(record, rosHome) {
   return new Promise((resolve, reject) => {
-    const p = spawn(python, ['-m', 'ros', '-p', record, 'serve', '--port', '0'], {cwd: root, env: {...process.env, PYTHONPATH: root}});
+    const p = spawn(python, ['-m', 'ros', '-p', record, 'serve', '--port', '0'], {cwd: root, env: {...process.env, PYTHONPATH: root, ROS_HOME: rosHome}});
     let out = '';
     p.stdout.on('data', (d) => {
       out += d;
@@ -68,7 +68,7 @@ async function main() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ros-portal-'));
   const record = path.join(tmp, 'rec');
   execFileSync(python, [path.join(root, 'tests', 'support_ros_demo.py'), record], {env: {...process.env, PYTHONPATH: root}});
-  const server = await startServer(record);
+  const server = await startServer(record, path.join(tmp, 'home'));
   const browser = await chromium.launch({headless: true, ...(process.env.ROS_BROWSER ? {executablePath: process.env.ROS_BROWSER} : {})});
   const started = Date.now();
   try {
@@ -77,15 +77,16 @@ async function main() {
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     page.on('request', (r) => { if (!r.url().startsWith(server.url)) foreign.push(r.url()); });
+    page.on('response', (r) => { if (r.status() >= 400) errors.push(`HTTP ${r.status()} ${r.url().replace(server.url, '/')}`); });
 
     await page.goto(server.url, {waitUntil: 'domcontentloaded'});
-    await page.getByRole('heading', {name: 'Today'}).waitFor();
+    await page.getByRole('heading', {name: 'Director'}).waitFor();
     // the small Context window: closed by default, a 44 px summary line, opens to say how the record is linked
     const context = page.locator('details.compact');
     await context.locator('summary').waitFor();
     assert.ok((await context.locator('summary').boundingBox()).height >= 44, 'the Context summary is under 44 px');
     assert.equal(await context.evaluate((d) => d.open), false, 'the Context window should start closed');
-    for (const w of WIDTHS) { await page.setViewportSize({width: w, height: 900}); await layout(page, `today @${w}`); }
+    for (const w of WIDTHS) { await page.setViewportSize({width: w, height: 900}); await layout(page, `director @${w}`); }
     await page.setViewportSize({width: 1280, height: 900});
     await page.getByRole('button', {name: 'Start lesson'}).click();
 
@@ -143,11 +144,38 @@ async function main() {
     for (const want of ['numeric', 'teach', 'feedback']) assert.ok(seen.has(want), `the lesson never reached ${want}: ${[...seen]}`);
     assert.ok(seen.has('close') || seen.has('wait'), 'the lesson did not end');
 
-    for (const view of ['learn', 'library', 'history', 'research']) {
+    for (const view of ['learn', 'vault', 'history', 'research', 'graphs/knowledge', 'graphs/research', 'graphs/progress']) {
       await page.goto(server.url + '#' + view, {waitUntil: 'domcontentloaded'});
       await page.waitForSelector('main h1');
       for (const w of WIDTHS) { await page.setViewportSize({width: w, height: 900}); await layout(page, `${view} @${w}`); }
     }
+    // the graphs: the server places the nodes, a click on a hub looks inside it, a click on a capability says where you stand
+    await page.goto(server.url + '#graphs/knowledge', {waitUntil: 'domcontentloaded'});
+    await page.waitForSelector('.graph svg [data-gnode]');
+    await page.locator('[data-gnode="course:stat-demo"]').click({timeout: 5000})
+      .catch(async () => { throw new Error('no hub node; the page shows: ' + (await page.locator('main').innerText()) + ' | ' + (await page.locator('[data-gnode]').evaluateAll((l) => l.map((e) => e.dataset.gnode)))); });
+    await page.waitForSelector('[data-gnode="capability:variance"]');
+    assert.equal(await page.locator('[data-gnode^="capability:"]').count(), 2);
+    await page.locator('[data-gnode="capability:variance"]').click();
+    await page.getByRole('button', {name: 'Start lesson'}).waitFor();
+    await page.goto(server.url + '#graphs/research', {waitUntil: 'domcontentloaded'});
+    await page.waitForSelector('[data-gnode="claim:width"]');
+    await page.locator('[data-gnode="claim:width"]').click();
+    await page.getByText('Audit chain', {exact: false}).or(page.getByText('Step', {exact: true})).first().waitFor();
+    for (const w of WIDTHS) { await page.setViewportSize({width: w, height: 900}); await layout(page, `graph @${w}`); }
+    await page.setViewportSize({width: 1280, height: 900});
+    await page.goto(server.url + '#graphs/chain/claim%3Awidth', {waitUntil: 'domcontentloaded'});
+    await page.waitForSelector('[data-gnode="claim:width#integrity"]');
+    // searching finds a node and its page shows the evidence
+    await page.locator('#q').fill('variance');
+    await page.locator('#q').press('Enter');
+    await page.getByRole('link', {name: 'Variance'}).first().click();
+    await page.waitForSelector('main h1');
+    // the director: say what you want, in your own words
+    await page.goto(server.url + '#director', {waitUntil: 'domcontentloaded'});
+    await page.getByLabel('In your own words').fill('teach me QML101');
+    await page.getByRole('button', {name: 'Start', exact: true}).click();
+    await page.getByText('Set up: course').waitFor({timeout: 8000});
     await page.goto(server.url + '#research', {waitUntil: 'domcontentloaded'});
     await page.waitForSelector('form[data-human="approve"]', {timeout: 5000})
       .catch(async () => { throw new Error('no approval form; the page shows: ' + (await page.locator('main').innerText())); });

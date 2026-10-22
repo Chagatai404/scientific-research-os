@@ -17,13 +17,12 @@ Approving, deciding and waiving stay the person's own acts (``human`` tools); no
 """
 from __future__ import annotations
 
-from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 import os
 import re
 import sys
 
-from . import __version__, automation, context, graph, handouts, home, install, research, roadmap, tasks, vault
+from . import __version__, automation, context, graph, handouts, home, install, prepare, research, roadmap, tasks, vault
 from .learn import schedule
 from .store import Record, event_id
 
@@ -72,27 +71,7 @@ def _root(name: str):
     return home.home() / "projects" / name
 
 
-@contextmanager
-def linked(rec: Record):
-    """The record and the ones it is joined to: a user-wide record with every project and course linked to it, a project
-    with the user-wide record. Records opened here are closed; the cached user-wide record is left open."""
-    opened: list[Record] = []
-    out = [rec]
-    cfg = home.config(rec.root)
-    try:
-        if cfg.get("role") == "user":
-            for name in home.projects():
-                c = home.config(_root(name))
-                if c.get("role") == "project" and c.get("user") == rec.root.name and _root(name).resolve() != rec.root.resolve():
-                    r = Record(_root(name))
-                    opened.append(r)
-                    out.append(r)
-        elif cfg.get("user") and _root(cfg["user"]).is_dir():
-            out.append(context.user_record(cfg))
-        yield out
-    finally:
-        for r in opened:
-            r.close()
+linked = context.linked
 
 
 def _user_record(rec: Record) -> tuple[Record, bool]:
@@ -303,7 +282,8 @@ def brief(rec: Record, as_of: date | None = None, compact: bool = False) -> dict
     """The first thing to read: what needs the person's judgement, what is happening, what they learned, what is new."""
     as_of = as_of or date.today()
     needs, counts, oldest, jobs, recent = [], {}, None, {"open": 0, "claimed": 0}, []
-    learned = {"due": 0, "next_due": None, "frontier": [], "lessons_this_week": 0, "unreviewed_handouts": []}
+    learned = {"due": 0, "next_due": None, "frontier": [], "lessons_this_week": 0, "unreviewed_handouts": [],
+               "lessons_ready": [{"bundle": b["id"], "title": b["title"]} for b in prepare.bundles(rec) if b["ready"]][:3]}
     new = {"inbox": 0, "my_notes_flowed_back": 0}
     week = (datetime.now(timezone.utc) - timedelta(days=7)).strftime(tasks.FORMAT)
     records = []
@@ -473,7 +453,10 @@ def evidence(rec: Record, subject: str) -> dict:
         return {"subject": subject, "kind": "proposal", "text": ev["data"].get("change"), "why": ev["data"].get("rationale"),
                 "by": ev["actor"], "decide": "accept or reject in the portal; an accepted proposal is applied by you"}
     if node:
-        return {"subject": subject, "kind": node["type"], "node": node, "links": _links(rec, subject)}
+        out = {"subject": subject, "kind": node["type"], "node": node, "links": _links(rec, subject)}
+        if node["type"] == "capability":
+            out["learning"] = graph.Learning(rec, within=[subject]).view(subject)
+        return out
     raise KeyError(f"no such subject {subject}")
 
 

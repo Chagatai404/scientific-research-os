@@ -9,6 +9,7 @@ depends on, what the user knows of it (or "untracked" when the user-wide graph h
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import date
 
 from . import graph, home, research
@@ -169,4 +170,42 @@ def _projects(rec: Record, as_of: date) -> list[dict]:
                                    for v in sorted({c["verdict"] for c in r["claims"]})}})
         finally:
             project.close()
+    return out
+
+
+@contextmanager
+def linked(rec: Record):
+    """The record and the ones it is joined to: a user-wide record with every project and course linked to it, a project
+    with the user-wide record. Records opened here are closed; the cached user-wide record is left open."""
+    opened: list[Record] = []
+    out = [rec]
+    cfg = home.config(rec.root)
+    try:
+        if cfg.get("role") == "user":
+            for name in home.projects():
+                root = home.home() / "projects" / name
+                c = home.config(root)
+                if c.get("role") == "project" and c.get("user") == rec.root.name and root.resolve() != rec.root.resolve():
+                    r = Record(root)
+                    opened.append(r)
+                    out.append(r)
+        elif cfg.get("user") and (home.home() / "projects" / cfg["user"]).is_dir():
+            out.append(user_record(cfg))
+        yield out
+    finally:
+        for r in opened:
+            r.close()
+
+
+def records_overview(rec: Record) -> list[dict]:
+    """Every record of the home with its role, hub and title, for the switcher: which is the one being looked at."""
+    out = []
+    for name in home.projects():
+        root = home.home() / "projects" / name
+        cfg = home.config(root)
+        out.append({"name": name, "role": cfg.get("role") or "unlinked", "hub": cfg.get("project"),
+                    "current": root.resolve() == rec.root.resolve()})
+    if not any(r["current"] for r in out):  # a record kept in a repository's .ros/
+        out.insert(0, {"name": rec.root.name, "role": home.config(rec.root).get("role") or "unlinked",
+                       "hub": home.config(rec.root).get("project"), "current": True})
     return out

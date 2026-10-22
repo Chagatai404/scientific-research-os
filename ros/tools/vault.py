@@ -60,3 +60,8 @@ def vault_resolve(rec, target, action):
       day=P("string", "ISO date (default today)"))
 def vault_review(rec, day=None):
     return vault.review_note(rec, date.fromisoformat(day) if day else None)
+
+
+@tool("vault_root", "The vault folder Research OS writes into (absolute), or nothing when no vault is set.")
+def vault_root(rec):
+    return vault.root_folder()

@@ -367,6 +367,14 @@ def vault_path() -> Path:
     return vault
 
 
+def root_folder() -> str | None:
+    """The absolute folder ``<vault>/<vault_root>`` the portal may serve notes and PDFs from, or None."""
+    try:
+        return str(vault_path() / home.settings()["vault_root"])
+    except ValueError:
+        return None
+
+
 def configured() -> bool:
     try:
         vault_path()

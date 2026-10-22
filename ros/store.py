@@ -643,6 +643,27 @@ class Record:
             rows = self.index().execute("SELECT * FROM nodes WHERE type=? ORDER BY id", (type,))
         return [_node_row(r) for r in rows]
 
+    def search_nodes(self, q: str, types: tuple | list | None = None, limit: int = 20) -> list[dict]:
+        """Nodes whose id, title or text contains ``q`` (case-insensitive), best first: an id or title that starts with it,
+        then the rest. One indexed-table query, not a scan in Python."""
+        self.sync()
+        q = q.strip()
+        if not q:
+            return []
+        like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        sql, args = "SELECT * FROM nodes WHERE (id LIKE ? ESCAPE '\\' OR data LIKE ? ESCAPE '\\')", [like, like]
+        if types:
+            sql += f" AND type IN ({','.join('?' * len(types))})"
+            args += list(types)
+        found, low = [], q.casefold()
+        for r in self.index().execute(sql + " LIMIT 400", args):
+            n = _node_row(r)
+            hay = [n["id"], str(n.get("title") or ""), str(n.get("text") or "")]
+            if any(low in h.casefold() for h in hay):
+                rank = 0 if any(h.casefold().startswith(low) for h in hay[:2]) or n["id"].split(":", 1)[-1].casefold().startswith(low) else 1
+                found.append((rank, str(n.get("title") or n["id"]).casefold(), n))
+        return [n for _, _, n in sorted(found, key=lambda t: (t[0], t[1]))[:max(1, int(limit))]]
+
     def nodes_in(self, ids) -> list[dict]:
         """The nodes with these ids (those that exist), fetched in chunks, in id order."""
         self.sync()
