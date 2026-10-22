@@ -1,5 +1,5 @@
 :root{--blue:#1b5e9b;--green:#2e7d32;--red:#b3261e;--amber:#b26a00;--grey:#555}
-@page{size:A4;margin:20mm 18mm 20mm 18mm}
+@page{size:A4;margin:22mm 40mm 22mm 22mm;@bottom-left{content:"Study handout";font:8pt Georgia;color:#555}@bottom-right{content:"Page " counter(page) " of " counter(pages);font:8pt Georgia;color:#555}}
 body{font-family:"Latin Modern Roman","Computer Modern",Georgia,"Times New Roman",serif;font-size:11pt;line-height:1.45;color:#111;max-width:none;margin:0}
 header.title{border-bottom:1.5pt solid var(--blue);margin-bottom:10pt;padding-bottom:6pt}
 header.title .meta{font-size:9pt;color:var(--grey);display:flex;justify-content:space-between}
@@ -23,3 +23,11 @@ pre{background:#f4f4f4;padding:5pt;font-size:9pt;overflow:auto}code{font-size:.9
 .m.d{display:block;text-align:center;margin:5pt 0}
 blockquote{margin:6pt 0 6pt 8pt;padding-left:8pt;border-left:2pt solid var(--blue);color:#333}
 sup.cite a{color:var(--blue);text-decoration:none}
+
+/* Keep topic headings with their text, including Markdown levels 3 and 4. */
+h1,h2,h3,h4,h5,h6{break-after:avoid-page}
+h5,h6{font-size:11pt;color:var(--blue);margin:11pt 0 4pt}
+p{orphans:3;widows:3}
+.m.d,table{break-inside:avoid-page}
+.m:not(.d){display:inline-block;white-space:nowrap}
+.solutions{break-before:page}

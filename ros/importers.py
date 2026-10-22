@@ -499,7 +499,8 @@ def _json(path: Path):
 def _about(fm: dict) -> list[tuple[str, str]]:
     out = []
     for key, prefix in (("concept", "concept"), ("concepts", "concept"), ("project", "project"), ("project_id", "project"),
-                        ("subject", "subject"), ("domain", "domain")):
+                        ("subject", "subject"), ("domain", "domain"), ("learning_ref", "capability"),
+                        ("course_id", "course"), ("course", "course")):
         v = fm.get(key)
         for x in (v if isinstance(v, list) else [v] if v else []):
             if isinstance(x, str) and x.strip():
@@ -529,13 +530,14 @@ def _related(sid: str, text: str, stems: dict) -> list[tuple[str, str, str]]:
 
 
 def projects(rec: Record, root: Path | str) -> dict:
-    """A project note (``type: project``, ``project_id``) gives its project hub its real name and the note's path."""
+    """A project note (``type: project``; ``project_id``, or the file name when it has none) gives its project hub its real
+    name and the note's path."""
     root = Path(root).resolve()
     nodes, files, folders = {}, {}, {}
     for rel, f, text, fm in _md(root):
-        if fm.get("type") != "project" or not fm.get("project_id"):
+        if fm.get("type") != "project":
             continue
-        pid = "project:" + _slug(fm["project_id"])
+        pid = "project:" + _slug(fm.get("project_id") or f.stem)
         nodes[pid] = {**(rec.node(pid) or {}), "id": pid, "type": "project", "title": _heading(text, f.stem), "path": rel,
                       "vault_path": rel, "legacy": True}
         files[rel] = "project-note"

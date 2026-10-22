@@ -1,6 +1,6 @@
 # Scientific Research OS
 
-Version **1.2.0**. You are the director: say what you want to learn or find out, and agents set it up, prepare it
+Version **1.2.1**. You are the director: say what you want to learn or find out, and agents set it up, prepare it
 and keep your Obsidian vault current. You learn, and you judge the findings. It works with any AI agent: Claude, Codex,
 Gemini or a local model.
 
@@ -113,3 +113,5 @@ folder, if it is not installed next to the repository), `ROS_BROWSER` (the Chrom
 `python3`; on Windows `python`).
 
 Benchmarks: `ROS_BENCH=1 python -m unittest tests.test_ros_director_bench tests.test_ros_roadmap_bench`. The history of earlier versions is in `docs/history/` and the changelog.
+
+Lecture handouts use descriptive headings in study order: scope, notation, explanations and derivations, examples, corrections, practice, separate solutions and sources. Older default layer labels are presented without their internal codes.

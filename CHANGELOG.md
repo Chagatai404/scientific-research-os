@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1: migration loses nothing
+
+- **Handouts read in study order.** Lecture handouts have descriptive headings, explanations before practice, optional
+  notation, examples and corrections, and separate solutions and sources. Legacy layer labels are replaced in the
+  presentation without rewriting source text or custom titles. Printed HTML keeps headings with their text, leaves room
+  for annotation and numbers its pages.
+- **Migration loses no project note.** A `type: project` note with no `project_id` is named by its file and claimed
+  (before, `migrate_check` listed it as unknown and its hub never got its note). Notes now link to the capability in
+  `learning_ref` and to the course in `course_id` or `course`, so the vault's own concept notes sit on the knowledge graph.
+
 ## 1.2.0: the director
 
 You are the director: you say what you want to learn or find out, an agent does the rest, and you judge the findings.

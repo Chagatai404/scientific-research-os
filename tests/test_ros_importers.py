@@ -162,6 +162,29 @@ class ResearchImportTests(Fixture):
         self.assertGreaterEqual(len({t for _, t in old}), 10)
 
 
+class ProjectNoteTests(Fixture):
+    def test_a_project_note_without_project_id_is_named_by_its_file(self):
+        vault = self.tmp / "vault"
+        (vault / "01 Projects" / "Pave").mkdir(parents=True)
+        (vault / "01 Projects" / "Pave" / "Pave.md").write_text("---\ntype: project\n---\n\n# Pave\n\nA deployment.\n", encoding="utf-8")
+        out = importers.projects(self.rec, vault)
+        self.assertEqual(out["files"], {"01 Projects/Pave/Pave.md": "project-note"})
+        self.assertEqual(self.rec.node("project:pave")["vault_path"], "01 Projects/Pave/Pave.md")
+
+
+class NoteLinkTests(Fixture):
+    def test_learning_ref_and_course_id_link_a_note_to_its_capability_and_course(self):
+        vault = self.tmp / "vault"
+        (vault / "02 Knowledge").mkdir(parents=True)
+        (vault / "02 Knowledge" / "Radiation Length.md").write_text(
+            "---\ntype: concept\nlearning_ref: \"physics.radiation-length\"\ncourse_id: stat303\n---\n\n# Radiation Length\n",
+            encoding="utf-8")
+        importers.notes(self.rec, vault)
+        sid = "source:" + next(n["id"] for n in self.rec.nodes(type="source")).split(":", 1)[1]
+        about = {e["dst"] for e in self.rec.edges(src=sid, type="about")}
+        self.assertEqual(about, {"capability:physics.radiation-length", "course:stat303"})
+
+
 class HistoryTests(Fixture):
     def test_every_session_answer_appears_with_its_grade(self):
         from ros import graph
