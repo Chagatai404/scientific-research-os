@@ -25,7 +25,7 @@ def status(rec, as_of=None):
         open_tasks[t["kind"]] = open_tasks.get(t["kind"], 0) + 1
     return {"record": str(rec.root), "as_of": day.isoformat(), "capabilities": len(learning.caps), "states": states,
             "ready": len(learning.ready), "frontier": len(learning.frontier()), "due": len(schedule.due(rec, day)),
-            "items": len(rec.items()), "lessons": len(rec.nodes(type="lesson")), "open_tasks": open_tasks,
+            "items": len(rec.items()), "lessons": sum(1 for n in rec.nodes(type="lesson") if not n["id"].startswith("bundle:")), "open_tasks": open_tasks,
             "research": len(graph.research_frontier(rec)), "problems": rec.problems}
 
 

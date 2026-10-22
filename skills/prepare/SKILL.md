@@ -27,7 +27,10 @@ is generated live except answers and grades. Contract: `references/PREPARATION.m
 - **Clip** (optional, never the only path): the `video-scout` agent returns one segment of at most 3 minutes verified
   against its transcript, or `NONE`. Unverified clips are left out by the gate.
 - **Items**: probe items at 3 or more difficulty levels per strand, a check item per node, one free-recall close item
-  and one transfer item. Choice options mutate the correct claim and never justify themselves. Use `add_item`.
+  and one transfer item. Choice options mutate the correct claim and never justify themselves. Use `add_item` (pass
+  the item with `--item @item.json` so LaTeX survives the shell). An item's `concepts` are node ids
+  (`capability:var-sum`, never a bare strand name): a lesson finds its questions by them. A choice answer is the
+  option's index. Items are immutable: to change one, add a new item with `supersedes` set to the old hash.
 
 ## 3. Voice and the gate
 

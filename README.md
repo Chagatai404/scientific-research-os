@@ -59,7 +59,8 @@ Then ask your agent to teach you something, or open **Today** in the portal.
 
 Every operation is declared once (in `ros/tools/`, registered by `ros/registry.py`) and exposed three ways: `ros <tool> --json` for agents with a
 shell, the MCP server (`ros mcp`) for agents with MCP, and the portal's local HTTP API. `ros tools --json` lists
-them with their JSON schemas. Skills and agent roles are plain Markdown; `ros install` writes them where each client
+them with their JSON schemas. A JSON argument can be written inline or read from a file (`--item @item.json`), which
+is the safe way to pass LaTeX through a shell. Skills and agent roles are plain Markdown; `ros install` writes them where each client
 looks. Work only a model can do (grading a written answer, making a visual, auditing a claim) waits as a task
 that any attached agent can claim; with none attached, prepared lessons still play and written answers wait.
 

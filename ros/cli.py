@@ -23,17 +23,27 @@ from .store import Record
 
 def _value(p: api.Param):
     def parse(text: str):
-        if p.type == "integer":
-            return int(text)
-        if p.type == "number":
-            return float(text)
-        if p.type in ("array", "object"):
-            return json.loads(text)
-        if p.type == "any":
+        if p.type in ("array", "object") and text.startswith("@"):
+            # @file.json: JSON read from a file, because a shell strips the backslashes of LaTeX written inline
             try:
+                text = Path(text[1:]).expanduser().read_text(encoding="utf-8")
+            except OSError as exc:
+                raise argparse.ArgumentTypeError(f"cannot read {text[1:]}: {exc.strerror}") from exc
+        try:
+            if p.type == "integer":
+                return int(text)
+            if p.type == "number":
+                return float(text)
+            if p.type in ("array", "object"):
                 return json.loads(text)
-            except ValueError:
-                return text
+            if p.type == "any":
+                try:
+                    return json.loads(text)
+                except ValueError:
+                    return text
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(f"{exc} (JSON, or @file.json)" if p.type in ("array", "object")
+                                             else str(exc)) from exc
         return text
     return parse
 

@@ -141,6 +141,27 @@ class CliArguments(Fixture):
         self.assertEqual((code, json.loads(out.getvalue())), (0, []))  # --limit 0 asked for no rows, not for all
 
 
+class JsonArguments(Fixture):
+    def test_json_can_come_from_a_file_and_a_bad_document_says_what_is_wrong(self):
+        import contextlib
+        import io
+        os.environ["ROS_HOME"] = str(self.home)
+        self.addCleanup(os.environ.pop, "ROS_HOME", None)
+        self.rec.close()
+        item = self.home / "item.json"
+        item.write_text(json.dumps({"kind": "numeric", "prompt": "What is $\\frac{1}{2}+\\frac{1}{2}$?", "answer": 1,
+                                    "concepts": ["capability:mean"]}), encoding="utf-8")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(cli.main(["-p", "demo", "add_item", "--item", f"@{item}", "--json"]), 0)
+        self.assertEqual(len(json.loads(out.getvalue())["id"]), 64)
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), self.assertRaises(SystemExit):
+            cli.main(["-p", "demo", "add_item", "--item", "{oops"])
+        self.assertIn("JSON", err.getvalue())
+        self.assertNotIn("invalid parse value", err.getvalue())
+
+
 class Authoring(Fixture):
     def test_edges_need_both_ends_and_concepts_need_node_ids(self):
         with self.assertRaises(ValueError) as cm:
