@@ -17,6 +17,7 @@ same history until the old runtime is retired. Everything here only reads; nothi
 """
 from __future__ import annotations
 
+from array import array
 from dataclasses import dataclass
 from datetime import date
 import json
@@ -143,46 +144,162 @@ def _assess(node: dict, rows: list[dict], as_of: date) -> tuple[Assessment, dict
     return a, mastery
 
 
-class Learning:
-    """Every capability in a record, assessed as of one day. Build once per query; it reads the index once."""
+class Structure:
+    """The ``requires`` graph of a record as compact arrays: ids are interned to ints and each direction is a CSR (an
+    offsets array and a flat array of neighbours), so a record with 10^5 capabilities and 10^6 edges costs megabytes,
+    not hundreds of them, and a walk touches only the nodes it reaches."""
+    __slots__ = ("names", "index", "_po", "_pe", "_do", "_de")
 
-    def __init__(self, rec: Record, as_of: date | None = None):
+    def __init__(self, pairs):
+        index: dict[str, int] = {}
+        names: list[str] = []
+        src, dst = array("i"), array("i")
+        for a, b in pairs:
+            for x in (a, b):
+                if x not in index:
+                    index[x] = len(names)
+                    names.append(x)
+            src.append(index[a])
+            dst.append(index[b])
+        self.names, self.index = names, index
+        self._po, self._pe = _csr(len(names), src, dst)  # a requires b: b is among a's prerequisites
+        self._do, self._de = _csr(len(names), dst, src)  # ... and a is among b's dependents
+
+    def prerequisites(self, key: str) -> list[str]:
+        i = self.index.get(key)
+        return [] if i is None else sorted(self.names[j] for j in self._pe[self._po[i]:self._po[i + 1]])
+
+    def dependents(self, key: str) -> list[str]:
+        i = self.index.get(key)
+        return [] if i is None else sorted(self.names[j] for j in self._de[self._do[i]:self._do[i + 1]])
+
+    def ancestors(self, keys) -> set[str]:
+        """The given ids and everything they transitively require, in time linear in what is reached."""
+        seen = bytearray(len(self.names))
+        todo = [self.index[k] for k in keys if k in self.index]
+        for i in todo:
+            seen[i] = 1
+        out = set(keys)
+        while todo:
+            i = todo.pop()
+            out.add(self.names[i])
+            for j in self._pe[self._po[i]:self._po[i + 1]]:
+                if not seen[j]:
+                    seen[j] = 1
+                    todo.append(j)
+        return out
+
+
+def _csr(n: int, src: array, dst: array) -> tuple[array, array]:
+    offsets = [0] * (n + 1)
+    for a in src:
+        offsets[a + 1] += 1
+    for i in range(n):
+        offsets[i + 1] += offsets[i]
+    fill, flat = list(offsets), array("i", bytes(4 * len(src)))
+    for a, b in zip(src, dst):
+        flat[fill[a]] = b
+        fill[a] += 1
+    return array("i", offsets), flat
+
+
+_STRUCTURES: dict = {}
+
+
+def structure(rec: Record) -> Structure:
+    """The record's ``requires`` graph, built once per state of its edge log. It is keyed to ``rec.stamp("edges")``, not
+    to the index generation, so answers and grades (events) never throw it away, and a write to the graph does."""
+    key = rec.stamp("edges")
+    root = str(rec.root.resolve())
+    hit = _STRUCTURES.get(root)
+    if hit and hit[0] == key:
+        return hit[1]
+    built = Structure((r["src"], r["dst"]) for r in rec.index().execute(
+        "SELECT src, dst FROM edges WHERE type='requires'"))
+    if len(_STRUCTURES) >= 16:
+        _STRUCTURES.pop(next(iter(_STRUCTURES)))
+    _STRUCTURES[root] = (key, built)
+    return built
+
+
+class Learning:
+    """The capabilities of a record, assessed as of one day. Build once per query; it reads the index once.
+
+    ``within`` limits it to those capabilities and everything they require (a downward-closed set, so readiness there
+    is the same as in the whole record) and assesses only those: the cost follows the question, not the record."""
+
+    def __init__(self, rec: Record, as_of: date | None = None, within=None):
         self.as_of = as_of or date.today()
         from .learn import evidence
         ev, kinds = evidence.of(rec), evidence.kinds(rec)
-        requires: dict[str, list[str]] = {}
-        for e in rec.edges(type="requires"):
-            requires.setdefault(e["src"], []).append(e["dst"])
-        self.members: dict[str, set[str]] = {}
-        for e in rec.edges(type="part-of") + rec.edges(type="about"):
-            self.members.setdefault(e["dst"], set()).add(e["src"])
+        self._rec, self._members = rec, None
+        self.structure = structure(rec)
+        if within is None:
+            nodes = rec.nodes(type="capability")
+        else:
+            nodes = [n for n in rec.nodes_in(self.structure.ancestors(within)) if n["type"] == "capability"]
         self.caps: dict[str, Capability] = {}
-        for n in rec.nodes(type="capability"):
+        for n in nodes:
             rows = ev.rows(n["id"], kinds)
             a, mastery = ev.assessed(n["id"], self.as_of, n, lambda: _assess(n, rows, self.as_of))
-            self.caps[n["id"]] = Capability(n["id"], n, sorted(requires.get(n["id"], [])), rows, a, mastery)
+            self.caps[n["id"]] = Capability(n["id"], n, self.structure.prerequisites(n["id"]), rows, a, mastery)
         self.ready = self._ready()
 
+    @property
+    def members(self) -> dict[str, set[str]]:
+        """Hub (course, goal, project, subject, domain, block, concept) -> the capabilities that belong to it. Read
+        from the edges when first asked for: most queries never need it."""
+        if self._members is None:
+            self._members = {}
+            for e in self._rec.edges(type="part-of") + self._rec.edges(type="about"):
+                self._members.setdefault(e["dst"], set()).add(e["src"])
+        return self._members
+
     def _ready(self) -> set[str]:
-        """Ready means valid evidence here and throughout the prerequisite ancestry."""
+        """Ready means valid evidence here and throughout the prerequisite ancestry. One pass over the edges: a
+        capability becomes ready when its last prerequisite does; a cycle, or a prerequisite that is missing or not
+        itself valid, leaves it waiting for good."""
+        waiting: dict[str, int] = {}
+        dependents: dict[str, list[str]] = {}
+        for k, c in self.caps.items():
+            if c.ready:
+                waiting[k] = len(c.prerequisites)
+                for p in c.prerequisites:
+                    dependents.setdefault(p, []).append(k)
         ready: set[str] = set()
-        while True:
-            more = {k for k, c in self.caps.items() if k not in ready and c.ready and set(c.prerequisites) <= ready}
-            if not more:
-                return ready
-            ready |= more
+        todo = [k for k, w in waiting.items() if w == 0]
+        while todo:
+            k = todo.pop()
+            ready.add(k)
+            for d in dependents.get(k, ()):
+                waiting[d] -= 1
+                if waiting[d] == 0:
+                    todo.append(d)
+        return ready
 
     def order(self, keys) -> list[str]:
-        """``keys`` with every capability after its prerequisites (roots first), ties by id."""
-        keys, out, placed = set(keys), [], set()
-        while len(out) < len(keys):
-            layer = sorted(k for k in keys - placed
-                           if all(p in placed or p not in keys for p in self.caps[k].prerequisites))
-            if not layer:  # a cycle: place the rest by id
-                layer = sorted(keys - placed)
-            out += layer
-            placed |= set(layer)
-        return out
+        """``keys`` with every capability after its prerequisites (roots first), ties by id. Capabilities in a cycle,
+        and those that wait on one, come last in id order."""
+        keys = set(keys)
+        waiting = {k: 0 for k in keys}
+        dependents: dict[str, list[str]] = {}
+        for k in keys:
+            for p in set(self.caps[k].prerequisites):
+                if p in keys:
+                    waiting[k] += 1
+                    dependents.setdefault(p, []).append(k)
+        level = dict.fromkeys(keys, 0)
+        todo = [k for k, w in waiting.items() if w == 0]
+        placed: list[str] = []
+        while todo:
+            k = todo.pop()
+            placed.append(k)
+            for d in dependents.get(k, ()):
+                level[d] = max(level[d], level[k] + 1)
+                waiting[d] -= 1
+                if waiting[d] == 0:
+                    todo.append(d)
+        return sorted(placed, key=lambda k: (level[k], k)) + sorted(keys - set(placed))
 
     def closure(self, ids) -> set[str]:
         """The given capabilities and everything they transitively require."""
