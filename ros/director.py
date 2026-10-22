@@ -274,6 +274,10 @@ def _vault_folder(rec: Record) -> dict:
 
 
 # ---- brief ---------------------------------------------------------------------------------------------------------
+def ago(hours: float | None) -> str:
+    return "" if hours is None else "just now" if hours < 0.1 else f"{hours:g} h ago"
+
+
 def _age_hours(ts: str) -> float:
     return round((datetime.now(timezone.utc) - datetime.strptime(ts, tasks.FORMAT).replace(tzinfo=timezone.utc)).total_seconds() / 3600, 1)
 
@@ -373,7 +377,7 @@ def _next_action(b: dict) -> str:
         return f"Review {b['learned']['due']} due item(s): say \"quiz me\" to your agent, or `ros learn review:due`."
     h = b["happening"]
     if h["waiting_for_agent"]:
-        age = f", the oldest {h['oldest_waiting_hours']} h" if h["oldest_waiting_hours"] is not None else ""
+        age = f", the oldest from {ago(h['oldest_waiting_hours'])}" if h["oldest_waiting_hours"] is not None else ""
         return (f"{h['waiting_for_agent']} task(s) wait for an agent{age}: open your agent and say \"continue\".")
     if b["learned"]["frontier"]:
         return f"Ready to learn: {b['learned']['frontier'][0]['title']}. Say \"teach me {b['learned']['frontier'][0]['title']}\"."
@@ -385,13 +389,13 @@ def _next_action(b: dict) -> str:
 def format_brief(b: dict) -> str:
     """The brief as the few lines a terminal shows."""
     if "needs_you" in b and isinstance(b["needs_you"], int):  # the compact form
-        return "\n".join([b["next_action"]] + [f"! {p}" for p in b["problems"]])
+        return "\n".join([b["next_action"]] + [f"! {p}" for p in b["problems"] if p != b["next_action"]])
     lines = [f"{b['record']} · {b['as_of']}", ""]
     if b["needs_you"]:
         lines.append(f"Needs your judgement ({len(b['needs_you'])}):")
         lines += [f"  - {i['kind']}: {i['text'] or i['subject']}" for i in b["needs_you"][:6]]
     h, lrn = b["happening"], b["learned"]
-    lines.append(f"Waiting for an agent: {h['waiting_for_agent']}" + (f" (oldest {h['oldest_waiting_hours']} h)"
+    lines.append(f"Waiting for an agent: {h['waiting_for_agent']}" + (f" (oldest: {ago(h['oldest_waiting_hours'])})"
                                                                       if h["oldest_waiting_hours"] is not None else "")
                  + (f"; {h['jobs']['open'] + h['jobs']['claimed']} job(s) running or queued" if h["jobs"]["open"] + h["jobs"]["claimed"] else ""))
     lines.append(f"Due for review: {lrn['due']}" + (f" · next {lrn['next_due']}" if lrn["next_due"] else "")
@@ -400,7 +404,7 @@ def format_brief(b: dict) -> str:
         lines.append(f"Handouts to read: {len(lrn['unreviewed_handouts'])}")
     if b["new"]["inbox"]:
         lines.append(f"New in the vault this week: {b['new']['inbox']}")
-    lines += [""] + [f"! {p}" for p in h["problems"]] + ["→ " + b["next_action"], f"  {b['portal']}"]
+    lines += [""] + [f"! {p}" for p in h["problems"] if p != b["next_action"]] + ["→ " + b["next_action"], f"  {b['portal']}"]
     return "\n".join(lines)
 
 

@@ -74,7 +74,7 @@ class Runner:
                     api.call("job_done", rec, task=job["id"], result=result, by=self.by)
                 except Exception as exc:
                     self.errors.append(f"{rec.root.name} job_done: {type(exc).__name__}: {exc}")
-                done.append({"record": rec.root.name, "job": job["id"], **result})
+                done.append({"record": rec.root.name, "job": job["id"], "brief": job.get("brief"), **result})
         return done
 
     @staticmethod

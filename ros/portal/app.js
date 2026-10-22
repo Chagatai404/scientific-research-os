@@ -147,7 +147,7 @@
     happening(b) {
       const hp = b.happening, kinds = Object.entries(hp.tasks).map(([k, v]) => `${v.open + v.claimed} ${esc(k)}`).join(", ");
       return `<section class="card"><h2>What is happening</h2>
-        <p><span class="big">${hp.waiting_for_agent}</span> task(s) wait for an agent${hp.oldest_waiting_hours != null ? `, the oldest ${hp.oldest_waiting_hours} h` : ""}.</p>
+        <p><span class="big">${hp.waiting_for_agent}</span> task(s) wait for an agent${hp.oldest_waiting_hours != null ? `, the oldest ${hp.oldest_waiting_hours < 0.1 ? "just now" : hp.oldest_waiting_hours + " h"}` : ""}.</p>
         ${kinds ? `<p class="muted">${kinds}</p>` : ""}
         ${hp.jobs.open + hp.jobs.claimed ? `<p>${hp.jobs.open + hp.jobs.claimed} local job(s) running or queued.</p>` : ""}
         ${hp.problems.map((x) => `<p class="warn">${esc(x)}</p>`).join("")}
