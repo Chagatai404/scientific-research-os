@@ -105,7 +105,10 @@ def make_handler(rec: Record):
             if self.headers.get("X-ROS") != "1":
                 return self._send(HTTPStatus.FORBIDDEN, {"error": "writes need the X-ROS header"})
             path = urlparse(self.path).path
-            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                return self._send(HTTPStatus.BAD_REQUEST, {"error": "Content-Length is not a number"})
             if length > 32 << 20:
                 return self._send(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, {"error": "too large"})
             try:

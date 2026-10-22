@@ -2,7 +2,7 @@
 Markdown (``skills/``, ``agents/``, ``references/``); every client gets generated copies, never hand-edited ones.
 
     ros install --client claude    .claude/skills/<skill>/, .claude/agents/<agent>.md, .mcp.json
-    ros install --client codex     .codex/skills/<skill>/, AGENTS.md (managed block), .codex/config.toml
+    ros install --client codex     .agents/skills/<skill>/, AGENTS.md (managed block), .codex/config.toml
     ros install --client gemini    GEMINI.md (managed block), .gemini/settings.json
     ros install --client agents    AGENTS.md (managed block) for any agent that reads it
 
@@ -147,7 +147,7 @@ def install(client: str, base: Path | None = None, user: bool = False, force: bo
             note = "MCP server registered in .mcp.json"
     elif client == "codex":
         for rel, data in skill_files().items():
-            plan.file(f".codex/skills/{rel}", data)
+            plan.file(f".agents/skills/{rel}", data)  # Codex's skills folder, in a project and in ~
         # a project reads AGENTS.md at its root; the user's global file is ~/.codex/AGENTS.md
         plan.merged(".codex/AGENTS.md" if user else "AGENTS.md", lambda old: _merge_block(old, instructions()))
         plan.merged(".codex/config.toml", lambda old: _merge_toml(old))
