@@ -1,6 +1,6 @@
 # Scientific Research OS
 
-Version **1.2.0**. You are the director: say what you want to learn or find out, and agents set it up, prepare it
+Version **1.2.1**. You are the director: say what you want to learn or find out, and agents set it up, prepare it
 and keep your Obsidian vault current. You learn, and you judge the findings. It works with any AI agent: Claude, Codex,
 Gemini or a local model.
 

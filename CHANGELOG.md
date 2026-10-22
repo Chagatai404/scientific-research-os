@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.1: migration loses nothing
 
 - **Migration loses no project note.** A `type: project` note with no `project_id` is named by its file and claimed
   (before, `migrate_check` listed it as unknown and its hub never got its note). Notes now link to the capability in
