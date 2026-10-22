@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Restore lecture handouts to study order with descriptive headings, explanations before practice, optional notation/examples/corrections, separate solutions and sources. Legacy layer labels are replaced in presentation without rewriting source text or custom titles. HTML print output keeps headings with text, leaves annotation space, and includes page numbers.
+
+
 ## 1.2.1: migration loses nothing
 
 - **Migration loses no project note.** A `type: project` note with no `project_id` is named by its file and claimed

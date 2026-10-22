@@ -51,12 +51,20 @@ class Kind:
 
 
 KINDS = {
-    "lecture": Kind("lecture", (("gist", "L0 Gist", 8), ("recall", "L1 Core in 60 seconds", 15),
-                                ("lecture", "L2 Lecture", 150), ("derivation", "L3 Derivation and sources", 60)),
-                    {"question": 3}, ("lecture", "derivation"),
-                    "A layered lecture note: a one-sentence gist; three or more :::question recall prompts with "
-                    "answers after '=== answer' (the reader answers from memory first); the full lecture, words first, "
-                    "then the picture, then the formula; then the derivation, its assumptions and where it can fail."),
+    "lecture": Kind("lecture", (("gist", "Scope and learning goals", 8),
+                                ("notation", "Notation and prerequisites", 0),
+                                ("lecture", "Core ideas", 150),
+                                ("derivation", "Completed derivations", 60),
+                                ("examples", "Worked examples", 0),
+                                ("corrections", "Gap fills and corrections", 0),
+                                ("recall", "Practice questions", 15)),
+                    {"question": 3}, ("notation", "lecture", "derivation", "examples", "corrections"),
+                    "A study note in reading order: scope and learning goals; notation and prerequisites; core ideas "
+                    "and completed derivations; worked examples; gap fills and corrections; then practice questions. "
+                    "Use descriptive titles without layer codes. Explain before asking for recall. The notation, "
+                    "examples and corrections sections may be omitted when inapplicable; do not invent content to fill "
+                    "them. Include three or more :::question prompts with answers after '=== answer'; print answers "
+                    "separately after the practice, followed by sources. Keep derivations beside the ideas they explain."),
     "recitation": Kind("recitation", (("intro", "What this recitation practises", 20), ("exercises", "Exercises", 40),
                                       ("mistakes", "Common mistakes", 20)),
                        {"exercise": 5}, ("mistakes",),
@@ -131,7 +139,7 @@ def meta(rec: Record, src: dict) -> dict:
 
 
 def current_hash(rec: Record, src: dict) -> str:
-    return _lib().source_hash(meta(rec, src) | {"date": ""}, src["sections"], src.get("sources", []))
+    return _lib().source_hash(meta(rec, src) | {"date": ""}, display_sections(src), src.get("sources", []))
 
 
 # ---- composing the context ----------------------------------------------------------------------------------------
@@ -239,9 +247,27 @@ def create(rec: Record, kind: str, scope: list[str], title: str, key: str | None
     return {**describe(rec, handout, with_context=True), "tasks": [task]}
 
 
+def display_sections(src: dict, include_empty: bool = False) -> list[dict]:
+    """Present old lecture defaults without layer codes; never rewrite stored source or custom titles."""
+    sections = [dict(s) for s in src["sections"]]
+    if src["kind"] == "lecture":
+        old_titles = {"gist": "L0 Gist", "recall": "L1 Core in 60 seconds",
+                      "lecture": "L2 Lecture", "derivation": "L3 Derivation and sources"}
+        titles = {role: title for role, title, _ in KINDS["lecture"].sections}
+        for section in sections:
+            role = section["role"]
+            if section["title"] == old_titles.get(role):
+                section["title"] = titles[role]
+        # Keep known sections in study order, including sections added to an older source.
+        order = {role: i for i, (role, _, _) in enumerate(KINDS["lecture"].sections)}
+        sections.sort(key=lambda s: order.get(s["role"], order["recall"] - 0.5))
+    return [s for s in sections if include_empty or (s.get("text") or "").strip()]
+
+
 def read(rec: Record, handout: str) -> dict:
     """The whole source: the sections as written, the sources, the context they are written from."""
-    return load(rec, handout)
+    src = load(rec, handout)
+    return {**src, "sections": display_sections(src, include_empty=True)}
 
 
 def brief(rec: Record, src: dict) -> str:
@@ -263,7 +289,7 @@ def describe(rec: Record, handout: str, with_context: bool = False) -> dict:
     return {"handout": src["id"], "kind": src["kind"], "title": src["title"], "revision": src["revision"],
             "sections": [{"id": s["id"], "title": s["title"], "words": words[s["id"]],
                           "min_words": next((m for r, _, m in spec.sections if r == s["role"]), 0),
-                          "by": s["by"] or None} for s in src["sections"]],
+                          "by": s["by"] or None} for s in display_sections(src, include_empty=True)],
             "boxes_needed": spec.counts, "sources": [x["key"] for x in src.get("sources", [])],
             "source_hash": current_hash(rec, src), **({"context": src["context"]} if with_context else {})}
 
@@ -401,7 +427,7 @@ def _structure(d: Doc):
         text = (s.get("text") or "").strip()
         want = next((m for r, _, m in d.kind.sections if r == s["role"]), 0)
         if not text:
-            if any(r == s["role"] for r, _, _ in d.kind.sections):
+            if want > 0:
                 problems.append(f"{s['title']}: not written yet")
             continue
         if len(text.split()) < want:
@@ -491,7 +517,7 @@ def markdown(rec: Record, src: dict) -> str:
     """The handout as Markdown for Obsidian: boxes as callouts, solutions and answers collapsed."""
     pdf = _lib()
     out = [f"# {src['title']}", ""]
-    for s in src["sections"]:
+    for s in display_sections(src):
         if (s.get("text") or "").strip():
             out += [f"## {s['title']}", "", pdf.to_obsidian(pdf.parse(s["text"])), ""]
     if src.get("sources"):
@@ -569,8 +595,9 @@ def build(rec: Record, handout: str, wait: bool = False, engine: str | None = No
     pdf = _lib()
     work.mkdir(parents=True, exist_ok=True)
     m = meta(rec, src)
-    (work / "index.html").write_text(pdf.html_document(m, src["sections"], src["sources"]), encoding="utf-8", newline="\n")
-    (work / "main.tex").write_text(pdf.tex_document(m, src["sections"], src["sources"]), encoding="utf-8", newline="\n")
+    sections = display_sections(src)
+    (work / "index.html").write_text(pdf.html_document(m, sections, src["sources"]), encoding="utf-8", newline="\n")
+    (work / "main.tex").write_text(pdf.tex_document(m, sections, src["sources"]), encoding="utf-8", newline="\n")
     (work / "roshandout.sty").write_bytes((pdf.ASSETS / "roshandout.sty").read_bytes())
     figs = folder(rec, handout) / "figures"
     if figs.is_dir():

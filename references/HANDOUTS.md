@@ -6,7 +6,7 @@ you learned anything, and it never carries an assessment item's answer key.
 
 | Kind | For | Sections | Needs |
 |---|---|---|---|
-| `lecture` | a lecture unit of a course | L0 Gist, L1 Core in 60 seconds, L2 Lecture, L3 Derivation and sources | 3 `:::question` recall prompts |
+| `lecture` | a lecture unit of a course | Scope and learning goals; notation; core ideas and derivations; worked examples; corrections; practice | 3 `:::question` recall prompts |
 | `recitation` | a problem session | What it practises, Exercises, Common mistakes | 5 `:::exercise` with full solutions |
 | `chapter` | a course part or subject, textbook style | Overview, Definitions and results, Worked examples, Exercises, Notation | a definition, an example, 3 exercises |
 | `literature` | a research question | The question, What was searched, What the sources say, Synthesis, Gaps and null results, What to read next | sources with locators |
@@ -58,3 +58,7 @@ and the note is still delivered. Nothing is installed for you. Set `pdf_engine` 
 LaTeX is compiled with shell escape off and the package installer off, in a scratch folder, with a timeout; the body is
 generated from the Markdown with text escaped, and math (which passes through) is linted for `\input`, `\write`,
 `\catcode`, `\def` and the like before any compiler sees it.
+
+## Lecture reading order
+
+Use descriptive titles, without L0/L1 or other internal layer codes. Teach the ideas and their derivations before practice. Include notation, worked examples and corrections where applicable; empty optional sections are omitted. Recall answers print separately after practice, followed by sources. Existing four-section lectures retain their source text and custom titles; the old default layer headings are presented as descriptive titles and practice moves after teaching. Rebuilding creates a new source version; annotated PDFs retain the normal version protection.

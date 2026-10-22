@@ -42,7 +42,7 @@ import time
 
 ASSETS = Path(__file__).resolve().parent / "pdf_assets"
 KATEX = Path(__file__).resolve().parents[1] / "portal" / "vendor" / "katex"
-TEMPLATE_VERSION = "1"
+TEMPLATE_VERSION = "2"
 FIGURE_TYPES = (".pdf", ".png", ".jpg", ".jpeg", ".svg")
 BOXES = {"definition": "Definition", "rule": "Rule", "keyidea": "Key idea", "mistake": "Common slip", "remark": "Note",
          "example": "Example", "exercise": "Exercise", "question": "Recall"}
@@ -362,6 +362,8 @@ def html_document(meta: dict, sections: list[dict], sources: list[dict]) -> str:
     c = Counter()
     body = []
     for s in sections:
+        if not (s.get("text") or "").strip():
+            continue
         body.append(f"<section><h2>{inline(s['title'], 'html')}</h2>\n{to_html(parse(s.get('text') or ''), c)}</section>")
     if c.solutions:
         sol = []
@@ -389,10 +391,10 @@ def html_document(meta: dict, sections: list[dict], sources: list[dict]) -> str:
 
 def tex_body(sections: list[dict], sources: list[dict]) -> str:
     c = Counter()
-    parts = [f"\\section{{{inline(s['title'], 'tex')}}}\n\n{to_tex(parse(s.get('text') or ''), c)}" for s in sections]
+    parts = [f"\\section*{{{inline(s['title'], 'tex')}}}\n\n{to_tex(parse(s.get('text') or ''), c)}" for s in sections if (s.get("text") or "").strip()]
     if any(b["t"] == "box" and b["kind"] in ("exercise", "question")
            for s in sections for b in _walk(parse(s.get("text") or ""))):
-        parts.append("\\section{Solutions}\n\\printsolutions")
+        parts.append("\\section*{Solutions}\n\\printsolutions")
     if sources:
         parts.append("\\begin{sources}\n" + "\n".join(f"\\bibitem{{{s['key']}}} {inline(s['text'], 'tex')}" for s in sources)
                      + "\n\\end{sources}")
