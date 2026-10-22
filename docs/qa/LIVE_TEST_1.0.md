@@ -55,3 +55,21 @@ inefficient process), **friction** (a person is inconvenienced).
 | F45 | prepare | open | Plan and spec errors are terse (a duplicate or colon-less node id is reported without the id; animation spec ids "must look like VIS-name"); nine-element visuals and broken LaTeX pass at save and fail at the gate; KaTeX is optional and its absence is silent (brace checks only); `bundle_create` copies no `requires` from the record graph; the `dynamic` animation requirement is author-declared; JSON passed inline on a Windows shell loses its backslashes and the CLI has no `@file` input. | open |
 | F46 | learn | open | `answer` accepts an item other than the one `next` served and has no retry cap, so repeated misses feed the three-miss stop rule; `status` counts a bundle node as a lesson and an empty-scope `start` leaves an open lesson; re-grading an answer is silent (the history shows the latest, the events keep both). | open |
 | F06 | install | waste | The 0.9 installer kept every earlier version as nested `.research-os-install-backups` folders: over 240 MB for 19 skills, 93 MB inside the Obsidian vault. The 1.0 installer keeps no backups (it refuses to overwrite a hand-edited file instead), so a fresh install is the cure. | fixed in 1.0; old copies removed |
+
+## Result
+
+Forty-seven findings (F01-F46 above, plus the flake below): 35 fixed with regression tests (`tests/test_ros_live_fixes.py`,
+`tests/test_ros_live_research.py`), 2 documented, 9 left open and listed as such (F37, F38, F39, F45, F46: clip
+transcript attestation, evidence-locator strictness, verifier and video-scout tooling, plan-authoring ergonomics, answer
+ordering). After the fixes: 486 unit tests pass, the Chromium portal test passes (a whole lesson, Ask on every screen,
+layout at 320-1920 px), the MCP server answers from the installed command and lists no person-only tool.
+
+**F47 (flake, open).** `tests/ros-portal-browser.cjs` timed out at "waiting for `.player`" twice, each time while another
+heavy process (the unit suite) ran on the same machine; it passes alone. Run it by itself.
+
+**How the test was run.** Old Research OS installs (19 skills and 14 agents for Claude, 19 skills and 14 agents for
+Codex, with 240 MB of nested backups) were deleted and `ros install --user` was run for Claude, Codex, Gemini and
+generic agents. The CLI, the MCP server and the portal were driven by hand; the skills and agent roles were followed end
+to end by separate agents against throwaway records (prepare and learn; research, audit and defend; scout, verifier,
+video-scout and notes-to-latex); a copy of a real Obsidian vault (447 files) was imported (`migrate`: 82 capabilities,
+18 sessions, all 39 answers present).
