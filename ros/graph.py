@@ -252,6 +252,9 @@ def add_edge(rec: Record, src: str, type: str, dst: str, data: dict | None = Non
     a capability its own prerequisite and so never ready; both are refused."""
     if src == dst:
         raise ValueError(f"{src} cannot {type} itself")
+    for end in (src, dst):
+        if rec.node(end) is None:
+            raise ValueError(f"no node {end}: add it (add_node) before linking it")
     if type == "requires":
         seen, todo = set(), [dst]
         while todo:
@@ -356,16 +359,16 @@ def research_frontier(rec: Record) -> list[dict]:
     def bad(n):
         return any(d["severity"] == "ERROR" for d in n.get("diagnostics", []))
 
-    accepted = {k for k, n in nodes.items() if n["type"] == "decision" and n["status"] == "accepted" and not bad(n)}
+    accepted = {k for k, n in nodes.items() if n["type"] == "decision" and n.get("status") == "accepted" and not bad(n)}
     decided = {d for s, d in rel.get("experiments", []) if s in accepted}
     out = []
     for key, n in sorted(nodes.items(), key=lambda kv: kv[0].split(":", 1)[-1]):
-        t, status, todo = n["type"], n["status"], []
+        t, status, todo = n["type"], n.get("status", "proposed"), []
         if bad(n):
             todo.append("repair-record")
         elif t == "question" and status in {"proposed", "active", "blocked"}:
             if status == "blocked":
-                unresolved = [d for s, d in rel.get("parent_questions", []) if s == key and nodes[d]["status"] != "resolved"]
+                unresolved = [d for s, d in rel.get("parent_questions", []) if s == key and nodes[d].get("status") != "resolved"]
                 if unresolved or any(e["relation"] == "learning_dependencies" for e in rec.edges(src=key, type="requires")):
                     todo.append("inspect-unresolved-dependencies")
             if not any(d == key and nodes[s]["type"] == "hypothesis" for s, d in rel.get("research_questions", [])):
@@ -376,7 +379,7 @@ def research_frontier(rec: Record) -> list[dict]:
         elif t == "experiment":
             if status in {"planned", "ready"}:
                 todo += {"awaiting": ["approval-required"], "approved": ["execution-available"],
-                         "modification-requested": ["plan-revision-required"], "rejected": []}[n["authorization"]]
+                         "modification-requested": ["plan-revision-required"], "rejected": []}.get(n.get("authorization", "awaiting"), [])
             elif status == "completed":
                 validation, review = n.get("result_validation", "pending"), n.get("adversarial_review", "pending")
                 todo.append("validation-required" if validation == "pending" else

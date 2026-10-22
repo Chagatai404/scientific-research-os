@@ -22,6 +22,7 @@ import datetime as dt
 import hashlib
 import json
 from pathlib import Path
+import re
 import sys
 import tomllib
 
@@ -179,7 +180,8 @@ def candidate_issues(candidate, where):
         if 'excerpt' in claim and not _text(claim['excerpt'], 1, 500):
             out.append(issue('CLAIM_SHAPE', label, 'an excerpt is short text of at most 500 characters'))
         locator = claim['locator'].strip().lower()
-        if access in ('metadata', 'abstract', 'snippet') and not locator.startswith(access):
+        if access in ('metadata', 'abstract', 'snippet') and (
+                not locator.startswith(access) or re.search(r'\b(sec(tion|\.)?|eq(uation|\.)?|fig(ure|\.)?|table|appendix|page|pp?\.)\s*\d|§', locator)):
             out.append(issue('LOCATOR_BEYOND_ACCESS', label, f"only the {access} was read, so the locator can only point there (start it with '{access}'); "
                                                               'this is a gap, not verification'))
     for field in ('concepts', 'projects'):
@@ -196,6 +198,10 @@ def candidate_issues(candidate, where):
 
 def report_issues(report, brief):
     """Whether a discovery report is a neutral, honest answer to its brief."""
+    if not isinstance(brief, dict) or brief.get('brief_digest') != digest(brief, 'brief_digest') \
+            or brief.get('required_searches') != (list(SEARCH_KINDS) if brief.get('hypothesis_sensitive') else ['primary']):
+        return [issue('BRIEF_TAMPERED', 'brief', 'the brief does not match its own digest or its required searches; '
+                                                 'write it with "python -m ros.lib.scout plan" and do not edit it')]
     keys = {'scout_report_schema', 'brief_digest', 'context_exposure', 'searches', 'candidates'}
     if not isinstance(report, dict) or set(report) != keys or report['scout_report_schema'] != 1:
         return [issue('REPORT_SHAPE', 'report', 'a scout report has: ' + ', '.join(sorted(keys)))]

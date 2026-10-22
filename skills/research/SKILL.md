@@ -11,7 +11,8 @@ as agent work and ends in the decision queue (`queue`). Contract: `references/RE
 
 ## The cycle
 
-1. **Frame.** The researcher states the question. Record it (`add_node --type question`). In the non-generation mode
+1. **Frame.** The researcher states the question. Record it (`add_node --id question:<key> --type question`, with a
+   `status`; hypotheses, experiments and how they link: `references/RESEARCH.md`, "Framing nodes"). In the non-generation mode
    (when they ask for it) you only ask and mirror; you do not propose hypotheses until they say so.
 2. **Scout and verify.** Send neutral briefs to `scout` agents in parallel (competing models, null results, validity
    limits, reviews, primary work). Send each candidate claim to a `verifier`. Record verified claims as EvidenceAtoms.

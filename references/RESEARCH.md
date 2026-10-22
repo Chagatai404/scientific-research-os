@@ -28,8 +28,24 @@ Required steps by assurance: draft — numbers; internal — integrity, result-c
 none optional except as listed: integrity, result-claim, numbers, citations, kill-argument; submission — all five.
 
 Verdicts: PASS, WARN, FAIL, BLOCKED, ERROR, NOT_APPLICABLE. A claim's verdict is the worst over its required steps;
-a missing step keeps it pending. The author cannot audit their own claim; an integrity verdict marks every failure
-mode; any concern rules out PASS. Auditors get claim text and file paths only.
+a missing step keeps it pending. The author cannot audit their own claim (names are compared ignoring case and
+spaces, and `ros` is the pre-check's name, not an auditor's); an integrity verdict marks every failure mode with a
+known name as `ok` or `concern`; any concern rules out PASS. BLOCKED, ERROR and NOT_APPLICABLE give their reason in
+the notes. A verdict is accepted only for a step the claim's assurance requires. A manual `numbers` verdict cannot
+override a failed pre-check: fix the claim or its files and run `precheck` again. Auditors get claim text and file
+paths only.
+
+`precheck` finds each cited number in its file. For a CSV, `"where": {"particle": "proton"}` restricts the match to
+rows with those column values, so another row cannot vouch for the number. A claim above `draft` that cites no numbers
+gets a WARN from the pre-check, not a silent pass.
+
+## Framing nodes
+
+`question`, `hypothesis` and `experiment` nodes (`add_node --type <type>`, id `<type>:<key>`) carry a `status` and an
+experiment an `authorization` (`awaiting`, then `approved`, `rejected` or `modification-requested` once the researcher
+approves in the portal). They are linked with `add_edge --type relates --data '{"relation": "<name>"}'`: a hypothesis
+to its question with `research_questions`, an experiment to its hypothesis with `hypotheses`, an accepted decision
+to the experiment it decides with `experiments`. `research` lists the next step each one waits for.
 
 ## Defence: the bridge into learning
 

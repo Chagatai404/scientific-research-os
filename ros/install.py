@@ -176,7 +176,7 @@ def _merge_json(old: str, keys: list[str], value) -> str:
     for k in keys[:-1]:
         node = node.setdefault(k, {})
     node[keys[-1]] = value
-    return json.dumps(data, indent=2) + "\n"
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"  # the user's own non-ASCII text stays as written
 
 
 def _merge_block(old: str, block: str) -> str:

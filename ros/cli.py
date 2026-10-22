@@ -143,9 +143,12 @@ def main(argv: list[str] | None = None) -> int:
                 return serve.run(rec, args.port, args.open)
             t = api.TOOLS[args.command]
             if t.human and not _confirm(t, args):
-                sys.stderr.write(f"ros: {t.name} is a person's decision; it was not recorded\n")
+                sys.stderr.write(f"ros: {t.name} is a person's decision and was not recorded: run it at a terminal and "
+                                 "type yes, or make it in the portal (ros serve)\n")
                 return 3
-            out = t.call(rec, {k: getattr(args, k) for k in t.params if getattr(args, k, None) not in (None, False)})
+            # `0 in (None, False)` is true in Python: compare by identity so an answer of 0 is not dropped
+            out = t.call(rec, {k: getattr(args, k) for k in t.params
+                               if getattr(args, k, None) is not None and getattr(args, k) is not False})
             if t.name == "migrate":
                 emit(out if args.json else _migration_summary(out), args.json)
                 return 0 if out["check"]["ok"] else 5
@@ -155,6 +158,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     except (ValueError, KeyError) as exc:
         msg = exc.args[0] if exc.args else str(exc)
+        if isinstance(exc, KeyError):  # str(KeyError('status')) is just "status"; say what it means
+            msg = f"not found: {msg}"
         if args.json:
             sys.stdout.write(json.dumps({"error": str(msg)}) + "\n")
         else:

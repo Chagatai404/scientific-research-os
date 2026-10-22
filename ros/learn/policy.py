@@ -156,6 +156,18 @@ def targets(ctx: Context) -> dict | None:
     return None
 
 
+def defence(ctx: Context) -> dict | None:
+    """Scope ``claim:<id>``: the researcher practises defending the claim, one defence item at a time, from memory."""
+    if not ctx.scope.startswith("claim:"):
+        return None
+    items = [i["id"] for i in ctx.rec.items(ctx.scope) if i.get("defence") and ctx.rec.current_item(i["id"]) == i["id"]]
+    for h in items:
+        if h not in ctx.view.answered:
+            return {"action": "recall", "item": h, "reason": "defend the claim, from memory"}
+    ctx.waiting += [o["item"] for o in ctx.view.outcomes if o["item"] in items and o["verdict"] == "pending"]
+    return None
+
+
 def recall(ctx: Context) -> dict | None:
     for h in ctx.view.closing:
         if h not in ctx.view.answered:
@@ -167,11 +179,14 @@ def finish(ctx: Context) -> dict:
     if ctx.waiting:
         return {"action": "wait", "items": ctx.waiting, "reason": "a free answer is waiting for the tutor's grade"}
     pending = sum(1 for o in ctx.view.outcomes if o["verdict"] == "pending")
+    if not ctx.view.outcomes:  # closing with nothing asked is not "everything is secure"
+        return {"action": "close", "reason": f"no question tests {ctx.scope}: items must list its node id in their "
+                                             "concepts (see the prepare skill), then start again"}
     return {"action": "close", "reason": "every target capability is secure up to its hardest prepared item"
             + (f"; {pending} written answer(s) wait for your tutor" if pending else "")}
 
 
-RULES: list[Rule] = [stop, retry, review, targets, recall, finish]
+RULES: list[Rule] = [stop, retry, review, defence, targets, recall, finish]
 
 
 def decide(rec: Record, lesson: str, scope: str, as_of: date | None = None, budget: int = BUDGET) -> dict:

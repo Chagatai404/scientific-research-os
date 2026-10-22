@@ -20,6 +20,7 @@ import mimetypes
 import os
 from pathlib import Path
 import socket
+import sys
 import threading
 import time
 from urllib.parse import parse_qs, unquote, urlparse
@@ -207,6 +208,10 @@ class PortalServer(ThreadingHTTPServer):
     ``SO_REUSEADDR`` there), so two portals, possibly for different records, would answer the same URL."""
     allow_reuse_address = os.name != "nt"
     daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        if not isinstance(sys.exc_info()[1], ConnectionError):  # a browser that left is not worth a traceback
+            super().handle_error(request, client_address)
 
     def server_bind(self):
         if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):

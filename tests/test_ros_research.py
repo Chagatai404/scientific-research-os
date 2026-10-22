@@ -60,7 +60,9 @@ class AuditTests(Fixture):
         notes = research.latest_verdicts(self.rec, CLAIM)["numbers"]["notes"]
         self.assertIn("1.25 not found", notes)
         self.assertIn("no such result file", notes)
-        self.claim(numbers=[])
+        self.claim(numbers=[])  # a presentation claim that cites nothing is a warning, not a silent pass
+        self.assertEqual(research.precheck_numbers(self.rec, CLAIM, self.repo)["verdict"], "WARN")
+        self.claim(assurance="draft", numbers=[])
         self.assertEqual(research.precheck_numbers(self.rec, CLAIM, self.repo)["verdict"], "NOT_APPLICABLE")
 
     def test_author_cannot_audit_and_integrity_needs_the_checklist(self):

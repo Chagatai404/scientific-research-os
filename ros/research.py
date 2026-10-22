@@ -73,7 +73,7 @@ def claims(rec: Record, project: str | None = None, as_of: date | None = None) -
 # ---- the audit chain ----------------------------------------------------------------------------------------------
 def precheck_numbers(rec: Record, claim: str, root: Path) -> dict:
     """Every cited number must be found in its named result file before a model is asked anything. Writes a
-    ``numbers`` verdict by ``ros``: PASS, FAIL (with each missing number) or NOT_APPLICABLE when nothing is cited."""
+    ``numbers`` verdict by ``ros``: PASS, FAIL (with each missing number), or when nothing is cited NOT_APPLICABLE for a draft and WARN above it."""
     node = _claim(rec, claim)
     missing = []
     for n in node.get("numbers", []):
@@ -84,7 +84,12 @@ def precheck_numbers(rec: Record, claim: str, root: Path) -> dict:
         if not _number_in(path, n):
             missing.append(f"{n.get('value')} not found in {n.get('file')}"
                            + (f" ({n.get('column') or n.get('key')})" if n.get("column") or n.get("key") else ""))
-    verdict = "NOT_APPLICABLE" if not node.get("numbers") else "FAIL" if missing else "PASS"
+    if not node.get("numbers"):
+        # nothing to check is fine for a draft; above it, say so instead of passing silently
+        verdict, missing = ("NOT_APPLICABLE", ["no numbers cited"]) if node.get("assurance") == "draft" else (
+            "WARN", ["no numbers cited: the pre-check had nothing to verify"])
+    else:
+        verdict = "FAIL" if missing else "PASS"
     return record_verdict(rec, claim, "numbers", verdict, by="ros", notes="; ".join(missing),
                           _system=True)
 
@@ -117,10 +122,29 @@ def record_verdict(rec: Record, claim: str, step: str, verdict: str, by: str, no
     node = _claim(rec, claim)
     if step not in STEPS:
         raise ValueError(f"step is one of {list(STEPS)}")
+    if step not in ASSURANCE[node["assurance"]]:
+        raise ValueError(f"a {node['assurance']} claim does not require the {step} step "
+                         f"(it requires {', '.join(ASSURANCE[node['assurance']])}); raise the assurance first")
     if verdict not in VERDICTS:
         raise ValueError(f"verdict is one of {list(VERDICTS)}")
-    if not by or (by == node.get("author") and not _system):
-        raise ValueError("the claim's author cannot audit it: a fresh reviewer must")
+    by = (by or "").strip()
+    if not by:
+        raise ValueError("a verdict names who gives it")
+    if not _system:
+        if by.casefold() == "ros":
+            raise ValueError("'ros' is the name of the mechanical pre-check; give your own name")
+        if by.casefold() == str(node.get("author") or "").strip().casefold():
+            raise ValueError("the claim's author cannot audit it: a fresh reviewer must")
+        last = latest_verdicts(rec, claim).get(step)
+        if step == "numbers" and last and last["by"] == "ros" and last["verdict"] == "FAIL":
+            raise ValueError("the mechanical pre-check of the numbers failed (" + (last.get("notes") or "see claim_status")
+                             + "): correct the claim or its files and run precheck again; a verdict cannot override it")
+    if verdict in ("BLOCKED", "ERROR", "NOT_APPLICABLE") and not notes.strip():
+        raise ValueError(f"a {verdict} verdict says why in its notes")
+    if checklist:
+        bad = {k: v for k, v in checklist.items() if k not in FAILURE_MODES or v not in ("ok", "concern")}
+        if bad:
+            raise ValueError(f"the checklist marks each of {', '.join(FAILURE_MODES)} as ok or concern; got {bad}")
     if step == "integrity" and verdict in ("PASS", "WARN"):
         missing = [m for m in FAILURE_MODES if (checklist or {}).get(m) not in ("ok", "concern")]
         if missing:
@@ -136,8 +160,8 @@ def record_verdict(rec: Record, claim: str, step: str, verdict: str, by: str, no
     for t in tasks.tasks(rec, state=None):
         if t.get("claim") == claim and t.get("step") == step and t["state"] in ("open", "claimed"):
             tasks.finish(rec, t["id"], {"verdict": verdict}, by=by)
-    if verdict == "PASS" and status(rec, claim)["verdict"] == "PASS":
-        open_defence(rec, claim)
+    if verdict in ("PASS", "WARN") and status(rec, claim)["verdict"] in ("PASS", "WARN"):
+        open_defence(rec, claim)  # the queue asks for a defence of a WARN claim too, so the items must exist
     return {"claim": claim, "step": step, "verdict": verdict}
 
 
@@ -162,8 +186,12 @@ def status(rec: Record, claim: str, as_of: date | None = None, practice: "Practi
         "WARN" if worst == "WARN" else "PASS")
     own = ownership(rec, claim, as_of, practice)
     met = overall in ("PASS", "WARN") and (node["assurance"] not in OWNERSHIP_NEEDED or own in ("owned", "waived"))
+    events = rec.events(type="verdict", subject=claim)
+    newest = {e["data"]["step"]: i for i, e in enumerate(events)}
+    earlier = [{"step": e["data"]["step"], "verdict": e["data"]["verdict"], "by": e["actor"], "ts": e["ts"]}
+               for i, e in enumerate(events) if newest[e["data"]["step"]] != i]  # replaced verdicts stay visible
     return {"claim": claim, "assurance": node["assurance"], "required": list(required), "verdicts": have,
-            "missing": missing, "verdict": overall, "ownership": own, "assurance_met": met}
+            "superseded": earlier, "missing": missing, "verdict": overall, "ownership": own, "assurance_met": met}
 
 
 def _number_in(path: Path, n: dict) -> bool:
@@ -174,9 +202,10 @@ def _number_in(path: Path, n: dict) -> bool:
         return str(want) in path.read_text(encoding="utf-8", errors="replace")
     tol = float(n.get("tolerance", 0)) or abs(target) * 1e-9
     if path.suffix.lower() == ".csv" and n.get("column"):
+        where = n.get("where") or {}  # {"particle": "proton"}: only rows whose columns equal these values
         with path.open(encoding="utf-8", newline="") as f:
             for row in csv.DictReader(f):
-                if _close(row.get(n["column"]), target, tol):
+                if all(str(row.get(c)) == str(v) for c, v in where.items()) and _close(row.get(n["column"]), target, tol):
                     return True
         return False
     if path.suffix.lower() == ".json" and n.get("key"):
@@ -203,6 +232,12 @@ def approve(rec: Record, subject: str, decision: str, by: str, note: str = "") -
     if decision not in ("approved", "rejected", "changes-requested"):
         raise ValueError("decision is approved, rejected or changes-requested")
     rec.append("approval", subject, {"decision": decision, "note": note}, actor=by)
+    node = rec.node(subject)
+    if node and node.get("type") == "experiment":  # the research frontier reads the plan's own state
+        authorization = {"approved": "approved", "rejected": "rejected",
+                         "changes-requested": "modification-requested"}[decision]
+        rec.put_node(subject, "experiment", **{**{k: v for k, v in node.items() if k not in ("id", "type")},
+                                              "authorization": authorization})
     return {"subject": subject, "decision": decision}
 
 
@@ -276,6 +311,18 @@ def open_defence(rec: Record, claim: str) -> list[str]:
             for kind in DEFENCE]
 
 
+def check_task_result(rec: Record, task: str, result) -> None:
+    """A defence-item task is finished with the hash of an item of its own defence kind for its own claim."""
+    t = next((x for x in tasks.tasks(rec, state=None) if x["id"] == task), None)
+    if t is None:
+        raise KeyError(f"no task {task}")
+    if t["kind"] == "item" and t.get("defence"):
+        item = rec.item(result) if isinstance(result, str) else None
+        if item is None or item.get("defence") != t["defence"] or t["claim"] not in item.get("concepts", []):
+            raise ValueError(f"finish this task with the hash of the {t['defence']} item you added for {t['claim']} "
+                             "(add_item returns it)")
+
+
 class Practice:
     """The review schedule and the grades of every item, read once and shared by every claim's ownership."""
 
@@ -294,9 +341,14 @@ class Practice:
     @property
     def grades(self) -> dict:
         if self._grades is None:
+            from .learn import evidence
+            attempts = evidence.of(self.rec).attempts  # attempt -> (lesson, item, given a hint or the explanation)
             self._grades = {}
             for g in self.rec.events(type="grade"):
-                self._grades.setdefault(g["subject"], []).append(g["data"].get("verdict"))
+                verdict = g["data"].get("verdict")
+                if verdict == "correct" and (attempts.get(g["data"].get("attempt")) or (0, 0, False))[2]:
+                    verdict = "assisted"  # correct after a hint is practice, not ownership
+                self._grades.setdefault(g["subject"], []).append(verdict)
         return self._grades
 
 
@@ -325,14 +377,14 @@ def queue(rec: Record, as_of: date | None = None) -> list[dict]:
     approved = {e["subject"] for e in rec.events(type="approval")}
     for n in rec.nodes(type="experiment"):
         if n.get("authorization") == "awaiting" and n["id"] not in approved:
-            out.append({"kind": "approve", "subject": n["id"], "text": n.get("title")})
+            out.append({"kind": "approve", "subject": n["id"], "text": n.get("title") or n.get("text") or n["id"]})
     decided = {e["subject"] for e in rec.events(type="decision")}
     for c in claims(rec, as_of=as_of):
         if c["id"] in decided:
             continue
         if c["verdict"] in ("PASS", "WARN") and not c["owned"] and _claim(rec, c["id"])["assurance"] in OWNERSHIP_NEEDED:
             out.append({"kind": "defend", "subject": c["id"], "text": c["text"], "ownership": c["ownership"]})
-        elif c["verdict"] in ("PASS", "WARN", "FAIL"):
+        elif c["verdict"] in ("PASS", "WARN", "FAIL", "BLOCKED", "ERROR"):  # a blocked audit is the researcher's to see
             out.append({"kind": "decide", "subject": c["id"], "text": c["text"], "verdict": c["verdict"]})
     for cm in commitments(rec):
         out.append({"kind": "commitment", "subject": cm["id"], "text": cm["text"]})

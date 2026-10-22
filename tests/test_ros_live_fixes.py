@@ -12,7 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from ros import api, cli, home, install, serve  # noqa: E402
+from ros import api, cli, home, install, prepare, serve  # noqa: E402
+from ros.lib import scout  # noqa: E402
 import support_ros_demo  # noqa: E402
 
 
@@ -125,6 +126,91 @@ class PortalPort(Fixture):
         with self.assertRaises(ValueError) as cm:
             serve.start(self.rec, first.server_address[1])
         self.assertIn("--port", str(cm.exception))
+
+
+class CliArguments(Fixture):
+    def test_an_argument_of_zero_is_not_dropped(self):
+        import contextlib
+        import io
+        os.environ["ROS_HOME"] = str(self.home)
+        self.addCleanup(os.environ.pop, "ROS_HOME", None)
+        self.rec.close()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = cli.main(["-p", "demo", "history", "--limit", "0", "--json"])
+        self.assertEqual((code, json.loads(out.getvalue())), (0, []))  # --limit 0 asked for no rows, not for all
+
+
+class Authoring(Fixture):
+    def test_edges_need_both_ends_and_concepts_need_node_ids(self):
+        with self.assertRaises(ValueError) as cm:
+            api.call("add_edge", self.rec, src="capability:mean", type="requires", dst="capability:nothing-here")
+        self.assertIn("add_node", str(cm.exception))
+        with self.assertRaises(ValueError):
+            api.call("add_item", self.rec, item={"kind": "numeric", "prompt": "1+1?", "answer": 2, "concepts": ["variance"]})
+        api.call("add_item", self.rec, item={"kind": "numeric", "prompt": "1+1?", "answer": 2, "concepts": ["capability:mean"]})
+
+    def test_a_scope_with_no_questions_says_so_instead_of_claiming_mastery(self):
+        api.call("add_node", self.rec, id="capability:empty", type="capability")
+        started = api.call("start", self.rec, scope="capability:empty")
+        self.assertEqual(started["next"]["action"], "close")
+        self.assertIn("no question tests capability:empty", started["next"]["reason"])
+
+    def test_a_correct_grade_needs_every_rubric_criterion(self):
+        from ros.learn import tutor
+        free = next(i for i in self.rec.items() if i["kind"] == "free" and i.get("rubric"))
+        lesson = api.call("start", self.rec, scope="capability:variance")["lesson"]
+        attempt = tutor.answer(self.rec, lesson, free["id"], "something")["attempt"]
+        with self.assertRaises(ValueError):
+            tutor.grade(self.rec, attempt, "correct", criteria_met=[False])
+        with self.assertRaises(ValueError):
+            tutor.grade(self.rec, attempt, "correct", criteria_met=[True, True])  # the rubric has one criterion
+        self.assertEqual(tutor.grade(self.rec, attempt, "correct", criteria_met=[True])["verdict"], "correct")
+
+
+class Clips(Fixture):
+    def test_the_player_leaves_out_the_clips_the_gate_leaves_out(self):
+        plan = prepare.load_plan(self.rec, self.bundle)
+        node = plan["nodes"][0]
+        node["clip"] = {"url": "https://example.org/v", "start": 0, "end": 600, "transcript_verified": True}
+        prepare.save_plan(self.rec, self.bundle, plan)
+        self.assertIsNone(prepare.segments_for(self.rec, self.bundle, node["id"])["clip"])  # ten minutes: too long
+        node["clip"] = {"url": "https://example.org/v", "start": 10, "end": 100, "transcript_verified": True}
+        prepare.save_plan(self.rec, self.bundle, plan)
+        self.assertEqual(prepare.segments_for(self.rec, self.bundle, node["id"])["clip"]["end"], 100)
+
+
+class ScoutChecks(unittest.TestCase):
+    def brief(self, sensitive=True):
+        brief, _ = scout.plan("Is the sample variance biased when the mean is estimated?", ["bias", "Bessel"],
+                              scout.inventory_receipt(None), hypothesis_sensitive=sensitive)
+        return brief
+
+    def report(self, brief, locator="abstract"):
+        return {"scout_report_schema": 1, "brief_digest": brief["brief_digest"],
+                "context_exposure": {k: False for k in scout.EXPOSURE},
+                "searches": [{"query": f"q {kind}", "kind": kind} for kind in scout.SEARCH_KINDS],
+                "candidates": [{"title": "A paper", "authors": ["A. Author"], "year": 2001, "source_url": "https://example.org/p",
+                                "relevance": "defines the estimator and its bias", "source_access": "abstract",
+                                "claims": [{"text": "the estimator is unbiased with n-1", "locator": locator}]}]}
+
+    def codes(self, report, brief):
+        return {i["code"] for i in scout.report_issues(report, brief)}
+
+    def test_a_locator_cannot_claim_more_than_the_abstract(self):
+        brief = self.brief()
+        self.assertNotIn("LOCATOR_BEYOND_ACCESS", self.codes(self.report(brief, "abstract, sentence 2"), brief))
+        self.assertIn("LOCATOR_BEYOND_ACCESS", self.codes(self.report(brief, "abstract; Section 3, eq. 4"), brief))
+
+    def test_an_edited_brief_is_refused(self):
+        brief = self.brief()
+        report = self.report(brief)
+        brief["required_searches"] = ["primary"]  # drops the five search kinds a hypothesis-sensitive question needs
+        self.assertEqual(self.codes(report, brief), {"BRIEF_TAMPERED"})
+        brief = self.brief()
+        brief["question"] = "A different question that is long enough"
+        self.assertEqual(self.codes(report, brief), {"BRIEF_TAMPERED"})
+        self.assertEqual(self.codes(report, []), {"BRIEF_TAMPERED"})  # a list is not a brief, and not a traceback
 
 
 class Parser(unittest.TestCase):

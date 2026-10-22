@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import export, graph, importers, tasks
+from .. import export, graph, importers, research, tasks
 from ..learn import schedule
 from ..store import validate_item
 from ..registry import P, iso_day, present, tool
@@ -85,8 +85,9 @@ def claim(rec, task, by):
 
 @tool("finish", "Finish a task with its result.", writes=True, task=P("string", "task id", True),
       result=P("any", "the result", True), by=P("string", "agent name"))
-def finish(rec, task, result, by="agent"):
-    return tasks.finish(rec, task, result, by)
+def finish(rec, task, result, by=None):
+    research.check_task_result(rec, task, result)
+    return tasks.finish(rec, task, result, by, owner_only=True)
 
 
 @tool("cancel", "Withdraw an open task that is no longer needed, with the reason.", writes=True,
@@ -114,6 +115,16 @@ def remove(rec, id=None, src=None, type=None, dst=None):
                        "hints, concepts, difficulty, supersedes", True))
 def add_item(rec, item):
     problems = validate_item(item)
+    for c in item.get("concepts", []):
+        if isinstance(c, str) and ":" not in c:  # a lesson finds an item by the node id it tests
+            problems.append(f"concept {c!r} is not a node id; use <type>:<key>, e.g. capability:{c}")
+    if "defence" in item:  # an item that defends a claim: the kind is fixed, and it names the claim and a rubric
+        if item["defence"] not in research.DEFENCE:
+            problems.append(f"defence is one of {', '.join(research.DEFENCE)}")
+        if item.get("kind") != "free" or not (item.get("rubric") or {}).get("criteria"):
+            problems.append("a defence item is a free item with a rubric of criteria")
+        if not any(str(c).startswith("claim:") for c in item.get("concepts", [])):
+            problems.append('a defence item lists its claim in concepts, e.g. ["claim:width"]')
     if problems:
         raise ValueError("; ".join(problems))
     return {"id": rec.put_item(item)}

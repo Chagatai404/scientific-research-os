@@ -35,6 +35,8 @@ def open_task(rec: Record, kind: str, ref: str, brief: str = "", *, data: dict |
 
 def tasks(rec: Record, kind: str | None = None, state: str | None = "open") -> list[dict]:
     """Tasks with their current state: ``open``, ``claimed``, ``done`` or ``cancelled``, oldest first."""
+    if kind is not None and kind not in KINDS:
+        raise ValueError(f"unknown task kind {kind!r}; kinds: {', '.join(sorted(KINDS))}")
     out: dict[str, dict] = {}
     for e in rec.events(type="task"):
         if e["type"] == "task.open":
@@ -63,11 +65,15 @@ def claim(rec: Record, tid: str, by: str) -> dict:
     return _get(rec, tid)
 
 
-def finish(rec: Record, tid: str, result, by: str = "agent") -> dict:
+def finish(rec: Record, tid: str, result, by: str | None = None, *, owner_only: bool = False) -> dict:
+    """Finish a task. ``by`` defaults to whoever claimed it. With ``owner_only`` (what the tool uses) another agent
+    cannot finish a task that is claimed: its work would be overwritten."""
     t = _get(rec, tid)
     if t["state"] in ("done", "cancelled"):
         raise ValueError(f"{tid} is already {t['state']}")
-    rec.append("task.done", tid, {"result": result}, actor=by)
+    if owner_only and t["state"] == "claimed" and by not in (None, t.get("by")):
+        raise ValueError(f"{tid} is claimed by {t.get('by')}; a claim lapses after 30 minutes, then anyone may take it")
+    rec.append("task.done", tid, {"result": result}, actor=by or t.get("by") or "agent")
     return _get(rec, tid)
 
 

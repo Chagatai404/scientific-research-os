@@ -31,6 +31,11 @@ ros -p stat303 serve --open            # the portal, in a browser or Obsidian's 
 ros install --client claude            # or codex, gemini, agents: skills, agents and the MCP server
 ```
 
+If `ros` is "not found" after `pip install -e .` (on Windows the script folder, for example
+`%APPDATA%\Python\Python3xx\Scripts`, is often not on PATH), use `python -m ros ...` instead; every command in this
+document works that way. `ros install --client claude --user` also prints the `claude mcp add` command that registers the
+MCP server; Codex reads its skills from `~/.agents/skills` and its MCP entry from `~/.codex/config.toml`.
+
 Then ask your agent to teach you something, or open **Today** in the portal.
 
 ## How the pieces fit
@@ -76,5 +81,9 @@ you have edited is never overwritten. `ros export --kind static` writes a read-o
 python -m unittest discover -s tests -p "test_*.py"     # about 10 seconds
 node tests/ros-portal-browser.cjs                        # a whole lesson in Chromium, layout at 320-1920 px
 ```
+
+The browser test needs the `playwright` module and a Chromium. Point it at them with `ROS_PLAYWRIGHT` (the module's
+folder, if it is not installed next to the repository), `ROS_BROWSER` (the Chromium executable) and `PYTHON` (default
+`python3`; on Windows `python`).
 
 The history of earlier versions is in `docs/history/` and the changelog.
