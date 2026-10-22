@@ -1,6 +1,6 @@
 # Scientific Research OS
 
-Version **1.0.0**. One record per course or project, lessons prepared before you sit down, and research that is
+Version **1.1.0**. One record per course or project, lessons prepared before you sit down, and research that is
 audited by fresh reviewers and defended by you. It works with any AI agent: Claude, Codex, Gemini or a local
 model.
 
@@ -102,4 +102,4 @@ The browser test needs the `playwright` module and a Chromium. Point it at them 
 folder, if it is not installed next to the repository), `ROS_BROWSER` (the Chromium executable) and `PYTHON` (default
 `python3`; on Windows `python`).
 
-The history of earlier versions is in `docs/history/` and the changelog.
+Version 1.1 adds the user-wide and per-project graphs with `gaps` and `roadmap` (see the changelog). The history of earlier versions is in `docs/history/` and the changelog.
