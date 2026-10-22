@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "research-os"
-version = "1.0.0"
+version = "1.1.0"
 description = "One record per course or project, prepared lessons, and research with audits and ownership, for any AI agent."
 readme = "README.md"
 requires-python = ">=3.11"

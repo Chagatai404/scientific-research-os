@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased: the two graphs, gaps and roadmaps
+## 1.1.0: the two graphs, gaps and roadmaps
 
 - **Gaps and roadmap** (`gaps`, `roadmap`, `roadmap_tasks`, `goal`): what a target needs that you do not have, and the
   order to learn it in (waves, reasons, effort, what each step unlocks and which research it unblocks, schedule and
