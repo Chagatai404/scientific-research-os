@@ -117,6 +117,16 @@ class PortalDecisions(Fixture):
         self.assertEqual([q for q in api.call("queue", self.rec) if q["kind"] == "approve"], [])
 
 
+class PortalPort(Fixture):
+    def test_a_second_portal_cannot_take_a_port_that_is_in_use(self):
+        first = serve.start(self.rec, 0)
+        self.addCleanup(first.server_close)
+        self.addCleanup(first.shutdown)
+        with self.assertRaises(ValueError) as cm:
+            serve.start(self.rec, first.server_address[1])
+        self.assertIn("--port", str(cm.exception))
+
+
 class Parser(unittest.TestCase):
     def test_the_command_is_found_past_global_options(self):
         self.assertEqual(cli.command_of(["-p", "demo", "--json", "status"]), "status")

@@ -17,7 +17,9 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import mimetypes
+import os
 from pathlib import Path
+import socket
 import threading
 import time
 from urllib.parse import parse_qs, unquote, urlparse
@@ -197,17 +199,36 @@ def _arg(text: str):
         return text
 
 
+class PortalServer(ThreadingHTTPServer):
+    """Refuses a port another process already listens on. Windows lets a second listener share a port (the default
+    ``SO_REUSEADDR`` there), so two portals, possibly for different records, would answer the same URL."""
+    allow_reuse_address = os.name != "nt"
+    daemon_threads = True
+
+    def server_bind(self):
+        if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
+def _bind(rec: Record, port: int) -> PortalServer:
+    try:
+        return PortalServer(("127.0.0.1", port), make_handler(rec))
+    except OSError as exc:
+        raise ValueError(f"port {port} is in use (is another 'ros serve' running?): pass --port N, or 0 for any "
+                         f"free port") from exc
+
+
 def start(rec: Record, port: int = 8737) -> ThreadingHTTPServer:
     """Start the portal in a background thread (used by ``ros mcp --portal``) and return the server."""
-    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(rec))
+    server = _bind(rec, port)
     server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server
 
 
 def run(rec: Record, port: int = 8737, open_browser: bool = False) -> int:
-    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(rec))
-    server.daemon_threads = True
+    server = _bind(rec, port)
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"Research OS portal for {rec.root.name}: {url}  (Ctrl+C to stop)", flush=True)
     if open_browser:
