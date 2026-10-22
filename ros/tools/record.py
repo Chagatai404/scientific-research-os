@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import export, graph, importers, research, tasks
+from .. import export, graph, importers, research, tasks, vault
 from ..learn import schedule
 from ..store import validate_item
 from ..registry import P, iso_day, present, tool
@@ -20,9 +20,7 @@ def status(rec, as_of=None):
     states: dict[str, int] = {}
     for c in learning.caps.values():
         states[c.assessment.state] = states.get(c.assessment.state, 0) + 1
-    open_tasks: dict[str, int] = {}
-    for t in tasks.tasks(rec):
-        open_tasks[t["kind"]] = open_tasks.get(t["kind"], 0) + 1
+    open_tasks = {k: v["open"] for k, v in tasks.counts(rec).items() if v["open"]}
     return {"record": str(rec.root), "as_of": day.isoformat(), "capabilities": len(learning.caps), "states": states,
             "ready": len(learning.ready), "frontier": len(learning.frontier()), "due": len(schedule.due(rec, day)),
             "items": len(rec.items()), "lessons": sum(1 for n in rec.nodes(type="lesson") if not n["id"].startswith("bundle:")), "open_tasks": open_tasks,
@@ -51,7 +49,8 @@ def items(rec, concept=None):
     return [present(i) for i in rec.items(concept)]
 
 
-@tool("tasks", "Work waiting for an agent: grade, answer, visual, narration, animation, video, audit, verify.",
+@tool("tasks", "Work waiting for an agent: grade, answer, visual, narration, animation, video, audit, verify, scout, "
+      "ingest, outline, bundle, handout, run (job tasks are for the portal or MCP process).",
       kind=P("string", "only this kind"), state=P("string", "open (default), claimed, done, cancelled or all"))
 def list_tasks(rec, kind=None, state="open"):
     return tasks.tasks(rec, kind, None if state == "all" else state)
@@ -153,13 +152,15 @@ def import_(rec, kind, path, evidence=None, repo=None, project=None):
     return importers.IMPORTERS[kind](rec, path, evidence=evidence, repo=repo, project=project)
 
 
-@tool("export", "Write curated notes into an Obsidian vault folder, or a read-only single-file HTML snapshot.",
+@tool("export", "Write this record's notes into an Obsidian vault (the same as vault_set + vault_sync), or a "
+      "read-only single-file HTML snapshot.",
       writes=True, kind=P("string", "what to write", True, ("obsidian", "static")),
       path=P("string", "the vault folder (obsidian) or the HTML file (static)", True),
-      folder=P("string", "folder inside the vault (default Research OS/<project>)"))
+      folder=P("string", "folder inside the vault (default Research OS)"))
 def export_(rec, kind, path, folder=None):
     if kind == "obsidian":
-        return export.obsidian(rec, path, folder)
+        vault.set_vault(path, folder)
+        return vault.sync(rec)
     return {"written": str(export.static(rec, path))}
 
 

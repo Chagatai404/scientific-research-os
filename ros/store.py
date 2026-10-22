@@ -37,7 +37,8 @@ MAX_PROBLEMS = 200
 ITEM_KINDS = {"choice", "numeric", "free"}
 # Node ids are "<type>:<key>", so a concept and a capability can share a key without colliding.
 NODE_TYPES = {"domain", "subject", "concept", "capability", "course", "goal", "project", "block", "paper", "question",
-              "hypothesis", "claim", "experiment", "decision", "code-symbol", "source", "lesson"}
+              "hypothesis", "claim", "experiment", "decision", "code-symbol", "source", "lesson", "handout",
+              "visual"}
 EDGE_TYPES = {"requires", "teaches", "tests", "supports", "invalidates", "implements", "cites", "supersedes",
               "part-of", "about", "applied-in", "addresses", "decides", "relates"}
 # Item fields that carry no content and are left out of the hash.
@@ -407,6 +408,36 @@ class Record:
             cur[1] = r["seq"]
         self._folds[name] = cur
         return cur[2]
+
+    def since(self, cursor: dict | None, types: tuple[str, ...] = ()) -> dict:
+        """What changed after ``cursor`` (``None`` the first time): the ids of nodes written, the ends of edges
+        written and the events of ``types`` appended, read from the tails of the logs and the index, so the cost
+        follows the change, not the record. ``full`` is true when there is no usable cursor (the first call, a
+        rebuilt index, a rewritten log): the caller then looks at everything once. ``cursor`` in the result is
+        what to pass next time; it is plain JSON and may be stored."""
+        self.sync()
+        epoch = self._meta("epoch")
+        seq = self.index().execute("SELECT COALESCE(MAX(seq), 0) FROM events").fetchone()[0]
+        cur = cursor or {}
+        sizes = {n: (p.stat().st_size if p.exists() else 0) for n, p in self._logs()}
+        full = (cur.get("epoch") != epoch or cur.get("nodes", 0) > sizes["nodes"]
+                or cur.get("edges", 0) > sizes["edges"])
+        out = {"full": full, "nodes": set(), "edges": set(), "events": [],
+               "cursor": {"epoch": epoch, "events": seq, "nodes": sizes["nodes"], "edges": sizes["edges"]}}
+        if full:
+            return out
+        for name, path, handle in (("nodes", self.nodes_path, lambda r: out["nodes"].add(r["id"])),
+                                   ("edges", self.edges_path,
+                                    lambda r: out["edges"].update((r["src"], r["dst"])))):
+            if sizes[name] > cur[name]:
+                for r in read_jsonl(path, cur[name]).records:
+                    handle(r)
+        if seq > cur.get("events", 0) and types:
+            rows = self.index().execute(
+                f"SELECT * FROM events WHERE seq>? AND type IN ({','.join('?' * len(types))}) ORDER BY seq",
+                (cur.get("events", 0), *types))
+            out["events"] = [_event_row(r) for r in rows]
+        return out
 
     def _only_torn_tail(self, name: str, path: Path, size: int) -> bool:
         """A file larger than what was consumed only by an unfinished last line needs no refresh."""

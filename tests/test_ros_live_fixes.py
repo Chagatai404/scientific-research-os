@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+from unittest import mock
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -249,9 +250,10 @@ class Parser(unittest.TestCase):
 class Export(Fixture):
     def test_an_old_record_with_an_odd_node_id_still_exports(self):
         self.rec.put_node("foo", "capability", title="Foo")  # written before ids were validated
-        with tempfile.TemporaryDirectory() as vault:
+        with tempfile.TemporaryDirectory() as vault, tempfile.TemporaryDirectory() as ros_home, \
+                mock.patch.dict(os.environ, {"ROS_HOME": ros_home}):
             out = api.call("export", self.rec, kind="obsidian", path=vault)
-            self.assertTrue(any(w.endswith("capabilities/foo.md") for w in out["written"]))
+            self.assertTrue(any(w.endswith("Capabilities/Foo.md") for w in out["created"]), out["created"])
 
 
 class InstallRefusal(unittest.TestCase):
