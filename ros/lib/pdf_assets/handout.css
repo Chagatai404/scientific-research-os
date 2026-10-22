@@ -1,0 +1,25 @@
+:root{--blue:#1b5e9b;--green:#2e7d32;--red:#b3261e;--amber:#b26a00;--grey:#555}
+@page{size:A4;margin:20mm 18mm 20mm 18mm}
+body{font-family:"Latin Modern Roman","Computer Modern",Georgia,"Times New Roman",serif;font-size:11pt;line-height:1.45;color:#111;max-width:none;margin:0}
+header.title{border-bottom:1.5pt solid var(--blue);margin-bottom:10pt;padding-bottom:6pt}
+header.title .meta{font-size:9pt;color:var(--grey);display:flex;justify-content:space-between}
+header.title h1{color:var(--blue);font-size:22pt;margin:6pt 0 2pt;text-align:center}
+header.title .sub{text-align:center;font-weight:bold}
+h2{color:var(--green);font-size:15pt;border-bottom:.7pt solid var(--green);margin:16pt 0 6pt;break-after:avoid}
+h3{color:var(--blue);font-size:12.5pt;margin:11pt 0 4pt;break-after:avoid}
+h4{color:var(--grey);font-style:italic;font-size:11pt;margin:8pt 0 3pt}
+p{margin:4pt 0}
+table{border-collapse:collapse;margin:6pt 0}
+th,td{border-top:.6pt solid #888;border-bottom:.6pt solid #888;padding:2pt 6pt;text-align:left}
+.box{border:.6pt solid var(--c,var(--blue));border-radius:2pt;background:var(--b,#eef4fa);padding:6pt 8pt;margin:9pt 0;break-inside:avoid}
+.box>.bt{font-weight:bold;font-size:9.5pt;color:#fff;background:var(--c,var(--blue));display:inline-block;padding:0 5pt;margin:-13pt 0 3pt -2pt;border-radius:1.5pt}
+.box.rule{--c:var(--green);--b:#eff7ef}.box.keyidea{--c:var(--amber);--b:#fff6e5}.box.mistake{--c:var(--red);--b:#fcefee}
+.box.remark,.box.gaps{--c:var(--grey);--b:#f4f4f4}.box.example,.box.question,.box.exercise{--c:#1b5e9b;--b:#fff}
+.sol{margin:3pt 0 0;color:#222}
+.solutions h3{color:var(--green)}
+.src{font-size:9.5pt}.src li{margin:2pt 0}
+img{max-width:100%}figure{margin:8pt 0;text-align:center}figcaption{font-size:9pt;color:var(--grey)}
+pre{background:#f4f4f4;padding:5pt;font-size:9pt;overflow:auto}code{font-size:.92em}
+.m.d{display:block;text-align:center;margin:5pt 0}
+blockquote{margin:6pt 0 6pt 8pt;padding-left:8pt;border-left:2pt solid var(--blue);color:#333}
+sup.cite a{color:var(--blue);text-decoration:none}

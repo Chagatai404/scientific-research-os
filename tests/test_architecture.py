@@ -16,10 +16,10 @@ from ros import api, importers  # noqa: E402
 CORE = {"store", "home"}
 PURE = {"store", "learn.fsrs", "home", "install"}
 DOMAIN = {"tasks", "graph", "learn.evidence", "learn.schedule", "learn.probe", "learn.tutor", "learn.policy",
-          "prepare", "research", "importers", "export", "learn.fsrs", "context", "roadmap", "vault"}
+          "prepare", "research", "importers", "export", "learn.fsrs", "context", "roadmap", "vault", "handouts"}
 TOOLS_LAYER = {"api", "registry"} | {f"tools.{p.stem}" for p in (ROOT / "ros" / "tools").glob("*.py") if p.stem != "__init__"}
 INTERFACES = {"cli", "mcp", "serve", "__main__"}
-LIB_USERS = {"importers", "prepare"}
+LIB_USERS = {"importers", "prepare", "handouts"}
 
 
 def modules() -> dict[str, set[str]]:
@@ -83,7 +83,7 @@ class LayeringTests(unittest.TestCase):
 
     def test_carried_over_engines_are_used_only_where_documented(self):
         users = {name for name, deps in self.mods.items() if any(top(d) == "lib" for d in deps)}
-        self.assertEqual(users, LIB_USERS, "ros.lib is used only by importers and prepare")
+        self.assertEqual(users, LIB_USERS, "ros.lib is used only by importers, prepare and handouts")
 
     def test_no_import_cycles(self):
         graph = {n: {d for d in deps if d in self.mods} for n, deps in self.mods.items()}

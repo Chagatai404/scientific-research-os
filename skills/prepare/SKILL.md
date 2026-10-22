@@ -1,6 +1,6 @@
 ---
 name: prepare
-description: Prepare a lesson bundle ahead of time (dependency map, narration, voice, visuals, animations, optional clips, items) and run the readiness gate. Use when a topic has no ready lesson, when the learner asks to study something new, or when tasks of kind narration, visual, animation, video or item are open.
+description: Prepare a lesson bundle ahead of time (dependency map, narration, voice, visuals, animations, optional clips, items) and run the readiness gate, and write study handouts (lecture notes, recitations, chapters). Use when a topic has no ready lesson, when the learner asks to study something new, or when tasks of kind narration, visual, animation, video, item or handout are open.
 ---
 
 # Prepare
@@ -42,3 +42,13 @@ questions and no prepared lesson, so preparation follows what the researcher nee
 3. Ready means every row passes and nothing hashed has changed since. Tell the learner the lesson is ready.
 
 A lapse found in review re-enters preparation for that node only: add a new explanation path, re-run the gate.
+
+## Handouts
+
+Lecture notes, recitations and textbook-style chapters are made the same way, from the record, for the Obsidian vault
+and as PDFs (`references/HANDOUTS.md`, lens `lenses/handouts.md`):
+
+1. `handout_create --kind lecture --scope '["capability:<key>"]' --title <title>` (kinds: lecture, recitation,
+   chapter) composes the context and opens one `handout` task.
+2. `handout_read --handout <id>`, then `handout_write` for each section with its sources, then `handout_check`.
+3. `handout_build` writes the note into the vault now and queues the PDF; a missing toolchain is reported, never an error.

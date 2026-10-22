@@ -20,7 +20,7 @@ import support_ros_demo as demo  # noqa: E402
 SKILLS = {"learn", "prepare", "research", "audit", "defend", "notes-to-latex"}
 AGENTS = {"scout", "verifier", "auditor", "adversary", "visual-maker", "video-scout"}
 REFERENCES = {"TEACHING", "PREPARATION", "RESEARCH", "EVIDENCE", "DATA_MODEL", "PORTAL", "VOICE", "SAFETY",
-              "VAULT"}
+              "VAULT", "HANDOUTS"}
 
 
 class Fixture(unittest.TestCase):

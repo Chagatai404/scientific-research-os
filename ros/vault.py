@@ -396,6 +396,19 @@ def set_vault(path: str | None = None, root: str | None = None) -> dict:
     return {"vault": st["vault"], "vault_root": st["vault_root"], "detected": found}
 
 
+def layout(rec: Record) -> dict:
+    """Where a record's notes live: whether it is the user-wide record, its hub id and title, and its folder below the
+    vault root (``Courses/<Course>``, ``Projects/<Project>`` or ``Knowledge``)."""
+    cfg = home.config(rec.root)
+    is_user = (cfg.get("role") or "unlinked") == "user"
+    hub_id = None if is_user else (cfg.get("project") or f"project:{rec.root.name}")
+    node = (rec.node(hub_id) or {}) if hub_id else {}
+    title = "Knowledge" if is_user else (node.get("title") or rec.root.name)
+    top = "Knowledge" if is_user else ("Courses" if hub_id.startswith("course:") else "Projects")
+    return {"is_user": is_user, "hub_id": hub_id, "title": title, "role": cfg.get("role") or "unlinked", "cfg": cfg,
+            "folder": top if is_user else f"{top}/{safe_name(title)}"}
+
+
 class Ctx:
     """Everything one pass needs: the record, where it writes, the manifest and the lazily built learning state."""
 
@@ -406,14 +419,9 @@ class Ctx:
         self.port = st["portal_port"]
         self.as_of = as_of or date.today()
         self.record = rec.root.name
-        self.cfg = home.config(rec.root)
-        self.role = self.cfg.get("role") or "unlinked"
-        self.is_user = self.role == "user"
-        self.hub_id = None if self.is_user else (self.cfg.get("project") or f"project:{self.record}")
-        node = (rec.node(self.hub_id) or {}) if self.hub_id else {}
-        self.hub_title = "Knowledge" if self.is_user else (node.get("title") or self.record)
-        top = "Knowledge" if self.is_user else ("Courses" if self.hub_id.startswith("course:") else "Projects")
-        self.hub_folder = top if self.is_user else f"{top}/{safe_name(self.hub_title)}"
+        lay = layout(rec)
+        self.cfg, self.role, self.is_user = lay["cfg"], lay["role"], lay["is_user"]
+        self.hub_id, self.hub_title, self.hub_folder = lay["hub_id"], lay["title"], lay["folder"]
         self._learning: graph.Learning | None = None
         self.cap_ids: list[str] | None = None
         self.state: dict = rec.fold("vault.state", ("note.dismiss", "note.release"), dict, _state_step)
@@ -1203,6 +1211,19 @@ def _drop_v11(ctx: Ctx, vault: Path) -> int:
 
 
 # ---- placing files, finding notes ---------------------------------------------------------------------------------
+def custom_stub(rec: Record, rid: str, kind: str, sub: str, title: str,
+                build: Callable[[Ctx], tuple[dict, list, str]]) -> Stub:
+    """A note another module writes (a handout) in this record's folder ``sub``. ``build(ctx)`` returns its extra
+    properties, tags and body; the ownership, hashing, links and flow-back are those of every note."""
+    root = home.settings()["vault_root"]
+    folder = "/".join([root, layout(rec)["folder"], sub])
+
+    def wrapped(ctx: Ctx, stub: Stub):
+        extra, tags, body = build(ctx)
+        return {**_props(ctx, stub, up=_up(ctx)), **extra}, tags, body
+    return Stub(rid, kind, folder, title, wrapped)
+
+
 def put_note(rec: Record, stub: Stub, dry_run: bool = False) -> dict:
     """Write one note on behalf of another module (a handout): same ownership, hashing and flow-back as any note."""
     vault = vault_path()
