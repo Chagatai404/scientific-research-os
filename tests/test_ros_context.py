@@ -84,6 +84,62 @@ class Graphs(unittest.TestCase):
         again = importers.documents(self.proj, docs, "project:ams")
         self.assertEqual((again["nodes_written"], again["edges_written"]), (0, 0))
 
+    def test_a_new_course_or_project_joins_the_graphs_with_its_hubs(self):
+        api.call("link", self.user, user_wide=True)
+        out = api.call("link", self.proj, project="course:stat303", title="STAT303 Mathematical Statistics I")
+        self.assertEqual((out["role"], out["user"], out["project"]), ("project", "knowledge", "course:stat303"))
+        for rec in (self.user, self.proj):  # the hub exists in both, so part-of and about point at something
+            self.assertEqual(rec.node("course:stat303")["title"], "STAT303 Mathematical Statistics I")
+        self.assertEqual(api.call("link", self.user)["role"], "user")  # asking again changes nothing
+        other = Record(home.init("pave"))
+        self.addCleanup(other.close)
+        self.assertEqual(api.call("link", other)["project"], "project:pave")  # the default hub is the record's name
+        self.assertEqual(self.user.node("project:pave")["title"], "Pave")
+
+    def test_there_is_one_user_wide_record_and_a_project_is_told_when_there_is_none(self):
+        with self.assertRaises(ValueError) as cm:
+            api.call("link", self.proj)
+        self.assertIn("--user-wide", str(cm.exception))
+        api.call("link", self.user, user_wide=True)
+        with self.assertRaises(ValueError) as cm:
+            api.call("link", self.proj, user_wide=True)  # a second one
+        self.assertIn("already the user-wide record", str(cm.exception))
+        with self.assertRaises(ValueError):
+            api.call("link", self.proj, project="pave")  # not project:<key> or course:<key>
+
+    def test_ros_init_sets_a_new_record_up_and_says_why_when_it_cannot(self):
+        def init(*argv):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(cli.main(["init", *argv, "--json"]), 0)
+            return json.loads(out.getvalue())
+        self.assertIn("no user-wide record yet", init("early")["setup"]["note"])
+        self.assertEqual(init("me", "--user-wide")["setup"], {"role": "user"})
+        self.assertEqual(init("stat303", "--kind", "course", "--title", "STAT303")["setup"],
+                         {"role": "project", "user": "me", "project": "course:stat303"})
+        self.assertEqual(home.config(self.home / "projects" / "stat303")["user"], "me")
+        self.assertNotIn("setup", init("loose", "--no-link"))
+        with contextlib.closing(Record(self.home / "projects" / "me")) as me:
+            self.assertEqual(me.node("course:stat303")["title"], "STAT303")
+
+    def test_a_records_default_plan_includes_the_capabilities_tagged_with_its_hub(self):
+        api.call("link", self.user, user_wide=True)
+        api.call("link", self.proj, project="course:c1")
+        self.user.put_node("capability:a", "capability", title="A")
+        self.user.put_edge("capability:a", "part-of", "course:c1")
+        out = api.call("roadmap", self.proj)
+        self.assertIn("capability:a", [s["capability"] for s in out["steps"]])  # beside what its research requires
+
+    def test_migrate_names_the_research_documents_it_leaves_out(self):
+        vault = self.home / "vault"
+        (vault / "01 Projects" / "P" / "Research Records").mkdir(parents=True)
+        (vault / "01 Projects" / "P" / "Research Records" / "a.md").write_text("# A\n", encoding="utf-8")
+        (vault / "01 Projects" / "P" / "Research Records" / "b.md").write_text("---\nresearch_schema: 1\n---\n", encoding="utf-8")
+        warnings = importers._skipped_documents(vault)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("1 Markdown document(s) in '01 Projects/P/Research Records'", warnings[0])  # the registry record is not counted
+        self.assertIn("--kind documents", warnings[0])
+
     def test_a_tools_project_argument_is_not_the_record_selector(self):
         self.proj.close()
         out = io.StringIO()

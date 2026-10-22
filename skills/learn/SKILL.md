@@ -22,7 +22,10 @@ Every step below is one tool call, the same over MCP and the shell (`ros <tool> 
    - a ready bundle (`bundles`) → `start --bundle <id>`;
    - no bundle for the topic → prepare one (skill `prepare`) before teaching from it. While it is being prepared you may
      teach live from the record's items: `start --scope <node>`; say plainly that explanations are live, not prepared;
-   - reviews due → `start --scope review:due`.
+   - reviews due → `start --scope review:due`;
+   - what to learn next for a goal, course or project → `roadmap` (`--target goal:<key>`, or no target in a project's
+     record): its `available` steps can be studied now, in any order within a wave; `start --scope <step's start.scope>`
+     (in the user-wide record, where the capabilities live). `gaps` shows what is missing and why.
 4. Ask the learner's goal once, in free text, and record it with `ask` only if they raise a question.
 
 ## The loop

@@ -83,6 +83,12 @@ def parser(only: str | None = None) -> argparse.ArgumentParser:
     s = add("init", help="create a record")
     s.add_argument("name")
     s.add_argument("--here", action="store_true", help="in ./.ros (a research repository) instead of the home")
+    s.add_argument("--kind", choices=("project", "course"), default="project",
+                   help="what this record is for: a project's research or a course (default project)")
+    s.add_argument("--title", help="its name in the knowledge graph (default: the record name)")
+    s.add_argument("--user", help="the user-wide record to join (default: the only one)")
+    s.add_argument("--user-wide", action="store_true", help="this is the user-wide knowledge record")
+    s.add_argument("--no-link", action="store_true", help="do not join the user-wide knowledge graph")
     add("projects", help="list records")
     add("tools", help="list tools")
     s = add("learn", help="a lesson in the terminal")
@@ -128,7 +134,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser(command_of(argv)).parse_args(argv)
     try:
         if args.command == "init":
-            emit({"record": str(home.init(args.name, Path.cwd() if args.here else None))}, args.json)
+            root = home.init(args.name, Path.cwd() if args.here else None)
+            out = {"record": str(root)}
+            if not args.no_link:  # a new record joins the two graphs now, not "later, by hand"
+                rec = Record(root)
+                try:
+                    out["setup"] = api.call("link", rec, user=args.user, project=None if args.user_wide else
+                                            f"{args.kind}:{args.name}", title=args.title, user_wide=args.user_wide)
+                except ValueError as exc:  # e.g. no user-wide record yet: the record exists, and the way on is said
+                    out["setup"] = {"role": "unlinked", "note": str(exc)}
+                finally:
+                    rec.close()
+                    api.release()
+            emit(out, args.json)
             return 0
         if args.command == "projects":
             emit({"home": str(home.home()), "projects": home.projects()}, args.json)
@@ -194,6 +212,7 @@ def _migration_summary(out: dict) -> str:
              f"({c['history_rows']} history rows): {'OK' if c['ok'] else 'NOT OK'}"]
     lines += [f"  {s['session']}: missing {', '.join(s['missing'])}" for s in c["per_session"] if s["missing"]]
     lines += [f"  problem: {p}" for p in se["problems"]] + [f"  diagnostic: {d}" for d in ln["diagnostics"][:20]]
+    lines += [f"  warning: {w}" for w in out.get("warnings", [])]
     return "\n".join(lines) + "\nFull report: migration-report.json in the record."
 
 

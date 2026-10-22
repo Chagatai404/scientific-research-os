@@ -444,12 +444,36 @@ def migrate(rec: Record, vault: Path | str, research_root: Path | str | None = N
         per_session.append({"session": path.relative_to(vault).as_posix(), "answers": len(answers),
                             "imported": len(answers & have), "missing": missing,
                             "legacy": bool(state.get("migration"))})
+    report["warnings"] = _skipped_documents(vault)
     report["check"] = {"sessions": len(per_session), "answers": sum(s["answers"] for s in per_session),
                        "missing": missing_total, "history_rows": len(graph.history(rec)), "per_session": per_session,
                        "ok": missing_total == 0}
     (rec.root / "migration-report.json").write_text(_json.dumps(report, indent=2, ensure_ascii=False) + "\n",
                                                     encoding="utf-8")
     return report
+
+
+DOCUMENT_FOLDERS = re.compile(r"research (records|sessions|notes)|evidence maps|literature|reports", re.I)
+
+
+def _skipped_documents(vault: Path) -> list[str]:
+    """Folders of Markdown research documents that ``migrate`` does not read (they are reports, not registry records or
+    session files), so the person knows they are not in the record and what imports them."""
+    found: dict[str, int] = {}
+    for p in vault.rglob("*.md"):
+        parts = p.relative_to(vault).parts
+        if any(x.startswith(".") for x in parts):
+            continue
+        for i, part in enumerate(parts[:-1]):
+            if DOCUMENT_FOLDERS.fullmatch(part.strip()) or DOCUMENT_FOLDERS.search(part) and len(part) < 40:
+                if "research_schema:" in p.read_text(encoding="utf-8", errors="ignore")[:600]:
+                    break  # a registry record: the research import reads it
+                folder = "/".join(parts[:i + 1])
+                found[folder] = found.get(folder, 0) + 1
+                break
+    return [f"{n} Markdown document(s) in '{folder}' were not imported (not research-registry records). Record them as "
+            f"sources with: ros import --kind documents --path \"{vault / folder}\" --project project:<key>"
+            for folder, n in sorted(found.items())]
 
 
 def _graphify(rec: Record, path, repo=None, **_) -> dict:

@@ -60,6 +60,13 @@ The index is incremental and every expensive view is too. Use these instead of s
 | A whole-record view that changes rarely | `rec.derived(name, build)` | once per index change |
 | A view that grows with events | `rec.fold(name, types, init, step)` | only the new events |
 | Learning evidence (rows, FSRS cards, assessments) | `learn.evidence.of(rec)` | only what new events touch |
+| The `requires` graph (prerequisites, dependents, closure) | `graph.structure(rec)`, cached on `rec.stamp("edges")` | once per edge change; answers never rebuild it |
+| Capabilities for part of the graph | `graph.Learning(rec, as_of, within=ids)` | the closure of `ids` only |
+| Gaps and a roadmap | `roadmap.gaps`, `roadmap.roadmap` | linear in the closure of the targets; a repeat is a lookup |
+
+`rec.stamp(*logs)` is the cache key for what depends on `events`, `nodes` or `edges` alone; `rec.derived` is thrown away
+by every write, an answer included, so it is wrong for graph structure. A project record reads the user-wide record
+through `context.user_record(cfg)`, kept open so its evidence is folded once.
 
 Every tool call runs inside `rec.reading()`: the files are checked for growth once, then every read in the call uses
 the index as it is. The record's own writes update the index immediately.

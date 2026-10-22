@@ -28,7 +28,39 @@ Records are of two roles, set in `record.json` (the `link` tool writes it):
 The graphs share ids, not files: a research node that `requires capability:x` names capability `x` of the user-wide
 record. `context` joins them for an agent: a project's next research steps with the user's state in each capability it
 needs (`untracked` when the user-wide graph has no such capability), or, in the user-wide record, a summary of every
-linked project. Every `part-of` target (`subject:`, `course:`, `goal:`, `project:`) has a node of its own.
+linked project. Every `part-of` target (`subject:`, `course:`, `goal:`, `project:`) has a node of its own. `ros init`
+sets a new record up: it joins the user-wide record (the only one, or `--user`) under `project:<name>` or, with
+`--kind course`, `course:<name>`, and creates that hub node in both records; `--user-wide` makes the record the user-wide
+one (there is one), and `--no-link` leaves it alone.
+
+## Goals, gaps and roadmaps
+
+The graphs are there to find what you do not know yet and to order learning it. `gaps` and `roadmap` are **views**:
+computed from the graphs each time, never stored (so never stale), and read-only. A **target** is a capability, a hub
+(course, subject, domain, block, project, concept: its members), a goal, a research node of a project record (the
+capabilities it requires), or several, comma-separated; with none, a project record means its whole research plus what
+you tagged with its hub, and the user-wide record the goals' targets.
+
+A `goal:<key>` node (the `goal` tool) may carry `targets` (node ids), `deadline` (ISO date), `pace` (minutes a week)
+and `priority`; a capability node may carry `effort` (minutes, an author's estimate). They are inputs; nothing derived
+is stored.
+
+Each capability in the targets' prerequisite closure is **met** (its own evidence is valid) or a step of one kind:
+
+| kind | when | minutes |
+|---|---|---|
+| `define` | a project needs it and the user-wide graph has no such capability | 15 |
+| `fix` | it has recorded problems or is in a `requires` loop | 15 |
+| `new` | unknown | 45 (+15 with no questions written, -10 with a prepared lesson) |
+| `continue` | learning | 30 (same adjustments) |
+| `repair` | fragile | 20 |
+| `review` | stale, or demonstrated with no review date | 10 (5 for a reference capability) |
+
+A capability judged on several dimensions costs one pass per dimension not yet demonstrated. Steps are ordered by
+wave (one more than the highest wave of its unmet prerequisites, so a wave can be studied in any order; a loop has none),
+then by how many targets and research nodes wait on it, then chain length, effort and id, so the order is total and
+stable. A step is `available` exactly when `Learning.is_frontier` says so. With a `pace` the steps are laid into weeks;
+with a `deadline` the verdict is `feasible` (at most 85% of the capacity), `tight` or `infeasible`.
 
 ## Node types
 

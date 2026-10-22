@@ -6,7 +6,8 @@ description: Prepare a lesson bundle ahead of time (dependency map, narration, v
 # Prepare
 
 A lesson starts only when its bundle is ready. Preparation runs unattended; the learner is not involved and nothing
-is generated live except answers and grades. Contract: `references/PREPARATION.md`.
+is generated live except answers and grades. Contract: `references/PREPARATION.md`. `roadmap_tasks` opens one `item` task for each step of a roadmap that has no
+questions and no prepared lesson, so preparation follows what the researcher needs next.
 
 ## 1. The dependency map
 

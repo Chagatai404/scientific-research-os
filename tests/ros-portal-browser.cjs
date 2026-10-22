@@ -80,6 +80,11 @@ async function main() {
 
     await page.goto(server.url, {waitUntil: 'domcontentloaded'});
     await page.getByRole('heading', {name: 'Today'}).waitFor();
+    // the small Context window: closed by default, a 44 px summary line, opens to say how the record is linked
+    const context = page.locator('details.compact');
+    await context.locator('summary').waitFor();
+    assert.ok((await context.locator('summary').boundingBox()).height >= 44, 'the Context summary is under 44 px');
+    assert.equal(await context.evaluate((d) => d.open), false, 'the Context window should start closed');
     for (const w of WIDTHS) { await page.setViewportSize({width: w, height: 900}); await layout(page, `today @${w}`); }
     await page.setViewportSize({width: 1280, height: 900});
     await page.getByRole('button', {name: 'Start lesson'}).click();

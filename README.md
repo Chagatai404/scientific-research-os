@@ -77,11 +77,19 @@ Records, questions, audio and video live in `~/ResearchOS/projects/<name>/` (set
 research repository's `.ros/`. Only curated notes go into your vault, with `ros export --kind obsidian`; a note
 you have edited is never overwritten. `ros export --kind static` writes a read-only single-file snapshot.
 
-Two kinds of record keep your context: one **user-wide** record (`ros -p knowledge link`) holds everything you know, by
-domain, subject, course, goal and project; each research project has its own **project** record
-(`ros init ams; ros -p ams import --kind research --path <repo>; ros -p ams link --user knowledge`) holding its
-questions, hypotheses, experiments, decisions and sources. `ros -p <either> context` shows an agent where things stand
-in both.
+Two kinds of record keep your context. One **user-wide** record (`ros init me --user-wide`) holds everything you
+know, by domain, subject, course, goal and project. Each course or research project has its own record,
+which joins the user-wide one when it is created: `ros init ams` (a project) or
+`ros init stat303 --kind course --title "STAT303 Mathematical Statistics I"`. It then holds its questions, hypotheses,
+experiments, decisions and sources (`ros -p ams import --kind research --path <repo>`; reports become sources with
+`import --kind documents`). `ros -p <either> context` shows an agent where things stand in both.
+
+The graphs exist to find gaps. `ros -p ams gaps` says what the project needs that you do not yet have and which
+research steps it blocks; `ros -p ams roadmap --pace 300` orders what to learn into waves with the reason, effort and
+what each step unlocks, and with `--deadline` says whether it is feasible. State what you want to master with
+`ros -p me goal --id goal:qml --targets '["course:phys437"]' --deadline 2027-01-31 --pace 300`, then
+`ros -p me roadmap --target goal:qml`. Both are views over the graphs, always current, and fast at the scale of a life's
+notes (see the benchmark in `tests/test_ros_roadmap_bench.py`).
 
 ## Tests
 

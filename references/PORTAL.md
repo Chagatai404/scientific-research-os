@@ -5,8 +5,8 @@ Viewer. The process is the record's single writer while it runs.
 
 | Section | Contents |
 |---|---|
-| Today | Reviews due (Review now), the next lesson (ready, or what is missing), answers waiting for the tutor |
-| Learn | Prepared lessons, the capability map (click a node for its state and questions), the lesson player |
+| Today | Reviews due (Review now), the next lesson (ready, or what is missing), answers waiting for the tutor, and a small closed **Context** window: how this record is linked, its research and what you know of what it needs |
+| Learn | A **Roadmap** card (the next five steps with why and Start; in a project record, where to study them), prepared lessons, the capability map (click a node for its state and questions), the lesson player |
 | Research | The decision queue (approve, decide), the claims ledger with verdicts and ownership |
 | Library | Lesson logs |
 | History | Every answer and its grade |

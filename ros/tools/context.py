@@ -14,11 +14,14 @@ def context(rec, as_of=None):
     return ctx.context(rec, iso_day(as_of))
 
 
-@tool("link", "Say how this record relates to the others: with user, it is a project's research record and user names "
-      "the user-wide knowledge record; without it, this record is the user-wide one.", writes=True,
-      user=P("string", "the user-wide record's name"), project=P("string", "this record's project id, project:<key>"))
-def link(rec, user=None, project=None):
-    return ctx.link(rec, user, project)
+@tool("link", "Set a record up in the two graphs: with user_wide, it is the user-wide knowledge record; otherwise it is a "
+      "project's or course's record, joined to the user-wide one (user, default the only one) under a hub id "
+      "(project: or course:), with the hub created in both.", writes=True,
+      user=P("string", "the user-wide record's name (default: the only one)"),
+      project=P("string", "this record's hub id: project:<key> or course:<key> (default project:<record name>)"),
+      title=P("string", "the hub's name"), user_wide=P("boolean", "this is the user-wide knowledge record"))
+def link(rec, user=None, project=None, title=None, user_wide=False):
+    return ctx.link(rec, user, project, title, user_wide)
 
 
 def release() -> None:

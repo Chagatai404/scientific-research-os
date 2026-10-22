@@ -62,11 +62,28 @@
     return out.join("");
   }
   const h = (html) => { $main.innerHTML = html; };
+  // A small, closed-by-default window: where this record stands, and how it joins the user-wide knowledge graph.
+  const pairs = (o) => Object.entries(o || {}).map(([k, v]) => `${v} ${esc(k)}`).join(", ") || "none";
+  const ctx = (c) => {
+    if (!c) return "";
+    const steps = Object.fromEntries(Object.entries((c.research || {}).next_steps || {}).map(([k, v]) => [k, v.length]));
+    const body = c.role === "user"
+      ? `<p>${c.knowledge.capabilities} capabilities (${pairs(c.knowledge.states)}).</p>${c.projects.length ? `<ul>${c.projects.map((p) => `<li>${esc(p.record)}: ${p.waiting_for_you} waiting for you; ${pairs(p.next_steps)}</li>`).join("")}</ul>` : `<p class="muted">No project record is linked yet.</p>`}`
+      : c.role === "project"
+        ? `<p>${esc(c.project)}: ${pairs(c.research.nodes)}. Next: ${pairs(steps)}.</p><p>What you know of what it needs: ${pairs(c.needs.summary)}.</p>`
+        : `<p class="muted">${esc(c.note || "Not linked to a user-wide record.")}</p>`;
+    return `<details class="card compact"><summary>Context · ${esc(c.role)}</summary>${body}</details>`;
+  };
+  const roadmapCard = (r) => !r || !r.steps.length ? "" : `<section class="card"><h2>Roadmap</h2>
+    <p class="muted">${r.summary.steps} to learn, about ${Math.round(r.summary.effort_minutes / 60)} h${r.schedule.finish ? `; done by ${esc(r.schedule.finish)}` : ""}.</p>
+    <ul>${r.steps.map((s) => `<li>${esc(s.title || s.capability)} <span class="muted">${esc(s.kind)}</span>: ${esc(s.reason)} ${s.available && r.role !== "project" ? `<button data-start-scope="${esc(s.start.scope)}">Start</button>` : ""}</li>`).join("")}</ul>
+    ${r.role === "project" ? `<p class="muted">These capabilities live in your user-wide record: open that portal to study them.</p>` : ""}</section>`;
 
   // ---- views ---------------------------------------------------------------------------------------------------
   const views = {
     async today() {
       const t = await api("today");
+      const context = await api("context").catch(() => null);
       const nl = t.next_lesson;
       let lesson = `<p class="muted">No prepared lesson yet. An agent prepares one with <code>bundle_create</code>.</p>`;
       if (nl && nl.ready) lesson = `<p>${esc(nl.title)} is ready.</p><button class="primary" data-start-bundle="${esc(nl.bundle)}">Start lesson</button>`;
@@ -78,13 +95,15 @@
         <section class="card"><h2>Waiting for your tutor</h2>
           <p>${t.waiting_answers} written answer(s) and ${t.waiting_questions} question(s).
           ${t.waiting_answers + t.waiting_questions ? "Your tutor reads them when you next start a session with it." : ""}</p></section>
-        ${t.frontier.length ? `<section class="card"><h2>Ready to learn</h2><ul>${t.frontier.map((c) => `<li><a href="#learn" data-scope="${esc(c)}">${esc(c.split(":")[1])}</a></li>`).join("")}</ul></section>` : ""}`);
+        ${t.frontier.length ? `<section class="card"><h2>Ready to learn</h2><ul>${t.frontier.map((c) => `<li><a href="#learn" data-scope="${esc(c)}">${esc(c.split(":")[1])}</a></li>`).join("")}</ul></section>` : ""}
+        ${ctx(context)}`);
     },
     async learn() {
       if (state.lesson) return renderStep();
       const m = await api("map", state.mapScope ? { scope: state.mapScope } : {});
       const bs = await api("bundles");
-      h(`<h1>Learn</h1>
+      const rm = await api("roadmap", { limit: 5 }).catch(() => null);  // none when there is nothing to plan for yet
+      h(`<h1>Learn</h1>${roadmapCard(rm)}
         <section class="card"><h2>Lessons</h2>${bs.length ? `<ul>${bs.map((b) => `<li>${esc(b.title)} — ${b.ready ? `<button class="primary" data-start-bundle="${esc(b.id)}">Start lesson</button>` : `<span class="muted">being prepared</span>`}</li>`).join("")}</ul>` : `<p class="muted">No prepared lessons yet.</p>`}</section>
         <section class="card map"><h2>Map${state.mapScope ? `: ${esc(state.mapScope)}` : ""}</h2>${drawMap(m)}
           <p class="legend"><span>unknown</span><span>learning</span><span>demonstrated</span><span>retained</span><span>fragile</span><span>stale</span></p>

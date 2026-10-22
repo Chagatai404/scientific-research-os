@@ -43,6 +43,8 @@ a { color: var(--accent); }
 
 main { padding: var(--s4) var(--s3) var(--s6); max-width: calc(72ch + 2 * var(--s3)); width: 100%; outline: none; }
 .muted { color: var(--muted); }
+.compact summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--muted); }
+.compact[open] summary { margin-bottom: var(--s1); }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: var(--s3);
   margin-bottom: var(--s2); overflow-wrap: anywhere; }
 .row { display: flex; flex-wrap: wrap; gap: var(--s1); align-items: center; }

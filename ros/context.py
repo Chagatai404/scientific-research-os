@@ -36,23 +36,58 @@ def release() -> None:
     _USERS.clear()
 
 
-def link(rec: Record, user: str | None = None, project: str | None = None) -> dict:
-    """Without ``user``: mark this record as the user-wide knowledge record. With it: this is a project's research
-    record, and ``user`` names the user-wide one (marked as such if it has no role yet)."""
-    if user is None:
-        if home.config(rec.root).get("role") == "project":
-            raise ValueError("this record is a project's; to make it the user-wide record, pass no user")
+HUB_KINDS = ("project", "course")
+
+
+def user_records(exclude: Record | None = None) -> list[str]:
+    """The records marked as the user-wide knowledge record (there should be one)."""
+    return [n for n in home.projects() if home.config(home.home() / "projects" / n).get("role") == "user"
+            and not (exclude is not None and (home.home() / "projects" / n).resolve() == exclude.root.resolve())]
+
+
+def link(rec: Record, user: str | None = None, project: str | None = None, title: str | None = None,
+         user_wide: bool = False) -> dict:
+    """Set a record up in the two graphs. ``user_wide``: this is the user-wide knowledge record (only one may exist).
+    Otherwise this is a project's or course's record: ``user`` names the user-wide record (default: the only one),
+    ``project`` is its hub id (``project:<key>`` or ``course:<key>``, default ``project:<record name>``), and the hub
+    node is created in both records when missing, so ``part-of`` and ``about`` always point at something."""
+    cfg = home.config(rec.root)
+    if user_wide:
+        if user or project:
+            raise ValueError("the user-wide record is linked to nothing: pass user_wide alone")
+        if cfg.get("role") == "project":
+            raise ValueError("this record is a project's; the user-wide record is a different one")
+        others = user_records(rec)
+        if others:
+            raise ValueError(f"{others[0]} is already the user-wide record; there is one, so projects link to it")
         return home.set_config(rec.root, role="user")
+    if user is None:
+        if cfg.get("role") == "user" and project is None:
+            return cfg  # already set up
+        found = user_records(rec)
+        if not found:
+            raise ValueError("there is no user-wide record yet: make one with `ros init <name> --user-wide` "
+                             "(or `link --user-wide` on an existing record), then link this one to it")
+        if len(found) > 1:
+            raise ValueError(f"more than one user-wide record ({', '.join(found)}): say which with user=")
+        user = found[0]
     target = home.resolve(user)
     if target.resolve() == rec.root.resolve():
         raise ValueError("a record cannot be its own user-wide record; link the other way round")
     if home.config(target).get("role") == "project":
         raise ValueError(f"{user} is a project record; the user-wide record is the one without a user")
-    if project is not None and not (project.startswith("project:") and len(project) > 8):
-        raise ValueError("a project id is 'project:<key>'")
+    project = project or f"project:{rec.root.name}"
+    kind, _, key = project.partition(":")
+    if kind not in HUB_KINDS or not key:
+        raise ValueError("a project's id is 'project:<key>', a course's 'course:<key>'")
     if not home.config(target).get("role"):
         home.set_config(target, role="user")
-    return home.set_config(rec.root, role="project", user=target.name, project=project or f"project:{rec.root.name}")
+    name = title or key.replace("-", " ").replace("_", " ").strip().capitalize()
+    user_rec = user_record({"user": target.name})
+    for r in (rec, user_rec):
+        if r.node(project) is None:
+            graph.add_node(r, project, kind, {"title": name})
+    return home.set_config(rec.root, role="project", user=target.name, project=project)
 
 
 def context(rec: Record, as_of: date | None = None) -> dict:

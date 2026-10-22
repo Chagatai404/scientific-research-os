@@ -15,7 +15,9 @@ as agent work and ends in the decision queue (`queue`). Contract: `references/RE
 the project depends on (`untracked` ones are not yet in the user-wide graph); in the user-wide record it summarises every
 linked project. A project's record is joined to the user-wide one with `link --user <record>`, and its existing
 research repository is read in with `import --kind research --path <repo>`; reports become sources with
-`import --kind documents --path <folder> --project project:<key>`. Details: `references/DATA_MODEL.md`.
+`import --kind documents --path <folder> --project project:<key>`. Details: `references/DATA_MODEL.md`. Before planning an experiment, `gaps --target experiment:<key>` says which capabilities
+its steps still need and which research steps they block; `roadmap` orders them, and the researcher learns them with the
+`learn` skill. State what the researcher wants to master with `goal`.
 
 ## The cycle
 

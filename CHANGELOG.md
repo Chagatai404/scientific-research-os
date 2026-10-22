@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased: the two graphs, gaps and roadmaps
+
+- **Gaps and roadmap** (`gaps`, `roadmap`, `roadmap_tasks`, `goal`): what a target needs that you do not have, and the
+  order to learn it in (waves, reasons, effort, what each step unlocks and which research it unblocks, schedule and
+  feasibility from a pace and a deadline). See `references/DATA_MODEL.md`.
+- **A user-wide knowledge record and a research record per project or course**, joined by `record.json`; `context`
+  shows both; `ros init` sets a new record up (joins the user-wide record, creates the hubs); `import --kind documents`
+  records reports as sources; `migrate` names the research documents it leaves out.
+- **Speed**: `Learning(within=)` assesses only a closure, readiness and ordering are linear (they were O(N x depth)),
+  the `requires` structure is cached on the edge log, and an assessment is cached on the fields it reads.
+- **Fixes from the live test**: see `docs/qa/LIVE_TEST_1.0.md`.
+
 ## 1.0.0 — one record, prepared lessons, any agent
 
 The overhaul in `docs/plans/v1.0-overhaul-architecture.md`, M1 to M6.
