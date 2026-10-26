@@ -21,8 +21,10 @@ Public sources inspected: [home.tsx](https://github.com/amosblomqvist/learnharne
 [teaching screenshot](https://learnharness.ai/assets/teaching-session.png),
 [lesson-map screenshot](https://learnharness.ai/assets/lesson-map.png),
 [knowledge-graph screenshot](https://learnharness.ai/assets/knowledge-graph.png), and the public product page.
-The discovery worker visually inspected the knowledge screenshot. Some browser inspection was interrupted;
-do not claim a running LearnHarness installation or pixel-perfect comparison was exercised.
+The discovery worker visually inspected the knowledge screenshot. The coordinator subsequently inspected
+all three public screenshots and the running disposable Research OS preview. Detailed independent layout,
+interaction and acceptance specifications are in [REFERENCE_UI_SPEC.md](REFERENCE_UI_SPEC.md).
+No running LearnHarness installation or pixel-perfect comparison was exercised.
 
 This is a design reference, not a code donor. No AGPL source, component implementation, assets, graph schema,
 prompts or claims of scientific truth are copied into this repository. Implement the patterns independently.
@@ -180,6 +182,12 @@ Do not send the master prompt as one giant task. Begin with Phase 1 only; its co
 reference-analysis table. Serialize overlapping paths. Each completed slice updates REPORT.md with evidence.
 The two initial discovery workers hit the account usage limit after returning useful partial findings; their
 work is not claimed as completed independent review. Preserve any eng task id and actual blocked reason.
+
+The first implementation task is `6fa96b5d988444778e31df08b5ea00fd`. It is **PAUSED**, before any provider
+call or worktree creation, because eng classified the request as high risk and requires a human CLI approval.
+The skill reserves this approval to the human; the coordinator has not granted it, altered the classification,
+submitted a replacement task or implemented the same task outside that gate. Design documentation and
+verification of the existing baseline can continue. This is not evidence of an implemented Phase 1.
 
 First implementation acceptance: no hero or graph-below-form home; full-window graph and bottom composer;
 compact selectable nodes and adjacent evidence; all existing model/voice/draft features retained; tested

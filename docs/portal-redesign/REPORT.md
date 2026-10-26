@@ -86,6 +86,50 @@ bytes, so no restoration is claimed. The researcher was informed. Later tests us
 CLI and discovery fixtures now isolate the personal vault. Do not reconstruct the prior projections without
 version-history evidence or delete these notes speculatively.
 
+## Reference-led continuation (2026-10-26)
+
+The user rejected the hero-first composition and requested a LearnHarness-like graph landing and research/
+classroom interaction. [REFERENCE_UI_SPEC.md](REFERENCE_UI_SPEC.md) records the actual screenshot/source
+comparison, proposed geometry, graph interaction, request/voice states and acceptance matrix.
+[REFERENCE_UI_IMPLEMENTATION_PLAN.md](REFERENCE_UI_IMPLEMENTATION_PLAN.md) sequences the first UI change
+and all remaining master-prompt requirements. DESIGN_SYSTEM.md distinguishes the implemented preview from
+the proposed replacement. Planning is not counted as completed UI implementation.
+
+Two specialist discovery agents returned partial reference/backend findings, then reached the account usage
+limit. There is no completed independent implementation review from those agents. The coordinator inspected
+the published graph, teaching and lesson-map images, relevant reference source, and the existing local preview.
+No reference code/assets were copied into the application.
+
+Committed `.engineering/project.yaml` configures a reviewed portable gate in `tests/check_portal_gate.py`:
+renderer tests, TypeScript/production build, full Python suite and both Chromium suites using disposable
+records and `ROS_NO_VAULT=1`. Eng doctor/providers report the configured Codex CLI available; authentication
+was not checked. The existing S0/S1 pilot plan validates with concurrency one; it has not been executed.
+
+Bounded graph-home task `6fa96b5d988444778e31df08b5ea00fd` is **PAUSED**, with zero provider calls and no
+worker worktree, because eng requires explicit human high-risk approval. The installed engineering skill
+forbids the coordinator from granting that CLI approval. No replacement task or outside-gate UI implementation
+has been used. The exact human resume command, from this checkout, is:
+
+```powershell
+eng resume 6fa96b5d988444778e31df08b5ea00fd --project . --approve-high-risk
+```
+
+The committed gate completed successfully on the unchanged application baseline:
+
+| Check | Result |
+|---|---|
+| Renderer AST/safety/reference tests | 4 passed |
+| TypeScript and production build | Passed; generated assets have no tracked content change |
+| Full Python suite | 700 tests in 319.189 s, OK, 7 skipped |
+| Legacy Chromium suite | Passed, 19 steps, maximum 4 controls, 14.441 s |
+| Workspace Chromium suite | Passed, 7 widths and 25 checks, 8.395 s |
+| Existing pilot-plan validation | Valid, concurrency 1; no execution |
+| Proposed opaque text colors | Contrast calculations 8.08:1–16.14:1; actual browser theme not implemented |
+
+The new graph-home UI, shared classroom, native research decisions, complete reference/media adapters and
+bounded agent bridge remain unimplemented. These results apply to the existing preview, not those future
+slices. The full run emitted Windows line-ending and HTTP-error cleanup warnings, with no test failures.
+
 ## Reproduce
 
 Set `ROS_NO_VAULT=1`, use this checkout and disposable records, then run:

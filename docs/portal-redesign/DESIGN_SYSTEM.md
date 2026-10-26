@@ -1,5 +1,10 @@
 # Workspace design system
 
+This describes the current implemented preview. The next reference-led design is specified in
+[REFERENCE_UI_SPEC.md](REFERENCE_UI_SPEC.md), with its dependency order and execution status in
+[REFERENCE_UI_IMPLEMENTATION_PLAN.md](REFERENCE_UI_IMPLEMENTATION_PLAN.md). In particular, the current
+hero, permanent rail and graph below the fold are superseded as design targets, but have not yet been replaced.
+
 The interface serves a goal: read, learn or investigate. It opens with a conversational composer and knowledge
 map. Five primary sections: Conversation, Learn, Research, Graph, Library. Workspaces are navigation tabs.
 Model choice uses one expandable picker; graph lenses and relations use direct buttons instead of dropdowns.
