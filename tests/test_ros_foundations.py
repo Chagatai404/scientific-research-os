@@ -44,19 +44,17 @@ class SettingsTests(Fixture):
             home.set_settings(pdf_engine="word")
 
     def test_obsidian_vaults_are_found_from_its_own_list(self):
+        os.environ.pop("ROS_NO_VAULT", None)
+        os.environ["APPDATA"] = str(self.tmp / "fake-appdata")
         cfg = self.tmp / "fakehome" / ".config" / "obsidian"
         cfg.mkdir(parents=True)
         vault = self.tmp / "MyVault"
         vault.mkdir()
         (cfg / "obsidian.json").write_text(json.dumps({"vaults": {
             "a": {"path": str(vault), "ts": 5}, "b": {"path": str(self.tmp / "gone"), "ts": 9}}}))
-        old = os.environ.get("HOME")
         os.environ["HOME"] = str(self.tmp / "fakehome")
         os.environ["USERPROFILE"] = str(self.tmp / "fakehome")
-        try:
-            found = home.detect_vaults()
-        finally:
-            os.environ["HOME"] = old
+        found = home.detect_vaults()  # Fixture restores the environment, including an originally absent HOME.
         self.assertEqual([v["path"] for v in found], [str(vault)])  # the vault that no longer exists is skipped
 
 

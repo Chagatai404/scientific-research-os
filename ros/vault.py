@@ -171,6 +171,9 @@ class Parsed:
 
 
 def parse_note(text: str) -> Parsed:
+    # Windows editors can change only line endings. They must not pin an untouched
+    # generated region or create duplicate annotations. Original bytes stay on disk.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     m = re.match(r"---[ \t]*\r?\n(.*?)(?:\r?\n)?---[ \t]*(?:\r?\n|\Z)", text, re.S)
     fm, raw = parse_block(m.group(1)) if m else ({}, {})
     rest = text[m.end():] if m else text

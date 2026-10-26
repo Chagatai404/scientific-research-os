@@ -182,6 +182,14 @@ Add a function to `views` in `ros/portal/app.js` that reads tools through `api(n
 `api(name, args, true)`; add its link to `index.html`. Keep to the layout and control rules in
 `references/PORTAL.md`; `tests/ros-portal-browser.cjs` checks layout at four widths.
 
+The opt-in workspace at `/workspace/` is a separate React/TypeScript client in `frontend/`.
+Add a component and route in `frontend/src/App.tsx`; use `frontend/src/api.ts` for every operation.
+Read models belong in the `workspace` domain module and `ros/tools/workspace.py`, never in the HTTP server.
+Keep contracts in `frontend/src/contracts.ts`. Render document data through `Document.tsx`; do not add
+HTML injection or a second Markdown parser. Build with `npm --prefix frontend run build` and commit
+the output in `ros/portal/workspace/` so Python-only installations work. Run the workspace browser matrix
+in addition to the legacy browser check. See `docs/portal-redesign/ARCHITECTURE.md` for boundaries and ADRs.
+
 ### An engine (TTS, renderer, external tool)
 
 Put it in `ros/lib/` with its own CLI (`python -m ros.lib.<name>`), import it lazily from the domain module that uses
@@ -191,9 +199,15 @@ it, and make its absence a reported problem, not an exception that escapes.
 
 - Unit tests: `python -m unittest discover -s tests -p "test_*.py"` (about 10 s). Name new files `test_ros_<area>.py`.
 - Browser: `node tests/ros-portal-browser.cjs`.
+- Workspace: `npm --prefix frontend test`, `npm --prefix frontend run build`, `node tests/ros-workspace-browser.cjs`.
+- Use `ROS_NO_VAULT=1` for hermetic tests and standalone use: it disables automatic vault discovery;
+  deliberately configured temporary vaults still work. Never let tests discover a personal vault.
 - Whole workflows by prompting only: `tests/test_ros_e2e_director.py` drives an agent through `mcp.Server.handle` and a
   person through the portal's HTTP API, and fails if an agent had to call a tool the system should have called itself.
 - Speed: `tests/test_ros_director_bench.py` (small by default; `ROS_BENCH=1` for the large cases).
 - Every new tool, rule, gate row or importer comes with a test; behaviour shared with the old runtime keeps its parity
   test (`test_ros_graph.py`, `test_ros_importers.py`).
-- The suite stays under five minutes; the portal under 60 KB of JS and 20 KB of CSS.
+- Target: the suite under five minutes; the legacy portal under 60 KB of JS and 20 KB of CSS.
+  The workspace has a separate dependency budget: application CSS under 20 KB, renderer/framework assets
+  separately measured. Its initial dependency cost and remaining performance work are reported in
+  `docs/portal-redesign/REPORT.md`; do not conceal third-party bytes or claim the old limit still covers them.

@@ -130,6 +130,8 @@ def set_settings(**fields) -> dict:
 
 def detect_vaults() -> list[dict]:
     """Obsidian's own list of vaults, most recently opened first. Read-only; an unreadable file is skipped."""
+    if os.environ.get("ROS_NO_VAULT") == "1":
+        return []  # standalone mode and hermetic tests: never discover a live personal vault
     appdata = os.environ.get("APPDATA")
     places = [Path(appdata) / "obsidian" if appdata else None,
               Path.home() / "Library" / "Application Support" / "obsidian",

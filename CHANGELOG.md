@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased: standalone workspace preview
+
+- Add a dark React/TypeScript workspace at `/workspace/`, retaining the original portal at `/`.
+- Start persistent conversations with a selected Codex, Claude or local Ollama model; show the knowledge
+  graph on the landing page. Model requests run only after Send, outside the record lock.
+- Connect local Whisper dictation and Kokoro response playback; transcripts remain drafts until sent.
+- Read handouts and sessions with sanitized AST Markdown, GFM, math, inline figures, source fingerprints
+  and stable section links. Add canonical references, typed backlinks, bounded canvas graphs and search.
+- Show completed, claimed and queued research tasks immediately. Preserve human approval and decision gates.
+- Add `ROS_NO_VAULT=1` and hermetic fixtures; handle Windows note line endings and close record handles.
+- Add renderer/domain and seven-width Chromium checks, synthetic graph measurements and rollback guidance.
+  The preview remains staged; see `docs/portal-redesign/REPORT.md` for results and outstanding work.
+
 ## 1.2.1: migration loses nothing
 
 - **Handouts read in study order.** Lecture handouts have descriptive headings, explanations before practice, optional

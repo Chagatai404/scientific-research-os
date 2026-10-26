@@ -15,7 +15,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from ros import automation, home, mcp, runner, serve, tasks, vault  # noqa: E402
+from ros import api, automation, home, mcp, runner, serve, tasks, vault  # noqa: E402
 from ros.lib import pdf  # noqa: E402
 from ros.store import Record  # noqa: E402
 
@@ -44,6 +44,7 @@ class Scenario(unittest.TestCase):
         os.environ.pop("ROS_PROJECT", None)
         os.environ.pop("RESEARCH_OS_VOICE_ENVS", None)
         self.addCleanup(lambda: (os.environ.clear(), os.environ.update(self._env)))
+        self.addCleanup(api.release)
         for patch in (mock.patch.object(automation, "SETTLE_SECONDS", 0), mock.patch.object(automation, "LEGACY_EVERY", 0)):
             patch.start()
             self.addCleanup(patch.stop)

@@ -285,7 +285,7 @@ class RunnerTests(Fixture):
         r = runner.Runner(lambda: [self.rec], tick=0.05, scan=0.05).start()
         try:
             for _ in range(100):
-                if tasks.tasks(self.rec, "audit"):
+                if api.call("tasks", self.rec, kind="audit"):
                     break
                 threading.Event().wait(0.05)
         finally:

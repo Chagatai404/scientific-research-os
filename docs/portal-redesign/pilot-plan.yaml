@@ -1,0 +1,51 @@
+name: portal-s0-s1-acceptance-pilot
+concurrency: 1
+node_budgets:
+  wall_seconds: 900
+  provider_seconds: 180
+  model_calls: 3
+  context_chars: 18000
+nodes:
+  - id: s0-baseline-review
+    description: >-
+      Review the existing baseline, data-safety boundaries and test evidence for the implemented workspace.
+      Reproduce only deterministic fixture checks. Do not use a personal vault, invoke a live model,
+      change scientific decisions, deploy or promote. Record concrete acceptance gaps.
+    acceptance:
+      - Baseline revision and the vault-discovery side effect are documented honestly.
+      - The old portal and append-only records have an explicit safe rollback path.
+      - Every referenced file and reproducible check exists.
+    owns:
+      - docs/portal-redesign/ARCHITECTURE.md
+      - docs/portal-redesign/REPORT.md
+      - docs/portal-redesign/MIGRATION_AND_ROLLBACK.md
+    context_paths:
+      - AGENTS.md
+      - docs/ARCHITECTURE.md
+      - references/SAFETY.md
+      - docs/portal-redesign/IMPLEMENTATION_PLAN.md
+  - id: s1-reading-acceptance
+    description: >-
+      Independently review the implemented typed reading workspace against real fixture handouts and
+      session logs. Check the AST rendering and URL boundaries, seven-width layout, packaging and legacy
+      compatibility. Work only in the owned paths. Do not start provider sessions for product smoke tests,
+      migrate records, install global hooks, merge or deploy. Return a tested diff and explicit limitations.
+    depends_on:
+      - s0-baseline-review
+    acceptance:
+      - Renderer tests, TypeScript build and both Chromium suites pass.
+      - Handout source hashes remain unchanged after reading and deep linking.
+      - No executable untrusted HTML, external image request, console error or page overflow is observed.
+      - The offline Python wheel contains the frontend HTML, assets and third-party notices.
+    owns:
+      - frontend/**
+      - ros/portal/workspace/**
+      - ros/serve.py
+      - pyproject.toml
+      - tests/ros-workspace-browser.cjs
+    context_paths:
+      - AGENTS.md
+      - docs/ARCHITECTURE.md
+      - references/PORTAL.md
+      - docs/portal-redesign/ARCHITECTURE.md
+      - docs/portal-redesign/DESIGN_SYSTEM.md

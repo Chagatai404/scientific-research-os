@@ -1,5 +1,16 @@
 # Portal
 
+An opt-in standalone workspace is available at `/workspace/` (React/TypeScript, committed static build).
+It currently offers a responsive shell, sanitized Markdown/math reading, a no-vault library, canonical
+references/backlinks, a focused canvas graph, and a lesson/research pilot. The original `/` portal remains
+the compatibility route and provides the complete human decision and vault conflict controls.
+See `docs/portal-redesign/REPORT.md` for acceptance evidence and remaining work; this is not a complete
+replacement yet. No record migration or vault rewriting is required to try it.
+
+`ROS_NO_VAULT=1` disables automatic vault discovery for standalone use and tests. A vault explicitly
+selected in settings remains usable. New read-only operations: `workspace_document`, `workspace_entity`,
+`workspace_resolve`, `workspace_graph`. They use the same tool table as CLI and MCP.
+
 `ros serve` serves the portal at `http://127.0.0.1:8737/` (the same port every time; if one is already running, `ros serve`
 says so and opens it), in a browser or Obsidian's core Web Viewer. While it runs, the process is the single writer of
 every record it has open and keeps them in step on its own (`references/DIRECTOR.md`).

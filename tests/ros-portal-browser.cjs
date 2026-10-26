@@ -19,7 +19,7 @@ const debug = process.env.ROS_DEBUG ? (...a) => console.error(...a) : () => {};
 
 function startServer(record, rosHome) {
   return new Promise((resolve, reject) => {
-    const p = spawn(python, ['-m', 'ros', '-p', record, 'serve', '--port', '0'], {cwd: root, env: {...process.env, PYTHONPATH: root, ROS_HOME: rosHome}});
+    const p = spawn(python, ['-m', 'ros', '-p', record, 'serve', '--port', '0'], {cwd: root, env: {...process.env, PYTHONPATH: root, ROS_HOME: rosHome, ROS_NO_VAULT: '1'}});
     let out = '';
     p.stdout.on('data', (d) => {
       out += d;
@@ -191,8 +191,10 @@ async function main() {
     console.log(JSON.stringify({ok: true, steps, maxControls, reached: [...seen], seconds: (Date.now() - started) / 1000}));
   } finally {
     await browser.close();
+    const exited = new Promise(resolve => server.proc.once('exit', resolve));
     server.proc.kill();
-    fs.rmSync(tmp, {recursive: true, force: true});
+    await exited; // Windows holds SQLite and media files until the server process has exited.
+    fs.rmSync(tmp, {recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 }
 

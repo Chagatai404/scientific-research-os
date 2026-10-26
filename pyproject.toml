@@ -18,4 +18,4 @@ ros = "ros.cli:main"
 include = ["ros*"]
 
 [tool.setuptools.package-data]
-ros = ["portal/*.html", "portal/*.css", "portal/*.js", "portal/vendor/**/*", "lib/pdf_assets/*"]
+ros = ["portal/*.html", "portal/*.css", "portal/*.js", "portal/vendor/**/*", "portal/workspace/**/*", "lib/pdf_assets/*"]

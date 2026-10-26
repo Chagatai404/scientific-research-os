@@ -71,7 +71,12 @@ with a `deadline` the verdict is `feasible` (at most 85% of the capacity), `tigh
 ## Node types
 
 domain, subject, concept, capability, course, goal, project, block, paper, question, hypothesis, claim, experiment,
-decision, code-symbol, source, lesson, handout, visual.
+decision, code-symbol, source, lesson, handout, visual, conversation.
+
+`conversation` nodes are standalone portal discussions, separate from assessed lessons. Their canonical id is
+`conversation:<key>`. `conversation.message`, `conversation.response` and `conversation.error` events name that
+id as their subject and retain a request id, text and selected model. They are append-only, are not learning
+evidence, and never approve plans or accept claims. Existing records need no conversion to add this node type.
 
 ## Edge types
 

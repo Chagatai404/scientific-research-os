@@ -37,7 +37,7 @@ MAX_PROBLEMS = 200
 ITEM_KINDS = {"choice", "numeric", "free"}
 # Node ids are "<type>:<key>", so a concept and a capability can share a key without colliding.
 NODE_TYPES = {"domain", "subject", "concept", "capability", "course", "goal", "project", "block", "paper", "question",
-              "hypothesis", "claim", "experiment", "decision", "code-symbol", "source", "lesson", "handout",
+              "hypothesis", "claim", "experiment", "decision", "code-symbol", "source", "lesson", "handout", "conversation",
               "visual"}
 EDGE_TYPES = {"requires", "teaches", "tests", "supports", "invalidates", "implements", "cites", "supersedes",
               "part-of", "about", "applied-in", "addresses", "decides", "relates"}

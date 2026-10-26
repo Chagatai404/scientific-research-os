@@ -23,6 +23,7 @@ import mimetypes
 import os
 from pathlib import Path
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -40,6 +41,25 @@ TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf
          ".html": "text/html; charset=utf-8", ".svg": "image/svg+xml", ".md": "text/markdown; charset=utf-8",
          ".wav": "audio/wav", ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".mp4": "video/mp4", ".png": "image/png",
          ".webm": "video/webm", ".json": "application/json"}
+
+
+def _engine(request: dict, timeout: int = 200) -> dict:
+    """Run optional providers outside api.LOCK; no shell or browser-supplied executable/path."""
+    env = dict(os.environ, PYTHONPATH=str(STATIC.parents[1]) + os.pathsep + os.environ.get("PYTHONPATH", ""))
+    try:
+        result = subprocess.run([sys.executable, "-m", "ros.lib.dialogue"], input=json.dumps(request),
+                                capture_output=True, text=True, encoding="utf-8", errors="replace", env=env,
+                                timeout=timeout, **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}))
+        return json.loads(result.stdout.strip().splitlines()[-1])
+    except (OSError, ValueError, IndexError, subprocess.TimeoutExpired):
+        return {"ok": False, "error": "The local provider did not finish. Your message is saved; check its setup and try again."}
+
+
+def _chat_response(rec: Record, result: dict, request: dict) -> None:
+    answer = _engine(request)
+    api.call("workspace_chat_complete", rec, conversation=result["conversation"], request=result["request"],
+             text=answer.get("text") or answer.get("error") or "No response received.",
+             model=request["model"], error=not answer.get("ok"))
 
 
 class Pool:
@@ -119,8 +139,14 @@ def make_handler(rec: "Record | Pool"):
                 return
             url = urlparse(self.path)
             path = unquote(url.path)
+            if path == "/services/catalog":
+                return self._send(HTTPStatus.OK, {"result": _engine({"action": "catalog"}, timeout=15)})
             if path in ("/", "/index.html"):
                 return self._file(STATIC / "index.html", cache=False)
+            if path in ("/workspace", "/workspace/"):
+                return self._file(STATIC / "workspace" / "index.html", cache=False)
+            if path.startswith("/workspace/"):
+                return self._file(STATIC / path.lstrip("/"), cache=True, base=STATIC / "workspace")
             if path.startswith("/static/"):
                 return self._file(STATIC / path[len("/static/"):], cache=True)
             if path.startswith("/api/"):
@@ -129,7 +155,9 @@ def make_handler(rec: "Record | Pool"):
             if path.startswith("/media/"):
                 rel = path[len("/media/"):]
                 parts = rel.split("/")
-                if parts[0] not in MEDIA_DIRS or any(p in ("", ".", "..") for p in parts) or "\\" in rel:
+                handout_figure = (len(parts) >= 4 and parts[0] == "handouts" and parts[2] == "figures"
+                                  and Path(rel).suffix.lower() in {".png", ".jpg", ".jpeg", ".svg", ".webp", ".pdf"})
+                if (parts[0] not in MEDIA_DIRS and not handout_figure) or any(p in ("", ".", "..") for p in parts) or "\\" in rel:
                     return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 try:
                     mine = pool.get(parse_qs(url.query).get("record", [None])[-1])
@@ -163,6 +191,38 @@ def make_handler(rec: "Record | Pool"):
             except ValueError:
                 return self._send(HTTPStatus.BAD_REQUEST, {"error": "the body is a JSON object of arguments"})
             if not path.startswith("/api/"):
+                if path in ("/services/speech", "/services/transcribe"):
+                    if self.headers.get("Sec-Fetch-Site") != "same-origin":
+                        return self._send(HTTPStatus.FORBIDDEN, {"error": "voice requests must come from the portal"})
+                    try:
+                        target = pool.get(args.get("record"))
+                    except ValueError:
+                        return self._send(HTTPStatus.BAD_REQUEST, {"error": "unknown record"})
+                    if path.endswith("speech"):
+                        text = args.get("text")
+                        if not isinstance(text, str) or not text.strip() or len(text) > 12000:
+                            return self._send(HTTPStatus.BAD_REQUEST, {"error": "speech needs between 1 and 12000 characters"})
+                        root = target.root / "logs" / "conversation-voice"
+                        if not root.resolve().is_relative_to(target.root.resolve()):
+                            return self._send(HTTPStatus.BAD_REQUEST, {"error": "voice cache must stay inside the record"})
+                        result = _engine({"action": "speech", "text": text, "root": str(root)})
+                        if result.get("ok"):
+                            audio = Path(result["audio"])
+                            if audio.is_absolute():
+                                try:
+                                    audio = audio.relative_to(root.resolve())
+                                except ValueError:
+                                    return self._send(HTTPStatus.BAD_REQUEST, {"error": "invalid voice output"})
+                            if audio.suffix != ".wav" or not (root / audio).resolve().is_relative_to(root.resolve()):
+                                return self._send(HTTPStatus.BAD_REQUEST, {"error": "invalid voice output"})
+                            result["audio"] = "/media/logs/conversation-voice/" + audio.as_posix() + "?record=" + target.root.name
+                    else:
+                        audio = args.get("audio")
+                        language = args.get("language")
+                        if not isinstance(audio, str) or len(audio) > 16 << 20 or language not in (None, "", "en", "tr"):
+                            return self._send(HTTPStatus.BAD_REQUEST, {"error": "invalid recording or language"})
+                        result = _engine({"action": "transcribe", "audio": audio, "language": language})
+                    return self._send(HTTPStatus.OK if result.get("ok") else HTTPStatus.BAD_REQUEST, {"result": result, **({"error": result.get("error")} if not result.get("ok") else {})})
                 return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
             self._tool(path[5:], args, write=True)
 
@@ -200,7 +260,10 @@ def make_handler(rec: "Record | Pool"):
                 result = t.call(target, args)
             except (ValueError, KeyError) as exc:
                 return self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc.args[0] if exc.args else exc)})
+            engine = result.pop("_engine", None) if name == "workspace_chat_send" else None
             self._send(HTTPStatus.OK, {"result": result})
+            if engine:
+                threading.Thread(target=_chat_response, args=(target, result, engine), daemon=True).start()
 
         def _file(self, path: Path, cache: bool, base: Path | None = None):
             base = (base or STATIC).resolve()
@@ -272,6 +335,11 @@ class PortalServer(ThreadingHTTPServer):
     allow_reuse_address = os.name != "nt"
     daemon_threads = True
 
+    def server_close(self):
+        super().server_close()
+        if hasattr(self, "pool"):
+            self.pool.close()  # also close records opened by the switcher (Windows keeps their SQLite files locked)
+
     def handle_error(self, request, client_address):
         if not isinstance(sys.exc_info()[1], ConnectionError):  # a browser that left is not worth a traceback
             super().handle_error(request, client_address)
@@ -303,7 +371,10 @@ def _ours(port: int) -> bool:
 
 def _bind(rec: "Record | Pool", port: int) -> PortalServer:
     try:
-        return PortalServer(("127.0.0.1", port), make_handler(rec))
+        pool = rec if isinstance(rec, Pool) else Pool(rec)
+        server = PortalServer(("127.0.0.1", port), make_handler(pool))
+        server.pool = pool
+        return server
     except OSError as exc:
         if port and _ours(port):
             raise AlreadyRunning(f"http://127.0.0.1:{port}/") from exc

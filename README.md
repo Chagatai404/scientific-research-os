@@ -103,6 +103,13 @@ notes (see the benchmark in `tests/test_ros_roadmap_bench.py`).
 
 ## Tests
 
+The rebuilt workspace preview is at `http://127.0.0.1:8737/workspace/` after starting this checkout's
+`ros serve`. It reads existing records and works without Obsidian. The original portal stays at `/`.
+See [the slice report](docs/portal-redesign/REPORT.md) for implemented features and limits.
+Developers build it with `npm --prefix frontend ci` then `npm --prefix frontend run build`; end users
+need only Python because the browser build is included. Set `ROS_NO_VAULT=1` when testing so automatic
+vault discovery cannot select your personal vault.
+
 ```bash
 python -m unittest discover -s tests -p "test_*.py"     # about a minute
 node tests/ros-portal-browser.cjs                        # a whole lesson in Chromium, layout at 320-1920 px

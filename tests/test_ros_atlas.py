@@ -32,6 +32,7 @@ class Fixture(unittest.TestCase):
         self.addCleanup(lambda: (os.environ.clear(), os.environ.update(self._env)))
         self.rec, _ = demo.build(home.home() / "projects" / "stat")
         self.addCleanup(self.rec.close)
+        self.addCleanup(api.release)
 
 
 class LayoutTests(unittest.TestCase):

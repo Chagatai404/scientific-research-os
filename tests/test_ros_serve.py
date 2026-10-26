@@ -100,6 +100,7 @@ class PoolAndVaultTests(unittest.TestCase):
         self._env = dict(os.environ)
         os.environ["ROS_HOME"] = str(tmp / "ros")
         self.addCleanup(lambda: (os.environ.clear(), os.environ.update(self._env)))
+        self.addCleanup(serve.api.release)
         from ros import home, vault
         self.rec, _ = demo.build(home.home() / "projects" / "stat")
         self.other, _ = demo.build(home.home() / "projects" / "other")
