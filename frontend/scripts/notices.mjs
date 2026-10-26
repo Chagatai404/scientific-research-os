@@ -11,4 +11,4 @@ for (const [folder, entry] of Object.entries(lock.packages)) {
   for (const file of files) if (fs.statSync(path.join(folder, file)).isFile()) notices.push(fs.readFileSync(path.join(folder, file), 'utf8'));
   notices.push('');
 }
-fs.writeFileSync('../ros/portal/workspace/THIRD_PARTY_NOTICES.txt', notices.join('\n'), 'utf8');
+fs.writeFileSync('../ros/portal/workspace/THIRD_PARTY_NOTICES.txt', notices.join('\n').trimEnd() + '\n', 'utf8');
