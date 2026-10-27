@@ -1,9 +1,11 @@
-import {useEffect, useState, type FormEvent} from 'react';
-import {call, href, preference, savePreference} from './api';
-import type {AnswerResult, LibraryItem, LessonStep, Today} from './contracts';
+import {useEffect, useRef, useState, type FormEvent} from 'react';
+import {call, href, preference, readDocument, savePreference} from './api';
+import type {AnswerResult, DocumentData, Entity, LibraryItem, LessonStep, Today} from './contracts';
+import {Classroom, type ClassroomMap} from './Classroom';
+import './classroom.css';
 import {RichText, safeUrl} from './Document';
-import {useResource} from './hooks';
-import {Empty, Notice, Tag} from './ui';
+import {useRecordRevision, useResource} from './hooks';
+import {Empty, Notice} from './ui';
 
 export function Learn({id, record}: {id: string; record: string}) {
   const resource = useResource('learn:' + record, async signal => {
@@ -36,12 +38,41 @@ function Player({id, record}: {id: string; record: string}) {
   const [segment, setSegment] = useState(0);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
+  const [context, setContext] = useState<{map?: ClassroomMap; transcript?: DocumentData; title?: string; error?: string}>({});
+  const revision = useRecordRevision(record);
+  const generation = useRef(0);
+  const currentRef = useRef(step);
+  const busyRef = useRef(busy);
+  currentRef.current = step; busyRef.current = busy;
   useEffect(() => {if (initial.data) setStep(initial.data);}, [initial.data]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const signal = controller.signal;
+    async function refresh() {
+      try {
+        const [entity, transcript] = await Promise.all([call<Entity>('workspace_entity', {subject: id}, record, false, signal), readDocument(id, record, signal)]);
+        const scope = typeof entity.node.scope === 'string' ? entity.node.scope : '';
+        const map = scope ? await call<ClassroomMap>('map', {scope}, record, false, signal) : undefined;
+        if (!signal.aborted) setContext({map, transcript, title: entity.node.title});
+      } catch (error) {if (!signal.aborted) setContext(previous => ({...previous, error: 'Session context could not refresh: ' + (error as Error).message}));}
+    }
+    void refresh();
+    // A tutor grade can release a pending answer. Other active steps remain learner-controlled.
+    if (revision && currentRef.current?.action === 'wait' && !busyRef.current) {
+      const expected = generation.current;
+      call<LessonStep>('next', {lesson: id}, record, false, signal).then(next => {
+        if (!signal.aborted && generation.current === expected && !busyRef.current && currentRef.current?.action === 'wait') setStep(next);
+      }).catch(() => {/* Context refresh reports connectivity; the manual check remains available. */});
+    }
+    return () => controller.abort();
+  }, [id, record, revision]);
   const current = step;
   async function perform(action: () => Promise<void>) {
     if (busy) return;
+    generation.current += 1;
+    busyRef.current = true;
     setBusy(true); setStatus('');
-    try {await action();} catch (e) {setStatus((e as Error).message);} finally {setBusy(false);}
+    try {await action();} catch (e) {setStatus((e as Error).message);} finally {setBusy(false); busyRef.current = false;}
   }
   function advance(next: LessonStep) {setStep(next); setResult(null); setSegment(0); setAnswer(''); savePreference('draft:' + record + ':' + id, '');}
   async function submit(event: FormEvent) {
@@ -57,12 +88,13 @@ function Player({id, record}: {id: string; record: string}) {
       if (current.action === 'wait') {advance(await call<LessonStep>('next', {lesson: id}, record)); return;}
       const response = current.question?.kind === 'choice' ? Number(answer) : answer;
       const next = await call<AnswerResult>('answer', {lesson: id, item: current.item, response}, record, true);
-      setResult(next); setAnswer(''); savePreference('draft:' + record + ':' + id, '');
+      setResult(next); setAnswer(value => {if (value !== answer) return value; savePreference('draft:' + record + ':' + id, ''); return '';});
     });
   }
   async function ask(event: FormEvent) {
     event.preventDefault();
-    await perform(async () => {await call('ask', {lesson: id, text: question}, record, true); setQuestion(''); savePreference('question:' + record + ':' + id, ''); setStatus('Your question is saved for your tutor.');});
+    const submitted = question;
+    await perform(async () => {await call('ask', {lesson: id, text: submitted}, record, true); setQuestion(value => {if (value !== submitted) return value; savePreference('question:' + record + ':' + id, ''); return '';}); setStatus('Your question is saved for your tutor.');});
   }
   if (!current) return <Notice error={initial.error} retry={initial.retry} />;
   const active = current.action === 'probe' ? 'Probe' : current.action === 'teach' ? 'Teach' : current.action === 'review' ? 'Review' : 'Practice';
@@ -70,8 +102,9 @@ function Player({id, record}: {id: string; record: string}) {
   const mediaBase = '/media/' + (current.content?.base || '');
   const image = current.content?.visuals?.[segment]?.path || (segment === 0 ? current.content?.visuals?.[0]?.path : '');
   const answering = !result && !!current.question;
-  return <div className="learning-session"><div className="step-track" aria-label="Learning phase">{['Probe', 'Plan', 'Teach', 'Practice', 'Review'].map(phase => <span key={phase} aria-current={phase === active ? 'step' : undefined}>{phase}</span>)}</div>
-    <div className="eyebrow">{current.action === 'wait' ? 'Waiting for your tutor' : current.action === 'close' ? 'Session complete' : active}</div><h1>{current.title || (current.action === 'close' ? 'A good place to pause' : current.action === 'wait' ? 'Your answer is saved' : 'Where are you now?')}</h1>
+  const questionDock = <aside className="question-dock"><h2>Keep your question in context</h2><form onSubmit={ask}><label htmlFor="lesson-question">Your question</label><textarea id="lesson-question" required value={question} onChange={e => {setQuestion(e.target.value); savePreference('question:' + record + ':' + id, e.target.value);}} /><button disabled={busy}>Save question</button></form></aside>;
+  return <Classroom title={context.title || current.title || 'Learning session'} phase={current.action === 'wait' ? 'Waiting for your tutor' : current.action === 'close' ? 'Session complete' : active} reason={current.reason} lesson={id} record={record} map={context.map} transcript={context.transcript} contextError={context.error} active={current.capability} question={questionDock} questionOpen={asking}>
+    {current.title && context.title !== current.title && <h2>{current.title}</h2>}
     {current.action === 'wait' && <p>Your written answer is waiting for your tutor’s assessment. Check again when your tutor has graded it.</p>}
     {current.action === 'close' && <p className="lead">{current.reason}</p>}
     <form className="player" onSubmit={submit}>
@@ -81,7 +114,6 @@ function Player({id, record}: {id: string; record: string}) {
       <div className="player-controls">{answering && <button type="button" disabled={busy} onClick={() => perform(async () => {setResult(await call<AnswerResult>('answer', {lesson: id, item: current.item, dont_know: true}, record, true)); savePreference('draft:' + record + ':' + id, '');})}>I don’t know</button>}<button type="button" aria-expanded={asking} onClick={() => setAsking(!asking)}>Ask a question</button><button className="primary" disabled={busy}>{busy ? 'Saving…' : current.action === 'wait' ? 'Check for feedback' : 'Continue'}</button></div>
     </form>
     {status && <p className="notice" role="status">{status}</p>}
-    {asking && <aside className="question-dock"><h2>Keep your question in context</h2><form onSubmit={ask}><label htmlFor="lesson-question">Your question</label><textarea id="lesson-question" required value={question} onChange={e => {setQuestion(e.target.value); savePreference('question:' + record + ':' + id, e.target.value);}} /><button disabled={busy}>Save question</button></form></aside>}
     <p className="quiet-note">Only assessed answers contribute to learning evidence. Reading and confidence do not establish mastery.</p>
-  </div>;
+  </Classroom>;
 }

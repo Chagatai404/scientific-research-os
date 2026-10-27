@@ -20,7 +20,7 @@ export function validateDocument(value: unknown): DocumentData {
   const doc = value as DocumentData;
   if (doc.schema !== 'ros.document.v1' || typeof doc.id !== 'string' || typeof doc.source_hash !== 'string'
       || !Array.isArray(doc.sections) || !doc.sections.every(s => typeof s.id === 'string' && typeof s.text === 'string' && typeof s.title === 'string')) {
-    throw new Error('This document format is unsupported. Open the original portal or update Research OS.');
+    throw new Error('This document format is unsupported. Update Research OS to read it.');
   }
   return doc;
 }

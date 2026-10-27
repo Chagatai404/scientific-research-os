@@ -1,6 +1,11 @@
 """Tools for the standalone workspace: readable documents and canonical entity references."""
 from .. import conversation as chat, workspace as ws
-from ..registry import P, tool
+from ..registry import P, TOOLS, tool
+
+
+@tool("workspace_connections", "Read the selected record and configured vault connection without discovery, scans, sync or migration.")
+def connections(rec):
+    return {**ws.connections(rec), "backend": {"operation_count": len(TOOLS)}}
 
 
 @tool("workspace_document", "Read a handout, lesson transcript or imported source as versioned document data, with stable sections and provenance.",
@@ -33,9 +38,10 @@ def graph(rec, mode="knowledge", focus=None, depth=1, limit=120, relation=None):
 
 @tool("workspace_chat_send", "Save a conversational message and prepare its model request; the portal executes the optional provider outside the record lock.",
       writes=True, text=P("string", "the person's message", True), model=P("string", "provider:model", True),
-      conversation=P("string", "existing conversation id; omit to start and frame a goal"))
-def chat_send(rec, text, model, conversation=None):
-    return chat.send(rec, text, model, conversation)
+      conversation=P("string", "existing conversation id; omit to start and frame a goal"),
+      effort=P("string", "Codex reasoning effort; default medium", enum=("low", "medium", "high", "xhigh", "max")))
+def chat_send(rec, text, model, conversation=None, effort="medium"):
+    return chat.send(rec, text, model, conversation, effort)
 
 
 @tool("workspace_chat", "Read the messages and pending response of one conversation. Assistant messages are not scientific or learning evidence.",

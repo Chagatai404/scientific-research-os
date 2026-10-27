@@ -15,9 +15,12 @@ from support_ros_demo import build
 if os.environ.get("ROS_WORKSPACE_FAKE") == "1":
     def fake_engine(request, timeout=200):
         if request["action"] == "catalog":
-            return {"ok": True, "models": [{"id": "codex:default", "label": "Codex · default", "provider": "Fixture"}, {"id": "claude:sonnet", "label": "Claude Sonnet", "provider": "Fixture"}],
+            return {"ok": True, "models": [{"id": "codex:gpt-6.1-sol", "label": "GPT-6.1 Sol", "provider": "Fixture", "reasoning_efforts": ["low", "medium", "high", "xhigh", "max"]}, {"id": "claude:sonnet", "label": "Claude Sonnet", "provider": "Fixture", "reasoning_efforts": []}],
+                    "default_model": "codex:gpt-6.1-sol", "default_effort": "medium",
                     "voice": {"kokoro": True, "whisper": True, "label": "Fixture voice"}, "notice": "Deterministic test adapter; no provider calls."}
         if request["action"] == "reply":
+            if any(message.get("content") == "Reply exactly READY." for message in request.get("messages", [])):
+                return {"ok": True, "text": "READY", "model": request["model"]}
             return {"ok": True, "text": "Let’s start with the idea. **Variance measures spread.** What do you already know about the mean?", "model": request["model"]}
         if request["action"] == "transcribe":
             return {"ok": True, "text": "A locally transcribed question"}
@@ -71,6 +74,14 @@ long_filename = "a_very_long_scientific_artifact_filename_that_must_remain_insid
 
 This is a teaching derivation[^scope].
 
+An explicitly anchored paragraph remains addressable. ^fixture-stable
+
+:::example A preserved legacy title
+Work from the recorded assumptions.
+=== solution
+The worked solution remains collapsed until requested.
+:::
+
 [^scope]: It is not an accepted scientific claim.
 
 <script>window.untrustedExecuted = true</script>
@@ -90,8 +101,17 @@ This is a teaching derivation[^scope].
 if __name__ == "__main__":
     root = Path(sys.argv[1])
     rec, document, lesson = fixture(root)
+    if len(sys.argv) > 2 and sys.argv[2] == "--append-question":
+        try:
+            print(json.dumps(api.call("ask", rec, lesson=lesson, text=sys.argv[3])), flush=True)
+        finally:
+            api.release()
+            rec.close()
+        raise SystemExit(0)
+    test_vault = root / "test-vault"
+    test_vault.mkdir(exist_ok=True)
     server = serve._bind(rec, int(sys.argv[2]) if len(sys.argv) > 2 else 0)
-    print(json.dumps({"url": f"http://127.0.0.1:{server.server_address[1]}/", "document": document, "lesson": lesson}), flush=True)
+    print(json.dumps({"url": f"http://127.0.0.1:{server.server_address[1]}/", "document": document, "lesson": lesson, "vault": str(test_vault)}), flush=True)
     try:
         server.serve_forever()
     finally:

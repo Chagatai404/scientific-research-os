@@ -1,7 +1,9 @@
 import type {ReactNode} from 'react';
+import {href, routeOf} from './api';
 
 export function Notice({error, retry}: {error?: string; retry?: () => void}) {
-  return error ? <div className="notice error" role="alert"><h2>Couldn’t load this view</h2><p>{error}</p><button onClick={retry}>Try again</button><a className="button" href="/">Original portal</a></div> : <p className="loading" role="status">Loading your workspace…</p>;
+  const record = typeof location === 'undefined' ? '' : routeOf(location.hash).record;
+  return error ? <div className="notice error" role="alert"><h2>Couldn’t Load This View</h2><p>{error}</p><button onClick={retry}>Try Again</button><a className="button" href={href('settings', '', record)}>Open Settings</a></div> : <p className="loading" role="status">Loading your workspace…</p>;
 }
 export function Empty({title, children}: {title: string; children?: ReactNode}) {
   return <div className="empty"><div className="empty-mark" aria-hidden="true">◇</div><h2>{title}</h2><div className="muted">{children}</div></div>;

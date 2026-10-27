@@ -14,15 +14,17 @@ const widths = [320, 375, 768, 1024, 1280, 1440, 1920];
 function start(folder) {
   return new Promise((resolve, reject) => {
     const proc = spawn(process.env.PYTHON || 'python3', ['-u', 'tests/support_workspace.py', folder], {cwd: root, env: {...process.env, ROS_NO_VAULT: '1', ROS_WORKSPACE_FAKE: '1', PYTHONPATH: root}});
-    let text = '';
-    proc.stdout.on('data', data => {text += data; const line = text.split('\n').find(x => x.startsWith('{')); if (line) {try {resolve({...JSON.parse(line), proc});} catch { /* wait for complete line */ }}});
-    proc.stderr.on('data', data => process.stderr.write(data));
+    let text = ''; const stderr = [];
+    proc.stdout.on('data', data => {text += data; const line = text.split('\n').find(x => x.startsWith('{')); if (line) {try {resolve({...JSON.parse(line), proc, stderr});} catch { /* wait for complete line */ }}});
+    proc.stderr.on('data', data => {stderr.push(String(data)); process.stderr.write(data);});
     proc.on('error', reject); proc.on('exit', code => reject(new Error(`Fixture server exited ${code}: ${text}`)));
   });
 }
 async function layout(page, label) {
   const problems = await page.evaluate(() => {
     const issues = [];
+    if ([...document.querySelectorAll('a')].some(link => /original portal/i.test(link.textContent))) issues.push('legacy portal link remains in workspace');
+    if (!document.querySelector('.settings-toggle')?.checkVisibility()) issues.push('persistent Settings control is missing');
     if (document.documentElement.scrollWidth > innerWidth + 1) issues.push('horizontal page overflow');
     const reading = document.querySelector('.document');
     if (reading && reading.getBoundingClientRect().width < Math.min(240, innerWidth - 40)) issues.push('document column is too narrow to read');
@@ -97,6 +99,13 @@ async function homeMatrix(page, label) {
   await graphHome(page, `${label} @1280x720`);
   await page.setViewportSize({width: 1440, height: 1000});
 }
+async function appendQuestion(folder, text) {
+  await new Promise((resolve, reject) => {
+    const child = spawn(process.env.PYTHON || 'python3', ['tests/support_workspace.py', folder, '--append-question', text], {cwd: root, env: {...process.env, ROS_NO_VAULT: '1', PYTHONPATH: root}});
+    let output = ''; child.stdout.on('data', data => {output += data;}); child.stderr.on('data', data => {output += data;});
+    child.on('error', reject); child.on('exit', code => code === 0 ? resolve() : reject(new Error(`External record append failed: ${output}`)));
+  });
+}
 function hashes(folder) {
   const crypto = require('node:crypto'); const out = {};
   function walk(dir) {for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {const full = path.join(dir, entry.name); if (entry.isDirectory()) walk(full); else out[path.relative(folder, full)] = crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex');}}
@@ -107,15 +116,24 @@ async function main() {
   let server, browser, page;
   const errors = [], outside = [], failed = [];
   let transcriptions = 0;
+  const modelChecks = [], sentMessages = [];
   const started = Date.now();
   try {
     server = await start(folder);
     browser = await chromium.launch({headless: true, args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'], ...(process.env.ROS_BROWSER ? {executablePath: process.env.ROS_BROWSER} : {})});
     const context = await browser.newContext({viewport: {width: 1440, height: 1000}, reducedMotion: 'reduce'});
+    await context.addInitScript(() => {
+      window.nativeStreams = [];
+      const NativeEventSource = window.EventSource;
+      window.EventSource = class extends NativeEventSource {
+        constructor(url) {super(url); this.tracked = {url: String(url), closed: false, changes: 0}; window.nativeStreams.push(this.tracked); this.addEventListener('change', () => this.tracked.changes++);}
+        close() {this.tracked.closed = true; super.close();}
+      };
+    });
     page = await context.newPage();
     page.on('pageerror', e => errors.push(e.message));
     page.on('console', message => {if (message.type() === 'error') errors.push(message.text());});
-    page.on('request', request => {if (request.url().endsWith('/services/transcribe')) transcriptions++; if (!request.url().startsWith(server.url) && !request.url().startsWith('data:')) outside.push(request.url());});
+    page.on('request', request => {if (request.url().endsWith('/services/model-check')) modelChecks.push(request.postDataJSON()); if (request.url().endsWith('/api/workspace_chat_send')) sentMessages.push(request.postDataJSON()); if (request.url().endsWith('/services/transcribe')) transcriptions++; if (!request.url().startsWith(server.url) && !request.url().startsWith('data:')) outside.push(request.url());});
     page.on('response', response => {if (response.status() >= 400) failed.push([response.status(), response.url()]);});
     const workspace = server.url + 'workspace/';
     const documentLink = '#document/' + encodeURIComponent(server.document) + '?r=demo';
@@ -215,6 +233,43 @@ async function main() {
     assert.match(page.url(), /#library\?r=demo$/, 'delayed send must not redirect after the composer unmounts');
     await page.unroute('**/api/workspace_chat_send');
     await page.goto(workspace); await page.getByTestId('graph-home').waitFor();
+    assert.match(await page.locator('.model-picker summary').innerText(), /GPT-6.1 Sol/);
+    assert.equal(await page.locator('#custom-model').count(), 0, 'model choices must come from the provider catalog');
+    await page.locator('.settings-toggle').click();
+    await page.getByRole('heading', {name: 'Settings', exact: true}).waitFor();
+    const connections = await page.evaluate(async () => (await (await fetch('/api/workspace_connections')).json()).result);
+    await page.locator('.record-counts li').first().waitFor();
+    const counts = await page.locator('.record-counts li').evaluateAll(rows => Object.fromEntries(rows.map(row => [row.querySelector('span').textContent.toLowerCase(), Number(row.querySelector('strong').textContent)])));
+    assert.deepEqual(counts, connections.record.node_counts, 'Settings displays actual indexed record counts');
+    assert.equal(await page.getByLabel('Conversation model', {exact: true}).inputValue(), 'codex:gpt-6.1-sol');
+    await page.getByLabel('Reasoning effort', {exact: true}).selectOption('high');
+    await matrix(page, 'settings');
+    assert.equal(modelChecks.length, 0, 'opening Settings must never issue a paid model check automatically');
+    await page.getByRole('button', {name: 'Check Model Connection', exact: true}).click();
+    await page.getByText(/Requested GPT-6.1 Sol · High\. Request passed\./).waitFor();
+    assert.deepEqual(modelChecks, [{model: 'codex:gpt-6.1-sol', effort: 'high'}], 'explicit connection check uses selected model and effort through the local fixture');
+    await page.getByLabel('Vault path', {exact: true}).fill(server.vault);
+    await page.getByLabel('Research OS folder inside the vault', {exact: true}).fill('Browser Research');
+    await page.getByRole('button', {name: 'Connect Vault', exact: true}).click();
+    await page.getByText('Vault connection saved.', {exact: true}).waitFor();
+    await page.reload(); await page.getByLabel('Vault path', {exact: true}).waitFor();
+    await page.waitForFunction(value => document.querySelector('#vault-path').value === value, server.vault);
+    assert.equal(await page.getByLabel('Research OS folder inside the vault', {exact: true}).inputValue(), 'Browser Research');
+    assert.equal(await page.getByLabel('Reasoning effort', {exact: true}).inputValue(), 'high');
+    assert.equal(modelChecks.length, 1, 'reloading Settings does not check a model automatically');
+    await page.goto(workspace); await page.getByTestId('graph-home').waitFor();
+    assert.match(await page.locator('.effort-picker summary').innerText(), /High/);
+    for (const width of widths) {
+      await page.setViewportSize({width, height: 1000});
+      for (const picker of ['.model-picker', '.effort-picker']) {
+        await page.locator(picker + ' summary').click();
+        const bounds = await page.locator(picker + ' .model-options').evaluate(element => {const r = element.getBoundingClientRect(); return {inside: r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1};});
+        assert.equal(bounds.inside, true, `${picker} remains within viewport @${width}`);
+        await page.locator(picker + ' summary').click();
+      }
+      await graphHome(page, `model/effort composer @${width}`);
+    }
+    await page.setViewportSize({width: 1440, height: 1000});
     assert.equal(await page.locator('select:visible').count(), 0, 'landing keeps secondary dropdown controls out of the primary chrome');
     assert.match(await page.locator('html').evaluate(el => getComputedStyle(el).colorScheme), /dark/);
     const longDraft = 'A long scientific question about variance and the assumptions behind its estimate. '.repeat(45);
@@ -223,6 +278,7 @@ async function main() {
     await page.getByLabel('Your message', {exact: true}).fill('Teach me variance');
     await page.getByRole('button', {name: 'Send message', exact: true}).click();
     await page.getByRole('heading', {name: 'Teach me variance', exact: true}).waitFor();
+    assert.deepEqual({model: sentMessages.at(-1).model, effort: sentMessages.at(-1).effort}, {model: 'codex:gpt-6.1-sol', effort: 'high'}, 'composer sends explicit selected model and effort');
     await page.locator('.message.assistant').waitFor();
     assert.match(await page.locator('.message.assistant').innerText(), /Variance measures spread/);
     await page.reload(); await page.locator('.message.assistant').waitFor();
@@ -232,6 +288,7 @@ async function main() {
     await page.locator('.model-picker summary').click();
     await page.getByRole('button', {name: /Claude Sonnet/}).click();
     assert.match(await page.locator('.model-picker summary').innerText(), /Claude Sonnet/);
+    assert.equal(await page.locator('.effort-picker').count(), 0, 'models with no reasoning-effort support do not offer unsupported controls');
     await page.getByRole('button', {name: 'Dictate your question', exact: true}).click();
     await page.getByRole('button', {name: 'Stop recording', exact: true}).waitFor();
     assert.equal(await page.getByRole('button', {name: 'Send message', exact: true}).isDisabled(), true, 'recording must remain a draft until capture stops');
@@ -241,8 +298,14 @@ async function main() {
     assert.equal(await page.locator('.message.user').count(), 2, 'dictation must remain a draft until sent');
     await page.getByRole('button', {name: 'Listen · Kokoro', exact: true}).first().click();
     await page.locator('audio.reply-audio').waitFor();
+    await page.getByLabel('Your message', {exact: true}).fill('Use the selected Claude model to explain uncertainty.');
+    await page.getByRole('button', {name: 'Send message', exact: true}).click();
+    await page.waitForFunction(() => document.querySelectorAll('.message.assistant').length === 3);
+    assert.equal(sentMessages.at(-1).model, 'claude:sonnet', 'composer sends the explicitly selected alternate model');
+    assert.equal(Object.hasOwn(sentMessages.at(-1), 'effort'), false, 'unsupported reasoning effort is not sent to Claude');
     await page.getByLabel('Your message', {exact: true}).fill(longDraft);
     await page.reload(); await page.locator('.message.assistant').first().waitFor();
+    assert.match(await page.locator('.model-picker summary').innerText(), /Claude Sonnet/, 'selected model preference survives reload');
     assert.equal(await page.getByLabel('Your message', {exact: true}).inputValue(), longDraft, 'conversation draft survives reload');
     const conversationUrl = page.url();
     await page.getByRole('link', {name: 'New conversation', exact: true}).click();
@@ -252,11 +315,14 @@ async function main() {
     await page.goto(conversationUrl); await page.locator('.message.assistant').first().waitFor();
     assert.equal(await page.getByLabel('Your message', {exact: true}).inputValue(), longDraft, 'navigating between sessions preserves their separate drafts');
     await navigation(page);
-    await page.getByRole('link', {name: 'Library & notes', exact: true}).click();
+    await page.getByRole('link', {name: 'Library & Notes', exact: true}).click();
     await page.getByRole('link', {name: /Variance, from intuition/}).click();
     await collapseNavigation(page);
     await page.locator('.document .katex-display').waitFor();
     await page.locator('.document img').evaluate(img => img.decode());
+    await page.locator('[id$="-block-fixture-stable"]').waitFor();
+    await page.getByText('Example — A preserved legacy title', {exact: true}).waitFor();
+    assert.equal(await page.locator('.document .handout-solution[open]').count(), 0, 'legacy solutions start collapsed');
     assert.equal(await page.locator('.document ol > li > ul > li').count(), 2);
     assert.equal(await page.evaluate(() => window.untrustedExecuted || false), false);
     assert.equal(await page.locator('.document script,.document a[href^="javascript:"]').count(), 0);
@@ -325,6 +391,23 @@ async function main() {
     await page.getByRole('heading', {name: 'Claims ledger'}).waitFor(); await matrix(page, 'research');
     await page.goto(workspace + '#session/' + encodeURIComponent(server.lesson) + '?r=demo');
     await page.getByLabel('Your answer', {exact: true}).waitFor();
+    assert.equal(await page.locator('.classroom').count(), 1, 'real learning session uses the classroom shell');
+    assert.doesNotMatch(await page.locator('main').innerHTML(), /["'](?:answer_key|rubric|option_feedback|feedback_wrong)["']\s*[:=]|Square the factor\./, 'hidden assessment keys and unreleased hints must not enter the learner DOM');
+    await page.getByRole('button', {name: 'Plan', exact: true}).click();
+    const plan = page.getByRole('complementary', {name: 'Dependency plan', exact: true});
+    await plan.getByRole('link', {name: 'Mean', exact: true}).first().waitFor();
+    await plan.getByRole('link', {name: 'Variance', exact: true}).waitFor();
+    assert.match(await plan.innerText(), /Requires Mean/, 'classroom plan uses recorded prerequisite identities');
+    await matrix(page, 'classroom dependency plan');
+    await page.getByRole('button', {name: 'Plan', exact: true}).click();
+    await page.getByLabel('Your answer', {exact: true}).fill('draft stays through live external revision');
+    await page.getByText('Session history', {exact: true}).click();
+    const externalQuestion = 'An external tutor asks whether the units remain squared.';
+    const changesBefore = await page.evaluate(() => window.nativeStreams.reduce((count, stream) => count + stream.changes, 0));
+    await appendQuestion(folder, externalQuestion);
+    await page.locator('.classroom-history').getByText(externalQuestion, {exact: false}).waitFor();
+    assert.equal(await page.getByLabel('Your answer', {exact: true}).inputValue(), 'draft stays through live external revision', 'native SSE refresh preserves active answer draft');
+    assert.ok(await page.evaluate(before => window.nativeStreams.reduce((count, stream) => count + stream.changes, 0) > before, changesBefore), 'real external record append emits native SSE change');
     await page.getByLabel('Your answer', {exact: true}).fill('draft survives reload'); await page.reload();
     assert.equal(await page.getByLabel('Your answer', {exact: true}).inputValue(), 'draft survives reload');
     await matrix(page, 'lesson');
@@ -335,8 +418,13 @@ async function main() {
     await page.getByLabel('Your question', {exact: true}).fill('Why are the distances squared?');
     await page.getByRole('button', {name: 'Save question'}).click();
     await page.getByText('Your question is saved for your tutor.').waitFor();
+    await page.goto(workspace + '#overview?r=me');
+    await page.getByTestId('graph-home').waitFor();
+    await page.waitForFunction(() => window.nativeStreams.filter(stream => !stream.closed).length === 1 && window.nativeStreams.some(stream => !stream.closed && stream.url === '/events?record=me'));
+    assert.equal(await page.evaluate(() => window.nativeStreams.some(stream => stream.closed && stream.url === '/events?record=demo')), true, 'workspace switch closes old event stream');
     await page.goto(workspace + '#overview?r=demo');
     await page.getByTestId('graph-home').waitFor();
+    await page.waitForFunction(() => window.nativeStreams.filter(stream => !stream.closed).length === 1 && window.nativeStreams.some(stream => !stream.closed && stream.url === '/events?record=demo'));
     await collapseNavigation(page);
     await homeMatrix(page, 'overview');
     await page.getByLabel('Search connected records').fill('Variance');
@@ -356,12 +444,23 @@ async function main() {
       await graphHome(page, 'screenshot mobile graph');
       await page.screenshot({path: path.join(output, 'workspace-graph-mobile.png'), fullPage: true});
       await page.setViewportSize({width: 1440, height: 1000});
+      await page.goto(workspace + '#settings?r=demo'); await page.getByLabel('Conversation model', {exact: true}).waitFor();
+      await page.screenshot({path: path.join(output, 'workspace-settings.png'), fullPage: true});
+      await page.goto(workspace + '#session/' + encodeURIComponent(server.lesson) + '?r=demo');
+      await page.locator('.classroom').waitFor(); await page.getByRole('button', {name: 'Plan', exact: true}).click();
+      await page.getByRole('complementary', {name: 'Dependency plan', exact: true}).getByRole('link', {name: 'Mean', exact: true}).first().waitFor();
+      await page.screenshot({path: path.join(output, 'workspace-classroom.png'), fullPage: true});
+      await page.setViewportSize({width: 375, height: 900});
+      await page.screenshot({path: path.join(output, 'workspace-classroom-mobile.png'), fullPage: true});
+      await page.setViewportSize({width: 1440, height: 1000});
       await page.goto(workspace + documentLink); await page.locator('.katex-display').waitFor();
       await page.screenshot({path: path.join(output, 'workspace-document.png'), fullPage: true});
       await page.setViewportSize({width: 375, height: 900});
       await page.screenshot({path: path.join(output, 'workspace-mobile.png'), fullPage: true});
     }
-    console.log(JSON.stringify({ok: true, widths, shortViewport: {width: 1280, height: 720}, seconds: (Date.now() - started) / 1000, checks: ['dark-theme', 'landing-graph', 'landing-viewport', 'graph-node-selection', 'graph-keyboard', 'graph-pan', 'graph-camera-retention', 'mobile-navigation-focus', 'graph-lane-selection', 'microphone-lifecycle', 'delayed-send-navigation', 'model-selection', 'conversation', 'conversation-reload', 'conversation-draft-reload', 'dictation-draft', 'recording-send-disabled', 'voice-playback', 'reading', 'math', 'gfm', 'figures', 'xss', 'wikilinks', 'backlinks', 'deep-links', 'back-forward', 'panel-collapse', 'graph', 'research', 'draft-reload', 'answer', 'question', 'search', 'source-hashes', 'no-external-requests']}));
+    assert.deepEqual(errors, [], 'console or runtime errors after screenshots'); assert.deepEqual(outside, [], 'requests left the computer after screenshots'); assert.deepEqual(failed, [], 'failed asset/API requests after screenshots');
+    assert.doesNotMatch(server.stderr.join(''), /Traceback \(most recent call last\)/, 'fixture server must not recover silently from request exceptions');
+    console.log(JSON.stringify({ok: true, widths, shortViewport: {width: 1280, height: 720}, seconds: (Date.now() - started) / 1000, checks: ['dark-theme', 'landing-graph', 'landing-viewport', 'graph-node-selection', 'graph-keyboard', 'graph-pan', 'graph-camera-retention', 'mobile-navigation-focus', 'graph-lane-selection', 'microphone-lifecycle', 'delayed-send-navigation', 'model-selection', 'conversation', 'conversation-reload', 'conversation-draft-reload', 'dictation-draft', 'recording-send-disabled', 'voice-playback', 'reading', 'math', 'gfm', 'figures', 'xss', 'wikilinks', 'backlinks', 'deep-links', 'back-forward', 'panel-collapse', 'graph', 'research', 'draft-reload', 'answer', 'question', 'search', 'source-hashes', 'no-external-requests', 'settings', 'record-counts', 'vault-configuration', 'explicit-model-check', 'reasoning-effort', 'model-preference-reload', 'legacy-callouts', 'explicit-block-anchor', 'classroom-plan', 'assessment-keys-hidden', 'native-sse-refresh', 'sse-record-isolation']}));
   } catch (error) {
     if (page) {
       console.error('Current page:', await page.locator('main').innerText().catch(() => 'unavailable'));

@@ -3,15 +3,13 @@ import {call, href, preference, savePreference, service} from './api';
 import {RichText} from './Document';
 import {Graph} from './Graph';
 import {useResource} from './hooks';
-import {Notice} from './ui';
+import {effortLabel, modelLabel, supportedEfforts, useModelPreferences, type ModelCatalog} from './modelPreferences';
 
-interface Capabilities {models: {id: string; label: string; provider: string}[]; voice: {kokoro: boolean; whisper: boolean; label: string}; notice: string}
 interface Chat {conversation: string; title: string; messages: {id: string; role: string; text: string; model?: string}[]; pending: string[]; interrupted: number}
 
 export function Conversation({id, record}: {id: string; record: string}) {
-  const capabilities = useResource('conversation-capabilities', () => service<Capabilities>('catalog'));
-  const [model, setModel] = useState(() => preference('model', ''));
-  const [customModel, setCustomModel] = useState('');
+  const capabilities = useResource('conversation-capabilities', () => service<ModelCatalog>('catalog'));
+  const models = useModelPreferences(capabilities.data?.models);
   const draftKey = 'composer:' + JSON.stringify([record, id || 'new']);
   const [text, setText] = useState(() => preference(draftKey, ''));
   const [chat, setChat] = useState<Chat | null>(null);
@@ -30,7 +28,7 @@ export function Conversation({id, record}: {id: string; record: string}) {
   const seen = useRef('');
   const submitting = useRef(false);
   const currentDraft = useRef(draftKey); currentDraft.current = draftKey;
-  const currentModel = model || capabilities.data?.models[0]?.id || '';
+  const currentModel = models.model;
   const pending = sending || !!chat?.pending.length;
   function releaseMicrophone() {
     acquisition.current++;
@@ -64,12 +62,12 @@ export function Conversation({id, record}: {id: string; record: string}) {
     if (last?.role === 'assistant' && voiceAuto && capabilities.data?.voice.kokoro && last.id !== seen.current) {seen.current = last.id; speak(last.id, last.text);}
   }, [chat?.messages, voiceAuto, capabilities.data]);
   async function send(event: FormEvent) {
-    event.preventDefault(); if (!text.trim() || pending || submitting.current || !currentModel || openingMicrophone || recording || transcribing) return;
+    event.preventDefault(); if (!text.trim() || pending || submitting.current || !models.selected || openingMicrophone || recording || transcribing) return;
     submitting.current = true;
     setSending(true); setError('');
     const value = text.trim(), submittedDraft = text;
     try {
-      const result = await call<{conversation: string; request: string}>('workspace_chat_send', {text: value, model: currentModel, ...(id ? {conversation: id} : {})}, record, true);
+      const result = await call<{conversation: string; request: string}>('workspace_chat_send', {text: value, model: currentModel, ...(models.selectedEffort ? {effort: models.selectedEffort} : {}), ...(id ? {conversation: id} : {})}, record, true);
       // A request can finish while the person is writing the next message or navigating.
       // Preserve that newer draft and never steal the new page's input/focus.
       const latest = preference(draftKey, submittedDraft), remaining = latest === submittedDraft ? '' : latest;
@@ -131,11 +129,12 @@ export function Conversation({id, record}: {id: string; record: string}) {
     {chat && <div className="messages" aria-label="Conversation messages">{chat.messages.map(message => <article className={'message ' + message.role} key={message.id}><div className="message-meta">{message.role === 'user' ? 'You' : message.role === 'error' ? 'Could not complete' : message.model?.split(':')[0] || 'Research OS'}</div><RichText text={message.text} prefix={message.id} record={record} />{message.role === 'assistant' && capabilities.data?.voice.kokoro && <button className="read-message" disabled={!!speaking} onClick={() => speak(message.id, message.text)}>{speaking === message.id ? 'Preparing Kokoro audio…' : 'Listen · Kokoro'}</button>}</article>)}
       {pending && <div className="thinking" role="status"><span className="pulse-dot" /> Thinking through your question… <small>Your message is saved.</small></div>}{chat.interrupted > 0 && <p className="notice">A previous response was interrupted. You can send a follow-up to continue.</p>}<div ref={end} /></div>}
     <div className="session-dock"><form className="goal-composer chat-composer" onSubmit={send}><label className="sr-only" htmlFor="chat-input">Your message</label><textarea id="chat-input" rows={2} value={text} onChange={e => {setText(e.target.value); savePreference(draftKey, e.target.value);}} placeholder={id ? 'Follow your thinking…' : 'What would you like to understand or investigate?'} required maxLength={12000} onKeyDown={e => {if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {e.preventDefault(); e.currentTarget.form?.requestSubmit();}}} />
-      <div className="composer-footer"><div className="composer-tools"><details className="model-picker"><summary>{capabilities.data?.models.find(m => m.id === currentModel)?.label || currentModel || 'Choose a model'} <span aria-hidden="true">⌄</span></summary><div className="model-options" role="group" aria-label="Language model">{capabilities.data?.models.map(m => <button key={m.id} type="button" aria-pressed={currentModel === m.id} onClick={e => {setModel(m.id); savePreference('model', m.id); e.currentTarget.closest('details')?.removeAttribute('open');}}><span>{m.label}</span><small>{m.provider}</small></button>)}<label htmlFor="custom-model">Another model</label><input id="custom-model" value={customModel} onChange={e => setCustomModel(e.target.value)} placeholder="provider:model" /><button type="button" disabled={!/^(codex|claude|ollama):[A-Za-z0-9_.:/-]{1,100}$/.test(customModel)} onClick={e => {setModel(customModel); savePreference('model', customModel); e.currentTarget.closest('details')?.removeAttribute('open');}}>Use model</button>{!capabilities.data?.models.length && <p>Install and sign in to Codex or Claude, or start a local Ollama model.</p>}</div></details>
+      <div className="composer-footer"><div className="composer-tools"><details className="model-picker"><summary>{modelLabel(currentModel, capabilities.data?.models)} <span aria-hidden="true">⌄</span></summary><div className="model-options" role="group" aria-label="Language model">{capabilities.data?.models.map(m => <button key={m.id} type="button" aria-pressed={currentModel === m.id} onClick={e => {models.update(m.id); e.currentTarget.closest('details')?.removeAttribute('open');}}><span>{m.label}</span><small>{m.provider}</small></button>)}<a className="manage-models" href={href('settings', '', record)}>Manage Models →</a>{!capabilities.data?.models.length && <p>Install and sign in to Codex or Claude, or start a local Ollama model.</p>}</div></details>
+        {supportedEfforts(models.selected).length > 0 && <details className="effort-picker"><summary aria-label={'Reasoning effort: ' + effortLabel(models.selectedEffort || 'medium')}>{effortLabel(models.selectedEffort || 'medium')} <span aria-hidden="true">⌄</span></summary><div className="model-options effort-options" role="group" aria-label="Reasoning effort">{supportedEfforts(models.selected).map(effort => <button key={effort} type="button" aria-pressed={models.selectedEffort === effort} onClick={event => {models.update(currentModel, effort); event.currentTarget.closest('details')?.removeAttribute('open');}}>{effortLabel(effort)}</button>)}</div></details>}
         <button className={'microphone ' + (recording ? 'recording' : '')} type="button" aria-label={recording ? 'Stop recording' : 'Dictate your question'} aria-pressed={recording} disabled={openingMicrophone || transcribing || !capabilities.data?.voice.whisper} onClick={dictate}>{recording ? '■ Stop' : transcribing ? 'Transcribing…' : '◉ Voice'}</button>
-        <button type="button" className="voice-toggle" aria-pressed={voiceAuto} disabled={!capabilities.data?.voice.kokoro} onClick={() => {setVoiceAuto(!voiceAuto); savePreference('read-replies', voiceAuto ? 'off' : 'on');}}>♫ {voiceAuto ? 'Read replies on' : capabilities.data?.voice.kokoro ? 'Kokoro ready' : 'Voice unavailable'}</button></div><button className="primary send-message" disabled={pending || !currentModel || openingMicrophone || recording || transcribing} aria-label="Send message">{pending ? 'Working…' : 'Send ↑'}</button></div>
+        <button type="button" className="voice-toggle" aria-pressed={voiceAuto} disabled={!capabilities.data?.voice.kokoro} onClick={() => {setVoiceAuto(!voiceAuto); savePreference('read-replies', voiceAuto ? 'off' : 'on');}}>♫ {voiceAuto ? 'Read replies on' : capabilities.data?.voice.kokoro ? 'Kokoro ready' : 'Voice unavailable'}</button></div><button className="primary send-message" disabled={pending || !models.selected || openingMicrophone || recording || transcribing} aria-label="Send message">{pending ? 'Working…' : 'Send ↑'}</button></div>
     </form>
-    <p className="composer-caption" role="status">{recording ? 'Listening locally. Stop when you’re ready; review the transcript before sending.' : transcribing ? 'Transcribing locally. Review the transcript before sending.' : !capabilities.data?.models.length && !currentModel ? 'No model available. Open the model picker to configure a provider.' : capabilities.data && !capabilities.data.models.some(m => m.id === currentModel) ? 'Custom model availability is checked when you send.' : 'Enter to send · Shift Enter for a new line'}</p>
+    <p className="composer-caption" role="status">{recording ? 'Listening locally. Stop when you’re ready; review the transcript before sending.' : transcribing ? 'Transcribing locally. Review the transcript before sending.' : capabilities.data && !capabilities.data.models.length ? 'No model available. Open Settings to connect a provider.' : capabilities.data && !models.selected ? 'The selected model is unavailable. Choose a model in Settings.' : 'Enter to send · Shift Enter for a new line'}</p>
     {audioUrl && <audio className="reply-audio" ref={audio} src={audioUrl} controls aria-label="Kokoro response playback" />}
     {(error || capabilities.error) && <p className="notice error" role="alert">{error || capabilities.error}</p>}
     </div>

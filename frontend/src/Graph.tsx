@@ -14,8 +14,11 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
   const selectionPanel = useRef<HTMLElement>(null), listPanel = useRef<HTMLElement>(null);
   const viewport = useRef({key: '', width: 0, height: 0}), previousGraph = useRef<GraphData | null>(null);
   const drag = useRef<{x: number; y: number; ox: number; oy: number; moved: boolean} | null>(null);
-  const result = useResource(`graph:${record}:${mode}:${focus}:${depth}:${relation}`, signal => call<GraphData>('workspace_graph', {mode, ...(focus ? {focus} : {}), depth, limit: 120, ...(relation ? {relation} : {})}, record, false, signal));
-  const graph = result.data, layout = useMemo(() => graph ? pointLayout(graph) : null, [graph]);
+  const result = useResource(`graph:${record}:${mode}:${focus}:${depth}:${relation}`, signal => call<GraphData>('workspace_graph', {mode, ...(focus ? {focus} : {}), depth, limit: 120, ...(relation ? {relation} : {})}, record, false, signal), record);
+  const graphSignature = JSON.stringify(result.data);
+  // Event-only updates often leave this bounded graph unchanged. Retain its camera/layout identity.
+  const graph = useMemo(() => result.data, [graphSignature]);
+  const layout = useMemo(() => graph ? pointLayout(graph) : null, [graph]);
   const points = useMemo(() => layout?.nodes.map(n => lanes ? {...n, px: n.x + n.w / 2, py: n.y + n.h / 2} : n) || [], [layout, lanes]);
   const chosen = points.find(n => n.id === selected), cameraKey = 'camera:' + JSON.stringify([record, mode, focus, relation, depth, lanes]);
   useEffect(() => {

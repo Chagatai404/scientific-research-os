@@ -8,12 +8,39 @@ from __future__ import annotations
 import hashlib
 import json
 from contextlib import ExitStack
+from pathlib import Path
 
 from . import atlas, context, export, handouts, home, tasks, vault
 from .store import Record
 
 
 _ALIASES: dict = {}
+_NODE_COUNTS: dict = {}
+
+
+def connections(rec: Record) -> dict:
+    """Current record and explicitly configured vault identity; no discovery, scan, sync or migration."""
+    root, stamp = str(rec.root.resolve()), rec.stamp("nodes")
+    hit = _NODE_COUNTS.get(root)
+    if not hit or hit[0] != stamp:
+        counts = {row["type"]: row["count"] for row in rec.index().execute(
+            "SELECT type, COUNT(*) AS count FROM nodes GROUP BY type")}
+        if len(_NODE_COUNTS) >= 16:
+            _NODE_COUNTS.pop(next(iter(_NODE_COUNTS)))
+        _NODE_COUNTS[root] = (stamp, counts)
+    counts = _NODE_COUNTS[root][1]
+    cfg, settings = home.config(rec.root), home.settings()
+    path = settings.get("vault") or ""
+    folder = settings.get("vault_root") or "Research OS"
+    try:
+        configured = bool(path and Path(path).expanduser().is_dir())
+    except (OSError, ValueError):
+        configured = False
+    return {"record": {"name": rec.root.name, "title": cfg.get("title") or
+                        ("Knowledge" if cfg.get("role") == "user" else rec.root.name.replace("-", " ").title()),
+                        "role": cfg.get("role", "unlinked"), "root": root, "node_counts": counts},
+            "vault": {"configured": configured, "path": path, "root": folder,
+                      "folder": str(Path(path) / folder) if path else ""}}
 
 
 def _aliases(rec: Record) -> dict:

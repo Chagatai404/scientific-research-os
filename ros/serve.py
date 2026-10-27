@@ -22,6 +22,7 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import sys
@@ -156,7 +157,7 @@ def make_handler(rec: "Record | Pool"):
                 rel = path[len("/media/"):]
                 parts = rel.split("/")
                 handout_figure = (len(parts) >= 4 and parts[0] == "handouts" and parts[2] == "figures"
-                                  and Path(rel).suffix.lower() in {".png", ".jpg", ".jpeg", ".svg", ".webp", ".pdf"})
+                                  and Path(rel).suffix.lower() in {".png", ".jpg", ".jpeg", ".svg", ".webp", ".pdf", ".excalidraw"})
                 if (parts[0] not in MEDIA_DIRS and not handout_figure) or any(p in ("", ".", "..") for p in parts) or "\\" in rel:
                     return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 try:
@@ -195,6 +196,25 @@ def make_handler(rec: "Record | Pool"):
             except ValueError:
                 return self._send(HTTPStatus.BAD_REQUEST, {"error": "the body is a JSON object of arguments"})
             if not path.startswith("/api/"):
+                if path == "/services/model-check":
+                    if self.headers.get("Sec-Fetch-Site") != "same-origin":
+                        return self._send(HTTPStatus.FORBIDDEN, {"error": "model checks must come from the portal"})
+                    model, effort = args.get("model"), args.get("effort", "medium")
+                    if not isinstance(model, str) or not re.fullmatch(r"(codex|claude|ollama):[A-Za-z0-9_.:/-]{1,100}", model) \
+                            or effort not in ("low", "medium", "high", "xhigh", "max") \
+                            or (not model.startswith("codex:") and effort != "medium"):
+                        return self._send(HTTPStatus.BAD_REQUEST, {"error": "choose a supported model and effort"})
+                    # A user-requested transport check sends no record, source, file path or transcript.
+                    result = _engine({"action": "reply", "model": model, "effort": effort,
+                                      "messages": [{"role": "user", "content": "Reply exactly READY."}],
+                                      "context": {"purpose": "User-requested model connection check."}}, timeout=60)
+                    out = {"ok": bool(result.get("ok")), "model": result.get("model", model),
+                           "effort": effort if model.startswith("codex:") else None,
+                           "text": str(result.get("text", ""))[:200]}
+                    if not out["ok"]:
+                        out["error"] = result.get("error") or "The model connection check failed."
+                    return self._send(HTTPStatus.OK if out["ok"] else HTTPStatus.BAD_REQUEST,
+                                      {"result": out, **({"error": out["error"]} if not out["ok"] else {})})
                 if path in ("/services/speech", "/services/transcribe"):
                     if self.headers.get("Sec-Fetch-Site") != "same-origin":
                         return self._send(HTTPStatus.FORBIDDEN, {"error": "voice requests must come from the portal"})
@@ -281,6 +301,9 @@ def make_handler(rec: "Record | Pool"):
             size = target.stat().st_size
             extra = {"Cache-Control": "max-age=31536000, immutable" if cache and "/vendor/" in target.as_posix()
                      else "no-cache", "Accept-Ranges": "bytes"}
+            if target.suffix.lower() == ".excalidraw":
+                ctype = "application/octet-stream"
+                extra["Content-Disposition"] = 'attachment; filename="drawing.excalidraw"'
             rng = self.headers.get("Range")
             if rng and rng.startswith("bytes="):
                 start_s, _, end_s = rng[6:].split(",")[0].partition("-")

@@ -42,6 +42,25 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(len(self.rec.events()), before)
         self.assertEqual(originals, {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in originals})
 
+    def test_connections_reports_identity_without_scanning_or_writing_notes(self):
+        before = len(self.rec.events())
+        with patch.object(home, "detect_vaults", side_effect=AssertionError("vault discovery")), \
+                patch.object(vault, "opened", side_effect=AssertionError("manifest open")), \
+                patch.object(self.rec, "nodes", side_effect=AssertionError("whole node scan")):
+            value = api.call("workspace_connections", self.rec)
+        self.assertEqual(value["record"]["name"], "demo")
+        self.assertEqual(value["record"]["node_counts"], {"capability": 2})
+        self.assertFalse(value["vault"]["configured"])
+        self.assertEqual(value["backend"]["operation_count"], len(api.TOOLS))
+        self.assertEqual(len(self.rec.events()), before)
+        folder = Path(self.tmp.name) / "vault"
+        folder.mkdir()
+        home.set_settings(vault=str(folder), vault_root="Notes")
+        with patch.object(vault, "sync", side_effect=AssertionError("sync")):
+            value = api.call("workspace_connections", self.rec)
+        self.assertTrue(value["vault"]["configured"])
+        self.assertEqual(value["vault"]["folder"], str(folder / "Notes"))
+
     def test_heading_rename_does_not_change_canonical_section_id(self):
         made = handouts.create(self.rec, "lecture", ["capability:variance"], "Variance", "v")
         for title in ("Spread", "Dispersion"):

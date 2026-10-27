@@ -2,6 +2,27 @@
 
 ## Primary goal
 
+### User corrections, 2026-10-27
+
+These are immediate implementation priorities, not optional polish:
+
+- Use Title Case for product titles and readable record labels; never present raw lowercase record keys as headings.
+- Remove the Original Portal link and replace remaining legacy navigation with native workspace views.
+- Show the person's actual user-wide knowledge graph and configured Obsidian connection. Demo records are for QA,
+  clearly separated from the live connection. Opening Settings/Graph must not migrate or sync the vault.
+- Add a persistent Settings button covering records, vault, model/effort, local voice and backend connectivity.
+- Default to **GPT-6.1 Sol**, with explicit model identity and selectable supported reasoning effort. Codex is the
+  authenticated CLI transport, not a model name. Migrate the old `codex:default` preference to the explicit model.
+- Replace the broken arbitrary model input with installed/CLI-catalog model choices and clear connection checks.
+  Reuse logged-in CLI authentication; an API key is not required for that transport. Do not promise account access
+  merely because an executable exists. Verify model and effort argv routing and label actual smoke-test scope.
+- Audit every existing backend capability against its frontend entry point, with an explicit implemented/gap matrix.
+  Connect native controls through existing APIs rather than inventing parallel domain logic or claiming unwired parity.
+- Keep routine work at low/medium reasoning, reserving higher reasoning for complex implementation or review.
+
+Acceptance includes real record/vault identity in Settings, no legacy navigation link, persisted model/effort,
+server-side validation, deterministic routing tests, and explicit distinction between fixture and live-account checks.
+
 A researcher opens Research OS into a full-window, navigable knowledge graph, starts a learning or research
 session from its compact dock, and works through a coherent classroom with the existing scientific engine.
 The result must resemble LearnHarness in screen structure and interaction quality while retaining Research OS's

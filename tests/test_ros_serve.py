@@ -87,6 +87,41 @@ class ServeTests(unittest.TestCase):
         c.close()
 
 
+    def test_model_check_is_explicit_bounded_and_sends_no_record_content(self):
+        before = len(self.rec.events())
+        headers = {"X-ROS": "1", "Sec-Fetch-Site": "same-origin"}
+        with patch.object(serve, "_engine", return_value={"ok": True, "text": "READY", "model": "codex:gpt-6.1-sol"}) as engine:
+            status, _, body = self.req("POST", "/services/model-check", {"model": "codex:gpt-6.1-sol", "effort": "low"}, headers)
+            self.assertEqual(status, 200)
+            result = json.loads(body)["result"]
+            self.assertEqual((result["model"], result["effort"], result["text"]), ("codex:gpt-6.1-sol", "low", "READY"))
+            request = engine.call_args.args[0]
+            self.assertEqual(request["messages"], [{"role": "user", "content": "Reply exactly READY."}])
+            self.assertEqual(request["effort"], "low")
+            self.assertNotIn("record", request)
+            self.assertNotIn(str(self.rec.root), json.dumps(request))
+            engine.reset_mock()
+            self.assertEqual(self.req("POST", "/services/model-check", {"model": "codex:gpt-6.1-sol", "effort": "invalid"}, headers)[0], 400)
+            self.assertEqual(self.req("POST", "/services/model-check", {"model": "codex:gpt-6.1-sol"}, {"X-ROS": "1"})[0], 403)
+            engine.assert_not_called()
+        self.assertEqual(len(self.rec.events()), before)
+
+    def test_preserved_drawing_reference_is_an_inert_confined_download(self):
+        from ros import handouts
+        made = handouts.create(self.rec, "lecture", ["capability:variance"], "Drawing Reference", "drawing-reference")
+        figures = handouts.folder(self.rec, made["handout"]) / "figures"
+        figures.mkdir(exist_ok=True)
+        source = '{"type":"excalidraw","elements":[]}'
+        (figures / "sketch.excalidraw").write_text(source, encoding="utf-8")
+        status, headers, data = self.req("GET", "/media/handouts/drawing-reference/figures/sketch.excalidraw")
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"], "application/octet-stream")
+        self.assertEqual(headers["Content-Disposition"], 'attachment; filename="drawing.excalidraw"')
+        self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(data.decode(), source)
+        self.assertEqual(self.req("GET", "/media/handouts/drawing-reference/figures/../../events.excalidraw")[0], 404)
+
+
 if __name__ == "__main__":
     unittest.main()
 

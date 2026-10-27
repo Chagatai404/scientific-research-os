@@ -45,7 +45,7 @@ export function Library({record}: {record: string}) {
       return <section key={kind}><div className="section-title"><h2>{kind === 'handouts' ? 'Handouts' : 'Past sessions'}</h2><span>{items.length}</span></div>
         {items.length ? <ul className="entry-list">{items.map(item => <li key={item.id}><a href={entityHref(item.id, record)}><span className="entry-symbol" aria-hidden="true">{kind === 'handouts' ? '▤' : '↺'}</span><span><strong>{item.title || item.id}</strong><small>{kind === 'handouts' ? item.kind : item.closed ? 'Completed session' : 'Session in progress'} · {item.status || item.started?.slice(0, 10) || 'Recorded'}</small></span><span aria-hidden="true">↗</span></a></li>)}</ul> : <Empty title={filter ? 'No matching titles' : kind === 'handouts' ? 'Your reading starts here' : 'No sessions yet'}><p>{kind === 'handouts' ? 'Prepared handouts will appear here as your agent writes them.' : 'Your lesson transcripts will be available here after you begin learning.'}</p></Empty>}</section>;
     })}</>}
-    <a className="text-link" href={'/#vault' + (record ? '?r=' + encodeURIComponent(record) : '')}>Obsidian sync & conflict controls ↗</a></>;
+    <a className="text-link" href={href('settings', '', record, 'vault-connection')}>Obsidian Connection Settings →</a></>;
 }
 
 export function Search({query, record}: {query: string; record: string}) {
@@ -72,7 +72,7 @@ export function EvidenceBody({evidence: e, record}: {evidence: Evidence; record:
     {e.adversary_memo && <><h2>The strongest case against it</h2><RichText text={e.adversary_memo} record={record} /></>}
     {e.node?.summary && typeof e.node.summary === 'string' ? <RichText text={e.node.summary} record={record} /> : null}
     {e.links?.handouts?.length ? <><h2>Related reading</h2><ul>{e.links.handouts.map(h => <li key={h.id}><a href={entityHref(h.id, record)}>{h.title}</a></li>)}</ul></> : null}
-    <a className="text-link" href={'/#research' + (record ? '?r=' + encodeURIComponent(record) : '')}>Open human decision controls in the original portal ↗</a>
+    <a className="text-link" href={href('research', '', record)}>Research Decisions & Next Actions →</a>
   </div>;
 }
 
