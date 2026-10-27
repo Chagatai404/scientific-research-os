@@ -1,29 +1,34 @@
 # Workspace design system
 
-This describes the current implemented preview. The next reference-led design is specified in
-[REFERENCE_UI_SPEC.md](REFERENCE_UI_SPEC.md), with its dependency order and execution status in
-[REFERENCE_UI_IMPLEMENTATION_PLAN.md](REFERENCE_UI_IMPLEMENTATION_PLAN.md). In particular, the current
-hero, permanent rail and graph below the fold are superseded as design targets, but have not yet been replaced.
+The implemented graph landing follows the independent patterns in [REFERENCE_UI_SPEC.md](REFERENCE_UI_SPEC.md).
+The reference-led plan tracks unfinished classroom, research and document work. No reference code or assets are reused.
 
-The interface serves a goal: read, learn or investigate. It opens with a conversational composer and knowledge
-map. Five primary sections: Conversation, Learn, Research, Graph, Library. Workspaces are navigation tabs.
-Model choice uses one expandable picker; graph lenses and relations use direct buttons instead of dropdowns.
-Microphone capture requires a click, dictation stays an unsent draft, and Kokoro playback is an explicit control.
+The graph owns the first viewport. A compact question dock stays below its unobstructed region; camera fitting
+uses the actual available canvas size. Navigation starts collapsed for new preferences and opens to a 232 px rail
+on desktop or a drawer on phones. Horizontal workspace links replace a workspace dropdown. Top chrome occupies
+64 px on desktop and 112 px on phones, including search. The previous hero and graph-below-form layout are removed.
 
-Dark blue charcoal background, pale blue ink, muted slate metadata, mint active controls. System UI for chrome;
-Georgia for long reading text. An 8 px spacing grid, 44 px minimum controls, visible keyboard focus.
-Use one semantic h1 per view and a 72-character reading measure. Secondary metadata stays compact.
+The background is charcoal (`#121416`), raised surfaces `#1b1e22`, primary text `#edf0f3`, metadata `#adb5bf` and
+the action accent `#93d8c5`. Proposed opaque text contrasts range from 8.08:1 to 16.14:1. Controls keep 44 px hit
+targets and visible focus. System UI serves chrome, Georgia long reading text. Reading measure is 72 characters.
 
-Desktop: compact 208 px sidebar, flexible central workspace and optional 272 px context inspector. Every grid
-child has `min-width: 0`. Inspector collapses into normal document flow at intermediate widths; on phones the
-navigation becomes a collapsible block above the content. Nothing overlays the reading surface. The document
-scrolls with the page; only long tables, code and math scroll horizontally within their own frames.
+The knowledge lens uses compact circular nodes, thin arrows and stable connected-component regions. Grouping
+is derived presentation, never a scientific relation. The research lens optionally shows directed lanes. Selected
+edges expose type, direction and provenance; explicitly unverified edges are dashed. Zoom controls label density.
+Mouse/touch drag, pointer zoom, fit and keyboard controls share one camera, retained per record/lens/focus.
+The equivalent node list can select, focus and open the same entities. Selection/list panels reserve graph space,
+scroll inside their bounds, receive keyboard focus and close with Escape back to the canvas.
 
-Heading anchors and document sections are keyboard linkable. The skip link targets the main workspace.
-Context contains the document outline, original source information and typed incoming/outgoing references.
-Empty, loading and error states have visible text; errors have a retry action. Saved UI preferences are best-effort
-local browser state. They never become scientific evidence.
+The composer retains one model picker, dictation and reply audio, with a direct Send action. Voice readiness
+reflects service availability. Recording/transcription blocks Send; transcripts stay editable drafts. Late transport
+responses preserve newer edits. Drafts are scoped to record and session. Recent chat links are a bounded browser
+index, not a complete server-side conversation archive.
 
-Graph relation labels and arrow direction remain visible; colour supplements text. Possible/inferred relations
-must retain their provenance, never appear as verified evidence. A list provides a keyboard-accessible equivalent.
-Respect reduced motion, wrap long titles/filenames, and keep figures next to their Markdown reference.
+Documents retain semantic headings, section anchors, sanitized AST Markdown/math and contextual references.
+Phone document context uses a separate row so it cannot squeeze the reading column to a sliver. Wide tables,
+code and math scroll inside their frames. Empty/loading/error states stay explicit; local preferences are never
+scientific evidence. The old portal remains the complete compatibility route for human decisions and vault controls.
+
+Known budget gap: first-party styles currently combine the baseline sheets with a graph-specific sheet and exceed
+the intended compact stylesheet budget; production JS also retains a large combined chunk. Consolidation and
+dependency splitting remain hardening work. A passing visual matrix does not establish payload-budget compliance.

@@ -183,11 +183,19 @@ reference-analysis table. Serialize overlapping paths. Each completed slice upda
 The two initial discovery workers hit the account usage limit after returning useful partial findings; their
 work is not claimed as completed independent review. Preserve any eng task id and actual blocked reason.
 
-The first implementation task is `6fa96b5d988444778e31df08b5ea00fd`. It is **PAUSED**, before any provider
-call or worktree creation, because eng classified the request as high risk and requires a human CLI approval.
-The skill reserves this approval to the human; the coordinator has not granted it, altered the classification,
-submitted a replacement task or implemented the same task outside that gate. Design documentation and
-verification of the existing baseline can continue. This is not evidence of an implemented Phase 1.
+The first eng task is `6fa96b5d988444778e31df08b5ea00fd`. After the user attempted the resume command and
+explicitly instructed automatic handling, it resumed using the absolute checkout path. It completed a planner
+call and attempted an engineer call, but nested CLI command policy rejected even repository reads. It produced
+no application patch and was **CANCELLED** with no completed independent review. No command policy was relaxed.
+
+Implementation continues through built-in agents under the user's explicit multi-agent authorization:
+`graph_home_impl` owns frontend/generated assets, `graph_home_tests` owns browser checks/fixtures, and root
+owns backend reference improvements and documentation. `reference_review` reviews the backend diff read-only.
+Serialize further overlapping UI slices after this first slice passes. Do not rerun the failed nested eng route.
+The overnight heartbeat was deleted after the morning cutoff. The user subsequently authorized continuation.
+The graph/reference/transport checkpoint now passes 711 Python tests (7 skipped), 7 frontend unit tests,
+production build and both browser suites (19 legacy steps, 36 workspace checks); timezone and UI reviews passed.
+Continue from that committed checkpoint with disjoint renderer/classroom ownership and explicit integration checks.
 
 First implementation acceptance: no hero or graph-below-form home; full-window graph and bottom composer;
 compact selectable nodes and adjacent evidence; all existing model/voice/draft features retained; tested

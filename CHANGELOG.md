@@ -6,6 +6,11 @@
 - Start persistent conversations with a selected Codex, Claude or local Ollama model; show the knowledge
   graph on the landing page. Model requests run only after Send, outside the record lock.
 - Connect local Whisper dictation and Kokoro response playback; transcripts remain drafts until sent.
+- Replace the hero landing with a full-window point graph, compact bottom composer, collapsible navigation,
+  bounded node context, keyboard/list controls and saved camera. Isolate drafts by session and guard recording/send races.
+- Include backlinks asserted in linked records, cache titles by node changes, and resolve exact indexed note paths
+  without scanning, creating a vault manifest or rewriting notes. Preserve missing targets across sibling projects.
+- Let server-sent event streams watch the selected record while retaining the default-record endpoint.
 - Read handouts and sessions with sanitized AST Markdown, GFM, math, inline figures, source fingerprints
   and stable section links. Add canonical references, typed backlinks, bounded canvas graphs and search.
 - Show completed, claimed and queued research tasks immediately. Preserve human approval and decision gates.

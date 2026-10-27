@@ -7,6 +7,18 @@ the compatibility route and provides the complete human decision and vault confl
 See `docs/portal-redesign/REPORT.md` for acceptance evidence and remaining work; this is not a complete
 replacement yet. No record migration or vault rewriting is required to try it.
 
+The workspace opens into a viewport graph with compact point nodes, directed typed links, pan/zoom/fit,
+an equivalent node list and bounded selection context. Its bottom question dock retains model selection,
+local dictation and Kokoro playback. Navigation is collapsible; draft and camera preferences are local browser
+state. Microphone transcripts remain drafts, and Send is blocked until recording/transcription finishes.
+
+`workspace_entity` queries indexed incident edges in the selected record and its explicitly linked records.
+Each reference includes `edge_record` (where the relation was asserted) and `record` (where its target lives).
+Dangling endpoints in one project never resolve against a sibling project's coincidentally matching ID.
+Title/alias indexes are cached by node-log stamp, so conversation and assessment events do not rebuild them.
+`workspace_resolve` also supports exact path-qualified note links through the configured vault's existing
+read-only manifest; missing/deleted/unreadable paths remain missing, without automatic sync or discovery.
+
 `ROS_NO_VAULT=1` disables automatic vault discovery for standalone use and tests. A vault explicitly
 selected in settings remains usable. New read-only operations: `workspace_document`, `workspace_entity`,
 `workspace_resolve`, `workspace_graph`. They use the same tool table as CLI and MCP.
@@ -47,6 +59,11 @@ handouts about it. Every note in the vault carries a link back to that page in i
 
 `GET /api/<tool>?record=<name>&...` for reads and `POST /api/<tool>` (JSON, `X-ROS: 1`) for writes: every tool, on any
 record of the home. `GET /media/...`, `GET /vault/...` (byte ranges), `GET /events` (server-sent `change`).
+`GET /events?record=<name>` watches only that record; omitting `record` watches the server's default record.
+Record names accept plain or JSON-quoted strings, as API queries do. Unknown or invalid names return HTTP 400
+before the stream starts. Each stream sends an initial `change`, then polls only the selected record's event,
+node and edge file sizes; changes in another record do not trigger it. Idle polls send keep-alive comments.
+Streams reconnect after at most ten minutes and do not hold the API lock while waiting.
 
 The same operations exist as `ros` commands and MCP tools; the page adds nothing an agent cannot do except the
 person-only acts.

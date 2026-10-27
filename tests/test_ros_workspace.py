@@ -97,6 +97,129 @@ class WorkspaceTests(unittest.TestCase):
         filtered = api.call("workspace_graph", self.rec, focus="capability:variance", depth=1, relation="requires")
         self.assertEqual({e["type"] for e in filtered["edges"]}, {"requires"})
 
+    def test_backlinks_include_edges_asserted_in_linked_project_records(self):
+        home.set_config(self.rec.root, role="user")
+        project = Record(Path(self.tmp.name) / "projects" / "research")
+        try:
+            project.put_node("claim:spread", "claim", title="Spread claim")
+            home.set_config(project.root, role="project", user=self.rec.root.name)
+            project.put_edge("claim:spread", "requires", "capability:variance", provenance="researcher", verified=False)
+            with patch.object(Record, "events", side_effect=AssertionError("event scan")):
+                value = api.call("workspace_entity", self.rec, subject="capability:variance")
+            backlink = next(row for row in value["incoming"] if row["id"] == "claim:spread")
+            self.assertEqual((backlink["record"], backlink["edge_record"], backlink["missing"]),
+                             ("research", "research", False))
+            self.assertEqual((backlink["edge"]["provenance"], backlink["edge"]["verified"]), ("researcher", False))
+            self.assertEqual(api.call("workspace_entity", project, subject="claim:spread")["outgoing"][0]["record"], "demo")
+        finally:
+            project.close()
+
+    def test_cross_record_backlinks_remain_bounded_and_report_omissions(self):
+        home.set_config(self.rec.root, role="user")
+        project = Record(Path(self.tmp.name) / "projects" / "research")
+        try:
+            project.root.mkdir(parents=True, exist_ok=True)
+            home.set_config(project.root, role="project", user=self.rec.root.name)
+            for i in range(6):
+                project.put_node(f"claim:{i}", "claim", title=f"Claim {i}")
+                project.put_edge(f"claim:{i}", "supports", "capability:mean")
+            value = api.call("workspace_entity", self.rec, subject="capability:mean", limit=2)
+            self.assertEqual(len(value["incoming"]), 2)
+            self.assertEqual(value["truncated"], 5)  # six remote claims and the local variance requirement
+        finally:
+            project.close()
+
+    def test_dangling_endpoint_does_not_resolve_to_a_sibling_projects_same_id(self):
+        home.set_config(self.rec.root, role="user")
+        first = Record(Path(self.tmp.name) / "projects" / "first")
+        sibling = Record(Path(self.tmp.name) / "projects" / "sibling")
+        try:
+            first.put_edge("claim:result", "supports", "capability:mean")
+            home.set_config(first.root, role="project", user=self.rec.root.name)
+            sibling.put_node("claim:result", "claim", title="An unrelated claim in a sibling project")
+            home.set_config(sibling.root, role="project", user=self.rec.root.name)
+            value = api.call("workspace_entity", self.rec, subject="capability:mean")
+            dangling = next(row for row in value["incoming"] if row["edge_record"] == "first")
+            self.assertEqual((dangling["record"], dangling["id"], dangling["missing"]), ("first", "claim:result", True))
+        finally:
+            first.close()
+            sibling.close()
+
+    def test_title_alias_cache_survives_event_writes_and_reopened_records(self):
+        api.call("workspace_resolve", self.rec, target="Average")
+        self.rec.append("conversation.message", "conversation:test", {"text": "A question"}, actor="person")
+        with patch.object(self.rec, "nodes", side_effect=AssertionError("event write rebuilt title index")):
+            self.assertEqual(api.call("workspace_resolve", self.rec, target="Average")["status"], "resolved")
+        reopened = Record(self.rec.root)
+        try:
+            with patch.object(reopened, "nodes", side_effect=AssertionError("reopen rebuilt unchanged title index")):
+                self.assertEqual(api.call("workspace_resolve", reopened, target="Average")["status"], "resolved")
+        finally:
+            reopened.close()
+        self.rec.put_node("capability:mean", "capability", title="Arithmetic mean", aliases=["Mean value"])
+        self.assertEqual(api.call("workspace_resolve", self.rec, target="Average")["status"], "missing")
+        self.assertEqual(api.call("workspace_resolve", self.rec, target="Mean value")["status"], "resolved")
+
+    def test_string_aliases_and_duplicate_names_do_not_create_false_ambiguity(self):
+        self.rec.put_node("concept:spread", "concept", title="Spread", aliases="Spread")
+        self.assertEqual(api.call("workspace_resolve", self.rec, target="Spread")["status"], "resolved")
+        self.assertEqual(api.call("workspace_resolve", self.rec, target="S")["status"], "missing")
+
+    def test_path_qualified_wikilinks_use_existing_manifest_without_scanning_or_writing_notes(self):
+        folder = Path(self.tmp.name) / "vault"
+        folder.mkdir()
+        home.set_settings(vault=str(folder))
+        paths = [("Notes/First/Mean.md", "capability:mean"), ("Notes/Second/Mean.md", "capability:variance")]
+        for path, nid in paths:
+            note = folder / path
+            note.parent.mkdir(parents=True)
+            note.write_text("# Mean\n\nPersonal text stays unchanged.\n", encoding="utf-8")
+            with vault.opened(folder) as manifest:
+                manifest.upsert(path=path, key=self.rec.root.name + "|" + nid, ros_id=nid,
+                                record=self.rec.root.name, kind="capability", title="Mean", status="generated")
+        before = {path: (folder / path).read_bytes() for path, _ in paths}
+        with patch.object(vault, "sync", side_effect=AssertionError("projection sync")), \
+                patch.object(vault, "opened", side_effect=AssertionError("writable manifest open")), \
+                patch.object(home, "detect_vaults", side_effect=AssertionError("vault discovery")):
+            first = api.call("workspace_resolve", self.rec, target="[[Notes/First/Mean#section-intro|the mean]]")
+            second = api.call("workspace_resolve", self.rec, target="demo::Notes/Second/Mean.md")
+            self.assertEqual((first["status"], first["matches"][0]["id"], first["matches"][0]["anchor"]),
+                             ("resolved", "capability:mean", "section-intro"))
+            self.assertEqual(second["matches"][0]["id"], "capability:variance")
+        self.assertEqual(before, {path: (folder / path).read_bytes() for path, _ in paths})
+        (folder / paths[0][0]).unlink()
+        self.assertEqual(api.call("workspace_resolve", self.rec, target="Notes/First/Mean")["status"], "missing")
+        for target in ("../Notes/Second/Mean", "/Notes/Second/Mean", "C:/Notes/Second/Mean", "Notes\\Second\\Mean"):
+            self.assertEqual(api.call("workspace_resolve", self.rec, target=target)["status"], "missing")
+
+        second_note = folder / paths[1][0]
+        outside = Path(self.tmp.name) / "outside.md"
+        outside.write_text("Outside the vault.", encoding="utf-8")
+        original_resolve = Path.resolve
+        for failure in (None, OSError, RuntimeError):
+            def resolve_path(path, *args, **kwargs):
+                if path == second_note:
+                    if failure:
+                        raise failure("symlink loop or access denied")
+                    return outside
+                return original_resolve(path, *args, **kwargs)
+            with patch.object(Path, "resolve", resolve_path):
+                self.assertEqual(api.call("workspace_resolve", self.rec, target="Notes/Second/Mean")["status"], "missing")
+
+    def test_path_link_without_configured_vault_never_discovers_one(self):
+        with patch.object(home, "detect_vaults", side_effect=AssertionError("vault discovery")), \
+                patch.object(vault, "opened", side_effect=AssertionError("manifest opened without a vault")):
+            self.assertEqual(api.call("workspace_resolve", self.rec, target="Notes/Absent")["status"], "missing")
+
+    def test_path_link_does_not_create_an_absent_vault_manifest(self):
+        folder = Path(self.tmp.name) / "vault"
+        folder.mkdir()
+        home.set_settings(vault=str(folder))
+        manifest = vault.Manifest.path_for(folder)
+        self.assertFalse(manifest.exists())
+        self.assertEqual(api.call("workspace_resolve", self.rec, target="Notes/Absent")["status"], "missing")
+        self.assertFalse(manifest.exists())
+
     def test_queries_use_indexes_and_repeat_alias_resolution_is_cached(self):
         with patch.object(self.rec, "events", side_effect=AssertionError("event scan")), patch.object(self.rec, "edges", wraps=self.rec.edges) as edges:
             api.call("workspace_entity", self.rec, subject="capability:mean")

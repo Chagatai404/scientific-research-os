@@ -7,7 +7,7 @@ writer for as long as it runs. Open it in any browser or in Obsidian's core Web 
     POST /api/<tool>        any tool, JSON body; requires the header ``X-ROS: 1``
     GET  /media/<path>      bundle media and lesson logs, with byte ranges for seeking
     GET  /vault/<path>      a note, PDF or image from the Obsidian vault's Research OS folder (read only)
-    GET  /events            server-sent events: ``change`` whenever the record grows (a grade arrives, a task is done)
+    GET  /events?record=    server-sent ``change`` whenever the selected record grows (default if omitted)
 
 Every tool call takes an optional ``record`` (a record's name) to work on another record the person has: the page shows
 one at a time and switches. Only loopback clients are served, and only with a loopback ``Host`` header (no DNS
@@ -167,7 +167,11 @@ def make_handler(rec: "Record | Pool"):
             if path.startswith("/vault/"):
                 return self._vault(path[len("/vault/"):])
             if path == "/events":
-                return self._events()
+                try:
+                    target = pool.get(_arg(parse_qs(url.query).get("record", [""])[-1]))
+                except ValueError as exc:
+                    return self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+                return self._events(target)
             self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
         do_HEAD = do_GET
@@ -295,13 +299,13 @@ def make_handler(rec: "Record | Pool"):
                 return self._send(HTTPStatus.PARTIAL_CONTENT, data, ctype, extra)
             self._send(HTTPStatus.OK, target.read_bytes(), ctype, extra)
 
-        def _events(self):
+        def _events(self, target: Record):
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
             self.send_header("Connection", "close")
             self.end_headers()
-            files = [rec.events_path, rec.nodes_path, rec.edges_path]
+            files = [target.events_path, target.nodes_path, target.edges_path]
             last = None
             try:
                 deadline = time.monotonic() + 600  # the page reconnects; no connection lives forever

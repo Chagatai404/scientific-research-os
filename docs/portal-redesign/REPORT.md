@@ -1,5 +1,14 @@
 # Workspace implementation report
 
+**Verified checkpoint, 2026-10-27:** the graph-first landing, canonical-reference improvements and selected-record
+event transport passed the complete gate. The daily-review timezone fix also passed independent review, including
+Istanbul boundaries and 23/25-hour DST days. Full Python: **711 tests, OK, 7 skipped, 336.513 s**. Frontend:
+**7 unit tests and production build passed**. Legacy Chromium: **19 steps, 14.204 s**. Workspace Chromium:
+**36 checks, seven widths plus 1280×720, 11.080 s**. This checkpoint is committed on the integration branch;
+Git history identifies the revision. No push, deployment or main-branch merge is authorized or performed.
+See [MULTIAGENT_ERRORS.md](MULTIAGENT_ERRORS.md) for the historical failures and their resolution.
+The old overnight automation was deleted after its cutoff. The remaining slices are still required.
+
 Branch: `agent/codex/portal-rebuild`. Baseline: `27df821` (1.2.1). Date: 2026-10-26.
 This is a working preview milestone, not acceptance of the entire S0–S6 roadmap.
 
@@ -9,8 +18,8 @@ This is a working preview milestone, not acceptance of the entire S0–S6 roadma
 |---|---|---|
 | S0 | Boundaries, ADRs, gap table, baseline, isolated branch, rollback guide | Independent review and promotion |
 | S1 | React/TypeScript/Vite shell; real handout/session reader; sanitized AST Markdown, GFM, nested lists, math, code, footnotes, callouts, inline figures; 7 widths | Full legacy directive dialect, Mermaid/Excalidraw, more real-content acceptance, dependency splitting |
-| S2 | Canonical links, stable sections, aliases/wikilinks, cross-record resolution, explicit ambiguity/missing states, indexed backlinks, search and history | Paragraph anchors surviving insertions, vault path wikilinks, previews, block alias migrations |
-| S3 | Bounded typed subgraph, canvas pan/zoom, keyboard controls, focus, relation buttons, landing graph, provenance and list fallback | Clusters, evidence-chain lens parity, larger real-data browser benchmarks |
+| S2 | Canonical links, stable sections, aliases/wikilinks, exact indexed vault-path lookup, cross-record resolution/backlinks with origin identity, node-stamp title cache, ambiguity/missing states, search and history | Paragraph anchors surviving insertions, previews, block alias migrations |
+| S3 | Full-window point graph, deterministic connected groups, typed arrows, camera persistence, pointer/keyboard zoom/pan/fit, bounded context/list, optional directed research lanes, modal phone navigation | Evidence-chain lens parity, larger real-data browser benchmarks, display tuning |
 | S4 | Persistent conversations, selected CLI/local model bridge, goal framing; real lesson steps, drafts/questions; research completed/running/next board and audit evidence | Autonomous preparation/research task execution by the conversational model; native human decision forms; dependency plan |
 | S5 | No-vault library, packaged build, optional local Kokoro/Whisper transport, safe existing Obsidian controls retained | Note editing, Markdown import/export UI, broader legacy migration acceptance |
 | S6 | Renderer/domain/Chromium tests, CSP/URL checks, source hashes, fixtures, real Kokoro smoke, dependency audit | Independent accessibility review, microphone hardware, live model account smoke, Obsidian Web Viewer acceptance |
@@ -21,7 +30,8 @@ The original Begin action only queued preparation. Sending now frames the goal, 
 starts the chosen optional provider outside the record lock, and appends its response or a safe error.
 Messages persist across reloads and never count as assessment, audited claims or human decisions.
 Codex/Claude use existing CLI logins; Ollama uses loopback. Model labels are choices, not assertions of account
-access. Discovery never invokes a model. No paid provider request was made by implementation or tests.
+access. Discovery never invokes a model. Product conversation tests use fake providers; a live model account has
+not been exercised. The failed engineering workflow used two CLI provider invocations; actual monetary cost is unknown.
 
 The default theme is dark. Workspaces use navigation tabs. Graph controls use buttons. Research immediately
 shows completed work, claimed work and queued tasks. Model prose does not pretend queued tasks were executed.
@@ -86,7 +96,7 @@ bytes, so no restoration is claimed. The researcher was informed. Later tests us
 CLI and discovery fixtures now isolate the personal vault. Do not reconstruct the prior projections without
 version-history evidence or delete these notes speculatively.
 
-## Reference-led continuation (2026-10-26)
+## Historical reference-led planning (2026-10-26, before graph implementation)
 
 The user rejected the hero-first composition and requested a LearnHarness-like graph landing and research/
 classroom interaction. [REFERENCE_UI_SPEC.md](REFERENCE_UI_SPEC.md) records the actual screenshot/source
@@ -105,14 +115,10 @@ renderer tests, TypeScript/production build, full Python suite and both Chromium
 records and `ROS_NO_VAULT=1`. Eng doctor/providers report the configured Codex CLI available; authentication
 was not checked. The existing S0/S1 pilot plan validates with concurrency one; it has not been executed.
 
-Bounded graph-home task `6fa96b5d988444778e31df08b5ea00fd` is **PAUSED**, with zero provider calls and no
-worker worktree, because eng requires explicit human high-risk approval. The installed engineering skill
-forbids the coordinator from granting that CLI approval. No replacement task or outside-gate UI implementation
-has been used. The exact human resume command, from this checkout, is:
-
-```powershell
-eng resume 6fa96b5d988444778e31df08b5ea00fd --project . --approve-high-risk
-```
+The first eng task `6fa96b5d988444778e31df08b5ea00fd` initially paused at approval. The user attempted to
+resume and explicitly instructed automatic handling. Its absolute project path resolved task lookup, but nested
+worker command policy rejected repository reads. The task was cancelled after two provider calls with no patch.
+Built-in implementation/test/review agents completed the graph slice without relaxing that command policy.
 
 The committed gate completed successfully on the unchanged application baseline:
 
@@ -126,9 +132,9 @@ The committed gate completed successfully on the unchanged application baseline:
 | Existing pilot-plan validation | Valid, concurrency 1; no execution |
 | Proposed opaque text colors | Contrast calculations 8.08:1–16.14:1; actual browser theme not implemented |
 
-The new graph-home UI, shared classroom, native research decisions, complete reference/media adapters and
-bounded agent bridge remain unimplemented. These results apply to the existing preview, not those future
-slices. The full run emitted Windows line-ending and HTTP-error cleanup warnings, with no test failures.
+That historical baseline predates the graph-first implementation verified at the top of this report. Shared
+classroom, native research decisions, complete reference/media adapters and bounded agent execution remain
+unfinished. Windows line-ending and HTTP-error cleanup warnings occur without failing the current gate.
 
 ## Reproduce
 

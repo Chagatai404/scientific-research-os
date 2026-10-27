@@ -9,6 +9,8 @@ import re
 import sys
 import tempfile
 import unittest
+from datetime import date, timedelta, timezone
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -385,6 +387,19 @@ class StaticFilesTests(Fixture):
 
 
 class ReviewTests(Fixture):
+    def test_review_uses_the_local_calendar_day_and_excludes_the_next_day(self):
+        window = vault._review_window("2026-10-27", timezone(timedelta(hours=3)))
+        self.assertEqual(window, ("2026-10-26T21:00:00.000000Z", "2026-10-27T21:00:00.000000Z"))
+        self.rec.append("decision", "claim:width", {"outcome": "revise", "rationale": "Within local day"},
+                        ts="2026-10-26T21:30:00.000000Z")
+        self.rec.append("decision", "claim:width", {"outcome": "revise", "rationale": "Next local day"},
+                        ts="2026-10-27T21:00:00.000000Z")
+        with patch.object(vault, "_review_window", return_value=window):
+            out = vault.review_note(self.rec, date(2026, 10, 27))
+        text = (self.vault / out["path"]).read_text()
+        self.assertIn("Within local day", text)
+        self.assertNotIn("Next local day", text)
+
     def test_the_daily_review_lists_what_is_due_and_what_happened(self):
         self.rec.append("retrieval", "capability:mean", {**RETRIEVAL, "outcome": "pass", "review": "2026-09-02"})
         research.decide(self.rec, "claim:width", "revise", "Ada", "Needs the integrity audit.")

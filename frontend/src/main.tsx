@@ -4,6 +4,7 @@ import {App} from './App';
 import 'katex/dist/katex.min.css';
 import './style.css';
 import './dark.css';
+import './graph.css';
 
 class ErrorBoundary extends Component<{children: ReactNode}, {error: string}> {
   state = {error: ''};

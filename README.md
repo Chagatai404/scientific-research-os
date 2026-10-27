@@ -105,6 +105,8 @@ notes (see the benchmark in `tests/test_ros_roadmap_bench.py`).
 
 The rebuilt workspace preview is at `http://127.0.0.1:8737/workspace/` after starting this checkout's
 `ros serve`. It reads existing records and works without Obsidian. The original portal stays at `/`.
+The landing screen fills the window with an interactive knowledge graph and a compact question dock.
+Choose a model, dictate a draft or play responses with local Kokoro; availability depends on your installed engines.
 See [the slice report](docs/portal-redesign/REPORT.md) for implemented features and limits.
 Developers build it with `npm --prefix frontend ci` then `npm --prefix frontend run build`; end users
 need only Python because the browser build is included. Set `ROS_NO_VAULT=1` when testing so automatic

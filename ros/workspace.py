@@ -7,9 +7,37 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import ExitStack
 
-from . import atlas, context, export, handouts, tasks
+from . import atlas, context, export, handouts, home, tasks, vault
 from .store import Record
+
+
+_ALIASES: dict = {}
+
+
+def _aliases(rec: Record) -> dict:
+    """Node titles/aliases survive event-only writes, including chat and assessment updates."""
+    root, stamp = str(rec.root.resolve()), rec.stamp("nodes")
+    hit = _ALIASES.get(root)
+    if hit and hit[0] == stamp:
+        return hit[1]
+    index: dict[str, list[dict]] = {}
+    for node in rec.nodes():
+        aliases = node.get("aliases", [])
+        if isinstance(aliases, str):
+            aliases = [aliases]
+        if not isinstance(aliases, (list, tuple)):
+            aliases = []
+        for name in [node.get("title", ""), *aliases]:
+            if isinstance(name, str) and name.strip():
+                rows = index.setdefault(name.strip().casefold(), [])
+                if node not in rows:
+                    rows.append(node)
+    if len(_ALIASES) >= 16:
+        _ALIASES.pop(next(iter(_ALIASES)))
+    _ALIASES[root] = (stamp, index)
+    return index
 
 
 def entity(rec: Record, subject: str, limit: int = 80) -> dict:
@@ -17,28 +45,38 @@ def entity(rec: Record, subject: str, limit: int = 80) -> dict:
     if node is None:
         raise KeyError(f"no such entity {subject}")
     limit = max(1, min(int(limit), 200))
-    # Indexed incident-edge lookups; never walk the entire record or vault for a click.
-    incoming, outgoing = rec.edges(dst=subject), rec.edges(src=subject)
-    ids = {e["src"] for e in incoming[:limit]} | {e["dst"] for e in outgoing[:limit]}
-    nodes = {n["id"]: n for n in rec.nodes_in(ids)}
-    missing = ids - nodes.keys()
-    if missing:
-        with context.linked(rec) as records:
-            for linked in records:
-                if linked.root.resolve() != rec.root.resolve():
-                    for n in linked.nodes_in(missing):
-                        nodes[n["id"]] = {**n, "record": linked.root.name}
-                        missing.discard(n["id"])
+    # Query incident edges in each explicitly linked record, not only target nodes.
+    # A project's citation of a user-wide capability must appear when reading that capability.
+    with context.linked(rec) as records, ExitStack() as reads:
+        for linked in records:
+            reads.enter_context(linked.reading())
+        incoming, outgoing = [], []
+        for linked in records:
+            incoming.extend((linked, edge) for edge in linked.edges(dst=subject))
+            outgoing.extend((linked, edge) for edge in linked.edges(src=subject))
+        ids = {e["src"] for _, e in incoming[:limit]} | {e["dst"] for _, e in outgoing[:limit]}
+        nodes = {str(linked.root.resolve()): {n["id"]: n for n in linked.nodes_in(ids)} for linked in records}
+        reachable = {}
+        for owner in records:
+            cfg = home.config(owner.root)
+            reachable[str(owner.root.resolve())] = [owner, *(linked for linked in records if linked is not owner
+                and (cfg.get("role") == "user" or linked.root.name == cfg.get("user")))]
 
-    def row(edge, target):
-        n = nodes.get(target, {})
-        return {"edge": edge, "id": target, "record": n.get("record", rec.root.name),
-                "title": n.get("title") or n.get("text") or target, "missing": not bool(n)}
+        def row(owner, edge, target):
+            # Prefer the record that actually asserted the edge; shared hub IDs may have local mirrors.
+            for linked in reachable[str(owner.root.resolve())]:
+                n = nodes[str(linked.root.resolve())].get(target)
+                if n:
+                    return {"edge": edge, "edge_record": owner.root.name, "id": target,
+                            "record": linked.root.name, "title": n.get("title") or n.get("text") or target,
+                            "missing": False}
+            return {"edge": edge, "edge_record": owner.root.name, "id": target,
+                    "record": owner.root.name, "title": target, "missing": True}
 
-    return {"id": subject, "record": rec.root.name, "node": node,
-            "incoming": [row(e, e["src"]) for e in incoming[:limit]],
-            "outgoing": [row(e, e["dst"]) for e in outgoing[:limit]],
-            "truncated": max(0, len(incoming) - limit) + max(0, len(outgoing) - limit)}
+        return {"id": subject, "record": rec.root.name, "node": node,
+                "incoming": [row(owner, edge, edge["src"]) for owner, edge in incoming[:limit]],
+                "outgoing": [row(owner, edge, edge["dst"]) for owner, edge in outgoing[:limit]],
+                "truncated": max(0, len(incoming) - limit) + max(0, len(outgoing) - limit)}
 
 
 def resolve(rec: Record, target: str) -> dict:
@@ -61,15 +99,9 @@ def resolve(rec: Record, target: str) -> dict:
             if n:
                 candidates = [n]
             else:
-                def aliases(record):
-                    index: dict[str, list[dict]] = {}
-                    for node in record.nodes():
-                        names = [node.get("title", ""), *node.get("aliases", [])]
-                        for name in names:
-                            if isinstance(name, str) and name.strip():
-                                index.setdefault(name.casefold(), []).append(node)
-                    return index
-                candidates = linked.derived("workspace.aliases", aliases).get(target.casefold(), [])
+                candidates = _aliases(linked).get(target.casefold(), [])
+                if not candidates and ("/" in target or target.lower().endswith(".md")):
+                    candidates = linked.nodes_in(vault.reference_targets(linked, target))
             for node in candidates:
                 value = {"id": node["id"], "record": linked.root.name,
                          "title": node.get("title") or node.get("text") or node["id"], "anchor": anchor}

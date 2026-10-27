@@ -182,10 +182,11 @@ Keep screenshots of the actual result; passing the old suite alone does not esta
 Discovery produced two partial specialist reports (reference UI and backend gaps). Both then hit the account
 usage limit. They are not completed implementation or independent review.
 
-Eng task `6fa96b5d988444778e31df08b5ea00fd` is paused at classification with zero provider calls, no worker
-checkout and no UI patch. Its stated reason is `High-risk work requires explicit --approve-high-risk before
-execution`. The installed multiagentic-engineering skill reserves that CLI approval to the human. No duplicate
-task, classification downgrade, alternative provider or local implementation bypass has been used.
+Eng task `6fa96b5d988444778e31df08b5ea00fd` initially paused at its approval gate. The user attempted the
+resume command and explicitly directed automatic handling. Resuming with the absolute project path worked,
+but nested CLI command policy rejected even repository reads. The run was cancelled after two provider calls,
+without an application patch or independent review. The policy was not disabled. Built-in implementation,
+test and review agents now continue with separate path ownership; see the implementation-plan ledger.
 
-After a human resumes that exact task, inspect its status and resulting checkout. Completion still requires
-the configured regression gate, independent review and an inspected diff; approval is not evidence of success.
+Completion still requires the regression gate, independent review and inspected diffs. Neither an approval,
+a generated plan nor a provider's successful exit is evidence that the requested UI has been implemented.

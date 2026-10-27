@@ -84,6 +84,12 @@ temporary file renamed over the old one, and a note is rewritten only when its h
 
 ## Tools
 
+The standalone workspace can resolve a path-qualified wikilink such as `[[Research OS/Knowledge/Mean#section-intro]]`
+through the existing manifest's exact path index. It keeps the record ID and anchor, rather than guessing from
+the filename. This lookup does not discover a vault, initialize/migrate its manifest, scan notes, sync or rewrite
+content. An absent manifest, deleted note, inaccessible path or target outside the configured vault stays missing;
+an explicit sync can repair stale index entries. The native record remains usable without a vault.
+
 | Tool | Does |
 |---|---|
 | `vault_set` | Choose the vault and the folder; says which vaults Obsidian knows |

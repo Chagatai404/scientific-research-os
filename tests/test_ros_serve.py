@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import http.client
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -180,3 +182,95 @@ class PoolAndVaultTests(unittest.TestCase):
         portal = ROOT / "ros" / "portal"
         self.assertLess((portal / "app.js").stat().st_size, 60 * 1024)
         self.assertLess((portal / "app.css").stat().st_size, 20 * 1024)
+
+
+class SelectedRecordEventsTests(unittest.TestCase):
+    """Real SSE frames retain record isolation without occupying the API lock."""
+
+    def setUp(self):
+        from ros.store import Record
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.env = patch.dict(os.environ, {"ROS_HOME": self.tmp.name, "ROS_NO_VAULT": "1"})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        self.rec = Record(Path(self.tmp.name) / "projects" / "default")
+        self.other = Record(Path(self.tmp.name) / "projects" / "other")
+        for rec in (self.rec, self.other):
+            rec.put_node("concept:one", "concept", title="One")
+            self.addCleanup(rec.close)
+        self.server = serve.start(self.rec, 0)
+        self.port = self.server.server_address[1]
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+
+    def stream(self, path):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        self.addCleanup(conn.close)
+        conn.request("GET", path)
+        response = conn.getresponse()
+        self.addCleanup(response.close)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.getheader("Content-Type"), "text/event-stream")
+        self.assertIsNone(response.getheader("Access-Control-Allow-Origin"))
+        return response
+
+    def frame(self, response):
+        lines = []
+        while True:
+            line = response.readline()
+            self.assertTrue(line, "SSE stream ended before a complete frame")
+            if line == b"\n":
+                return b"".join(lines)
+            lines.append(line)
+
+    def request(self, path, headers=None):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        try:
+            conn.request("GET", path, headers=headers or {})
+            response = conn.getresponse()
+            return response.status, response.getheader("Content-Type"), response.read()
+        finally:
+            conn.close()
+
+    def change(self, response):
+        for _ in range(5):
+            if self.frame(response).startswith(b"event: change\n"):
+                return
+        self.fail("record change did not arrive")
+
+    def test_default_and_selected_streams_watch_only_their_own_record(self):
+        default = self.stream("/events")
+        selected = self.stream("/events?record=%22other%22")
+        self.assertTrue(self.frame(default).startswith(b"event: change\n"))
+        self.assertTrue(self.frame(selected).startswith(b"event: change\n"))
+        self.rec.append("test.change", "concept:one", {})
+        self.change(default)
+        for _ in range(3):
+            self.assertEqual(self.frame(selected), b": keep-alive\n")
+        # An API call completes while both streams are live, and opens the pooled index.
+        self.assertEqual(self.request("/api/workspace_entity?record=other&subject=concept%3Aone")[0], 200)
+        pooled = self.server.pool.get("other")
+        self.assertIsNotNone(pooled._db)
+        self.other.put_node("concept:two", "concept", title="Two")
+        self.change(selected)
+        self.other.append("test.change", "concept:two", {})
+        self.change(selected)
+        self.other.put_edge("concept:one", "requires", "concept:two")
+        self.change(selected)
+        default.close()
+        selected.close()
+        self.server.shutdown()
+        self.server.server_close()
+        self.assertIsNone(pooled._db)
+        self.assertEqual(self.server.pool.all(), [self.rec])
+
+    def test_plain_record_names_and_invalid_names_before_stream_headers(self):
+        selected = self.stream("/events?record=other")
+        self.assertTrue(self.frame(selected).startswith(b"event: change\n"))
+        for name in ("missing", "..%2F..", "%22..%5C..%22", "%5B%22other%22%5D"):
+            status, ctype, body = self.request("/events?record=" + name)
+            self.assertEqual(status, 400)
+            self.assertIn("application/json", ctype)
+            self.assertIn("no record", json.loads(body)["error"])
+        self.assertEqual(self.request("/events?record=other", {"Host": "evil.example:80"})[0], 403)
