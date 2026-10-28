@@ -1,7 +1,7 @@
 {
   "version": "1.4.0",
-  "installer_sha256": "219c91f09a6c9ad02e4a79dc1a97b0c0ba8056eabe5d51c15aba6ee3aab89efd",
-  "tested_at": "2026-10-28T14:51:25.580098+00:00",
+  "installer_sha256": "8123de93ae002e2538e7c8feb52c6abac2d1ba6d2336ad05770b8bbdf5bc7030",
+  "tested_at": "2026-10-28T15:18:11.693115+00:00",
   "installer_exit": 0,
   "application_exit": 0,
   "uninstaller_exit": 0,
@@ -17,12 +17,12 @@
   "preserved_hashes": {
     "record\\projects\\upgrade-fixture\\record.json": "353991c198e5bb691be5fe23145094595da34af96452fba72f42bb0ebdccd907",
     "record\\projects\\upgrade-fixture\\events.jsonl": "7151c33e1f28d8cb6b127388e2bd20b62ba274e62859b3c5ee149848f44f6086",
-    "record\\projects\\upgrade-fixture\\graph\\nodes.jsonl": "734169b9eef7e4d58522754f114b26544ebba70155fc6a0e0ab0d969e2adfd3d",
+    "record\\projects\\upgrade-fixture\\graph\\nodes.jsonl": "76968292b591cbbfa8d4778975ae81b015a91208b358119c372849ae62f0a230",
     "materials\\lecture.md": "efaae93dcb137fd9d8616c18150c0a96fa77fadbe9a2b0ab2b859ef3eba1f2bd",
     "profile\\organization-preferences.json": "6dff54cfbc89c52256f4703b13f8041fcee323c2b6a6b061319258c06b298db2"
   },
   "installed_executable_removed": true,
   "upgrade_from": null,
   "previous_installer_exit": null,
-  "fixture": "C:\\Users\\you\\.codex\\worktrees\\f2e5\\scientific-research-os\\.desktop-fixtures\\installer-rtyyz_dp"
+  "fixture": "C:\\Users\\ASUS\\.codex\\worktrees\\f2e5\\scientific-research-os\\.desktop-fixtures\\installer-txuvv8al"
 }
