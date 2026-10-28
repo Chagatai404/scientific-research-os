@@ -247,6 +247,14 @@ assets before freezing the sidecar. Run `npm --prefix desktop run verify`, build
   branches). Membership lines are navigation and never written as edges; files and notes are counted on their place and
   listed only when it is expanded. Archived items (`organization_archive`, folded with `organization.v2`) are hidden,
   never deleted. The frontend lays it out deterministically (`frontend/src/graphLayout.ts`, rings plus clusters, no worker).
+- Voice ships in the installer as a pack (`desktop/build-voice.py` -> `resources/voice/`: a relocatable Python 3.12, Kokoro and
+  faster-whisper `site-packages`, both models, `LICENSES.txt`). `ros/lib/dialogue.py` finds it (`ROS_VOICE_PACK`, else beside the
+  frozen backend), `ros/lib/voice.py` `launcher()` runs `voice_adapter.py` with the shared Python and `PYTHONPATH` set to one
+  engine's packages; explicit `ROS_KOKORO_*` / `ROS_WHISPER_ENV` paths and `~/voice-envs` remain fallbacks. Everything an outside
+  interpreter runs (here `voice_adapter.py`) must be a data file in `desktop/backend.spec`; `tests/test_ros_voice_bundle.py` guards it.
+- Handout PDFs print through the app's own Chromium: the Electron host names itself in `ROS_PDF_ELECTRON`, and
+  `ros/lib/pdf.py` `print_chromium` starts it as `--ros-print-pdf <html> <pdf>` (`desktop/printer.cjs`, hidden window, throwaway
+  profile). A system Chromium-family browser or LaTeX is the fallback outside the app.
 - `vault.project_folder` gives a course or project created through `organization_create` an index note under the vault's
   `01 Projects` folder (never overwriting); the sync-owned notes stay under the configured root.
 - Use `ROS_NO_VAULT=1` for hermetic tests and standalone use: it disables automatic vault discovery;
