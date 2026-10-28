@@ -1,0 +1,29 @@
+{
+  "complete_gate": false,
+  "checks": [
+    {
+      "name": "frontend-tests",
+      "exit": 0,
+      "seconds": 74.5,
+      "timed_out": false
+    },
+    {
+      "name": "typecheck",
+      "exit": 0,
+      "seconds": 26.927,
+      "timed_out": false
+    },
+    {
+      "name": "frontend-build",
+      "exit": 0,
+      "seconds": 112.718,
+      "timed_out": false
+    },
+    {
+      "name": "desktop-lifecycle",
+      "exit": 0,
+      "seconds": 7.242,
+      "timed_out": false
+    }
+  ]
+}

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from .registry import LOCK, TOOLS, Param, Tool, iso_day, present  # noqa: F401  (the public names of the table)
 from .store import Record
+from .tools import sources, runs, execution, pedagogy  # noqa: F401
 from .tools.context import release  # noqa: F401  (closes the user-wide records kept open between calls)
 from .tools import atlas, automation, context, director, handouts, learning, planning, preparation, record, research, vault, workspace  # noqa: F401  (importing a module registers its tools)
 
@@ -16,3 +17,7 @@ def call(name: str, rec: Record, **args):
     if name not in TOOLS:
         raise KeyError(f"no tool {name}")
     return TOOLS[name].call(rec, {k: v for k, v in args.items() if v is not None})
+
+def external_result(value):
+    """CLI/MCP never disclose host-only provider packets or executable worker instructions."""
+    return {k:v for k,v in value.items() if k not in ('_engine','_operation')} if isinstance(value,dict) else value

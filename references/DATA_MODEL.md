@@ -120,3 +120,20 @@ Importers (`import --kind`): `learning`, `sessions`, `research`, `graphify`, `do
 `kind` (choice, numeric, free), `prompt`, and per kind `options` + `answer` (index), `answer` + `tolerance`, or a
 hidden `rubric`; optional `explanation`, `hints`, `option_feedback`, `concepts` (node ids), `difficulty`,
 `supersedes`, `defence`.
+# Desktop facts
+
+`workspace.identity` records a stable UUID on the first explicit source connection. Read-only
+opening does not modify existing records. Canonical identity is record identity plus entity ID.
+`source.registered`, `source.removed` and `source.paused` record explicit connection grants;
+`source.revision` references an immutable SHA-256 snapshot and exact passage locator. `source.report`
+retains completed understanding reports. Source roots are host metadata, never provider-selected paths.
+`provider.configured` records local endpoint capability profiles without credentials or inference.
+`run.queued`, `run.state`, `run.output` and `run.step` preserve lifecycle, batched partial text and
+operation/result references. Usage and cost are unavailable unless reported by the provider.
+`notebook.requested` records explicit human execution permission and source revision;
+`notebook.finished` records the worker's actual result. A scratch clone isolates data, not the OS.
+
+- `source.derived_private`: destination record contains canonical output derived from a local-only source. Runtime marks it before scoped writes; later cloud turns in this record and linked director context are refused. It is a conservative record restriction, not content classification of manually pasted information.
+- `execution.limits`: explicit human workspace budgets for context characters, output, tool steps, deadline, queued runs and local provider calls. Native CLI internal calls remain provider managed, not a subscription spending ceiling.
+- `run.usage`: provider-reported usage/cost with reported provenance. Missing values mean unavailable, never zero.
+- Experiment plan approval carries `approved_revision`; changing plan content invalidates authorization. New human forms also bind their one-shot action to the current subject revision.

@@ -27,7 +27,7 @@ def resolve(rec, target):
 
 
 @tool("workspace_graph", "Read a bounded graph neighbourhood with original directed typed edges and provenance for the interactive workspace.",
-      mode=P("string", "knowledge or research", enum=("knowledge", "research")),
+      mode=P("string", "knowledge, research, evidence or progress", enum=("knowledge", "research", "evidence", "progress")),
       focus=P("string", "canonical node id; omit for hub overview"),
       depth=P("integer", "neighbourhood hops, between zero and three"),
       limit=P("integer", "at most 200 nodes; default 120"),
@@ -39,9 +39,15 @@ def graph(rec, mode="knowledge", focus=None, depth=1, limit=120, relation=None):
 @tool("workspace_chat_send", "Save a conversational message and prepare its model request; the portal executes the optional provider outside the record lock.",
       writes=True, text=P("string", "the person's message", True), model=P("string", "provider:model", True),
       conversation=P("string", "existing conversation id; omit to start and frame a goal"),
-      effort=P("string", "Codex reasoning effort; default medium", enum=("low", "medium", "high", "xhigh", "max")))
-def chat_send(rec, text, model, conversation=None, effort="medium"):
-    return chat.send(rec, text, model, conversation, effort)
+      effort=P("string", "Codex reasoning effort; default medium", enum=("low", "medium", "high", "xhigh", "max")),
+      key=P("string", "turn idempotency key"), mode=P("string", "chat, learn or research", enum=("chat", "learn", "research")), scope=P("array", "explicit versioned source passages"))
+def chat_send(rec, text, model, conversation=None, effort="medium", key=None, mode="chat", scope=None):
+    return chat.send(rec, text, model, conversation, effort, key, mode, scope)
+
+@tool('workspace_sessions', 'List canonical conversations with pagination independent of browser preferences.', offset=P('integer', 'page offset'), limit=P('integer', 'page size'))
+def sessions(rec, offset=0, limit=30):
+    rows = rec.nodes(type='conversation')
+    return [{'id': n['id'], 'title': n.get('title', 'Conversation'), 'model': n.get('model')} for n in rows][::-1][max(0, offset):max(0, offset) + min(100, max(1, limit))]
 
 
 @tool("workspace_chat", "Read the messages and pending response of one conversation. Assistant messages are not scientific or learning evidence.",
@@ -60,3 +66,9 @@ def chat_complete(rec, conversation, request, text, model, error=False):
 @tool("workspace_activity", "See what was completed, what is running and what happens next, with recent recorded research actions and honest task states.")
 def activity(rec):
     return ws.activity(rec)
+
+@tool('workspace_lesson_material', 'Open prepared sections freely without marking them learned; record assistance before assessment material is exposed.', writes=True, lesson=P('string','saved lesson id',True), item=P('string','current immutable assessment item, if any'))
+def material(rec,lesson,item=None):return ws.lesson_material(rec,lesson,item)
+
+@tool('workspace_cloud_guard', 'Check indexed privacy restrictions in the record and linked context before cloud access.')
+def cloud_guard(rec):return chat.cloud_guard(rec)

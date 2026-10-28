@@ -196,7 +196,7 @@ class DocsContractTests(unittest.TestCase):
                             self.assertIn(arg.replace("-", "_"), known, f"{tool} --{arg}")
 
     def test_human_acts_are_marked(self):
-        self.assertEqual({n for n, t in api.TOOLS.items() if t.human}, {"approve", "decide", "waive"})
+        self.assertEqual({n for n, t in api.TOOLS.items() if t.human}, {"approve", "decide", "waive", "source_register", "source_change", "source_location", "source_engine_root", "source_use_vault", "source_relocate", "provider_configure", "notebook_request", "execution_configure", "compute_request", "transcription_accept", "vision_permission"})
 
 
 if __name__ == "__main__":

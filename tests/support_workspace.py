@@ -36,6 +36,11 @@ if os.environ.get("ROS_WORKSPACE_FAKE") == "1":
 
 def fixture(root):
     os.environ["ROS_HOME"] = str(root)
+    # The browser switches to this advertised record; strict record lookup must not invent it.
+    from ros.store import Record
+    user=Record(root/'projects'/'me')
+    if not user.node('project:me'):user.put_node('project:me','project',title='Knowledge')
+    user.close()
     if (root / "projects" / "demo" / "events.jsonl").exists():
         from ros.store import Record
         rec = Record(root / "projects" / "demo")

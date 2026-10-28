@@ -1,0 +1,13 @@
+{
+  "files": 10000,
+  "registration_ms": 180.17,
+  "listing_seconds": 33.601,
+  "first_page_ms": 871.38,
+  "last_page_ms": 431.28,
+  "index_seconds": 268.567,
+  "search_cold_ms": 10.4,
+  "search_warm_p50_ms": 6.69,
+  "search_warm_p95_ms": 8.31,
+  "match_count": 1,
+  "fixture": "10k small synthetic Markdown documents, unique lexical queries; excludes PDF OCR/model embedding."
+}

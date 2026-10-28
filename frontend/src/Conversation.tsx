@@ -1,20 +1,29 @@
 import {useEffect, useRef, useState, type FormEvent} from 'react';
-import {call, href, preference, savePreference, service} from './api';
+import {call, human, href, preference, savePreference, service} from './api';
 import {RichText} from './Document';
 import {Graph} from './Graph';
 import {useResource} from './hooks';
+import type {SourceRef} from './desktop';
+import type {Run} from './Workbench';
 import {effortLabel, modelLabel, supportedEfforts, useModelPreferences, type ModelCatalog} from './modelPreferences';
 
-interface Chat {conversation: string; title: string; messages: {id: string; role: string; text: string; model?: string}[]; pending: string[]; interrupted: number}
+interface Chat {conversation: string; title: string; messages: {id: string; role: string; text: string; model?: string;scope?:SourceRef[]}[]; pending: string[]; interrupted: number}
 
 export function Conversation({id, record}: {id: string; record: string}) {
-  const capabilities = useResource('conversation-capabilities', () => service<ModelCatalog>('catalog'));
+  const capabilities = useResource('conversation-capabilities:' + record, () => service<ModelCatalog>('catalog?record=' + encodeURIComponent(record)));
   const models = useModelPreferences(capabilities.data?.models);
   const draftKey = 'composer:' + JSON.stringify([record, id || 'new']);
   const [text, setText] = useState(() => preference(draftKey, ''));
   const [chat, setChat] = useState<Chat | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [mode, setMode] = useState('chat');
+  const [attachment, setAttachment] = useState<SourceRef|null>(() => {try {return JSON.parse(preference('attachment:' + record, 'null'));} catch {return null;}});
+  const runs = useResource('conversation-runs:' + record, signal => call<Run[]>('run_list', {}, record, false, signal), record);
+  const activeRun = runs.data?.find(r => r.conversation === id);
+  const follow = useRef(true);
+  const [newOutput,setNewOutput] = useState(false);
+  const turnKey = useRef(crypto.randomUUID());
   const [recording, setRecording] = useState(false);
   const [openingMicrophone, setOpeningMicrophone] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -29,7 +38,17 @@ export function Conversation({id, record}: {id: string; record: string}) {
   const submitting = useRef(false);
   const currentDraft = useRef(draftKey); currentDraft.current = draftKey;
   const currentModel = models.model;
-  const pending = sending || !!chat?.pending.length;
+  const media = attachment?.kind === 'media';
+  async function permitAttachment() {
+    if (!attachment) return;
+    try {
+      const grant = await human<{permission:string}>('vision_permission', {source:attachment.sourceId,path:attachment.relativePath,revision:attachment.revision,model:currentModel}, record);
+      const next = {...attachment,visionPermission:grant.permission,permissionModel:currentModel};
+      setAttachment(next);savePreference('attachment:'+record,JSON.stringify(next));setError('');
+    } catch(e) {setError((e as Error).message);}
+  }
+  const pending = sending || (!!chat?.pending.length && (!activeRun || !['completed','failed','cancelled','interrupted'].includes(activeRun.state)));
+  async function stop() {try {if (activeRun) {await service('run-cancel', {run: activeRun.id, record}); runs.retry();}} catch (e) {setError((e as Error).message);}}
   function releaseMicrophone() {
     acquisition.current++;
     const capture = recorder.current;
@@ -49,8 +68,9 @@ export function Conversation({id, record}: {id: string; record: string}) {
       catch (e) {if (!cancelled) setError((e as Error).message);}
     }
     refresh(); return () => {cancelled = true; clearTimeout(timer);};
-  }, [id, record, sending]);
-  useEffect(() => {end.current?.scrollIntoView({block: 'nearest', behavior: 'auto'});}, [chat?.messages.length]);
+  }, [id, record, sending, activeRun?.state]);
+  useEffect(() => {const container=end.current?.closest('main');if(!container)return;const scrolled=()=>{follow.current=container.scrollTop+container.clientHeight>=container.scrollHeight-160;if(follow.current)setNewOutput(false);};container.addEventListener('scroll',scrolled,{passive:true});return()=>container.removeEventListener('scroll',scrolled);}, [id,!!chat]);
+  useEffect(() => {if (follow.current) end.current?.scrollIntoView({block: 'nearest', behavior: 'auto'});else setNewOutput(true);}, [chat?.messages.length, activeRun?.output]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -67,9 +87,10 @@ export function Conversation({id, record}: {id: string; record: string}) {
     setSending(true); setError('');
     const value = text.trim(), submittedDraft = text;
     try {
-      const result = await call<{conversation: string; request: string}>('workspace_chat_send', {text: value, model: currentModel, ...(models.selectedEffort ? {effort: models.selectedEffort} : {}), ...(id ? {conversation: id} : {})}, record, true);
+      const result = await call<{conversation: string; request: string}>('workspace_chat_send', {text: value, model: currentModel, key: turnKey.current, mode, ...(attachment ? {scope: [attachment]} : {}), ...(models.selectedEffort ? {effort: models.selectedEffort} : {}), ...(id ? {conversation: id} : {})}, record, true);
       // A request can finish while the person is writing the next message or navigating.
       // Preserve that newer draft and never steal the new page's input/focus.
+      turnKey.current = crypto.randomUUID(); setAttachment(null); savePreference('attachment:' + record, 'null');
       const latest = preference(draftKey, submittedDraft), remaining = latest === submittedDraft ? '' : latest;
       const destinationDraft = 'composer:' + JSON.stringify([record, result.conversation]);
       savePreference(destinationDraft, remaining); if (destinationDraft !== draftKey) savePreference(draftKey, '');
@@ -126,13 +147,13 @@ export function Conversation({id, record}: {id: string; record: string}) {
   return <div className={'conversation-workspace ' + (id ? 'has-conversation' : 'graph-home')} data-testid={!id ? 'graph-home' : undefined}>
     {!id && <Graph record={record} focus="" embedded />}
     {id && <div className="conversation-heading"><div><div className="eyebrow">An ongoing conversation</div><h1>{chat?.title || 'Let’s work through it'}</h1></div><a className="button" href={href('overview', '', record)}>New conversation</a></div>}
-    {chat && <div className="messages" aria-label="Conversation messages">{chat.messages.map(message => <article className={'message ' + message.role} key={message.id}><div className="message-meta">{message.role === 'user' ? 'You' : message.role === 'error' ? 'Could not complete' : message.model?.split(':')[0] || 'Research OS'}</div><RichText text={message.text} prefix={message.id} record={record} />{message.role === 'assistant' && capabilities.data?.voice.kokoro && <button className="read-message" disabled={!!speaking} onClick={() => speak(message.id, message.text)}>{speaking === message.id ? 'Preparing Kokoro audio…' : 'Listen · Kokoro'}</button>}</article>)}
-      {pending && <div className="thinking" role="status"><span className="pulse-dot" /> Thinking through your question… <small>Your message is saved.</small></div>}{chat.interrupted > 0 && <p className="notice">A previous response was interrupted. You can send a follow-up to continue.</p>}<div ref={end} /></div>}
-    <div className="session-dock"><form className="goal-composer chat-composer" onSubmit={send}><label className="sr-only" htmlFor="chat-input">Your message</label><textarea id="chat-input" rows={2} value={text} onChange={e => {setText(e.target.value); savePreference(draftKey, e.target.value);}} placeholder={id ? 'Follow your thinking…' : 'What would you like to understand or investigate?'} required maxLength={12000} onKeyDown={e => {if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {e.preventDefault(); e.currentTarget.form?.requestSubmit();}}} />
-      <div className="composer-footer"><div className="composer-tools"><details className="model-picker"><summary>{modelLabel(currentModel, capabilities.data?.models)} <span aria-hidden="true">⌄</span></summary><div className="model-options" role="group" aria-label="Language model">{capabilities.data?.models.map(m => <button key={m.id} type="button" aria-pressed={currentModel === m.id} onClick={e => {models.update(m.id); e.currentTarget.closest('details')?.removeAttribute('open');}}><span>{m.label}</span><small>{m.provider}</small></button>)}<a className="manage-models" href={href('settings', '', record)}>Manage Models →</a>{!capabilities.data?.models.length && <p>Install and sign in to Codex or Claude, or start a local Ollama model.</p>}</div></details>
+    {chat && <div className="messages" aria-label="Conversation messages">{chat.messages.map(message => <article className={'message ' + message.role} key={message.id}><div className="message-meta">{message.role === 'user' ? 'You' : message.role === 'error' ? 'Could not complete' : message.model?.split(':')[0] || 'Research OS'}</div><RichText text={message.text} prefix={message.id} record={record} />{message.role==='assistant'&&message.scope?.some(ref=>ref.kind==='media')&&<button onClick={async()=>{const ref=message.scope!.find(ref=>ref.kind==='media')!;try{await call('transcription_draft',{source:ref.sourceId,path:ref.relativePath,revision:ref.revision,text:message.text,by:message.model||'tutor'},record,true);setError('Transcription draft saved. Review it beside the original in Sources.');}catch(e){setError((e as Error).message);}}}>Save Transcription Draft</button>}{message.role === 'assistant' && capabilities.data?.voice.kokoro && <button className="read-message" disabled={!!speaking} onClick={() => speak(message.id, message.text)}>{speaking === message.id ? 'Preparing Kokoro audio…' : 'Listen · Kokoro'}</button>}</article>)}
+      {pending && activeRun?.output && <div className="stream-output" aria-label="Partial response"><RichText text={activeRun.output} record={record}/></div>}{pending && <div className="thinking" role="status"><span className="pulse-dot" /> {activeRun?.state === 'queued' ? 'Queued for the foreground worker…' : 'Working on your question…'} <small>Your message is saved.</small></div>}{chat.interrupted > 0 && <p className="notice">A previous response was interrupted. You can send a follow-up to continue.</p>}<div ref={end} /></div>}
+    <div className="session-dock">{newOutput && <button type="button" onClick={()=>{follow.current=true;setNewOutput(false);end.current?.scrollIntoView({block:"nearest"});}}>New Output ↓</button>}{attachment && <div className="attachment-chip"><span>{attachment.relativePath || 'Selected Passage'} · L{attachment.locator?.startLine}–{attachment.locator?.endLine} · {attachment.localOnly ? 'Local Only' : 'Cloud Allowed'}</span>{media && !currentModel.startsWith('ollama:') && <>{attachment.localOnly ? <span>Choose local Ollama vision for this Local Only attachment.</span> : <><span>Destination: {currentModel}. Permission covers this revision and one turn for 10 minutes.</span><button type="button" onClick={permitAttachment}>{attachment.visionPermission && attachment.permissionModel===currentModel ? 'Renew Attachment Permission' : 'Allow This Attachment to Selected Model'}</button></>}</>}<button onClick={() => {setAttachment(null); savePreference('attachment:' + record, 'null');}}>Detach</button></div>}<form className="goal-composer chat-composer" onSubmit={send}><label className="sr-only" htmlFor="chat-input">Your message</label><textarea id="chat-input" rows={2} value={text} onChange={e => {setText(e.target.value); savePreference(draftKey, e.target.value);}} placeholder={id ? 'Follow your thinking…' : 'What would you like to understand or investigate?'} required maxLength={12000} onKeyDown={e => {if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {e.preventDefault(); e.currentTarget.form?.requestSubmit();}}} />
+      <div className="composer-footer"><div className="composer-tools"><a className="button" href={href('sources', '', record)} aria-label="Attach source">＋</a><select className="composer-mode" aria-label="Session mode" value={mode} onChange={e => setMode(e.target.value)}><option value="chat">Conversation</option><option value="learn">Prepare Lesson</option><option value="research">Investigate</option></select><details className="model-picker"><summary>{modelLabel(currentModel, capabilities.data?.models)} <span aria-hidden="true">⌄</span></summary><div className="model-options" role="group" aria-label="Language model">{capabilities.data?.models.map(m => <button key={m.id} type="button" aria-pressed={currentModel === m.id} onClick={e => {models.update(m.id); e.currentTarget.closest('details')?.removeAttribute('open');}}><span>{m.label}</span><small>{m.provider}</small></button>)}<a className="manage-models" href={href('settings', '', record)}>Manage Models →</a>{!capabilities.data?.models.length && <p>Install and sign in to Codex or Claude, or start a local Ollama model.</p>}</div></details>
         {supportedEfforts(models.selected).length > 0 && <details className="effort-picker"><summary aria-label={'Reasoning effort: ' + effortLabel(models.selectedEffort || 'medium')}>{effortLabel(models.selectedEffort || 'medium')} <span aria-hidden="true">⌄</span></summary><div className="model-options effort-options" role="group" aria-label="Reasoning effort">{supportedEfforts(models.selected).map(effort => <button key={effort} type="button" aria-pressed={models.selectedEffort === effort} onClick={event => {models.update(currentModel, effort); event.currentTarget.closest('details')?.removeAttribute('open');}}>{effortLabel(effort)}</button>)}</div></details>}
         <button className={'microphone ' + (recording ? 'recording' : '')} type="button" aria-label={recording ? 'Stop recording' : 'Dictate your question'} aria-pressed={recording} disabled={openingMicrophone || transcribing || !capabilities.data?.voice.whisper} onClick={dictate}>{recording ? '■ Stop' : transcribing ? 'Transcribing…' : '◉ Voice'}</button>
-        <button type="button" className="voice-toggle" aria-pressed={voiceAuto} disabled={!capabilities.data?.voice.kokoro} onClick={() => {setVoiceAuto(!voiceAuto); savePreference('read-replies', voiceAuto ? 'off' : 'on');}}>♫ {voiceAuto ? 'Read replies on' : capabilities.data?.voice.kokoro ? 'Kokoro ready' : 'Voice unavailable'}</button></div><button className="primary send-message" disabled={pending || !models.selected || openingMicrophone || recording || transcribing} aria-label="Send message">{pending ? 'Working…' : 'Send ↑'}</button></div>
+        <button type="button" className="voice-toggle" aria-pressed={voiceAuto} disabled={!capabilities.data?.voice.kokoro} onClick={() => {setVoiceAuto(!voiceAuto); savePreference('read-replies', voiceAuto ? 'off' : 'on');}}>♫ {voiceAuto ? 'Read replies on' : capabilities.data?.voice.kokoro ? 'Kokoro ready' : 'Voice unavailable'}</button></div>{pending && <button type="button" onClick={stop} disabled={!activeRun}>Stop</button>}<button className="primary send-message" disabled={pending || !models.selected || openingMicrophone || recording || transcribing} aria-label="Send message">{pending ? 'Working…' : 'Send ↑'}</button></div>
     </form>
     <p className="composer-caption" role="status">{recording ? 'Listening locally. Stop when you’re ready; review the transcript before sending.' : transcribing ? 'Transcribing locally. Review the transcript before sending.' : capabilities.data && !capabilities.data.models.length ? 'No model available. Open Settings to connect a provider.' : capabilities.data && !models.selected ? 'The selected model is unavailable. Choose a model in Settings.' : 'Enter to send · Shift Enter for a new line'}</p>
     {audioUrl && <audio className="reply-audio" ref={audio} src={audioUrl} controls aria-label="Kokoro response playback" />}

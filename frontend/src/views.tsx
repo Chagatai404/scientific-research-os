@@ -1,3 +1,5 @@
+import {Tools} from './Workbench';
+import {Operations} from './Operations';
 import {useState, type FormEvent} from 'react';
 import {call, entityHref, href, preference, savePreference} from './api';
 import type {Entity, Evidence, LibraryItem, QueueItem, SearchResult, Today} from './contracts';
@@ -57,7 +59,7 @@ export function EntityView({id, record}: {id: string; record: string}) {
   const result = useResource('evidence:' + record + ':' + id, signal => call<Evidence>('evidence', {subject: id}, record, false, signal));
   if (!result.data) return <Notice error={result.error} retry={result.retry} />;
   const evidence = result.data;
-  return <><div className="eyebrow">{evidence.kind} · canonical record</div><h1>{evidence.node?.title || evidence.title || id}</h1><EvidenceBody evidence={evidence} record={record} />
+  return <><div className="eyebrow">{evidence.kind} · canonical record</div><h1>{evidence.node?.title || evidence.title || id}</h1><EvidenceBody evidence={evidence} record={record} /><details className="human-actions"><summary>Decisions &amp; Ownership</summary><Tools record={record} subject={id} initial={id.startsWith('experiment:') ? 'approve' : 'decide'}/></details>
     <p><a className="button" href={href('graph', id, record)}>Explore connections →</a></p></>;
 }
 export function EvidenceBody({evidence: e, record}: {evidence: Evidence; record: string}) {
@@ -83,6 +85,7 @@ export function Research({record}: {record: string}) {
   });
   const stages = ['Frame', 'Scout & verify', 'Learn evidence', 'Plan', 'Human approval', 'Build & run', 'Audit', 'Defend', 'Human decision'];
   return <><div className="eyebrow">Your research, at a glance</div><h1>What’s moving forward?</h1><p className="lead muted">What was done, what is running, and the work that comes next.</p>
+    <Operations record={record}/><details className="research-tools"><summary>Tools, Plans &amp; Computation</summary><Tools record={record}/></details>
     {result.data && <ActivityBoard value={result.data.activity} record={record} />}
     <details className="workflow-guide"><summary>The research process</summary><ol>{stages.map(s => <li key={s}>{s}</li>)}</ol><p className="muted">This is a process guide. Each entity’s recorded gates determine its actual status.</p></details>
     {!result.data ? <Notice error={result.error} retry={result.retry} /> : <><div className="section-title"><h2>Needs your judgement</h2><span>{result.data.queue.length}</span></div>

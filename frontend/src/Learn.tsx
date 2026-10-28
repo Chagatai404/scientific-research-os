@@ -1,3 +1,7 @@
+import {PreparedReading} from './PreparedReading';
+import {MediaArtifacts} from './MediaArtifacts';
+import {Pedagogy} from './Pedagogy';
+import {AgentAction} from './AgentAction';
 import {useEffect, useRef, useState, type FormEvent} from 'react';
 import {call, href, preference, readDocument, savePreference} from './api';
 import type {AnswerResult, DocumentData, Entity, LibraryItem, LessonStep, Today} from './contracts';
@@ -35,7 +39,8 @@ function Player({id, record}: {id: string; record: string}) {
   const [question, setQuestion] = useState(() => preference('question:' + record + ':' + id, ''));
   const [asking, setAsking] = useState(false);
   const [result, setResult] = useState<AnswerResult | null>(null);
-  const [segment, setSegment] = useState(0);
+  const [segment, setSegment] = useState(()=>Number(preference('segment:'+record+':'+id,'0')) || 0);
+  useEffect(()=>savePreference('segment:'+record+':'+id,String(segment)),[segment,record,id]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [context, setContext] = useState<{map?: ClassroomMap; transcript?: DocumentData; title?: string; error?: string}>({});
@@ -113,7 +118,7 @@ function Player({id, record}: {id: string; record: string}) {
       {result ? <div className={'feedback ' + result.verdict} role="status"><h2>{result.verdict === 'correct' ? 'Correct' : result.verdict === 'pending' ? 'Saved for your tutor' : 'Let’s work through it'}</h2><RichText text={result.feedback || result.explanation || ''} record={record} /></div> : answering && (current.question?.kind === 'choice' ? <fieldset className="choices"><legend>Choose one</legend>{current.question.options?.map((option, index) => <label key={index}><input type="radio" name="answer" value={index} checked={answer === String(index)} required onChange={e => {setAnswer(e.target.value); savePreference('draft:' + record + ':' + id, e.target.value);}} /><RichText text={option} record={record} /></label>)}</fieldset> : <div><label htmlFor="lesson-answer">Your answer</label><textarea id="lesson-answer" value={answer} required onChange={e => {setAnswer(e.target.value); savePreference('draft:' + record + ':' + id, e.target.value);}} inputMode={current.question?.kind === 'numeric' ? 'decimal' : 'text'} /></div>)}
       <div className="player-controls">{answering && <button type="button" disabled={busy} onClick={() => perform(async () => {setResult(await call<AnswerResult>('answer', {lesson: id, item: current.item, dont_know: true}, record, true)); savePreference('draft:' + record + ':' + id, '');})}>I don’t know</button>}<button type="button" aria-expanded={asking} onClick={() => setAsking(!asking)}>Ask a question</button><button className="primary" disabled={busy}>{busy ? 'Saving…' : current.action === 'wait' ? 'Check for feedback' : 'Continue'}</button></div>
     </form>
-    {status && <p className="notice" role="status">{status}</p>}
+    {current.action==='teach'&&<MediaArtifacts animation={current.content?.animation} clip={current.content?.clip} base={mediaBase} record={record}/>}<PreparedReading key={id} record={record} lesson={id} item={current.item}/><Pedagogy key={id+current.item} record={record} lesson={id} item={current.item}/><AgentAction record={record} text={"Work on the pending tutoring tasks for lesson " + id + ". Use the exact saved attempt for grading, preserve assistance attribution, answer saved questions, and finish tasks only after committing their results."}/>{status && <p className="notice" role="status">{status}</p>}
     <p className="quiet-note">Only assessed answers contribute to learning evidence. Reading and confidence do not establish mastery.</p>
   </Classroom>;
 }

@@ -78,14 +78,26 @@ class Runner:
         return done
 
     @staticmethod
-    def _run(job: dict) -> dict:
+    def _run(job: dict, own=None) -> dict:
         env = dict(os.environ)  # a job runs this program's own modules, so they must be importable from anywhere
         root = job.get("pythonpath") or str(Path(__file__).resolve().parents[1])
         env["PYTHONPATH"] = root + os.pathsep + env.get("PYTHONPATH", "")
         started = time.monotonic()
         try:
-            p = subprocess.run(job["argv"], cwd=job["cwd"], env=env, capture_output=True, text=True,
-                               timeout=job["timeout"], stdin=subprocess.DEVNULL)
+            argv = job['argv']
+            if getattr(sys, 'frozen', False) and argv[:2] == [sys.executable, '-m']:
+                modes = {'ros.lib.pdf': 'pdf', 'ros': 'cli'}
+                if argv[2] not in modes: return {'ok': False, 'code': None, 'output': 'Frozen worker is unavailable for this optional engine', 'seconds': 0}
+                argv = [sys.executable, '--worker', modes[argv[2]], *argv[3:]]
+            if own:
+                p=subprocess.Popen(argv,cwd=job['cwd'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,stdin=subprocess.DEVNULL,
+                                   **({'creationflags':subprocess.CREATE_NO_WINDOW} if os.name=='nt' else {'start_new_session':True}))
+                own(p)
+                stdout,stderr=p.communicate(timeout=job['timeout']);p.stdout.close();p.stderr.close()
+                p=type('Result',(),{'returncode':p.returncode,'stdout':stdout,'stderr':stderr})()
+            else:
+                p = subprocess.run(argv, cwd=job["cwd"], env=env, capture_output=True, text=True,
+                                   timeout=job["timeout"], stdin=subprocess.DEVNULL)
             return {"ok": p.returncode == 0, "code": p.returncode, "output": (p.stdout + p.stderr)[-1500:],
                     "seconds": round(time.monotonic() - started, 1)}
         except subprocess.TimeoutExpired:

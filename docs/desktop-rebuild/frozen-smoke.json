@@ -1,0 +1,16 @@
+{
+  "cli_tools": 148,
+  "python_on_path": false,
+  "pdf_page_scope": [
+    {
+      "revision": "synthetic-fixture",
+      "total_pages": 1,
+      "included_pages": [
+        1
+      ]
+    }
+  ],
+  "compute_ok": true,
+  "bundled_python": true,
+  "artifact_count": 2
+}

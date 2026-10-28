@@ -1,0 +1,12 @@
+{
+  "exit": 0,
+  "seconds": 10.66,
+  "screenshot": "C:\\Users\\ASUS\\.codex\\worktrees\\f2e5\\scientific-research-os\\.desktop-fixtures\\native-packaged-afzc0rmb\\desktop-smoke.png",
+  "page": {
+    "title": "Home \u00b7 Research OS",
+    "text": "Skip to content\nShow navigation\nWorkspace\nSearch connected records\nCtrl K\n\u2699\nYour knowledge graph\nKnowledge\nResearch\nEvidence\nProgress\n+\n\u2212\nFit graph\nNode list\n\u2022\u2022\u2022\nConnect Your Workspace\n\nConnect a vault, project or local source. You can explore without a model.\n\nAdd Sources or Project\n0 nodes \u00b7 0 relations\nYour message\n\uff0b\nConversation\nPrepare Lesson\nInvestigate\nGPT-6.1 Sol \u2304\n\u25c9 Voice\n\u266b Voice unavailable\nSend \u2191\n\nEnter to send \u00b7 Shift Enter for a new line",
+    "overflow": false,
+    "protocol": "ros.desktop.v1",
+    "version": "1.2.1"
+  }
+}

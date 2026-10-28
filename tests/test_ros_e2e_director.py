@@ -94,13 +94,8 @@ class Scenario(unittest.TestCase):
         return httpd.server_address[1]
 
     def person(self, port, tool, record, **args):
-        c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-        c.request("POST", f"/api/{tool}", body=json.dumps({"record": record, **args}),
-                  headers={"Host": f"127.0.0.1:{port}", "X-ROS": "1", "Sec-Fetch-Site": "same-origin"})
-        r = c.getresponse()
-        body = json.loads(r.read())
-        c.close()
-        return r.status, body
+        from support_human import decision
+        return decision(port, tool, args, record)
 
     def fetch(self, port, path):
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)

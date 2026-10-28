@@ -4,6 +4,7 @@ import type {GraphData} from './contracts';
 import {useResource} from './hooks';
 import {Notice} from './ui';
 import {pointLayout, safeCamera, zoomAt, type Camera} from './graphLayout';
+import {startLayout, type GraphLayout} from './layoutJob';
 const colors = ['#aaa0d5', '#83b9aa', '#c3ad85', '#8aadc7', '#c49cab'];
 
 export function Graph({focus, record, embedded = false}: {focus: string; record: string; embedded?: boolean}) {
@@ -18,7 +19,23 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
   const graphSignature = JSON.stringify(result.data);
   // Event-only updates often leave this bounded graph unchanged. Retain its camera/layout identity.
   const graph = useMemo(() => result.data, [graphSignature]);
-  const layout = useMemo(() => graph ? pointLayout(graph) : null, [graph]);
+  const [computed,setComputed]=useState<{graph:GraphData;layout:GraphLayout}|null>(null),[layoutError,setLayoutError]=useState('');
+  useEffect(()=>{
+    setLayoutError('');
+    if(!graph)return;
+    if(typeof Worker==='undefined'){
+      if(graph.nodes.length<=150)setComputed({graph,layout:pointLayout(graph)});
+      else setLayoutError('Graph layout is unavailable. Use Node list to explore.');
+      return;
+    }
+    try{
+      const worker=new Worker(new URL('./graphLayout.worker.ts',import.meta.url),{type:'module'});
+      return startLayout(worker,graph,layout=>setComputed({graph,layout}),()=>setLayoutError('Graph layout stopped. Use Node list to explore.'));
+    }catch{setLayoutError('Graph layout is unavailable. Use Node list to explore.');}
+  },[graph]);
+  const layout=computed && computed.graph===graph?computed.layout:null;
+  const listNodes=layout?.nodes||graph?.nodes||[];
+  function canonicalId(id:string){return graph?.nodes.find(n=>n.id===id)?.canonical===false ? graph?.focus||id : id;}
   const points = useMemo(() => layout?.nodes.map(n => lanes ? {...n, px: n.x + n.w / 2, py: n.y + n.h / 2} : n) || [], [layout, lanes]);
   const chosen = points.find(n => n.id === selected), cameraKey = 'camera:' + JSON.stringify([record, mode, focus, relation, depth, lanes]);
   useEffect(() => {
@@ -35,7 +52,7 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
   }
   function fit() {setCamera(fitted());}
   useEffect(() => {
-    if (!graph || !size.width || !size.height) return;
+    if (!graph || !layout || !size.width || !size.height) return;
     const previous = viewport.current;
     viewport.current = {key: cameraKey, ...size};
     if (initialized.current !== cameraKey) {initialized.current = cameraKey; setCamera(safeCamera(preference(cameraKey, '')) || fitted());}
@@ -43,13 +60,13 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
       setCamera(c => chosen ? {...c, x: size.width / 2 - chosen.px * c.zoom, y: size.height / 2 - chosen.py * c.zoom} : {...c, x: c.x + (size.width - previous.width) / 2, y: c.y + (size.height - previous.height) / 2});
     } else if (previousGraph.current !== graph) setCamera(fitted());
     previousGraph.current = graph;
-  }, [graph, cameraKey, size.width, size.height]);
+  }, [graph, layout, cameraKey, size.width, size.height]);
   useEffect(() => {if (initialized.current === cameraKey) savePreference(cameraKey, JSON.stringify(camera));}, [camera, cameraKey]);
   useEffect(() => {setSelected(''); setList(false);}, [record, mode, focus, relation]);
   useEffect(() => {if (selected) selectionPanel.current?.querySelector('button')?.focus({preventScroll: true});}, [selected]);
   useEffect(() => {if (list) listPanel.current?.querySelector('button')?.focus({preventScroll: true});}, [list]);
   useEffect(() => {
-    const element = canvas.current; if (!element || !layout) return;
+    const element = canvas.current; if (!element) return; if (!layout) {element.width=element.width;return;}
     const {width, height} = size, ratio = window.devicePixelRatio || 1;
     element.width = Math.round(width * ratio); element.height = Math.round(height * ratio);
     const ctx = element.getContext('2d'); if (!ctx) return;
@@ -78,7 +95,7 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
   function select(id: string) {setSelected(id); setList(false); const n = points.find(p => p.id === id); if (n) setCamera(c => ({...c, x: size.width / 2 - n.px * c.zoom, y: size.height / 2 - n.py * c.zoom}));}
   function closeSelection() {setSelected(''); canvas.current?.focus();}
   return <section className={'graph-workspace ' + (embedded ? 'graph-embedded' : '')} aria-label="Knowledge graph"><h1 className="sr-only">Your knowledge graph</h1>
-    <div className="graph-chrome"><div className="segmented" role="group" aria-label="Graph lens">{['knowledge', 'research'].map(value => <button key={value} aria-pressed={mode === value} onClick={() => {setMode(value); setLanes(false);}}>{value === 'knowledge' ? 'Knowledge' : 'Research'}</button>)}</div>
+    <div className="graph-chrome">{mode === 'progress' && graph?.progress && <details className="progress-summary"><summary>{graph.progress.due} Reviews Due · Weekly Progress</summary><div className="table-wrap"><table><thead><tr><th>Week</th><th>Answers</th><th>Unaided Correct</th><th>Reviews</th></tr></thead><tbody>{graph.progress.weeks.map(w=><tr key={w.week}><td>{w.week}</td><td>{w.answers}</td><td>{w.unaided_correct}</td><td>{w.reviews}</td></tr>)}</tbody></table></div></details>}<div className="segmented" role="group" aria-label="Graph lens">{['knowledge', 'research', 'evidence', 'progress'].map(value => <button key={value} aria-pressed={mode === value} onClick={() => {setMode(value); setLanes(false);}}>{value.charAt(0).toUpperCase()+value.slice(1)}</button>)}</div>
       <div className="graph-toolbar"><button onClick={() => zoom(1.25)} aria-label="Zoom in">+</button><button onClick={() => zoom(.8)} aria-label="Zoom out">−</button><button onClick={fit}>Fit graph</button><button aria-expanded={list} aria-controls="graph-node-panel" onClick={() => {setList(!list); setSelected('');}}>Node list</button><details className="graph-settings"><summary aria-label="Graph settings">•••</summary><div className="graph-settings-panel"><button onClick={() => setDepth(x => (x + 1) % 4)} aria-label="Change neighbourhood depth">{depth} {depth === 1 ? 'hop' : 'hops'}</button><label>Filter relations<select value={relation} onChange={e => setRelation(e.target.value)}><option value="">All relations</option>{['requires', 'supports', 'invalidates', 'tests', 'implements', 'cites', 'supersedes', 'part-of', 'addresses', 'decides', 'relates', 'about', 'teaches', 'applied-in'].map(type => <option key={type}>{type}</option>)}</select></label>{mode === 'research' && <button aria-pressed={lanes} onClick={() => setLanes(!lanes)}>Directed lanes</button>}<p>Arrows follow recorded source → target. Spatial groups indicate connections, not verified evidence.</p>{graph?.bounded && <p>This view is bounded. Focus a node to explore more.</p>}</div></details></div>
     </div>{focus && <div className="graph-focus"><a href={href('graph', '', record)}>← All hubs</a><span>{points.find(p => p.id === focus)?.label || focus}</span></div>}
     <div className={'graph-stage ' + (chosen || list ? 'graph-context-open' : '')}><div className="graph-frame" ref={frame}><canvas ref={canvas} tabIndex={0} aria-label="Interactive graph. Drag or use arrow keys to pan; plus and minus zoom, zero fits. Use Node list to select and open evidence."
@@ -88,8 +105,8 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
       onPointerMove={e => {const d = drag.current; if (!d) return; if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) d.moved = true; if (d.moved) setCamera(c => ({...c, x: d.ox + e.clientX - d.x, y: d.oy + e.clientY - d.y}));}}
       onPointerCancel={() => {drag.current = null;}} onLostPointerCapture={() => {drag.current = null;}}
       onPointerUp={e => {const d = drag.current; drag.current = null; if (!d || d.moved) return; const rect = e.currentTarget.getBoundingClientRect(), x = e.clientX - rect.left, y = e.clientY - rect.top; const hit = points.map(n => ({n, distance: Math.hypot(n.px * camera.zoom + camera.x - x, n.py * camera.zoom + camera.y - y)})).sort((a, b) => a.distance - b.distance)[0]; const laneHit = lanes ? points.find(n => Math.abs((x - camera.x) / camera.zoom - n.px) <= n.w / 2 + 4 / camera.zoom && Math.abs((y - camera.y) / camera.zoom - n.py) <= n.h / 2 + 4 / camera.zoom) : null; if (laneHit) select(laneHit.id); else if (hit && !lanes && hit.distance <= 22) select(hit.n.id); else setSelected('');}} />
-      {!graph && <div className="graph-state"><Notice error={result.error} retry={result.retry} /></div>}{graph && !points.length && <div className="graph-state"><p>No nodes in this lens yet.</p><p className="muted">Start with a question below or explore another lens.</p></div>}{graph && <span className="graph-count">{graph.nodes.length} nodes · {graph.edges.length} relations{graph.bounded ? ' · bounded view' : ''}</span>}
-    </div>{chosen && <aside ref={selectionPanel} className="graph-selection" aria-label="Selected node" onKeyDown={e => {if (e.key === 'Escape') closeSelection();}}><button className="graph-close" aria-label="Close node details" onClick={closeSelection}>×</button><small>{chosen.kind}</small><h2>{chosen.label}</h2><a className="button primary" href={entityHref(chosen.id, record)}>Open evidence</a><a className="button" href={href('graph', chosen.id, record)}>Focus neighbourhood</a><h3>Recorded connections</h3><ul className="relation-list">{graph?.edges.filter(e => e.src === chosen.id || e.dst === chosen.id).map((e, i) => <li key={i}><span>{e.src === chosen.id ? '→' : '←'} {e.type}</span><a href={entityHref(e.src === chosen.id ? e.dst : e.src, record)}>{points.find(n => n.id === (e.src === chosen.id ? e.dst : e.src))?.label || (e.src === chosen.id ? e.dst : e.src)}</a><small>{e.provenance || 'Provenance not recorded'}{e.verified == null ? '' : e.verified ? ' · verified' : ' · unverified'}</small></li>)}</ul>{!graph?.edges.some(e => e.src === chosen.id || e.dst === chosen.id) && <p className="muted">No incident relations in this bounded view.</p>}</aside>}
-    <aside onKeyDown={e => {if (e.key === 'Escape') {setList(false); canvas.current?.focus();}}} ref={listPanel} id="graph-node-panel" className="graph-list-panel" hidden={!list} aria-label="Accessible node list"><button className="graph-close" aria-label="Close node list" onClick={() => {setList(false); canvas.current?.focus();}}>×</button><h2>Nodes in this view</h2><ul className="graph-node-list">{points.map(n => <li key={n.id}><button onClick={() => select(n.id)} aria-label={'Select ' + n.label}>{n.label}<small>{n.kind}</small></button><a href={entityHref(n.id, record)} aria-label={'Open ' + n.label}>Open</a><a href={href('graph', n.id, record)} aria-label={'Focus ' + n.label}>Focus</a></li>)}</ul></aside></div>
+      {!graph && <div className="graph-state"><Notice error={result.error} retry={result.retry} /></div>}{graph && !layout && <div className="graph-state" role={layoutError?'alert':'status'}>{layoutError||'Preparing graph…'}</div>}{graph && layout && !points.length && <div className="graph-state"><h2>Connect Your Workspace</h2><p className="muted">Connect a vault, project or local source. You can explore without a model.</p><a className="button" href={href('sources','',record)}>Add Sources or Project</a></div>}{graph && <span className="graph-count">{graph.nodes.length} nodes · {graph.edges.length} relations{graph.bounded ? ' · bounded view' : ''}</span>}
+    </div>{chosen && <aside ref={selectionPanel} className="graph-selection" aria-label="Selected node" onKeyDown={e => {if (e.key === 'Escape') closeSelection();}}><button className="graph-close" aria-label="Close node details" onClick={closeSelection}>×</button><small>{chosen.kind}</small><h2>{chosen.label}</h2><a className="button primary" href={entityHref(chosen.canonical === false ? graph?.focus || chosen.id : chosen.id, record)}>Open evidence</a><a className="button" href={href('graph', canonicalId(chosen.id), record)}>Focus neighbourhood</a><h3>Recorded connections</h3><ul className="relation-list">{graph?.edges.filter(e => e.src === chosen.id || e.dst === chosen.id).map((e, i) => <li key={i}><span>{e.src === chosen.id ? '→' : '←'} {e.type}</span><a href={entityHref(canonicalId(e.src === chosen.id ? e.dst : e.src), record)}>{points.find(n => n.id === (e.src === chosen.id ? e.dst : e.src))?.label || (e.src === chosen.id ? e.dst : e.src)}</a><small>{e.provenance || 'Provenance not recorded'}{e.verified == null ? '' : e.verified ? ' · verified' : ' · unverified'}</small></li>)}</ul>{!graph?.edges.some(e => e.src === chosen.id || e.dst === chosen.id) && <p className="muted">No incident relations in this bounded view.</p>}</aside>}
+    <aside onKeyDown={e => {if (e.key === 'Escape') {setList(false); canvas.current?.focus();}}} ref={listPanel} id="graph-node-panel" className="graph-list-panel" hidden={!list} aria-label="Accessible node list"><button className="graph-close" aria-label="Close node list" onClick={() => {setList(false); canvas.current?.focus();}}>×</button><h2>Nodes in this view</h2><ul className="graph-node-list">{listNodes.map(n => <li key={n.id}><button onClick={() => select(n.id)} aria-label={'Select ' + n.label}>{n.label}<small>{n.kind}</small></button><a href={entityHref(canonicalId(n.id), record)} aria-label={'Open ' + n.label}>Open</a><a href={href('graph', canonicalId(n.id), record)} aria-label={'Focus ' + n.label}>Focus</a></li>)}</ul></aside></div>
   </section>;
 }

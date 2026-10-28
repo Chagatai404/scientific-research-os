@@ -1,0 +1,19 @@
+
+> research-os-desktop@1.3.0 installer
+> node notices.cjs && electron-builder --win nsis --publish never
+
+  • electron-builder  version=26.18.0 os=10.0.26200
+  • loaded configuration  file=package.json ("build" field)
+  • executing @electron/rebuild  electronVersion=43.8.4 arch=x64 buildFromSource=false workspaceRoot=C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\desktop projectDir=./ appDir=./
+  • installing native dependencies  arch=x64
+  • completed installing native dependencies
+  • packaging       platform=win32 arch=x64 electron=43.8.4 appOutDir=dist\win-unpacked
+  • using custom unpacked Electron distribution  electronDist=node_modules\electron\dist
+  • copying unpacked Electron  source=C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\desktop\node_modules\electron\dist destination=C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\desktop\dist\win-unpacked
+  • searching for node modules  pm=npm searchDir=C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\desktop
+  • updating asar integrity executable resource  executablePath=dist\win-unpacked\Research OS.exe
+  • file signing skipped via signExecutable configuration  file=dist\win-unpacked\Research OS.exe
+  • building        target=nsis file=dist\Research-OS-Setup-1.3.0-x64.exe archs=x64 oneClick=false perMachine=false
+  • file signing skipped via signExecutable configuration  file=dist\Research-OS-Setup-1.3.0-x64.__uninstaller.exe
+  • file signing skipped via signExecutable configuration  file=dist\Research-OS-Setup-1.3.0-x64.exe
+  • building block map  blockMapFile=dist\Research-OS-Setup-1.3.0-x64.exe.blockmap

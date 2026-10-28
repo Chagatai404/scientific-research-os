@@ -28,13 +28,19 @@ async function layout(page, label) {
     if (document.documentElement.scrollWidth > innerWidth + 1) issues.push('horizontal page overflow');
     const reading = document.querySelector('.document');
     if (reading && reading.getBoundingClientRect().width < Math.min(240, innerWidth - 40)) issues.push('document column is too narrow to read');
+    // Compare pixels inside actual scroll clips, not off-screen text behind the shell.
+    function visibleBounds(el){
+      const box=el.getBoundingClientRect();let left=Math.max(0,box.left),right=Math.min(innerWidth,box.right),top=Math.max(0,box.top),bottom=Math.min(innerHeight,box.bottom);
+      for(let parent=el.parentElement;parent;parent=parent.parentElement){const css=getComputedStyle(parent),clip=parent.getBoundingClientRect();if(/auto|scroll|hidden|clip/.test(css.overflowY)){top=Math.max(top,clip.top);bottom=Math.min(bottom,clip.bottom);}if(/auto|scroll|hidden|clip/.test(css.overflowX)){left=Math.max(left,clip.left);right=Math.min(right,clip.right);}}
+      return {left,right,top,bottom,height:box.height,visible:right>left&&bottom>top};
+    }
     const elements = [...document.querySelectorAll('h1,h2,h3,p,button,label,select,input,textarea')].filter(el => el.checkVisibility() && !el.closest('.katex,.table-wrap,.rich-text pre,.sr-only'));
     for (let i = 0; i < elements.length; i++) {
-      const a = elements[i], r = a.getBoundingClientRect();
+      const a = elements[i], r = visibleBounds(a); if(!r.visible)continue;
       if (a.matches('button') && r.height < 43.5) issues.push(`short control: ${a.textContent}`);
       for (let j = i + 1; j < elements.length; j++) {
         const b = elements[j]; if (a.contains(b) || b.contains(a)) continue;
-        const s = b.getBoundingClientRect();
+        const s = visibleBounds(b); if(!s.visible)continue;
         if (Math.min(r.right, s.right) - Math.max(r.left, s.left) > 1 && Math.min(r.bottom, s.bottom) - Math.max(r.top, s.top) > 1) issues.push(`${a.textContent.slice(0, 25)} overlaps ${b.textContent.slice(0, 25)}`);
       }
     }
@@ -132,13 +138,14 @@ async function main() {
     });
     page = await context.newPage();
     page.on('pageerror', e => errors.push(e.message));
-    page.on('console', message => {if (message.type() === 'error') errors.push(message.text());});
+    page.on('response',response=>{if(response.status()>=400)console.error('HTTP failure:',response.status(),response.url());});
+    page.on('console', message => {if (message.type() === 'error') errors.push(message.text()+' '+(message.location().url||''));});
     page.on('request', request => {if (request.url().endsWith('/services/model-check')) modelChecks.push(request.postDataJSON()); if (request.url().endsWith('/api/workspace_chat_send')) sentMessages.push(request.postDataJSON()); if (request.url().endsWith('/services/transcribe')) transcriptions++; if (!request.url().startsWith(server.url) && !request.url().startsWith('data:')) outside.push(request.url());});
     page.on('response', response => {if (response.status() >= 400) failed.push([response.status(), response.url()]);});
     const workspace = server.url + 'workspace/';
     const documentLink = '#document/' + encodeURIComponent(server.document) + '?r=demo';
     const original = hashes(path.join(folder, 'projects', 'demo', 'handouts'));
-    await page.goto(workspace);
+    await page.goto(workspace + '#overview');
     await homeMatrix(page, 'graph landing');
     const homeCanvas = page.locator('.graph-frame canvas');
     await page.getByRole('button', {name: 'Fit graph', exact: true}).click();
@@ -215,7 +222,7 @@ async function main() {
     });
     assert.deepEqual(lateMicrophone, {stops: 1, captures: 0}, 'leaving while permission is pending releases the late stream without recording');
     assert.equal(transcriptions, priorTranscriptions, 'unmounted composer must not transcribe');
-    await page.goto(workspace); await page.getByTestId('graph-home').waitFor();
+    await page.goto(workspace + '#overview'); await page.getByTestId('graph-home').waitFor();
     let releaseSend;
     const sendGate = new Promise(resolve => {releaseSend = resolve;});
     let completeSend;
@@ -232,7 +239,7 @@ async function main() {
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.match(page.url(), /#library\?r=demo$/, 'delayed send must not redirect after the composer unmounts');
     await page.unroute('**/api/workspace_chat_send');
-    await page.goto(workspace); await page.getByTestId('graph-home').waitFor();
+    await page.goto(workspace + '#overview'); await page.getByTestId('graph-home').waitFor();
     assert.match(await page.locator('.model-picker summary').innerText(), /GPT-6.1 Sol/);
     assert.equal(await page.locator('#custom-model').count(), 0, 'model choices must come from the provider catalog');
     await page.locator('.settings-toggle').click();
@@ -247,7 +254,7 @@ async function main() {
     assert.equal(modelChecks.length, 0, 'opening Settings must never issue a paid model check automatically');
     await page.getByRole('button', {name: 'Check Model Connection', exact: true}).click();
     await page.getByText(/Requested GPT-6.1 Sol · High\. Request passed\./).waitFor();
-    assert.deepEqual(modelChecks, [{model: 'codex:gpt-6.1-sol', effort: 'high'}], 'explicit connection check uses selected model and effort through the local fixture');
+    assert.deepEqual(modelChecks, [{record:'', model: 'codex:gpt-6.1-sol', effort: 'high'}], 'explicit connection check uses selected model and effort through the local fixture');
     await page.getByLabel('Vault path', {exact: true}).fill(server.vault);
     await page.getByLabel('Research OS folder inside the vault', {exact: true}).fill('Browser Research');
     await page.getByRole('button', {name: 'Connect Vault', exact: true}).click();
@@ -257,7 +264,7 @@ async function main() {
     assert.equal(await page.getByLabel('Research OS folder inside the vault', {exact: true}).inputValue(), 'Browser Research');
     assert.equal(await page.getByLabel('Reasoning effort', {exact: true}).inputValue(), 'high');
     assert.equal(modelChecks.length, 1, 'reloading Settings does not check a model automatically');
-    await page.goto(workspace); await page.getByTestId('graph-home').waitFor();
+    await page.goto(workspace + '#overview'); await page.getByTestId('graph-home').waitFor();
     assert.match(await page.locator('.effort-picker summary').innerText(), /High/);
     for (const width of widths) {
       await page.setViewportSize({width, height: 1000});
@@ -270,7 +277,8 @@ async function main() {
       await graphHome(page, `model/effort composer @${width}`);
     }
     await page.setViewportSize({width: 1440, height: 1000});
-    assert.equal(await page.locator('select:visible').count(), 0, 'landing keeps secondary dropdown controls out of the primary chrome');
+    assert.equal(await page.locator('select:visible').count(), 1, 'landing exposes one meaningful session mode selector');
+    await page.getByLabel('Session mode', {exact:true}).waitFor();
     assert.match(await page.locator('html').evaluate(el => getComputedStyle(el).colorScheme), /dark/);
     const longDraft = 'A long scientific question about variance and the assumptions behind its estimate. '.repeat(45);
     await page.getByLabel('Your message', {exact: true}).fill(longDraft);
@@ -315,7 +323,7 @@ async function main() {
     await page.goto(conversationUrl); await page.locator('.message.assistant').first().waitFor();
     assert.equal(await page.getByLabel('Your message', {exact: true}).inputValue(), longDraft, 'navigating between sessions preserves their separate drafts');
     await navigation(page);
-    await page.getByRole('link', {name: 'Library & Notes', exact: true}).click();
+    await page.getByRole('link', {name: 'Sources', exact: true}).click(); await page.getByRole('button', {name: 'Handouts & Notes', exact: true}).click();
     await page.getByRole('link', {name: /Variance, from intuition/}).click();
     await collapseNavigation(page);
     await page.locator('.document .katex-display').waitFor();

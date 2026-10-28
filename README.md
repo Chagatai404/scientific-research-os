@@ -20,6 +20,25 @@ how the code is built and how to add to it is in [ARCHITECTURE](docs/ARCHITECTUR
   PDFs, decision logs, maps and bases. Drop a file into its Inbox and it is read in. The portal links to any note.
 - **See.** The portal's Graphs show what you know and what a project rests on, with the evidence behind each node.
 
+## Windows desktop
+
+Install `desktop/dist/Research-OS-Setup-1.3.0-x64.exe`. The installer includes Electron and the Python backend, adds shortcuts, and preserves records when uninstalled. The complete unpacked application is also at `desktop/dist/win-unpacked/Research OS.exe`.
+
+Connect sources, choose a model, and use Sessions, Learn, Research, Graph or Activity. Connections do not scan, sync or execute automatically. Codex and Claude use their existing CLI logins; local models use explicit loopback profiles. Scientific approvals, decisions and waivers remain human actions. For cloud image/PDF vision, configure the exact model's capability and explicitly allow each attachment revision for one turn. Local Only media stays on the computer. PDF pages are rendered locally, with the first four pages explicitly identified.
+
+Installed copies check the public GitHub release feed automatically and download newer stable releases. Settings shows progress and offers Restart & Install after active work finishes. An offline or empty release feed leaves the installed application usable. Future releases are built and published by the `desktop-v<version>` tag workflow; no release is published just by building locally. Unpacked and development copies use manual replacement.
+
+For development:
+
+```powershell
+npm --prefix frontend ci
+npm --prefix frontend run build
+npm --prefix desktop ci
+npm --prefix desktop start
+```
+
+[Acceptance evidence](docs/desktop-rebuild/ACCEPTANCE.md), [capability ledger](docs/desktop-rebuild/CAPABILITY_PARITY.md), [architecture](docs/desktop-rebuild/ARCHITECTURE.md), and [backup/rollback](docs/desktop-rebuild/MIGRATION_AND_ROLLBACK.md) describe tested behavior and optional runtime limits. `python desktop/verify.py` runs the complete isolated gate. It makes no paid inference calls or personal vault changes. The desktop package is 1.3.0; the compatible scientific backend retains its 1.2.1 version identifier.
+
 ## Start
 
 Python 3.11 or newer, standard library only. From this folder:

@@ -72,6 +72,32 @@ class FrontmatterTests(unittest.TestCase):
 
 
 class SyncTests(Fixture):
+    def test_changed_note_reads_overlap_but_canonical_effects_stay_serial_and_warm_scan_reads_nothing(self):
+        import threading
+        import time
+        vault.sync(self.rec)
+        inbox=self.note('Inbox');files=[]
+        for i in range(12):
+            file=inbox/f'prefetch-{i}.md';file.write_text(f'# My note {i}\n');files.append(file)
+        original=Path.read_bytes;lock=threading.Lock();active=peak=reads=0
+        def read(file):
+            nonlocal active,peak,reads
+            if not file.name.startswith('prefetch-'):return original(file)
+            with lock:active+=1;peak=max(peak,active);reads+=1
+            try:time.sleep(.01);return original(file)
+            finally:
+                with lock:active-=1
+        thread=threading.get_ident();append=self.rec.append
+        def commit(*args,**kwargs):
+            self.assertEqual(threading.get_ident(),thread)
+            return append(*args,**kwargs)
+        with patch.object(Path,'read_bytes',read),patch.object(self.rec,'append',commit):
+            result=vault.sync(self.rec);self.assertEqual(result['found'],12)
+            self.assertGreater(peak,1);self.assertLessEqual(peak,4);self.assertEqual(reads,12)
+            vault.sync(self.rec);self.assertEqual(reads,12)
+        self.assertEqual(len(self.rec.events(type='inbox.found')),12)
+        self.assertTrue(all(file.read_text().startswith('# My note') for file in files))
+
     def test_first_sync_writes_the_layout_and_the_second_writes_nothing(self):
         out = vault.sync(self.rec)
         self.assertEqual(out["kind"], "full")

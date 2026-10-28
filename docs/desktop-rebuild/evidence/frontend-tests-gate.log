@@ -1,0 +1,33 @@
+
+> research-os-workspace@0.1.0 test
+> tsx --test src/*.test.tsx
+
+✔ dependency plan presents recorded prerequisites, uncertainty and active step without inventing mastery (148.5647ms)
+✔ missing dependency data is explicit and does not create phase placeholders (0.9097ms)
+✔ classroom keeps one active learner step, optional history and compact context controls (50.7272ms)
+✔ GFM, nested lists, fenced code, scientific math, footnotes and callouts render through the AST (305.7261ms)
+✔ untrusted executable HTML and unsafe protocols never become executable DOM (48.538ms)
+✔ wikilinks, canonical ids, citations and local figures keep their context (19.2473ms)
+✔ document contracts reject malformed widgets and routes preserve exact identity and anchors (11.384ms)
+✔ actual legacy handout titles and answer separators render as labelled callouts and collapsed solutions (64.2088ms)
+✔ legacy adaptation leaves fenced and indented code examples and separators outside handouts intact (18.1085ms)
+✔ explicit paragraph, heading and code block IDs survive inserts and retain source-line aliases (25.0414ms)
+✔ explicit IDs are bounded, unique and inert, including malicious directive attributes (21.6605ms)
+✔ Excalidraw files use a bounded local reference fallback while exported SVG stays inline (16.5406ms)
+✔ point layout is stable across payload order and independent of directed lane coordinates (30.036ms)
+✔ camera restore rejects corrupt, nonfinite and unbounded persisted values (0.6113ms)
+✔ pointer zoom preserves the world position under the pointer, including clamping (0.5722ms)
+✔ replaced record layout jobs cannot deliver late points or retain a worker (2.1878ms)
+✔ completed and failed layout jobs release their worker and preserve readable recovery (0.5217ms)
+✔ remote media stays absent until verified, time bounded and on the typed video host (3.0856ms)
+✔ error recovery preserves selected record and uses native Settings (17.652ms)
+✔ old provider defaults migrate to explicit Sol and reasoning choices obey provider catalog (3.4119ms)
+✔ Settings connects real records, checks services only on clicks and shares saved model preferences (330.8399ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 29315.579

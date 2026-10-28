@@ -29,6 +29,8 @@ indexed query. It is derived: lose it and the next scan rebuilds it from the ``r
 from __future__ import annotations
 
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from collections import deque
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 import hashlib
@@ -956,20 +958,29 @@ def scan(ctx: Ctx, apply: bool = True) -> dict:
         return out
     rows = {r["path"]: r for r in mf.under(base_rel)}
     seen: set[str] = set()
-    for e in _walk(base):
-        rel = Path(e.path).relative_to(ctx.vault).as_posix()
-        seen.add(rel)
-        out["files"] += 1
-        kind = FILES.get(Path(e.name).suffix.lower())
-        if kind is None:
-            continue
-        st = e.stat()
-        row = rows.get(rel)
-        if row and row["mtime_ns"] == st.st_mtime_ns and row["size"] == st.st_size:
-            continue
-        if row and row["record"] not in (None, "", ctx.record):
-            continue  # another record's note: its own scan handles it
-        _look(ctx, rel, Path(e.path), kind, st, row, out, apply)
+    def changed():
+        for e in _walk(base):
+            rel = Path(e.path).relative_to(ctx.vault).as_posix()
+            seen.add(rel)
+            out["files"] += 1
+            kind = FILES.get(Path(e.name).suffix.lower())
+            if kind is None:continue
+            st = e.stat();row = rows.get(rel)
+            if row and row["mtime_ns"] == st.st_mtime_ns and row["size"] == st.st_size:continue
+            if row and row["record"] not in (None, "", ctx.record):continue
+            yield rel,Path(e.path),kind,st,row
+    # Windows file-open latency dominates cold scans. Prefetch only small changed files;
+    # retain traversal order and apply every canonical effect on this calling thread.
+    # Eight <=2 MiB buffers bound memory; large artifacts keep their sequential path.
+    pending=deque()
+    def apply_next():
+        args,future=pending.popleft()
+        _look(ctx,*args,out,apply,data=future.result() if future else None)
+    with ThreadPoolExecutor(max_workers=4,thread_name_prefix='ros-vault-read') as readers:
+        for args in changed():
+            pending.append((args,readers.submit(args[1].read_bytes) if args[3].st_size<=2*1024*1024 else None))
+            if len(pending)>=8:apply_next()
+        while pending:apply_next()
     for rel, row in rows.items():
         if rel in seen or row["record"] not in (None, "", ctx.record) or row["status"] in ("planned", "dismissed"):
             continue
@@ -983,9 +994,9 @@ def _mine(ctx: Ctx, rel: str) -> bool:
     return hub["record"] == ctx.record if hub is not None else ctx.is_user
 
 
-def _look(ctx: Ctx, rel: str, abs_path: Path, kind: str, st, row, out: dict, apply: bool) -> None:
+def _look(ctx: Ctx, rel: str, abs_path: Path, kind: str, st, row, out: dict, apply: bool, data: bytes | None = None) -> None:
     mf, rec = ctx.mf, ctx.rec
-    data = abs_path.read_bytes()
+    if data is None:data = abs_path.read_bytes()
     sha = _sha(data)
     base = dict(path=rel, mtime_ns=st.st_mtime_ns, size=st.st_size, sha=sha)
     if kind != "note":

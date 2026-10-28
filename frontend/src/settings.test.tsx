@@ -59,13 +59,13 @@ test('Settings connects real records, checks services only on clicks and shares 
     assert.equal(requests.length, 2, 'initial render reads only catalog and connections');
     const click = async (text: string) => {await act(async () => {Array.from(doc.querySelectorAll('button')).find(button => button.textContent === text)!.click();});};
     await click('Check Model Connection');
-    assert.deepEqual(requests.at(-1), {url: '/services/model-check', body: {model: DEFAULT_MODEL, effort: 'medium'}});
+    assert.deepEqual(requests.at(-1), {url: '/services/model-check', body: {record:'qml', model: DEFAULT_MODEL, effort: 'medium'}});
     assert.match(doc.body.textContent!, /Requested GPT-6.1 Sol · Medium. Request passed/);
     const select = doc.querySelector('#settings-model') as HTMLSelectElement;
     await act(async () => {select.value = 'claude:sonnet'; select.dispatchEvent(new dom.window.Event('change', {bubbles: true}));});
     assert.equal(doc.querySelector('#settings-effort'), null);
     await click('Check Model Connection');
-    assert.deepEqual(requests.at(-1)?.body, {model: 'claude:sonnet'});
+    assert.deepEqual(requests.at(-1)?.body, {record:'qml', model: 'claude:sonnet'});
     await act(async () => {dom.window.localStorage.setItem('ros.workspace.model', DEFAULT_MODEL); dom.window.localStorage.setItem('ros.workspace.effort', 'high'); dom.window.dispatchEvent(new dom.window.Event('ros:model-preferences'));});
     assert.equal((doc.querySelector('#settings-effort') as HTMLSelectElement).value, 'high');
     await click('Check Vault Status');

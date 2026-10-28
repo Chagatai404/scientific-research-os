@@ -16,7 +16,8 @@ class ConversationTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        env = patch.dict(os.environ, {"ROS_HOME": self.tmp.name, "ROS_NO_VAULT": "1", "LOCALAPPDATA": self.tmp.name})
+        Path(self.tmp.name,'models_cache.json').write_text(json.dumps({'models':[{'slug':'gpt-6.1-sol','display_name':'GPT-6.1 Sol','supported_reasoning_levels':[{'effort':'medium'}]}]}),encoding='utf-8')
+        env = patch.dict(os.environ, {"ROS_HOME": self.tmp.name, "ROS_NO_VAULT": "1", "LOCALAPPDATA": self.tmp.name, 'CODEX_HOME':self.tmp.name})
         env.start(); self.addCleanup(env.stop)
         self.rec = Record(Path(self.tmp.name) / "projects" / "me")
         self.addCleanup(self.rec.close); self.addCleanup(api.release)
@@ -24,7 +25,7 @@ class ConversationTests(unittest.TestCase):
 
     def test_send_frames_goal_and_response_is_not_assessment_or_human_decision(self):
         sent = api.call("workspace_chat_send", self.rec, text="Teach me variance", model="codex:default")
-        self.assertEqual(sent["state"], "running")
+        self.assertEqual(sent["state"], "queued")
         self.assertEqual(sent["_engine"]["model"], "codex:gpt-6.1-sol")
         self.assertEqual(sent["_engine"]["effort"], "medium")
         self.assertEqual(sent["_engine"]["messages"][0]["content"], "Teach me variance")

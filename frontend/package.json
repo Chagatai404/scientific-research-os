@@ -10,27 +10,30 @@
     "test": "tsx --test src/*.test.tsx"
   },
   "dependencies": {
+    "katex": "^0.19.1",
+    "mermaid": "^12.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0",
-    "remark-directive": "^4.0.0",
     "rehype-katex": "^7.0.1",
     "rehype-sanitize": "^6.0.0",
-    "katex": "^0.19.1",
+    "remark-directive": "^4.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "unist-util-visit": "^5.0.0"
   },
   "devDependencies": {
-    "@types/react": "^19.2.0",
-    "@types/react-dom": "^19.2.0",
     "@types/hast": "^3.0.4",
     "@types/mdast": "^4.0.4",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "^5.9.3",
-    "vite": "^7.1.0",
+    "jsdom": "^26.1.0",
     "tsx": "^4.20.6",
-    "jsdom": "^26.1.0"
+    "typescript": "^5.9.3",
+    "vite": "^7.1.0"
   },
-  "overrides": {"katex": "$katex"}
+  "overrides": {
+    "katex": "$katex"
+  }
 }

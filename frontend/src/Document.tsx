@@ -1,5 +1,6 @@
-import {useEffect, useState, type ReactNode} from 'react';
-import Markdown from 'react-markdown';
+import {memo, useEffect, useState, type ReactNode} from 'react';
+import {Mermaid, Excalidraw} from './Diagrams';
+import Markdown, {type Components} from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import remarkDirective from 'remark-directive';
@@ -90,7 +91,8 @@ export function safeUrl(value: string, image = false, base = '', record = ''): s
   return '';
 }
 
-export function RichText({text, prefix = 'text', base = '', record = ''}: {text: string; prefix?: string; base?: string; record?: string}) {
+const ScientificCode: NonNullable<Components['code']> = ({children,className,node:_node,...props}) => className?.includes('language-mermaid') ? <Mermaid text={String(children)}/> : <code className={className} {...props}>{children}</code>;
+export const RichText = memo(function RichText({text, prefix = 'text', base = '', record = ''}: {text: string; prefix?: string; base?: string; record?: string}) {
   const [copied, setCopied] = useState(false);
   return <div className="rich-text">
     <Markdown remarkPlugins={[remarkGfm, remarkMath, containerDirectives, references, handoutCallouts, explicitBlocks(prefix)]}
@@ -113,16 +115,18 @@ export function RichText({text, prefix = 'text', base = '', record = ''}: {text:
           : <img src={src} alt={alt || 'Figure without a description'} title={title} loading="lazy" />}<span className="caption">{title || alt}</span></span> : <span className="notice">Image unavailable: {alt || 'unsupported location'}</span>,
         table: ({children, node: _node, ...props}) => <div className="table-wrap" role="region" aria-label="Scrollable table" tabIndex={0}><table {...props}>{children}</table></div>,
         pre: ({children, node: _node, ...props}) => <pre {...props} tabIndex={0}>{children}</pre>,
+        code: ScientificCode,
       }}>{legacyHandoutSyntax(text)}</Markdown>
     {text.includes('$') && <details className="math-source"><summary>Math Source</summary><button onClick={async () => {try {await navigator.clipboard.writeText(text); setCopied(true);} catch {setCopied(false);}}}>{copied ? 'Copied' : 'Copy Markdown / LaTeX'}</button><pre tabIndex={0}>{text}</pre></details>}
   </div>;
-}
+});
 
 export function DocumentView({id, record, onDocument}: {id: string; record: string; onDocument: (doc: DocumentData | null) => void}) {
   const resource = useResource('document:' + record + ':' + id, signal => readDocument(id, record, signal));
   useEffect(() => {onDocument(resource.data || null); return () => onDocument(null);}, [resource.data, onDocument]);
   if (!resource.data) return <Notice error={resource.error} retry={resource.retry} />;
   const doc = resource.data;
+  function exportMarkdown() {const text = '# ' + doc!.title + '\n\n' + doc!.sections.map(s => '## ' + s.title + '\n\n' + s.text).join('\n\n'); const url = URL.createObjectURL(new Blob([text], {type:'text/markdown;charset=utf-8'})); const link = document.createElement('a'); link.href=url; link.download=doc!.title.replace(/[\\/:*?"<>|]/g,'-')+'.md'; link.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);}
   return <article className="document"><div className="eyebrow">{doc.kind} <span>·</span> {doc.status}</div><h1>{doc.title}</h1>
     <p className="lead muted">{doc.legacy ? 'Preserved session · ' : ''}{doc.sections.filter(s => s.text).length} sections · {doc.record}</p>
     {doc.sections.filter(s => s.text.trim()).map(section => <section id={'section-' + section.id} key={section.id}>
@@ -131,7 +135,7 @@ export function DocumentView({id, record, onDocument}: {id: string; record: stri
       {(section.by || section.locators?.length) ? <p className="section-meta">{section.by ? `Written by ${section.by}` : ''}{section.locators?.length ? ' · ' + section.locators.map(x => typeof x === 'string' ? x : JSON.stringify(x)).join('; ') : ''}</p> : null}
     </section>)}
     {doc.sources.length > 0 && <section id="sources"><h2>Sources</h2><ol className="sources">{doc.sources.map(source => <li id={'source-' + source.key} key={source.key}><strong>[{source.key}]</strong> <RichText text={source.text} record={record} prefix={'source-' + source.key} /></li>)}</ol></section>}
-    <footer className="document-footer"><span>Canonical record · {doc.id}</span><details><summary>Source Fingerprint</summary><code>{doc.source_hash}</code></details></footer>
+    <div className="actions document-actions"><button onClick={exportMarkdown}>Export Markdown</button><button onClick={()=>window.print()}>Print / Save PDF</button></div><footer className="document-footer"><span>Canonical record · {doc.id}</span><details><summary>Source Fingerprint</summary><code>{doc.source_hash}</code></details></footer>
   </article>;
 }
 

@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased: standalone workspace preview
+## Desktop 1.3.0 (local build, not published)
+
+- Add a thin Electron host with a frozen stdlib Python backend, owned process lifecycle, authenticated loopback transport and narrow source picker/open IPC.
+- Add explicit read-only source connections, immutable passage revisions, bounded FTS search, canonical session history and durable run activity/cancellation.
+- Add governed native Codex/Claude and local streaming transports, task-scoped tool effects, configurable execution budgets and reported usage. Preserve human scientific authority and local-only derived context restrictions.
+- Restore notebook understanding coverage and approved scratch trace/mutation, and add version-bound pedagogy, prepared reading, safe lazy diagrams, light/dark appearance and command navigation.
+- Add public scholarly metadata retrieval, exact-plan approved computation, immutable artifact hashes and observed/declarative reproduction manifests, without granting shell access to authoring models.
+- Add local PDF rendering and local/native vision payloads with explicit, single-turn attachment permissions bound to revision and destination. Keep Local Only sources blocked; preserve faithful transcription drafts and named human review.
+- Add sequential narration/visual playback, animation/keyframes and verified click-to-load video segments; expose ownership-aware vault preview/sync/conflict actions.
+- Add an NSIS installer, automatic stable-release downloads, safe restart controls, updater integrity checks and a tagged GitHub release workflow. Preserve records on uninstall.
+- Preserve CLI/MCP, old links and the compatibility portal. No personal record/vault migration or paid inference occurred. See the desktop acceptance ledger for final verification and optional engine/account limits.
+
+## Earlier standalone workspace preview
 
 - Add a dark React/TypeScript workspace at `/workspace/`, retaining the original portal at `/`.
 - Start persistent conversations with a selected Codex, Claude or local Ollama model; show the knowledge

@@ -10,12 +10,22 @@ import json
 from contextlib import ExitStack
 from pathlib import Path
 
-from . import atlas, context, export, handouts, home, tasks, vault
+from . import atlas, context, export, handouts, home, tasks, vault, prepare
 from .store import Record
 
 
 _ALIASES: dict = {}
 _NODE_COUNTS: dict = {}
+
+def lesson_material(rec,lesson,item=None):
+    node=rec.node(lesson) or {}
+    if node.get('type') != 'lesson' or not node.get('bundle'):raise ValueError('this session has no prepared reading bundle')
+    plan=prepare.load_plan(rec,node['bundle'])
+    if item:
+        if rec.item(item) is None:raise ValueError('unknown item version')
+        rec.append('hint',item,{'lesson':lesson,'mode':'prepared-reading'},actor='learner')
+    return {'title':node.get('title','Prepared Reading'),'base':'/media/bundles/'+node['bundle']+'/',
+            'sections':[{'id':n['id'],'title':n.get('title') or n['id'],'segments':n.get('segments',[]),'visuals':n.get('visuals',[]),'animation':n.get('animation'),'clip':None if prepare._clip_left_out(n.get('clip')) else n.get('clip')} for n in plan.get('nodes',[])]}
 
 
 def connections(rec: Record) -> dict:
@@ -140,8 +150,19 @@ def resolve(rec: Record, target: str) -> dict:
 def subgraph(rec: Record, mode: str = "knowledge", focus: str | None = None,
              depth: int = 1, limit: int = 120, relation: str | None = None) -> dict:
     """Bounded neighbourhood retaining the actual directed edge contract, unlike legacy layout-only edges."""
+    if mode == 'evidence':
+        if not focus:
+            claims = rec.nodes(type='claim')
+            focus = claims[-1]['id'] if claims else None
+        if focus and focus.startswith('claim:'):
+            data = atlas.chain(rec, focus)
+            return {**data, 'nodes': [{**n, 'canonical': rec.node(n['id']) is not None} for n in data['nodes']], 'edges': [{**e, 'type':'derived-evidence'} for e in data['edges']], 'bounded': bool(data.get('truncated'))}
+        mode = 'research'
+    if mode == 'progress':
+        data = atlas.atlas(rec, mode='knowledge', focus=focus, limit=min(limit, 200))
+        return {**data, 'edges': [{**e, 'type': next((r['type'] for r in rec.edges(src=e['src']) if r['dst']==e['dst']), 'layout')} for e in data['edges']], 'progress':atlas.progress(rec), 'title':'Learning Progress', 'bounded': bool(data.get('truncated'))}
     if mode not in ("knowledge", "research"):
-        raise ValueError("mode is knowledge or research")
+        raise ValueError("mode is knowledge, research, evidence or progress")
     depth, limit = max(0, min(int(depth), 3)), max(1, min(int(limit), 200))
     if relation:
         from .store import EDGE_TYPES

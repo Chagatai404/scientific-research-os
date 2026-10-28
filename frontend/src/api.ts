@@ -1,11 +1,21 @@
 import {validateDocument, type DocumentData} from './contracts';
+let session: Promise<{csrf: string}> | undefined;
+export async function mutationHeaders() {
+  session ??= fetch('/services/session').then(response => response.json()).then(body => body.result);
+  const value = await session;
+  return {'Content-Type': 'application/json', 'X-ROS': '1', 'X-ROS-CSRF': value.csrf};
+}
+export async function human<T>(name: string, args: Record<string, unknown>, record = ''): Promise<T> {
+  const prepared = await service<{approval: string}>('human-prepare', {name, args, record});
+  return service<T>('human-commit', {name, args, record, approval: prepared.approval});
+}
 
 // The HTTP adapter is the only transport. Domain checks stay in the shared Python tool table.
 export async function call<T>(name: string, args: Record<string, unknown> = {}, record?: string, write = false, signal?: AbortSignal): Promise<T> {
   const data = {...(record ? {record} : {}), ...args};
   const query = new URLSearchParams(Object.entries(data).filter(([, v]) => v != null).map(([k, v]) => [k, JSON.stringify(v)]));
   const response = await fetch(`/api/${name}${write ? '' : '?' + query}`, write ? {
-    method: 'POST', headers: {'Content-Type': 'application/json', 'X-ROS': '1'}, body: JSON.stringify(data), signal,
+    method: 'POST', headers: await mutationHeaders(), body: JSON.stringify(data), signal,
   } : {signal});
   const body = await response.json();
   if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
@@ -15,7 +25,7 @@ export async function readDocument(id: string, record?: string, signal?: AbortSi
   return validateDocument(await call('workspace_document', {subject: id}, record, false, signal));
 }
 export async function service<T>(name: string, args?: Record<string, unknown>): Promise<T> {
-  const response = await fetch('/services/' + name, args ? {method: 'POST', headers: {'Content-Type': 'application/json', 'X-ROS': '1'}, body: JSON.stringify(args)} : {});
+  const response = await fetch('/services/' + name, args ? {method: 'POST', headers: await mutationHeaders(), body: JSON.stringify(args)} : {});
   const body = await response.json();
   if (!response.ok || body.result?.ok === false) throw new Error(body.error || body.result?.error || 'The local service is unavailable');
   return body.result as T;

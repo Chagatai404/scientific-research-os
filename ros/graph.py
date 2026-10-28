@@ -21,6 +21,7 @@ from array import array
 from dataclasses import dataclass
 from datetime import date
 import json
+import hashlib
 from pathlib import Path
 
 from .store import Record
@@ -355,8 +356,21 @@ class Learning:
 
 
 # ---- editing the graph by hand -----------------------------------------------------------------------------------
+def plan_revision(node):
+    ignored={'authorization','approved_revision','authorized_by','authorized_at','status'}
+    return hashlib.sha256(json.dumps({k:v for k,v in node.items() if k not in ignored},sort_keys=True).encode()).hexdigest()
+
 def add_node(rec: Record, id: str, type: str, data: dict | None = None) -> dict:
-    """Add or update a node. Its id is ``<type>:<key>``: the prefix is how every view finds nodes of a type."""
+    """Add or update a node; only human approval may authorize an experiment."""
+    data = dict(data or {})
+    existing = rec.node(id) or {}
+    if type == 'experiment':
+        proposed=data
+        data={**{k:v for k,v in existing.items() if k not in ('id','type')},**proposed}
+        if data.get('authorization') == 'approved' and existing.get('authorization') != 'approved':
+            raise ValueError('Only the researcher can approve an experiment through approve')
+        if existing.get('authorization') == 'approved' and any(existing.get(k) != v for k,v in data.items() if k not in ('authorization','status')):
+            data['authorization'] = 'awaiting'
     prefix, _, key = id.partition(":")
     if not key.strip() or prefix != type:
         raise ValueError(f"a {type} node's id is '{type}:<key>', not {id!r}")
@@ -495,8 +509,10 @@ def research_frontier(rec: Record) -> list[dict]:
                 todo.append("experiment-missing")
         elif t == "experiment":
             if status in {"planned", "ready"}:
+                authorization=n.get('authorization','awaiting')
+                if n.get('approved_revision') and n['approved_revision'] != plan_revision(n): authorization='awaiting'
                 todo += {"awaiting": ["approval-required"], "approved": ["execution-available"],
-                         "modification-requested": ["plan-revision-required"], "rejected": []}.get(n.get("authorization", "awaiting"), [])
+                         "modification-requested": ["plan-revision-required"], "rejected": []}.get(authorization, [])
             elif status == "completed":
                 validation, review = n.get("result_validation", "pending"), n.get("adversarial_review", "pending")
                 todo.append("validation-required" if validation == "pending" else

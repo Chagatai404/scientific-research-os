@@ -11,9 +11,10 @@
 
   // ---- data ----------------------------------------------------------------------------------------------------
   async function api(name, args = {}, write = false) {
+    const session = write ? await fetch('/services/session').then(r => r.json()).then(b => b.result) : null;
     args = { ...(state.record ? { record: state.record } : {}), ...args };
     const opts = write
-      ? { method: "POST", headers: { "Content-Type": "application/json", "X-ROS": "1" }, body: JSON.stringify(args) }
+      ? { method: "POST", headers: { "Content-Type": "application/json", "X-ROS": "1", "X-ROS-CSRF": session.csrf }, body: JSON.stringify(args) }
       : {};
     const q = write ? "" : "?" + new URLSearchParams(Object.entries(args).filter(([, v]) => v != null)
       .map(([k, v]) => [k, JSON.stringify(v)]));

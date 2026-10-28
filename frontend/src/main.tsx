@@ -6,10 +6,12 @@ import './style.css';
 import './dark.css';
 import './graph.css';
 import './settings.css';
+import './desktop.css';
 
 class ErrorBoundary extends Component<{children: ReactNode}, {error: string}> {
   state = {error: ''};
   static getDerivedStateFromError(error: Error) {return {error: error.message};}
   render() {return this.state.error ? <main className="fallback"><h1>The workspace encountered a problem</h1><p>{this.state.error}</p><button onClick={() => location.reload()}>Reload</button></main> : this.props.children;}
 }
+try {document.documentElement.dataset.theme = localStorage.getItem('ros.workspace.theme') || 'dark';} catch {}
 createRoot(document.getElementById('root')!).render(<ErrorBoundary><App /></ErrorBoundary>);

@@ -1,3 +1,5 @@
+import {ConnectionSettings} from './ConnectionSettings';
+import {VaultActions} from './VaultActions';
 import {useEffect, useState, type FormEvent} from 'react';
 import {call, service} from './api';
 import {useResource} from './hooks';
@@ -9,7 +11,7 @@ export function workspaceLabel(name: string) {
   return name.split(/[-_\s]+/).map(word => acronyms.has(word.toLowerCase()) ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 }
 export function Settings({record}: {record: string}) {
-  const catalog = useResource('settings-catalog', () => service<ModelCatalog>('catalog'));
+  const catalog = useResource('settings-catalog:' + record, () => service<ModelCatalog>('catalog?record=' + encodeURIComponent(record)));
   const connections = useResource('workspace-connections:' + record, signal => call<Connections>('workspace_connections', {}, record, false, signal));
   const preferences = useModelPreferences(catalog.data?.models);
   const [path, setPath] = useState(''), [folder, setFolder] = useState('Research OS');
@@ -29,7 +31,7 @@ export function Settings({record}: {record: string}) {
   async function checkModel() {
     const requested = `${modelLabel(preferences.model, catalog.data?.models)}${preferences.selectedEffort ? ' · ' + effortLabel(preferences.selectedEffort) : ''}`;
     setBusy('model'); setCheck('Requested ' + requested + '. Checking…'); setError('');
-    try {await service('model-check', {model: preferences.model, ...(preferences.selectedEffort ? {effort: preferences.selectedEffort} : {})}); setCheck('Requested ' + requested + '. Request passed.');}
+    try {await service('model-check', {record, model: preferences.model, ...(preferences.selectedEffort ? {effort: preferences.selectedEffort} : {})}); setCheck('Requested ' + requested + '. Request passed.');}
     catch (e) {setCheck('Requested ' + requested + '. Request failed: ' + (e as Error).message);} finally {setBusy('');}
   }
   const connection = connections.data;
@@ -49,5 +51,6 @@ export function Settings({record}: {record: string}) {
       <form onSubmit={connect}><label htmlFor="vault-path">Vault path</label><input id="vault-path" value={path} onChange={event => setPath(event.target.value)} required placeholder="C:/Users/ASUS/Obsidian/Knowledge" /><label htmlFor="vault-folder">Research OS folder inside the vault</label><input id="vault-folder" value={folder} onChange={event => setFolder(event.target.value)} required /><div className="settings-actions"><button disabled={!!busy || !path.trim() || !folder.trim()}>{busy === 'connect' ? 'Connecting…' : 'Connect Vault'}</button><button type="button" onClick={inspectVault} disabled={!!busy || !connection?.vault.configured}>{busy === 'status' ? 'Checking Vault…' : 'Check Vault Status'}</button></div></form>
       {report && <pre className="settings-report" role="status">{report}</pre>}{error && <p className="notice error" role="alert">{error}</p>}
     </section>
+    <VaultActions record={record}/><ConnectionSettings record={record}/>
   </div>;
 }

@@ -197,6 +197,30 @@ it, and make its absence a reported problem, not an exception that escapes.
 
 ## Tests
 
+### Desktop interfaces, sources and execution
+
+`desktop/` is a thin Electron host. `ros.desktop`, `ros.runtime` and `serve` are interfaces;
+they reach records through `api.call`. Optional provider and notebook transports stay in
+`ros/lib/`; `runtime` and `desktop` may import these adapters, which never import the domain.
+`sources`, `runs` and `execution` are domain modules with thin `ros/tools` declarations.
+The architecture test includes these layers and adapter exceptions explicitly.
+
+Connections grant read access after real-path validation; connecting never imports, syncs or
+executes. Source snapshots are immutable SHA-256 blobs referenced by `source.revision` facts.
+`sources-cache.sqlite` is a disposable lexical index. Index work uses bounded batches outside
+the interface's record lock. Canonical run output is batched, terminal states explicit, tool
+results tied to operation IDs. No provider receives human/session credentials. Browser human
+actions require a session/CSRF capability; scientific decisions additionally bind subject revision.
+
+To add a provider, implement its adapter in `ros/lib/providers.py`, advertise verified capabilities,
+register it in `ADAPTERS`, and exercise streaming, tool results, interruption and malformed input
+with deterministic fixtures. Never run inference during discovery. Frozen worker entry points
+dispatch through `ros.desktop --worker`; `Runner` translates its fixed allowlist, never arbitrary modules.
+
+Desktop UI operations stay in the existing React typed client and AST renderer. Build frontend
+assets before freezing the sidecar. Run `npm --prefix desktop run verify`, build the sidecar with
+`desktop/build-backend.ps1`, and package with `npm --prefix desktop run package`.
+
 - Unit tests: `python -m unittest discover -s tests -p "test_*.py"` (about 10 s). Name new files `test_ros_<area>.py`.
 - Browser: `node tests/ros-portal-browser.cjs`.
 - Workspace: `npm --prefix frontend test`, `npm --prefix frontend run build`, `node tests/ros-workspace-browser.cjs`.
@@ -211,3 +235,5 @@ it, and make its absence a reported problem, not an exception that escapes.
   The workspace has a separate dependency budget: application CSS under 20 KB, renderer/framework assets
   separately measured. Its initial dependency cost and remaining performance work are reported in
   `docs/portal-redesign/REPORT.md`; do not conceal third-party bytes or claim the old limit still covers them.
+
+Vault scans prefetch at most eight changed files of at most 2 MiB each with four I/O readers. Traversal order and canonical writes stay on the calling thread; warm scans still stat without reading unchanged contents. Larger files retain sequential reads. No worker thread accesses the record or manifest.

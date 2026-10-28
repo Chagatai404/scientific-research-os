@@ -156,6 +156,7 @@ def parser(only: str | None = None) -> argparse.ArgumentParser:
 
 
 def emit(value, as_json: bool) -> None:
+    value = api.external_result(value)
     if isinstance(value, str) and not as_json:
         sys.stdout.write(value if value.endswith("\n") else value + "\n")
     else:

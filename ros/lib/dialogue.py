@@ -57,10 +57,7 @@ def provider_failure(provider, done):
 
 def codex_models():
     """Read public model metadata only; never inspect the CLI's authentication files."""
-    models = [{"id": DEFAULT_MODEL, "label": "GPT-6.1 Sol", "provider": "Codex",
-               "reasoning_efforts": list(REASONING_EFFORTS)},
-              {"id": "codex:gpt-6-luna", "label": "GPT-6 Luna", "provider": "Codex",
-               "reasoning_efforts": list(REASONING_EFFORTS)}]
+    models = []
     path = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex") / "models_cache.json"
     try:
         cached = json.loads(path.read_text(encoding="utf-8"))
@@ -142,7 +139,7 @@ def catalog():
 def reply(request):
     model = request["model"]
     if model == "codex:default": model = DEFAULT_MODEL
-    if not re.fullmatch(r"(codex|claude|ollama):[A-Za-z0-9_.:/-]{1,100}", model):
+    if not re.fullmatch(r"(codex|claude|ollama|compatible):[A-Za-z0-9_.:/-]{1,100}", model):
         raise ValueError("choose a supported provider and model")
     provider, name = model.split(":", 1)
     effort = request.get("effort", "medium")
@@ -157,6 +154,12 @@ def reply(request):
               "Never approve plans, accept claims, waive ownership, claim a background task was completed, or treat confidence as mastery. "
               "Distinguish hypotheses from evidence. Agent preparation tasks may still be pending; state that honestly. "
               "Keep the researcher's immediate goal central. Context: " + json.dumps(request.get("context", {}), ensure_ascii=False))
+    if provider == 'compatible' or provider=='ollama' and request.get('endpoint'):
+        from . import providers
+        import threading
+        chunks=[]
+        result=providers.local({'model':model,'system':system,'messages':messages,'endpoint':request.get('endpoint'),'steps':0,'deadline':60},chunks.append,None,threading.Event(),lambda _:None)
+        return {'text':''.join(chunks),'model':model,'effort':None}
     if provider == "ollama":
         payload = json.dumps({"model": name, "messages": [{"role": "system", "content": system}, *messages], "stream": False}).encode()
         req = urllib.request.Request("http://127.0.0.1:11434/api/chat", data=payload, headers={"Content-Type": "application/json"})

@@ -23,3 +23,12 @@ frontend/audit.json
 *.egg-info/
 build/
 dist/
+desktop/node_modules/
+desktop/protocol/
+desktop/protocol-selected/
+.desktop-*.log
+.desktop-build-notebook-*.txt
+desktop/dist/
+desktop/backend/
+.desktop-fixtures/
+.desktop-build/
