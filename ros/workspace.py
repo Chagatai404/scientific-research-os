@@ -8,9 +8,9 @@ from __future__ import annotations
 import hashlib
 import json
 from contextlib import ExitStack
-from pathlib import Path
+from pathlib import Path, PurePath
 
-from . import atlas, context, export, handouts, home, tasks, vault, prepare
+from . import atlas, context, export, handouts, home, tasks, vault, prepare, organization
 from .store import Record
 
 
@@ -46,8 +46,7 @@ def connections(rec: Record) -> dict:
         configured = bool(path and Path(path).expanduser().is_dir())
     except (OSError, ValueError):
         configured = False
-    return {"record": {"name": rec.root.name, "title": cfg.get("title") or
-                        ("Knowledge" if cfg.get("role") == "user" else rec.root.name.replace("-", " ").title()),
+    return {"record": {"name": rec.root.name, "title": organization.title(rec),
                         "role": cfg.get("role", "unlinked"), "root": root, "node_counts": counts},
             "vault": {"configured": configured, "path": path, "root": folder,
                       "folder": str(Path(path) / folder) if path else ""}}
@@ -55,7 +54,7 @@ def connections(rec: Record) -> dict:
 
 def _aliases(rec: Record) -> dict:
     """Node titles/aliases survive event-only writes, including chat and assessment updates."""
-    root, stamp = str(rec.root.resolve()), rec.stamp("nodes")
+    root, stamp = str(rec.root.resolve()), (rec.stamp("nodes"), tuple(sorted(organization.state(rec)['names'].items())))
     hit = _ALIASES.get(root)
     if hit and hit[0] == stamp:
         return hit[1]
@@ -66,7 +65,7 @@ def _aliases(rec: Record) -> dict:
             aliases = [aliases]
         if not isinstance(aliases, (list, tuple)):
             aliases = []
-        for name in [node.get("title", ""), *aliases]:
+        for name in [organization.display_name(rec, node['id'], node.get('title') or ''), node.get("title", ""), *aliases]:
             if isinstance(name, str) and name.strip():
                 rows = index.setdefault(name.strip().casefold(), [])
                 if node not in rows:
@@ -105,12 +104,12 @@ def entity(rec: Record, subject: str, limit: int = 80) -> dict:
                 n = nodes[str(linked.root.resolve())].get(target)
                 if n:
                     return {"edge": edge, "edge_record": owner.root.name, "id": target,
-                            "record": linked.root.name, "title": n.get("title") or n.get("text") or target,
+                            "record": linked.root.name, "title": organization.display_name(linked, target, n.get("title") or n.get("text") or 'Source file'),
                             "missing": False}
             return {"edge": edge, "edge_record": owner.root.name, "id": target,
-                    "record": owner.root.name, "title": target, "missing": True}
+                    "record": owner.root.name, "title": 'Unavailable item', "missing": True}
 
-        return {"id": subject, "record": rec.root.name, "node": node,
+        return {"id": subject, "record": rec.root.name, "node": dict(node, title=organization.display_name(rec, subject, node.get('title') or node.get('text') or 'Source file')),
                 "incoming": [row(owner, edge, edge["src"]) for owner, edge in incoming[:limit]],
                 "outgoing": [row(owner, edge, edge["dst"]) for owner, edge in outgoing[:limit]],
                 "truncated": max(0, len(incoming) - limit) + max(0, len(outgoing) - limit)}
@@ -141,10 +140,136 @@ def resolve(rec: Record, target: str) -> dict:
                     candidates = linked.nodes_in(vault.reference_targets(linked, target))
             for node in candidates:
                 value = {"id": node["id"], "record": linked.root.name,
-                         "title": node.get("title") or node.get("text") or node["id"], "anchor": anchor}
+                         "title": organization.display_name(linked, node['id'], node.get("title") or node.get("text") or 'Source file'), "anchor": anchor}
                 if value not in matches:
                     matches.append(value)
     return {"status": "resolved" if len(matches) == 1 else "ambiguous" if matches else "missing", "matches": matches}
+
+
+_MAP_TOPICS = {"domain", "subject", "concept", "capability", "goal", "question", "hypothesis", "claim", "experiment",
+               "decision", "block"}
+_MAP_SOURCES = {"source", "paper", "handout", "lesson", "conversation", "visual", "code-symbol"}
+_MEANING = {"capability": "A skill or idea you can learn", "concept": "An idea", "claim": "A statement being tested",
+            "question": "An open question", "hypothesis": "A proposed explanation", "experiment": "A planned or finished test",
+            "decision": "A recorded decision", "goal": "Something you set out to do", "handout": "A reading prepared for you",
+            "lesson": "A learning session", "conversation": "A saved conversation", "paper": "A paper", "source": "Source material",
+            "visual": "A figure or animation", "domain": "A field of study", "subject": "A subject", "block": "A block of a course"}
+_LIBRARY_TIP = {"ready": "Ready to study or cite", "attention": "Needs attention: ", "added": "Waiting to be read", "reading": "Being read"}
+
+
+def _map_label(rec, node) -> str:
+    text = organization.display_name(rec, node["id"], str(node.get("title") or ""))
+    if text == "Untitled item":
+        text = ""
+    return (text or str(node.get("text") or "").strip().split("\n")[0])[:90].strip()
+
+
+def _map_record(owner: Record, per_hub: int, expand: str) -> dict:
+    """One record's hubs, topics and material as a tree. Membership lines here are navigation, never recorded edges."""
+    snap, place = organization.snapshot(owner), organization.placement(owner)
+    folders = {f["id"]: f for f in snap["folders"]}
+    hubs = {i: f for i, f in folders.items() if f["kind"] in ("course", "project")}
+
+    def home_of(item_id: str):
+        """(hub, collection) holding an item, following folder parents; ('', '') when unplaced."""
+        folder, coll, seen = place.get(item_id, ""), "", set()
+        while folder and folder not in seen:
+            seen.add(folder)
+            if folder in hubs:
+                return folder, coll
+            if folders.get(folder, {}).get("kind") == "collection" and not coll:
+                coll = folder
+            folder = folders.get(folder, {}).get("parent", "")
+        return "", coll
+
+    pool = []
+    for n in owner.nodes():
+        if n["type"] in _MAP_TOPICS or n["type"] in _MAP_SOURCES:
+            pool.append({"id": n["id"], "kind": n["type"], "label": _map_label(owner, n), "node": n,
+                         "tip": str(n.get("summary") or n.get("text") or _MEANING.get(n["type"], n["type"]))[:220],
+                         "role": "topic" if n["type"] in _MAP_TOPICS else "source"})
+    for m in snap["library"]:
+        pool.append({"id": m["id"], "kind": "library", "label": m["title"], "node": None, "role": "source",
+                     "tip": _LIBRARY_TIP[m["state"]] + (m["detail"] if m["state"] == "attention" else "")})
+    for f in snap["folders"]:
+        if f["kind"] == "collection":
+            pool.append({"id": f["id"], "kind": "collection", "label": f["title"], "node": None, "role": "topic", "tip": "A collection you made"})
+    needs, groups, files = [], {}, {}
+    for item in list(pool):
+        if item["kind"] == "code-symbol" and not item["label"] and item["node"].get("file"):
+            # Nameless code symbols are shown as the file they come from, not as opaque points.
+            where = str(item["node"]["file"])
+            files.setdefault(where, []).append(item["id"])
+            pool.remove(item)
+    for where, ids in sorted(files.items()):
+        pool.append({"id": "file:" + where, "kind": "source-file", "label": PurePath(where).name, "node": None, "role": "source", "canonical": False,
+                     "tip": f"Code in {where}; its {len(ids)} parts have no recorded names yet."})
+    for item in pool:
+        if not item["label"]:
+            needs.append({"id": item["id"], "kind": item["kind"], "reason": "No name or description is recorded for this item."})
+            continue
+        hub, coll = home_of(item["id"])
+        item["hub"], item["coll"] = hub or "inbox:" + owner.root.name, coll
+        groups.setdefault(item["hub"], []).append(item)
+    nodes, edges, omitted = {}, [], {}
+    for hub_id, items in groups.items():
+        for item in items:
+            canonical = item.get("canonical", item["kind"] not in ("library", "collection"))
+            item["weight"] = len(owner.edges(src=item["id"])) + len(owner.edges(dst=item["id"])) if canonical else 0
+        items.sort(key=lambda i: (i["role"] != "topic", -i["weight"], i["label"].casefold(), i["id"]))
+        cap = 200 if hub_id == expand else per_hub
+        kept, hidden = items[:cap], max(0, len(items) - cap)
+        if hidden:
+            omitted[hub_id] = hidden
+        by_id = {i["id"]: i for i in kept}
+        collections = {i["id"] for i in kept if i["kind"] == "collection"}
+        for item in kept:
+            parent = item["coll"] if item["coll"] in collections and item["id"] != item["coll"] else hub_id
+            if item["role"] == "source" and item.get("canonical", True) and item["kind"] != "library":
+                near = sorted(other for other in ({x["dst"] if x["src"] == item["id"] else x["src"] for x in
+                              owner.edges(src=item["id"]) + owner.edges(dst=item["id"])}) if other in by_id and other != item["id"]
+                              and by_id[other]["role"] == "topic" and by_id[other]["kind"] != "collection")
+                if near:
+                    parent = near[0]
+            nodes[item["id"]] = {"id": item["id"], "label": item["label"], "kind": item["kind"], "role": item["role"], "tip": item["tip"],
+                                 "parent": parent, "cluster": hub_id, "weight": item["weight"], "record": owner.root.name,
+                                 "canonical": item.get("canonical", item["kind"] not in ("library", "collection"))}
+            edges.append({"src": parent, "dst": item["id"], "type": "membership", "structure": True})
+    for i, hub in hubs.items():
+        nodes[i] = {"id": i, "label": hub["title"], "kind": hub["kind"], "role": "hub", "tip": f"A {hub['kind']}", "parent": "",
+                    "cluster": i, "weight": 0, "record": owner.root.name, "canonical": True}
+    for hub_id in groups:
+        if hub_id.startswith("inbox:"):
+            nodes[hub_id] = {"id": hub_id, "label": "Inbox", "kind": "inbox", "role": "hub", "parent": "", "cluster": hub_id, "weight": 0,
+                             "tip": "Material not yet placed in a course or project", "record": owner.root.name, "canonical": False}
+    real = []
+    for n in list(nodes.values()):
+        if n["canonical"] and n["kind"] not in ("collection", "inbox") and n["role"] != "hub":
+            for e in owner.edges(src=n["id"]):
+                if e["dst"] in nodes and not (n["parent"] == e["dst"] and e["type"] == "part-of"):
+                    real.append({"src": e["src"], "dst": e["dst"], "type": e["type"], "provenance": e.get("provenance"),
+                                 "verified": e.get("verified"), "structure": False})
+    return {"nodes": nodes, "edges": edges + real, "needs": needs, "omitted": omitted}
+
+
+def overview_map(rec: Record, per_hub: int = 24, expand: str = "") -> dict:
+    """The central organizational map: workspace -> courses and projects -> topics -> supporting material."""
+    per_hub = max(4, min(int(per_hub), 200))
+    nodes, edges, needs, omitted = {}, [], [], {}
+    with context.linked(rec) as records:
+        for owner in records:
+            part = _map_record(owner, per_hub, expand)
+            nodes.update(part["nodes"])
+            edges += part["edges"]
+            needs += [dict(n, record=owner.root.name) for n in part["needs"]]
+            omitted.update(part["omitted"])
+    centre = "workspace:" + rec.root.name
+    nodes[centre] = {"id": centre, "label": organization.title(rec), "kind": "workspace", "role": "center",
+                     "tip": "Everything in this workspace", "parent": "", "cluster": centre, "weight": 0, "record": rec.root.name, "canonical": False}
+    edges += [{"src": centre, "dst": n["id"], "type": "membership", "structure": True} for n in nodes.values() if n["role"] == "hub"]
+    return {"center": centre, "title": organization.title(rec), "nodes": list(nodes.values()), "edges": edges,
+            "needs_organization": needs[:60], "needs_count": len(needs), "omitted": omitted,
+            "counts": {"nodes": len(nodes), "hubs": sum(n["role"] == "hub" for n in nodes.values())}}
 
 
 def subgraph(rec: Record, mode: str = "knowledge", focus: str | None = None,
@@ -207,7 +332,7 @@ def subgraph(rec: Record, mode: str = "knowledge", focus: str | None = None,
                     edges.append(edge)
                 else:
                     omitted = True
-    nodes = [{"id": n["id"], "label": str(n.get("title") or n.get("text") or n["id"]),
+    nodes = [{"id": n["id"], "label": organization.display_name(rec, n['id'], str(n.get("title") or n.get("text") or 'Source file')),
               "kind": n["type"], "tip": str(n.get("status") or "State not recorded"),
               "status": n.get("status"), "provenance": n.get("provenance")} for n in raw]
     lanes = {n["id"]: atlas.RESEARCH_LANES.get(n["kind"], 5) for n in nodes} if mode == "research" else None

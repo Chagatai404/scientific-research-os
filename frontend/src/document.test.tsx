@@ -41,7 +41,10 @@ test('document contracts reject malformed widgets and routes preserve exact iden
   assert.throws(() => validateDocument({schema: 'unknown', sections: []}));
   assert.throws(() => validateDocument({schema: 'ros.document.v1', id: 'x', source_hash: 'x', sections: [{id: 'x', text: '<script>'}]}));
   const route = routeOf(entityHref('handout:a/b', 'other record', 'section-lecture'));
-  assert.deepEqual(route, {view: 'document', id: 'handout:a/b', record: 'other record', anchor: 'section-lecture'});
+  assert.deepEqual({view: route.view, id: route.id, record: route.record, anchor: route.anchor}, {view: 'document', id: 'handout:a/b', record: 'other record', anchor: 'section-lecture'});
+  assert.deepEqual(routeOf('#sources').view, 'library', 'the old Sources link opens the Library');
+  assert.deepEqual(routeOf('#sessions').view, 'overview', 'the old Sessions link opens the sessions column on Home');
+  assert.equal(routeOf('#learn?r=x&m=material%3Aabc').params.m, 'material:abc');
 });
 
 test('actual legacy handout titles and answer separators render as labelled callouts and collapsed solutions', () => {

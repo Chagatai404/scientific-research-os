@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 
 ROOT=Path(__file__).resolve().parents[1]
 STEPS={
@@ -15,6 +16,7 @@ STEPS={
  'frontend-build':(['npm','--prefix','frontend','run','build'],240),
  'legacy-browser':(['node','tests/ros-portal-browser.cjs'],180),
  'workspace-browser':(['node','tests/ros-workspace-browser.cjs'],180),
+ 'usability-browser':(['node','tests/ros-desktop-usability.cjs'],300),
  'desktop-browser':(['node','tests/ros-desktop-browser.cjs'],180),
  'workspace-benchmark':([sys.executable,'tests/bench_workspace.py'],600),
  'desktop-lifecycle':(['npm','--prefix','desktop','test'],120),
@@ -31,6 +33,7 @@ def main():
  env.setdefault('ROS_PLAYWRIGHT',str(Path.home()/'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright'))
  if os.name=='nt':env.setdefault('ROS_BROWSER',r'C:\Program Files\Google\Chrome\Application\chrome.exe')
  output=ROOT/'.desktop-build';output.mkdir(exist_ok=True)
+ started_at=datetime.now(timezone.utc).isoformat()
  results=[]
  for name in names:
   argv,timeout=STEPS[name];start=time.monotonic();timed_out=False
@@ -47,7 +50,7 @@ def main():
     process.kill();process.wait();code=124
     log.write('\nVerification interrupted or timed out; no pass inferred.\n')
   results.append({'name':name,'exit':code,'seconds':round(time.monotonic()-start,3),'timed_out':timed_out})
-  report={'complete_gate':not bool(args.only),'checks':results}
+  report={'complete_gate':not bool(args.only),'required_checks':list(STEPS),'started_at':started_at,'updated_at':datetime.now(timezone.utc).isoformat(),'desktop_version':json.loads((ROOT/'desktop/package.json').read_text(encoding='utf-8'))['version'],'checks':results}
   (output/'gate-results.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
   print(name+': exit '+str(code),flush=True)
  return 1 if any(r['exit'] for r in results) else 0

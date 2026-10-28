@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import export, graph, importers, research, tasks, vault
+from .. import export, graph, importers, research, tasks, vault, organization as org
 from ..learn import schedule
 from ..store import validate_item
 from ..registry import P, iso_day, present, tool
@@ -71,7 +71,7 @@ def library(rec):
     rows = []
     for lid, n in lessons.items():
         log = rec.root / "logs" / (lid.split(":", 1)[-1] + ".md")
-        rows.append({"id": lid, "title": n.get("title"), "started": started.get(lid), "closed": lid in closed,
+        rows.append({"id": lid, "title": org.display_name(rec, lid, n.get("title") or 'Learning session'), "started": started.get(lid), "closed": lid in closed,
                      "log": f"logs/{log.name}" if log.exists() else None, "legacy": n.get("legacy", False)})
     return sorted(rows, key=lambda r: r["started"] or "", reverse=True)
 

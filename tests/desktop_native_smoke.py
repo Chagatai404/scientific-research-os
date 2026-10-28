@@ -6,6 +6,8 @@ import os
 import subprocess
 import time
 import tempfile
+import hashlib
+from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,7 +33,9 @@ def main():
             subprocess.run(['taskkill','/pid',str(process.pid),'/T','/F'], capture_output=True)
             process.kill(); process.wait(); code = 124
     screenshot = folder/'desktop-smoke.png'
-    result = {'exit':code, 'seconds':round(time.monotonic()-started,2), 'screenshot':str(screenshot) if screenshot.exists() else None}
+    with executable.open('rb') as stream: executable_sha256=hashlib.file_digest(stream,'sha256').hexdigest()
+    result = {'exit':code, 'seconds':round(time.monotonic()-started,2), 'screenshot':str(screenshot) if screenshot.exists() else None,
+              'executable_sha256':executable_sha256,'tested_at':datetime.now(timezone.utc).isoformat()}
     if (folder/'desktop-smoke.json').exists():
         result['page'] = json.loads((folder/'desktop-smoke.json').read_text(encoding='utf-8'))
     (folder/'result.json').write_text(json.dumps(result,indent=2)+'\n', encoding='utf-8')

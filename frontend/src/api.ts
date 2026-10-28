@@ -31,10 +31,11 @@ export async function service<T>(name: string, args?: Record<string, unknown>): 
   return body.result as T;
 }
 export const readable = (id: string) => /^(handout|lesson|source|paper|visual):/.test(id) && !id.startsWith('bundle:');
-export function href(view: string, id = '', record = '', anchor = '') {
+export function href(view: string, id = '', record = '', anchor = '', extra: Record<string, string> = {}) {
   const params = new URLSearchParams();
   if (record) params.set('r', record);
   if (anchor) params.set('a', anchor);
+  for (const [key, value] of Object.entries(extra)) if (value) params.set(key, value);
   return `#${view}${id ? '/' + encodeURIComponent(id) : ''}${params.size ? '?' + params : ''}`;
 }
 export const entityHref = (id: string, record = '', anchor = '') => href(readable(id) ? 'document' : 'node', id, record, anchor);
@@ -45,7 +46,8 @@ export function routeOf(hash: string) {
   let id = slash < 0 ? '' : path.slice(slash + 1);
   try {id = decodeURIComponent(id);} catch { /* malformed links stay visible as missing targets */ }
   const params = new URLSearchParams(query);
-  return {view: view === 'director' ? 'overview' : view === 'vault' ? 'library' : view === 'graphs' ? 'graph' : view, id, record: params.get('r') || '', anchor: params.get('a') || ''};
+  const renamed: Record<string, string> = {director: 'overview', vault: 'library', graphs: 'graph', sessions: 'overview', sources: 'library'};
+  return {view: renamed[view] || view, id, record: params.get('r') || '', anchor: params.get('a') || '', params: Object.fromEntries(params), legacy: view};
 }
 export function preference(key: string, fallback: string): string {
   try {return localStorage.getItem('ros.workspace.' + key) ?? fallback;} catch {return fallback;}

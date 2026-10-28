@@ -1,5 +1,16 @@
 # Changelog
 
+## Desktop 1.4.0 (local build, not published)
+
+- Reorganize the desktop around one idea: choose a course or project, add material, and see what to do next. Navigation and a separate sessions column are both open on a fresh profile, toggle independently (`Ctrl/⌘+B`, `Ctrl/⌘+Shift+B`) and remember their state; narrow windows show one replacing drawer.
+- Name and organize without technical identifiers: create, rename and move courses, projects, collections, sessions and material, and rename the workspace. Names and placement are append-only preferences; history, citations and source files are never rewritten, and old `#sessions` and `#sources` links still open.
+- Add one overlay controller. Menus, pickers, the command palette and dialogs replace one another; Escape, an outside press, a selection or navigation closes them and focus returns to the opener. Drafts survive.
+- Replace the attachment link with an in-place menu: upload files, choose from the Library, connect a folder or an Obsidian vault. Several removable attachments per message; the existing per-file permission for cloud models is unchanged.
+- Add the Library: material is listed the moment it is added and then read in the background (Added, Reading, Ready, or Needs attention with a reason), restartably and without duplicates; changed files are read again. Text and, where an optional PDF reader exists, PDFs become searchable. Study this and Use in research start from any ready item.
+- Replace the central graph with a stable branching map: workspace, named courses and projects, topics, material. Size, colour and a restrained glow carry meaning (and are explained in a legend); hover or keyboard focus shows names. Organization lines are navigation only and are never written as scientific relations; nameless items are listed under Needs organization instead of drawn.
+- Make Learn and Research guided: a recommended next step with its reason, startable reviews, a goal form that can start from material, a research stage trail, readable plans and typed decision forms instead of raw JSON. Raw operation forms move to Developer tools.
+- Fix course handout keys for long and non-ASCII titles. Add a reversible, hash-verified vault reconciliation tool (`desktop/vault_reconcile.py`) that only adds navigation notes and preserves authored, edited and dismissed notes.
+
 ## Desktop 1.3.0 (local build, not published)
 
 - Add a thin Electron host with a frozen stdlib Python backend, owned process lifecycle, authenticated loopback transport and narrow source picker/open IPC.

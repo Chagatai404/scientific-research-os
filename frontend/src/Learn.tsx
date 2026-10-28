@@ -4,32 +4,67 @@ import {Pedagogy} from './Pedagogy';
 import {AgentAction} from './AgentAction';
 import {useEffect, useRef, useState, type FormEvent} from 'react';
 import {call, href, preference, readDocument, savePreference} from './api';
-import type {AnswerResult, DocumentData, Entity, LibraryItem, LessonStep, Today} from './contracts';
+import type {AnswerResult, DocumentData, Entity, LibraryItem, LessonStep, Organization, Today} from './contracts';
 import {Classroom, type ClassroomMap} from './Classroom';
 import './classroom.css';
 import {RichText, safeUrl} from './Document';
 import {useRecordRevision, useResource} from './hooks';
 import {Empty, Notice} from './ui';
 
-export function Learn({id, record}: {id: string; record: string}) {
-  const resource = useResource('learn:' + record, async signal => {
-    const [bundles, today] = await Promise.all([call<LibraryItem[]>('bundles', {}, record, false, signal), call<Today>('today', {}, record, false, signal)]);
-    return {bundles, today};
-  });
+export function Learn({id, record, material = ''}: {id: string; record: string; material?: string}) {
+  const [version, setVersion] = useState(0);
+  const resource = useResource(`learn:${record}:${version}`, async signal => {
+    const [bundles, today, org] = await Promise.all([call<LibraryItem[]>('bundles', {}, record, false, signal), call<Today>('today', {}, record, false, signal), call<Organization>('workspace_organization', {}, record, false, signal)]);
+    return {bundles, today, org};
+  }, record);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [goal, setGoal] = useState(''), [picked, setPicked] = useState(material), [setup, setSetup] = useState('');
+  const ready = (resource.data?.org.library || []).filter(m => m.state === 'ready');
+  const chosen = ready.find(m => m.id === picked);
+  useEffect(() => {setPicked(material);}, [material]);
   async function start(bundle: string) {
     setBusy(true); setError('');
     try {const result = await call<{lesson: string}>('start', {bundle}, record, true); location.hash = href('session', result.lesson, record);}
     catch (e) {setError((e as Error).message);} finally {setBusy(false);}
   }
+  async function review() {
+    setBusy(true); setError('');
+    try {
+      const target = await call<{scope: string} | null>('review_scope', {}, record);
+      if (!target) {setError('Nothing is due for review right now. Your list will refresh.'); setVersion(v => v + 1); return;}
+      const result = await call<{lesson: string}>('start', {scope: target.scope, title: 'Review'}, record, true); location.hash = href('session', result.lesson, record);
+    } catch (e) {setError((e as Error).message);} finally {setBusy(false);}
+  }
+  async function plan(event: FormEvent) {
+    event.preventDefault(); setBusy(true); setError(''); setSetup('Setting up your study plan…');
+    try {
+      const wanted = goal.trim() || `Teach me ${chosen?.title || ''}`;
+      const out = await call<{kind: string; for_you?: string[]}>('engage', {intent: chosen && goal.trim() ? `${wanted} Use ${chosen.title} as the material.` : wanted}, record, true);
+      setSetup(`Your plan is set up. ${out.for_you?.join(' ') || 'Your agent is preparing the first lesson; you will see it here when it is ready.'}`); setGoal(''); setVersion(v => v + 1);
+    } catch (e) {setSetup(''); setError((e as Error).message);} finally {setBusy(false);}
+  }
   if (id) return <Player key={record + id} id={id} record={record} />;
-  return <><div className="eyebrow">Build understanding, one step at a time</div><h1>Learning workspace</h1><p className="lead muted">Probe your understanding, follow a dependency plan, practise and return for review.</p>
+  if (!resource.data) return <Notice error={resource.error} retry={resource.retry} />;
+  const {today, bundles} = resource.data, nextReady = bundles.find(b => b.ready), lastSession = preference('last', '');
+  return <div className="learn-page"><div className="eyebrow">Build understanding, one step at a time</div><h1>Learn</h1>
+    <p className="lead muted">Say what you want to understand. You get a short check of what you know, a study path, and practice with feedback.</p>
     {error && <p className="notice error" role="alert">{error}</p>}
-    {!resource.data ? <Notice error={resource.error} retry={resource.retry} /> : <><div className="summary-grid"><div><strong>{resource.data.today.due}</strong><span>reviews due</span></div><div><strong>{resource.data.today.waiting_answers}</strong><span>written answers awaiting a tutor</span></div></div>
-      <div className="section-title"><h2>Prepared lessons</h2><span>{resource.data.bundles.length}</span></div>{resource.data.bundles.length ? <ul className="entry-list">{resource.data.bundles.map(bundle => <li key={bundle.id}><div className="lesson-entry"><div><strong>{bundle.title}</strong><small>{bundle.ready ? 'Ready to begin' : 'Preparation in progress'}</small></div><button className={bundle.ready ? 'primary' : ''} disabled={!bundle.ready || busy} onClick={() => start(bundle.id)}>Start lesson</button></div></li>)}</ul> : <Empty title="What would you like to understand?"><p>Describe your learning goal in Overview. Your agent will outline and prepare the material.</p></Empty>}
-      <a className="text-link" href={href('library', '', record)}>Read past sessions →</a></>}
-  </>;
+    <section className="next-card" aria-label="Recommended next step"><div className="eyebrow">Recommended next step</div>
+      {today.due > 0 ? <><h2>Review {today.due} {today.due === 1 ? 'idea' : 'ideas'} you are about to forget</h2><p className="muted">Short retrieval practice now keeps what you learned. It takes a few minutes.</p><button className="primary" disabled={busy} onClick={review}>Start review</button></>
+        : nextReady ? <><h2>{nextReady.title}</h2><p className="muted">Prepared and ready for you.</p><button className="primary" disabled={busy} onClick={() => start(nextReady.id)}>Start lesson</button></>
+        : today.next_lesson ? <><h2>{today.next_lesson.title}</h2><p className="muted">Your agent is still preparing this lesson{today.next_lesson.missing?.length ? ': ' + today.next_lesson.missing.slice(0, 3).join('; ') : ''}.</p><a className="button" href={href('activity', '', record)}>See progress</a></>
+        : <><h2>What do you want to understand?</h2><p className="muted">Describe it below, or pick something from your Library.</p></>}
+      {lastSession.startsWith('#session') && <p><a href={lastSession}>Resume your last lesson →</a></p>}</section>
+    <form className="goal-composer" onSubmit={plan}><label htmlFor="learn-goal">What do you want to understand?</label>
+      <textarea id="learn-goal" rows={3} value={goal} onChange={e => setGoal(e.target.value)} required={!chosen} maxLength={4000} placeholder={chosen ? `Teach me ${chosen.title}` : 'Teach me mathematical statistics, or explain quantum teleportation'}/>
+      <div className="composer-footer"><label className="inline-pick">Learn from<select value={picked} onChange={e => setPicked(e.target.value)}><option value="">Your own words only</option>{ready.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}</select></label>
+        <button className="primary" disabled={busy || (!goal.trim() && !chosen)}>{busy ? 'Setting up…' : 'Plan my study'}</button></div>
+      {!ready.length && <p className="muted">No readable material yet. <a href={href('library', '', record)}>Add material in the Library</a> to study from it.</p>}</form>
+    {setup && <p className="notice" role="status">{setup}</p>}
+    <div className="summary-grid"><div><strong>{today.due}</strong><span>reviews due</span></div><div><strong>{today.waiting_answers}</strong><span>answers waiting for feedback</span></div></div>
+    <div className="section-title"><h2>Prepared lessons</h2><span>{bundles.length}</span></div>{bundles.length ? <ul className="entry-list">{bundles.map(bundle => <li key={bundle.id}><div className="lesson-entry"><div><strong>{bundle.title}</strong><small>{bundle.ready ? 'Ready to begin' : 'Being prepared. See Activity for progress.'}</small></div><button className={bundle.ready ? 'primary' : ''} disabled={!bundle.ready || busy} onClick={() => start(bundle.id)}>Start lesson</button></div></li>)}</ul> : <Empty title="No lessons yet"><p>Describe what you want to understand above. Preparation runs in the background and shows in Activity.</p></Empty>}
+    <a className="text-link" href={href('library', '', record, '', {tab: 'notes'})}>Read past sessions →</a></div>;
 }
 
 function Player({id, record}: {id: string; record: string}) {

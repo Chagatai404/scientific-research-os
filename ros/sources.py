@@ -238,6 +238,20 @@ def index_batch(rec, source, paths, generation):
             except (OSError, ValueError, KeyError) as exc: errors.append({'path': path, 'error': str(exc)})
     return {'indexed': indexed, 'unchanged': unchanged, 'errors': errors}
 
+def index_document(rec, source, path, size, mtime, revision, text, generation):
+    """Store already-extracted text (for example from a PDF) in the same disposable lexical cache."""
+    with closing(sqlite3.connect(rec.root / 'sources-cache.sqlite')) as db, db:
+        db.execute('CREATE TABLE IF NOT EXISTS documents (source TEXT, path TEXT, size INTEGER, mtime INTEGER, revision TEXT, text TEXT, generation TEXT, PRIMARY KEY(source,path))')
+        db.execute('INSERT OR REPLACE INTO documents VALUES (?,?,?,?,?,?,?)', (source, path, size, mtime, revision, text, generation))
+        try:
+            exists = db.execute("SELECT 1 FROM sqlite_master WHERE name='documents_fts'").fetchone()
+            db.execute('CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(source UNINDEXED,path,revision UNINDEXED,text)')
+            if not exists: db.execute('INSERT INTO documents_fts SELECT source,path,revision,text FROM documents')
+            else:
+                db.execute('DELETE FROM documents_fts WHERE source=? AND path=?', (source, path))
+                db.execute('INSERT INTO documents_fts VALUES (?,?,?,?)', (source, path, revision, text))
+        except sqlite3.OperationalError: pass
+
 def search(rec, q, source=None, limit=30):
     if not q.strip(): return []
     cache = rec.root / 'sources-cache.sqlite'

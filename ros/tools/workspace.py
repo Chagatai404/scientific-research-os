@@ -1,5 +1,5 @@
 """Tools for the standalone workspace: readable documents and canonical entity references."""
-from .. import conversation as chat, workspace as ws
+from .. import conversation as chat, workspace as ws, organization as org
 from ..registry import P, TOOLS, tool
 
 
@@ -11,7 +11,8 @@ def connections(rec):
 @tool("workspace_document", "Read a handout, lesson transcript or imported source as versioned document data, with stable sections and provenance.",
       subject=P("string", "canonical document node id", True))
 def document(rec, subject):
-    return ws.document(rec, subject)
+    result = ws.document(rec, subject)
+    return dict(result, title=org.display_name(rec, subject, result.get('title') or 'Document'))
 
 
 @tool("workspace_entity", "Read one entity with its incoming and outgoing typed references, including missing targets and cross-record links.",
@@ -36,6 +37,12 @@ def graph(rec, mode="knowledge", focus=None, depth=1, limit=120, relation=None):
     return ws.subgraph(rec, mode, focus, depth, limit, relation)
 
 
+@tool("workspace_map", "Read the organizational map: workspace, courses and projects, topics and supporting material, with named branches and only recorded scientific relations.",
+      per_hub=P("integer", "visible children per course or project; default 24"), expand=P("string", "course or project to show in full"))
+def overview_map(rec, per_hub=24, expand=""):
+    return ws.overview_map(rec, per_hub, expand)
+
+
 @tool("workspace_chat_send", "Save a conversational message and prepare its model request; the portal executes the optional provider outside the record lock.",
       writes=True, text=P("string", "the person's message", True), model=P("string", "provider:model", True),
       conversation=P("string", "existing conversation id; omit to start and frame a goal"),
@@ -47,13 +54,14 @@ def chat_send(rec, text, model, conversation=None, effort="medium", key=None, mo
 @tool('workspace_sessions', 'List canonical conversations with pagination independent of browser preferences.', offset=P('integer', 'page offset'), limit=P('integer', 'page size'))
 def sessions(rec, offset=0, limit=30):
     rows = rec.nodes(type='conversation')
-    return [{'id': n['id'], 'title': n.get('title', 'Conversation'), 'model': n.get('model')} for n in rows][::-1][max(0, offset):max(0, offset) + min(100, max(1, limit))]
+    return [{'id': n['id'], 'title': org.display_name(rec, n['id'], n.get('title') or 'Conversation'), 'model': n.get('model'), 'parent': org.state(rec)['parents'].get(n['id'], '')} for n in rows][::-1][max(0, offset):max(0, offset) + min(100, max(1, limit))]
 
 
 @tool("workspace_chat", "Read the messages and pending response of one conversation. Assistant messages are not scientific or learning evidence.",
       conversation=P("string", "conversation id", True))
 def chat_read(rec, conversation):
-    return chat.history(rec, conversation)
+    result = chat.history(rec, conversation)
+    return dict(result, title=org.display_name(rec, conversation, result.get('title') or 'Conversation'))
 
 
 @tool("workspace_chat_complete", "Append the response or failure for a saved message, idempotently, without creating assessment evidence or human decisions.",

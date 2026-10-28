@@ -2,7 +2,6 @@ import {useEffect, useState, type FormEvent} from 'react';
 import {call, href, human, preference, savePreference} from './api';
 import {useResource} from './hooks';
 import {RichText} from './Document';
-import {Library} from './views';
 import {Notice} from './ui';
 import type {SourceConnection, SourceRef} from './desktop';
 import {SourceTools} from './SourceTools';
@@ -13,14 +12,14 @@ export function Sources({record}: {record: string}) {
   const connections = useResource('sources:' + record, signal => call<SourceConnection[]>('source_list', {}, record, false, signal), record);
   const [selected, setSelected] = useState(''), [path, setPath] = useState(''), [kind, setKind] = useState('file'), [root, setRoot] = useState(''), [localOnly, setLocalOnly] = useState(true);
   const [preview, setPreview] = useState<Preview|null>(null), [status, setStatus] = useState(''), [busy, setBusy] = useState(false), [start, setStart] = useState(1), [end, setEnd] = useState(40);
-  const [library, setLibrary] = useState(false);
   const active = connections.data?.find(c => c.id === selected);
   const listing = useResource(`source-children:${record}:${selected}:${path}`, signal => selected ? call<{name: string; path: string; directory: boolean}[]>('source_children', {source: selected, path}, record, false, signal) : Promise.resolve([]));
   useEffect(() => {setSelected(''); setPath(''); setPreview(null);}, [record]);
   async function connect(event?: FormEvent) {
     event?.preventDefault(); setBusy(true); setStatus('');
     try {
-      const source = window.researchDesktop ? await window.researchDesktop.pickSource(kind, record, localOnly) : await human<SourceConnection>('source_register', {root, kind, local_only: localOnly}, record);
+      const picked = window.researchDesktop ? await window.researchDesktop.pickSource(kind, record, localOnly) : await human<SourceConnection>('source_register', {root, kind, local_only: localOnly}, record);
+      const source = Array.isArray(picked) ? picked[0] : picked;
       if (source) {connections.retry(); setSelected(source.id); setPath(''); setPreview(null); setRoot(''); setStatus('Connected. Files remain on your computer.'); window.dispatchEvent(new Event('ros:records-changed'));}
     } catch (e) {setStatus((e as Error).message);} finally {setBusy(false);}
   }
@@ -28,16 +27,24 @@ export function Sources({record}: {record: string}) {
   async function attach() {
     setBusy(true); try {const ref = await call<SourceRef>('source_capture', {source: selected, path, start_line: start, end_line: end}, record, true); savePreference('attachment:' + record, JSON.stringify(ref)); setStatus('Passage retained. It is ready to attach to your next message.');} catch (e) {setStatus((e as Error).message);} finally {setBusy(false);}
   }
+  async function addToLibrary() {
+    setBusy(true); setStatus('');
+    try {
+      const out = await human<{added: number; existing: number}>('library_add', {source: selected}, record);
+      setStatus(out.added ? `Added ${out.added} items to your Library. They are being read now.` : `Everything here is already in your Library (${out.existing} items).`);
+      window.dispatchEvent(new Event('ros:library-changed')); window.dispatchEvent(new Event('ros:records-changed'));
+    } catch (e) {setStatus((e as Error).message);} finally {setBusy(false);}
+  }
   async function change(action: string) {try {await human('source_change', {source: selected, action}, record); connections.retry(); if (action === 'remove') {setSelected(''); setPreview(null);}} catch (e) {setStatus((e as Error).message);}}
   const media = '/source-media?' + new URLSearchParams({source: selected, path, record});
-  return <div className="sources-page"><div className="section-title"><h1>Sources</h1><button onClick={() => setLibrary(!library)}>{library ? 'Connections' : 'Handouts & Notes'}</button></div>
-    {library ? <Library record={record}/> : <><p className="muted">Connect a place to read. Select a passage separately to include it in a conversation.</p>
+  return <div className="sources-page"><h2>Connected places</h2>
+    {<><p className="muted">These are the places your library reads from. Connecting never changes your files. Select a passage separately to include it in a conversation.</p>
     <form className="source-connect" onSubmit={connect}><label>Source Kind<select value={kind} onChange={e => setKind(e.target.value)}><option value="file">File</option><option value="folder">Folder</option><option value="codebase">Codebase</option><option value="vault">Obsidian Vault</option></select></label>
       {!window.researchDesktop && <label>Approved Local Path<input value={root} onChange={e => setRoot(e.target.value)} placeholder="C:/research/paper.md" required /></label>}
       <label className="check-label"><input type="checkbox" checked={localOnly} onChange={e => setLocalOnly(e.target.checked)}/> Keep Content Local</label><button disabled={busy} className="primary">{window.researchDesktop ? 'Choose & Connect' : 'Connect Path'}</button></form>
     {status && <p className="notice" role="status">{status}</p>}
     {!connections.data ? <Notice error={connections.error} retry={connections.retry}/> : !connections.data.length ? <section className="empty-state"><h2>Connect Your Workspace</h2><p>Add a vault, project or source above. No model is needed to read and explore.</p></section> : <div className="source-layout"><nav aria-label="Source connections"><ul className="entry-list">{connections.data.map(c => <li key={c.id}><button aria-pressed={selected === c.id} onClick={() => {setSelected(c.id); setPath(''); setPreview(null);}}><span><strong>{c.label}</strong><small>{c.kind} · {c.status} · {c.localOnly ? 'Local Only' : 'Cloud Context Allowed'}</small></span></button></li>)}</ul></nav>
-      <section className="source-reader">{active && <><div className="section-title"><h2>{active.label}</h2><div className="actions"><button onClick={() => change(active.status === 'paused' ? 'resume' : 'pause')}>{active.status === 'paused' ? 'Resume' : 'Pause'}</button><button onClick={() => change('remove')}>Disconnect</button></div></div>
+      <section className="source-reader">{active && <><div className="section-title"><h2>{active.label}</h2><div className="actions"><button disabled={busy || active.status !== 'ready'} onClick={addToLibrary}>Add everything to Library</button><button onClick={() => change(active.status === 'paused' ? 'resume' : 'pause')}>{active.status === 'paused' ? 'Resume' : 'Pause'}</button><button onClick={() => change('remove')}>Disconnect</button></div></div>
         <SourceTools key={active.id} source={active} path={path} record={record} onOpen={open}/>
         {active.kind === 'file' && !preview && <button onClick={() => open('')}>Preview File</button>}
         {active.kind !== 'file' && <><button onClick={() => {setPath(path.split('/').slice(0, -1).join('/')); setPreview(null);}}>↑ Parent Folder</button><span className="source-path">{path || '/'}</span></>}

@@ -16,6 +16,8 @@ document and that test in the same commit.
  domain        graph · learn/{fsrs, evidence, schedule, probe, policy, tutor} · tasks · context
                prepare · research · importers · export
                vault · handouts · automation · director · atlas
+               organization (display names and membership, independent of scientific edges)
+               library (material added by the person: listed at once, read in the background)
      │
  core          store (the record) · home (where records live)
  engines       lib/ (speech, voice, Manim, papers, scouting, evidence atoms, manifests, walkthrough, old readers)
@@ -101,6 +103,19 @@ there is a registry for it below; use it.
 
 A new domain area gets a new `ros/tools/<area>.py` whose docstring starts "Tools for" **(checked)**, imported in
 `ros/api.py`.
+
+`organization` owns workspace display names, course/project/library folders, and session/material membership.
+Its `organization.*` and `workspace.renamed` events are human preferences; they never rewrite source paths,
+scientific edge meaning, immutable item identities or historical learning evidence. The snapshot caches canonical
+nodes and recorded membership on node/edge stamps and incrementally folds preference events. New workspaces are
+isolated until explicitly linked. UI callers use `workspace_organization` and the human organization tools.
+
+`library` owns the ingestion queue. `library.added` (one per file, id derived from connection and path) makes material
+visible without reading it; `library.state` moves it Added -> Reading -> Ready or Needs attention with a plain-language
+reason; `library.removed` hides it without touching the original. Processing is bounded (`library_process`, and the
+`library_queue` automation on each tick), idempotent and restart-safe, and feeds the disposable lexical index.
+`workspace_map` is a read model: membership lines it returns are navigation, typed `membership`, and are never written
+as record edges.
 
 ### An event type
 
@@ -223,7 +238,10 @@ assets before freezing the sidecar. Run `npm --prefix desktop run verify`, build
 
 - Unit tests: `python -m unittest discover -s tests -p "test_*.py"` (about 10 s). Name new files `test_ros_<area>.py`.
 - Browser: `node tests/ros-portal-browser.cjs`.
-- Workspace: `npm --prefix frontend test`, `npm --prefix frontend run build`, `node tests/ros-workspace-browser.cjs`.
+- Workspace: `npm --prefix frontend test`, `npm --prefix frontend run build`, `node tests/ros-workspace-browser.cjs`,
+  and the whole-journey `node tests/ros-desktop-usability.cjs` (sidebars, organization, one-overlay rule, Library,
+  attachments, map, layouts). Both browser suites accept `ROS_TEST_BASE`, `ROS_TEST_FOLDER` and `ROS_TEST_LESSON` to run
+  against a Vite dev server over a disposable record.
 - Use `ROS_NO_VAULT=1` for hermetic tests and standalone use: it disables automatic vault discovery;
   deliberately configured temporary vaults still work. Never let tests discover a personal vault.
 - Whole workflows by prompting only: `tests/test_ros_e2e_director.py` drives an agent through `mcp.Server.handle` and a

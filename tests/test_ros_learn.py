@@ -55,6 +55,17 @@ class ScheduleTests(Fixture):
         self.assertEqual(len(revs[CAP]), 2)
         self.assertTrue(schedule.due(self.rec, date.today() + timedelta(days=400)))
 
+    def test_a_due_card_names_the_node_to_open_a_review_on(self):
+        items = self.ladder()
+        tutor.answer(self.rec, "L1", items[1], 1)
+        later = date.today() + timedelta(days=400)
+        scope = schedule.next_scope(self.rec, later)
+        # Items and the capability are both due; whichever is first, the scope is the capability node.
+        self.assertEqual(scope["scope"], CAP)
+        self.assertIsNone(schedule.next_scope(self.rec, date.today() - timedelta(days=1)))
+        from ros import api
+        self.assertEqual(api.call("review_scope", self.rec, as_of=later.isoformat())["scope"], CAP)
+
 
 class TutorTests(Fixture):
     def test_checking(self):

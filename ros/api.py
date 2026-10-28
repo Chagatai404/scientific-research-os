@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from .registry import LOCK, TOOLS, Param, Tool, iso_day, present  # noqa: F401  (the public names of the table)
 from .store import Record
-from .tools import sources, runs, execution, pedagogy  # noqa: F401
+from .tools import sources, runs, execution, pedagogy, organization, library  # noqa: F401
 from .tools.context import release  # noqa: F401  (closes the user-wide records kept open between calls)
 from .tools import atlas, automation, context, director, handouts, learning, planning, preparation, record, research, vault, workspace  # noqa: F401  (importing a module registers its tools)
 

@@ -113,6 +113,16 @@ if __name__ == "__main__":
             api.release()
             rec.close()
         raise SystemExit(0)
+    if len(sys.argv) > 2 and sys.argv[2] == "--seed-due":
+        try:
+            import ros.store as store
+            store.now = lambda: "2026-09-01T10:00:00Z"   # a miss recorded long ago leaves a review due now
+            step = api.call("next", rec, lesson=lesson)
+            print(json.dumps(api.call("answer", rec, lesson=lesson, item=step["item"], dont_know=True)), flush=True)
+        finally:
+            api.release()
+            rec.close()
+        raise SystemExit(0)
     test_vault = root / "test-vault"
     test_vault.mkdir(exist_ok=True)
     server = serve._bind(rec, int(sys.argv[2]) if len(sys.argv) > 2 else 0)

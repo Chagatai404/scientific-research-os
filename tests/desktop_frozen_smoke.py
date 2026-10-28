@@ -6,6 +6,8 @@ import os
 import subprocess
 import sys
 import tempfile
+import hashlib
+from datetime import datetime, timezone
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'.desktop-build/python-packages'))
 
@@ -24,6 +26,7 @@ def main():
     assert rendered['ok'] and rendered['images'][0]['mime']=='image/png'
     result=call(['operation'],{'kind':'compute','packet':{'experiment':'experiment:frozen-fixture','digest':'synthetic-fixture','files':{'main.py':'from pathlib import Path\nPath("result.txt").write_text("42")\nprint(42)'},'argv':['python','main.py'],'timeout':15,'output_dir':str(folder/'output')}})
     assert result['ok'] and result['manifest']['observed']['bundled_python'] and '42' in result['output']
-    report={'cli_tools':len(tools),'python_on_path':False,'pdf_page_scope':rendered['page_scope'],'compute_ok':result['ok'],'bundled_python':result['manifest']['observed']['bundled_python'],'artifact_count':len(result['artifacts'])}
+    with backend.open('rb') as stream: backend_sha256=hashlib.file_digest(stream,'sha256').hexdigest()
+    report={'cli_tools':len(tools),'python_on_path':False,'pdf_page_scope':rendered['page_scope'],'compute_ok':result['ok'],'bundled_python':result['manifest']['observed']['bundled_python'],'artifact_count':len(result['artifacts']),'backend_sha256':backend_sha256,'tested_at':datetime.now(timezone.utc).isoformat()}
     (ROOT/'docs/desktop-rebuild/frozen-smoke.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8');print(json.dumps(report))
 if __name__=='__main__':main()

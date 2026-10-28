@@ -56,13 +56,22 @@ async function navigation(page) {
 async function collapseNavigation(page) {
   const drawer = page.getByRole('dialog', {name: 'Workspace navigation', exact: true});
   if (await drawer.isVisible()) {await drawer.getByRole('button', {name: 'Collapse navigation', exact: true}).click(); return;}
-  const hide = page.locator('.topbar').getByRole('button', {name: 'Collapse navigation', exact: true});
+  const hide = page.locator('.top-strip').getByRole('button', {name: 'Collapse navigation', exact: true});
   if (await hide.isVisible()) await hide.click();
 }
 async function homeCamera(page) {
-  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  // A resize reaches the camera through React state and an observer, a few frames later. Wait until it has settled.
+  let last = '';
+  for (let i = 0; i < 40; i++) {
+    const now = await page.evaluate(async () => {
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      return document.querySelector('.graph-frame').getBoundingClientRect().width + ':' + localStorage.getItem('ros.workspace.camera:' + JSON.stringify(['', 'map', '', '', 1, false, '']));
+    });
+    if (now === last) break;
+    last = now; await page.waitForTimeout(80);
+  }
   return page.evaluate(() => {
-    const key = 'ros.workspace.camera:' + JSON.stringify(['', 'knowledge', '', '', 1, false]);
+    const key = 'ros.workspace.camera:' + JSON.stringify(['', 'map', '', '', 1, false, '']);
     const camera = JSON.parse(localStorage.getItem(key));
     const frame = document.querySelector('.graph-frame').getBoundingClientRect();
     return {zoom: camera.zoom, x: (frame.width / 2 - camera.x) / camera.zoom, y: (frame.height / 2 - camera.y) / camera.zoom};
@@ -118,14 +127,16 @@ function hashes(folder) {
   walk(folder); return out;
 }
 async function main() {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'ros-workspace-'));
+  // ROS_TEST_BASE / ROS_TEST_FOLDER / ROS_TEST_LESSON point the same checks at a running dev server over a disposable record.
+  const dev = !!process.env.ROS_TEST_BASE;
+  const folder = dev ? process.env.ROS_TEST_FOLDER : fs.mkdtempSync(path.join(os.tmpdir(), 'ros-workspace-'));
   let server, browser, page;
   const errors = [], outside = [], failed = [];
   let transcriptions = 0;
   const modelChecks = [], sentMessages = [];
   const started = Date.now();
   try {
-    server = await start(folder);
+    server = dev ? {url: process.env.ROS_TEST_BASE, document: 'handout:variance-reading', lesson: process.env.ROS_TEST_LESSON, vault: process.env.ROS_TEST_VAULT || path.join(folder, 'test-vault'), stderr: [], proc: {kill() {}, once(event, callback) {callback();}}} : await start(folder);
     browser = await chromium.launch({headless: true, args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'], ...(process.env.ROS_BROWSER ? {executablePath: process.env.ROS_BROWSER} : {})});
     const context = await browser.newContext({viewport: {width: 1440, height: 1000}, reducedMotion: 'reduce'});
     await context.addInitScript(() => {
@@ -212,7 +223,7 @@ async function main() {
     await page.getByRole('button', {name: 'Dictate your question', exact: true}).click();
     assert.equal(await page.getByRole('button', {name: 'Send message', exact: true}).isDisabled(), true, 'pending microphone permission disables send');
     await page.evaluate(() => {location.hash = '#library?r=demo';});
-    await page.getByRole('heading', {name: 'Library & notes', exact: true}).waitFor();
+    await page.getByRole('heading', {name: 'Library', exact: true}).waitFor();
     const lateMicrophone = await page.evaluate(async () => {
       window.resolveLateMicrophone({getTracks: () => [{stop: () => {window.lateMicrophone.stops++;}}]});
       await new Promise(resolve => setTimeout(resolve, 0));
@@ -234,13 +245,13 @@ async function main() {
     await page.getByLabel('Your message', {exact: true}).fill('A request whose transport finishes after navigation');
     await page.getByRole('button', {name: 'Send message', exact: true}).click();
     await page.evaluate(() => {location.hash = '#library?r=demo';});
-    await page.getByRole('heading', {name: 'Library & notes', exact: true}).waitFor();
+    await page.getByRole('heading', {name: 'Library', exact: true}).waitFor();
     releaseSend(); await sendCompleted;
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.match(page.url(), /#library\?r=demo$/, 'delayed send must not redirect after the composer unmounts');
     await page.unroute('**/api/workspace_chat_send');
     await page.goto(workspace + '#overview'); await page.getByTestId('graph-home').waitFor();
-    assert.match(await page.locator('.model-picker summary').innerText(), /GPT-6.1 Sol/);
+    assert.match(await page.getByRole('button', {name: /^Language model:/}).innerText(), /GPT-6.1 Sol/);
     assert.equal(await page.locator('#custom-model').count(), 0, 'model choices must come from the provider catalog');
     await page.locator('.settings-toggle').click();
     await page.getByRole('heading', {name: 'Settings', exact: true}).waitFor();
@@ -260,25 +271,25 @@ async function main() {
     await page.getByRole('button', {name: 'Connect Vault', exact: true}).click();
     await page.getByText('Vault connection saved.', {exact: true}).waitFor();
     await page.reload(); await page.getByLabel('Vault path', {exact: true}).waitFor();
-    await page.waitForFunction(value => document.querySelector('#vault-path').value === value, server.vault);
+    await page.waitForFunction(value => { const same = text => text.split(String.fromCharCode(92)).join('/').toLowerCase(); return same(document.querySelector('#vault-path').value) === same(value); }, server.vault);
     assert.equal(await page.getByLabel('Research OS folder inside the vault', {exact: true}).inputValue(), 'Browser Research');
     assert.equal(await page.getByLabel('Reasoning effort', {exact: true}).inputValue(), 'high');
     assert.equal(modelChecks.length, 1, 'reloading Settings does not check a model automatically');
     await page.goto(workspace + '#overview'); await page.getByTestId('graph-home').waitFor();
-    assert.match(await page.locator('.effort-picker summary').innerText(), /High/);
+    assert.match(await page.getByRole('button', {name: /^Reasoning effort:/}).innerText(), /High/);
     for (const width of widths) {
       await page.setViewportSize({width, height: 1000});
-      for (const picker of ['.model-picker', '.effort-picker']) {
-        await page.locator(picker + ' summary').click();
-        const bounds = await page.locator(picker + ' .model-options').evaluate(element => {const r = element.getBoundingClientRect(); return {inside: r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1};});
+      for (const picker of [/^Language model:/, /^Reasoning effort:/]) {
+        await page.getByRole('button', {name: picker}).click();
+        const bounds = await page.locator('.menu-panel').evaluate(element => {const r = element.getBoundingClientRect(); return {inside: r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1};});
         assert.equal(bounds.inside, true, `${picker} remains within viewport @${width}`);
-        await page.locator(picker + ' summary').click();
+        await page.keyboard.press('Escape');
       }
       await graphHome(page, `model/effort composer @${width}`);
     }
     await page.setViewportSize({width: 1440, height: 1000});
-    assert.equal(await page.locator('select:visible').count(), 1, 'landing exposes one meaningful session mode selector');
-    await page.getByLabel('Session mode', {exact:true}).waitFor();
+    assert.equal(await page.locator('select:visible').count(), 0, 'the landing uses menus, not native selects, for its pickers');
+    await page.getByRole('button', {name: 'Session mode', exact: true}).waitFor();
     assert.match(await page.locator('html').evaluate(el => getComputedStyle(el).colorScheme), /dark/);
     const longDraft = 'A long scientific question about variance and the assumptions behind its estimate. '.repeat(45);
     await page.getByLabel('Your message', {exact: true}).fill(longDraft);
@@ -293,10 +304,10 @@ async function main() {
     await page.getByLabel('Your message', {exact: true}).fill('Please explain the units');
     await page.getByRole('button', {name: 'Send message', exact: true}).click();
     await page.waitForFunction(() => document.querySelectorAll('.message.assistant').length === 2);
-    await page.locator('.model-picker summary').click();
+    await page.getByRole('button', {name: /^Language model:/}).click();
     await page.getByRole('button', {name: /Claude Sonnet/}).click();
-    assert.match(await page.locator('.model-picker summary').innerText(), /Claude Sonnet/);
-    assert.equal(await page.locator('.effort-picker').count(), 0, 'models with no reasoning-effort support do not offer unsupported controls');
+    assert.match(await page.getByRole('button', {name: /^Language model:/}).innerText(), /Claude Sonnet/);
+    assert.equal(await page.getByRole('button', {name: /^Reasoning effort:/}).count(), 0, 'models with no reasoning-effort support do not offer unsupported controls');
     await page.getByRole('button', {name: 'Dictate your question', exact: true}).click();
     await page.getByRole('button', {name: 'Stop recording', exact: true}).waitFor();
     assert.equal(await page.getByRole('button', {name: 'Send message', exact: true}).isDisabled(), true, 'recording must remain a draft until capture stops');
@@ -313,7 +324,7 @@ async function main() {
     assert.equal(Object.hasOwn(sentMessages.at(-1), 'effort'), false, 'unsupported reasoning effort is not sent to Claude');
     await page.getByLabel('Your message', {exact: true}).fill(longDraft);
     await page.reload(); await page.locator('.message.assistant').first().waitFor();
-    assert.match(await page.locator('.model-picker summary').innerText(), /Claude Sonnet/, 'selected model preference survives reload');
+    assert.match(await page.getByRole('button', {name: /^Language model:/}).innerText(), /Claude Sonnet/, 'selected model preference survives reload');
     assert.equal(await page.getByLabel('Your message', {exact: true}).inputValue(), longDraft, 'conversation draft survives reload');
     const conversationUrl = page.url();
     await page.getByRole('link', {name: 'New conversation', exact: true}).click();
@@ -323,7 +334,7 @@ async function main() {
     await page.goto(conversationUrl); await page.locator('.message.assistant').first().waitFor();
     assert.equal(await page.getByLabel('Your message', {exact: true}).inputValue(), longDraft, 'navigating between sessions preserves their separate drafts');
     await navigation(page);
-    await page.getByRole('link', {name: 'Sources', exact: true}).click(); await page.getByRole('button', {name: 'Handouts & Notes', exact: true}).click();
+    await page.getByRole('link', {name: 'Library', exact: true}).click(); await page.getByRole('button', {name: 'Notes & handouts', exact: true}).click();
     await page.getByRole('link', {name: /Variance, from intuition/}).click();
     await collapseNavigation(page);
     await page.locator('.document .katex-display').waitFor();
@@ -390,7 +401,7 @@ async function main() {
     const laneNode = laneGraph.nodes[0];
     assert.ok(laneNode, 'research fixture provides a directed-lane node');
     const lanePoint = await page.evaluate(node => {
-      const camera = JSON.parse(localStorage.getItem('ros.workspace.camera:' + JSON.stringify(['demo', 'research', '', '', 1, true])));
+      const camera = JSON.parse(localStorage.getItem('ros.workspace.camera:' + JSON.stringify(['demo', 'research', '', '', 1, true, ''])));
       return {x: (node.x + 8) * camera.zoom + camera.x, y: (node.y + node.h / 2) * camera.zoom + camera.y};
     }, laneNode);
     await page.locator('.graph-frame canvas').click({position: lanePoint});
@@ -479,7 +490,7 @@ async function main() {
   } finally {
     if (browser) await browser.close();
     if (server) {const exited = new Promise(resolve => server.proc.once('exit', resolve)); server.proc.kill(); await exited;}
-    fs.rmSync(folder, {recursive: true, force: true, maxRetries: 10, retryDelay: 200});
+    if (!dev) fs.rmSync(folder, {recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 }
 main().catch(error => {console.error(error); process.exitCode = 1;});

@@ -9,10 +9,12 @@ import subprocess
 import threading
 import tempfile
 import sys
+from datetime import datetime, timezone
 ROOT=Path(__file__).resolve().parents[1]
 
 def main():
-    installer=ROOT/'desktop/dist/Research-OS-Setup-1.3.0-x64.exe'
+    version=json.loads((ROOT/'desktop/package.json').read_text(encoding='utf-8'))['version']
+    installer=ROOT/f'desktop/dist/Research-OS-Setup-{version}-x64.exe'
     if not installer.is_file():raise ValueError('Build the installer first.')
     with installer.open('rb') as stream:digest=base64.b64encode(hashlib.file_digest(stream,'sha512').digest()).decode()
     corrupt='--corrupt' in sys.argv
@@ -40,8 +42,9 @@ def main():
             except subprocess.TimeoutExpired:
                 subprocess.run(['taskkill','/pid',str(process.pid),'/T','/F'],capture_output=True);process.kill();process.wait();code=124
         result=json.loads((folder/'updater-smoke.json').read_text()) if (folder/'updater-smoke.json').exists() else {'state':'failed'}
-        result.update(exit=code,installer_sha512=digest,installation_performed=False)
+        with installer.open('rb') as stream:installer_sha256=hashlib.file_digest(stream,'sha256').hexdigest()
+        result.update(exit=code,installer_sha512=digest,installer_sha256=installer_sha256,installation_performed=False,tested_at=datetime.now(timezone.utc).isoformat())
         (ROOT/('docs/desktop-rebuild/updater-corrupt-smoke.json' if corrupt else 'docs/desktop-rebuild/updater-smoke.json')).write_text(json.dumps(result,indent=2)+'\n')
-        print(json.dumps(result,indent=2));return 0 if code==0 and (result['state']=='ready' if not corrupt else result['state']=='unavailable' and 'checksum mismatch' in (folder/'process.log').read_text(encoding='utf-8').lower()) else 1
+        print(json.dumps(result,indent=2));return 0 if code==0 and result.get('version')==version and (result['state']=='ready' if not corrupt else result['state']=='unavailable' and 'checksum mismatch' in (folder/'process.log').read_text(encoding='utf-8').lower()) else 1
     finally:server.shutdown();server.server_close()
 if __name__=='__main__':raise SystemExit(main())

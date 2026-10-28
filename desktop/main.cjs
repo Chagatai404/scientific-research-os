@@ -61,9 +61,11 @@ async function start() {
   }
   ipcMain.handle('source:pick', async (event, payload) => {
     sender(event); if (!payload || !['vault', 'codebase', 'folder', 'file'].includes(payload.kind) || typeof payload.record !== 'string' || typeof payload.localOnly !== 'boolean') throw new Error('Invalid source selection');
-    const chosen = await dialog.showOpenDialog(window, {title: 'Connect ' + payload.kind, properties: [payload.kind === 'file' ? 'openFile' : 'openDirectory']});
+    const chosen = await dialog.showOpenDialog(window, {title: payload.kind === 'file' ? 'Choose files' : 'Choose a ' + payload.kind, properties: payload.kind === 'file' ? ['openFile', 'multiSelections'] : ['openDirectory']});
     if (chosen.canceled || !chosen.filePaths.length) return null;
-    return operation('source_register', {kind: payload.kind, root: chosen.filePaths[0], local_only: payload.localOnly, record: payload.record});
+    const connect = root => operation('source_register', {kind: payload.kind, root, local_only: payload.localOnly, record: payload.record});
+    // Several files become several connections, in the order the person chose them; the caller handles one or many.
+    return payload.kind === 'file' && chosen.filePaths.length > 1 ? Promise.all(chosen.filePaths.slice(0, 20).map(connect)) : connect(chosen.filePaths[0]);
   });
   ipcMain.handle('source:open', async (event, payload) => {
     sender(event); if (!payload || typeof payload.source !== 'string' || typeof payload.relativePath !== 'string' || typeof payload.record !== 'string') throw new Error('Invalid source reference');

@@ -7,6 +7,7 @@ import './dark.css';
 import './graph.css';
 import './settings.css';
 import './desktop.css';
+import './shell.css';
 
 class ErrorBoundary extends Component<{children: ReactNode}, {error: string}> {
   state = {error: ''};

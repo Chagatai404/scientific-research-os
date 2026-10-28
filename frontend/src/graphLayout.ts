@@ -1,5 +1,53 @@
-import type {GraphData, GraphNode} from './contracts';
-export interface PointNode extends GraphNode {px: number; py: number; group: number}
+import type {GraphData, GraphNode, OrganizationMap} from './contracts';
+export interface PointNode extends GraphNode {px: number; py: number; group: number; r?: number; color?: string}
+
+/* Organizational map: workspace at the centre, courses and projects around it, topics and material branching outward.
+   Position comes only from the tree and sorted ids, so it is stable and needs no simulation. Colour is keyed to the
+   course or project's identity, never to array order. Size is organizational prominence, never a truth or mastery score. */
+export const PALETTE = ['#8db8ff', '#7fd1b9', '#e6b86a', '#d78fb8', '#a3a8ff', '#e49479', '#7fcfe0', '#b6d57b'];
+export const NEUTRAL = '#9aa5b1';
+export const colorFor = (id: string) => {let h = 2166136261; for (const c of id) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return PALETTE[(h >>> 0) % PALETTE.length];};
+const log = (n: number, cap: number) => Math.min(cap, Math.log2(1 + Math.max(0, n)));
+export function radiusFor(role: string, weight: number, children: number) {
+  return role === 'center' ? 22 : role === 'hub' ? 13 + log(children, 5) : role === 'topic' ? 7 + log(weight, 5) : 4 + log(weight, 3);
+}
+const ORDER: Record<string, number> = {hub: 0, topic: 1, source: 2};
+export function mapLayout(map: OrganizationMap) {
+  const byId = new Map(map.nodes.map(n => [n.id, n]));
+  const children = new Map<string, string[]>();
+  for (const n of map.nodes) {
+    if (n.role === 'center') continue;
+    const parent = n.role === 'hub' || !byId.has(n.parent) ? map.center : n.parent;
+    children.set(parent, [...(children.get(parent) || []), n.id]);
+  }
+  for (const list of children.values()) list.sort((a, b) => ORDER[byId.get(a)!.role] - ORDER[byId.get(b)!.role] || byId.get(a)!.label.localeCompare(byId.get(b)!.label) || a.localeCompare(b));
+  const leaves = new Map<string, number>();
+  const count = (id: string, seen = new Set<string>()): number => {
+    if (leaves.has(id)) return leaves.get(id)!;
+    if (seen.has(id)) return 1;
+    seen.add(id);
+    const kids = children.get(id) || [];
+    const value = kids.length ? kids.reduce((sum, k) => sum + count(k, seen), 0) : 1;
+    leaves.set(id, value); return value;
+  };
+  count(map.center);
+  const depth = new Map<string, number>([[map.center, 0]]), perDepth = new Map<number, number>();
+  const walk = (id: string) => {for (const k of children.get(id) || []) {if (depth.has(k)) continue; depth.set(k, depth.get(id)! + 1); perDepth.set(depth.get(k)!, (perDepth.get(depth.get(k)!) || 0) + 1); walk(k);}};
+  walk(map.center);
+  const ring = (d: number) => {let r = 0; for (let i = 1; i <= d; i++) r = Math.max(r + (i === 1 ? 250 : 130), (perDepth.get(i) || 0) * 40 / (2 * Math.PI)); return r;};
+  const points = new Map<string, PointNode>();
+  const place = (id: string, a0: number, a1: number) => {
+    const n = byId.get(id)!, angle = (a0 + a1) / 2, r = ring(depth.get(id) || 0);
+    const kids = children.get(id) || [], color = n.role === 'center' ? '#e8ecf0' : n.kind === 'inbox' ? NEUTRAL : colorFor(n.cluster);
+    points.set(id, {id, label: n.label, kind: n.kind, tip: n.tip, canonical: n.canonical, x: 0, y: 0, w: 0, h: 0, role: n.role, parent: n.parent, cluster: n.cluster, weight: n.weight, record: n.record,
+      px: n.role === 'center' ? 0 : Math.cos(angle) * r, py: n.role === 'center' ? 0 : Math.sin(angle) * r, group: 0, r: radiusFor(n.role, n.weight, kids.length), color});
+    const total = kids.reduce((sum, k) => sum + Math.pow(leaves.get(k) || 1, .75), 0);
+    let cursor = a0;
+    for (const k of kids) {const share = Math.pow(leaves.get(k) || 1, .75) / total * (a1 - a0); place(k, cursor, cursor + share); cursor += share;}
+  };
+  place(map.center, -Math.PI / 2, Math.PI * 1.5);
+  return {nodes: [...points.values()], groups: [] as {x: number; y: number; radius: number; label: string}[]};
+}
 export interface Camera {x: number; y: number; zoom: number}
 export function pointLayout(graph: GraphData) {
   const sorted = [...graph.nodes].sort((a, b) => a.id.localeCompare(b.id));

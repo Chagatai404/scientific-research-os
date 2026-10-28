@@ -1,7 +1,7 @@
 import {ConnectionSettings} from './ConnectionSettings';
 import {VaultActions} from './VaultActions';
 import {useEffect, useState, type FormEvent} from 'react';
-import {call, service} from './api';
+import {call, href, service} from './api';
 import {useResource} from './hooks';
 import {effortLabel, modelLabel, supportedEfforts, useModelPreferences, type ModelCatalog} from './modelPreferences';
 
@@ -52,5 +52,6 @@ export function Settings({record}: {record: string}) {
       {report && <pre className="settings-report" role="status">{report}</pre>}{error && <p className="notice error" role="alert">{error}</p>}
     </section>
     <VaultActions record={record}/><ConnectionSettings record={record}/>
+    <section aria-labelledby="settings-developer"><h2 id="settings-developer">Developer tools</h2><p className="muted">Every operation the app can perform, as raw forms. Meant for troubleshooting and for people building on Research OS; normal learning and research never need it.</p><a className="button" href={href('tools', '', record)}>Open developer tools</a></section>
   </div>;
 }

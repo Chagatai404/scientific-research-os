@@ -1,5 +1,5 @@
 """Tools for scoped source connections, immutable passages and local previews."""
-from .. import sources
+from .. import sources, organization as org
 from ..registry import tool, P
 
 @tool('source_register', 'Connect a local file, folder, vault or codebase without scanning or executing it.', human=True,
@@ -10,7 +10,7 @@ def register(rec, root, kind='file', label='', local_only=True):
 
 @tool('source_list', 'List source connections and their current availability without scanning their contents.')
 def listing(rec):
-    return [sources.public(row) for row in sources.connections(rec)]
+    return [dict(sources.public(row), label=org.display_name(rec, row['id'], row.get('label') or 'Connected material')) for row in sources.connections(rec)]
 
 @tool('source_children', 'Browse one directory lazily within an existing source connection.', source=P('string', 'connection id', True), path=P('string', 'relative folder'), offset=P('integer', 'page offset'), limit=P('integer', 'page size'))
 def children(rec, source, path='', offset=0, limit=100):

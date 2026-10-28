@@ -16,6 +16,10 @@ export function Icon({name}: {name: string}) {
     research: 'M9 3h6 M10 3v6L4 19q-1 2 2 2h12q3 0 2-2L14 9V3 M7 15h10',
     graph: 'M6 6 18 8 10 19 6 6 M6 6l4 13 M3 6a3 3 0 1 0 6 0a3 3 0 1 0-6 0 M15 8a3 3 0 1 0 6 0a3 3 0 1 0-6 0 M7 19a3 3 0 1 0 6 0a3 3 0 1 0-6 0',
     library: 'M4 3v18 M9 3v18 M14 3v18 M18 4l4 16',
+    activity: 'M3 12h4l3-8 4 16 3-8h4',
+    settings: 'M4 6h9 M17 6h3 M4 12h3 M11 12h9 M4 18h11 M19 18h1 M15 4v4 M9 10v4 M17 16v4',
+    'panel-nav': 'M3 4h18v16H3Z M9 4v16',
+    'panel-sessions': 'M3 4h18v16H3Z M7 4v16 M12 4v16',
   };
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] || paths.overview} /></svg>;
 }

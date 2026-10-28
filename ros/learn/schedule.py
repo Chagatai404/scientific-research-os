@@ -31,3 +31,15 @@ def schedule(rec: Record, as_of: date, retention: float = fsrs.DEFAULT_RETENTION
 
 def due(rec: Record, as_of: date, **kw) -> list[dict]:
     return [c for c in schedule(rec, as_of, **kw) if c["due"] <= as_of.isoformat()]
+
+
+def next_scope(rec: Record, as_of: date, **kw) -> dict | None:
+    """Where to open a review lesson: the first due card when it is itself a node, else the capability its item tests.
+    The lesson's own policy then puts the due items first."""
+    tested = evidence.of(rec).item_caps
+    for card in due(rec, as_of, **kw):
+        key = card["id"]
+        scope = key if rec.node(key) else next(iter(tested.get(key, [])), None)
+        if scope:
+            return {"scope": scope, "due": card["due"], "overdue_days": card["overdue_days"]}
+    return None

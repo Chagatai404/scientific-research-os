@@ -17,13 +17,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 import json
+import hashlib
 import os
 from pathlib import Path
 import sys
 import time
 from typing import Callable
 
-from . import graph, handouts, home, importers, prepare, research, roadmap, tasks, vault
+from . import graph, handouts, home, importers, library, prepare, research, roadmap, tasks, vault
 from .store import Record
 
 WATCH = ("approval", "handout.revise", "handout.built")
@@ -166,15 +167,15 @@ def _course_handouts(look: Look):
         course = (rec.node(hub) or {}).get("title") or hub.split(":", 1)[-1]
         for cap in learning.frontier(hub)[:NEXT_LESSONS]:
             title = (rec.node(cap) or {}).get("title") or cap.split(":", 1)[-1]
-            hid = handouts.hid(f"lecture-{_slug(course)}-{_slug(title)}")
+            hid = handouts.hid(_handout_key(f"lecture-{_slug(course)}-{_slug(title)}", course + '\0' + title))
             if missing(hid):
                 handouts.create(rec, "lecture", [cap], title, key=hid.split(":", 1)[1], hub=hub)
                 opened += 1
-            rid = handouts.hid(f"recitation-{_slug(course)}-{_slug(title)}")
+            rid = handouts.hid(_handout_key(f"recitation-{_slug(course)}-{_slug(title)}", course + '\0' + title))
             if (rec.node(hid) or {}).get("status") in ("ready", "built") and missing(rid):
                 handouts.create(rec, "recitation", [cap], f"{title}: recitation", key=rid.split(":", 1)[1], hub=hub)
                 opened += 1
-        cid = handouts.hid(f"chapter-{_slug(course)}")
+        cid = handouts.hid(_handout_key(f"chapter-{_slug(course)}", course))
         if len(caps) >= 6 and missing(cid):
             handouts.create(rec, "chapter", [hub], f"{course}: chapter", key=cid.split(":", 1)[1], hub=hub)
             opened += 1
@@ -232,6 +233,14 @@ def _literature_flow(look: Look):
 def _slug(text: str) -> str:
     import re
     return re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-").lower()[:40]
+
+
+def _handout_key(key: str, original: str) -> str:
+    """Keep existing short keys; long/non-ASCII titles get bounded collision-safe keys."""
+    if len(key) <= 64 and key.rstrip('-') == key and '--' not in key:
+        return key
+    digest = hashlib.sha256(original.encode('utf-8')).hexdigest()[:12]
+    return key[:51].rstrip('-') + '-' + digest
 
 
 def _bundle_gate(look: Look):
@@ -355,6 +364,14 @@ def _vault_scan(look: Look):
     return {"wrote": n, "annotations": out["annotations"], "found": out["found"]} if n else None
 
 
+def _library_queue(look: Look):
+    """New library material is read a few files at a time, so adding is instant and nobody has to press a button."""
+    if not library.pending(look.rec):
+        return None
+    out = library.process(look.rec, 8)
+    return {"wrote": out["ready"], "read": out["processed"], "waiting": out["remaining"]}
+
+
 def _review_note(look: Look):
     """Once a day: the review note, with what is due, learned, decided and added."""
     if not vault.configured():
@@ -375,6 +392,7 @@ TRIGGERS: list[Trigger] = [
     Trigger("vault_sync", ("tick",), _vault_sync),
     Trigger("vault_scan", ("scan",), _vault_scan),
     Trigger("legacy_sync", ("scan",), _legacy_sync),
+    Trigger("library_queue", ("tick",), _library_queue),
     Trigger("review_note", ("daily",), _review_note),
 ]
 

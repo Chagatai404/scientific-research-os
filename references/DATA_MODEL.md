@@ -22,6 +22,26 @@ Outside the record, `$ROS_HOME/settings.json` holds the person's choices (`vault
 `director_name`, `pdf_engine`, `portal_port`), and `$ROS_HOME/vault/<id>.sqlite` is the vault manifest (what the system
 wrote and what it saw: path, size, mtime, hash). Both are rebuildable or re-askable; neither is the truth.
 
+### Human organization preferences
+
+`workspace.renamed` (subject `workspace`, data `title`) records a readable workspace name while the backing record
+name remains stable. `organization.created` records an automatically assigned folder identity, `kind` (`course`,
+`project`, `collection`), `title`, and optional `parent`. Course/project folders have ordinary canonical nodes;
+collections need no scientific node. `organization.renamed` stores `title` for an existing item, and
+`organization.moved` stores its `parent` (empty means Inbox). These append-only preferences override display names
+and organizational placement only. They never change old events, source files, citations or scientific edges.
+Parents must be existing folders, with cycles rejected. New workspaces start unlinked to preserve data isolation.
+
+### Library material
+
+`library.added` (subject `material:<24 hex>`, derived from the connection and relative path) records that a person
+added a file: `source` (connection id), `path`, `title`, `format`, `size`, `mtime`. Adding reads no content.
+`library.state` moves it through `added` → `reading` → `ready`, or to `attention`, with a plain-language `detail`,
+`indexed` (searchable text exists), `revision` (SHA-256) and the file `size`/`mtime` it was read at. A changed file
+returns to `added`. `library.removed` hides an item; the original file and any cited history are untouched. A
+material's folder is an ordinary `organization.moved` event. The lexical index in `sources-cache.sqlite` stays
+disposable.
+
 ## Two graphs, two kinds of record
 
 Records are of two roles, set in `record.json` (the `link` tool writes it):
