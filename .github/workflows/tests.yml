@@ -20,6 +20,7 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}
           # /usr/bin/chromium on the runner crashes; the preinstalled Chrome prints PDFs
           ROS_BROWSER: /usr/bin/google-chrome
+          ROS_NO_VAULT: '1'
         run: python -m unittest discover -s tests -p "test_*.py"
 
   portal:
@@ -38,3 +39,10 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}
         run: node tests/ros-portal-browser.cjs
+      - name: Workspace renderer, typecheck and production build
+        run: npm --prefix frontend ci && npm --prefix frontend test && npm --prefix frontend run build
+      - name: Dark workspace, conversations, voice adapters and layout at seven widths
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          ROS_NO_VAULT: '1'
+        run: node tests/ros-workspace-browser.cjs

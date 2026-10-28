@@ -20,7 +20,7 @@ class Cli(unittest.TestCase):
 
     def run_cli(self, *args, stdin=None):
         env = dict(os.environ, ROS_HOME=str(self.home), PYTHONPATH=str(ROOT), HOME=self._tmp.name,
-                   USERPROFILE=self._tmp.name)
+                   USERPROFILE=self._tmp.name, ROS_NO_VAULT="1")
         env.pop("ROS_PROJECT", None)
         p = subprocess.run([sys.executable, "-m", "ros", *args], capture_output=True, text=True, env=env,
                            encoding="utf-8", input=stdin, timeout=120)

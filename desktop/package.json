@@ -1,0 +1,78 @@
+{
+  "name": "research-os-desktop",
+  "version": "1.4.0",
+  "private": true,
+  "description": "Local research and learning workbench",
+  "author": "Research OS",
+  "license": "MIT",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "package": "electron-builder --win dir",
+    "portable": "electron-builder --win portable",
+    "verify": "powershell -NoProfile -ExecutionPolicy Bypass -File verify.ps1",
+    "contracts": "python ../tests/desktop_contract_gate.py",
+    "browser": "node ../tests/ros-desktop-browser.cjs",
+    "workspace-browser": "node ../tests/ros-workspace-browser.cjs",
+    "installer": "node notices.cjs && electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "^43.8.4",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "org.researchos.desktop",
+    "productName": "Research OS",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "lifecycle.cjs",
+      "package.json",
+      "updates.cjs",
+      "THIRD_PARTY_NOTICES.txt",
+      "icons/*"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend"
+      },
+      {
+        "from": "app-update.yml",
+        "to": "app-update.yml"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "signExecutable": false,
+      "icon": "icons/icon.ico"
+    },
+    "electronDist": "node_modules/electron/dist",
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "Research-OS-Setup-${version}-${arch}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Chagatai404",
+        "repo": "scientific-research-os",
+        "releaseType": "release"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  }
+}

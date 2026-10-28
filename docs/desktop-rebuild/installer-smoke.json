@@ -1,0 +1,28 @@
+{
+  "version": "1.4.0",
+  "installer_sha256": "219c91f09a6c9ad02e4a79dc1a97b0c0ba8056eabe5d51c15aba6ee3aab89efd",
+  "tested_at": "2026-10-28T14:51:25.580098+00:00",
+  "installer_exit": 0,
+  "application_exit": 0,
+  "uninstaller_exit": 0,
+  "page": {
+    "title": "Home \u00b7 Research OS",
+    "text": "Skip to content\n\u25c8\nResearch OS\nA connected workspace\nHome\nLearn\nResearch\nLibrary\nGraph\nActivity\nSettings\nStored on this computer\nRenamed \u03a9 workspace\n\u25be\n\uff0b New session\n\u25a3\n\nYour sessions appear here. Create a course or project to keep them organized.\n\nRenamed \u03a9 workspace\n\u203a\nHome\nSearch connected records\nCtrl+K\nYour knowledge graph\nMap\nKnowledge\nResearch\nEvidence\nProgress\n+\n\u2212\nFit graph\nNode list\n?\n\u2022\u2022\u2022\n1 courses and projects \u00b7 3 items\nYour message\n\uff0b\nConversation\n\u2304\nGPT-6.1 Sol\n\u2304\n\u25c9 Voice\n\u266b Voice unavailable\nSend \u2191\n\nEnter to send \u00b7 Shift Enter for a new line",
+    "overflow": false,
+    "protocol": "ros.desktop.v1",
+    "version": "1.4.0"
+  },
+  "records_preserved": true,
+  "organization_and_sources_preserved": true,
+  "preserved_hashes": {
+    "record\\projects\\upgrade-fixture\\record.json": "353991c198e5bb691be5fe23145094595da34af96452fba72f42bb0ebdccd907",
+    "record\\projects\\upgrade-fixture\\events.jsonl": "7151c33e1f28d8cb6b127388e2bd20b62ba274e62859b3c5ee149848f44f6086",
+    "record\\projects\\upgrade-fixture\\graph\\nodes.jsonl": "734169b9eef7e4d58522754f114b26544ebba70155fc6a0e0ab0d969e2adfd3d",
+    "materials\\lecture.md": "efaae93dcb137fd9d8616c18150c0a96fa77fadbe9a2b0ab2b859ef3eba1f2bd",
+    "profile\\organization-preferences.json": "6dff54cfbc89c52256f4703b13f8041fcee323c2b6a6b061319258c06b298db2"
+  },
+  "installed_executable_removed": true,
+  "upgrade_from": null,
+  "previous_installer_exit": null,
+  "fixture": "C:\\Users\\ASUS\\.codex\\worktrees\\f2e5\\scientific-research-os\\.desktop-fixtures\\installer-rtyyz_dp"
+}

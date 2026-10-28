@@ -17,6 +17,7 @@ from .store import Record
 
 
 _USERS: dict[str, Record] = {}
+_NAMED_RECORDS: dict[str, Record] = {}
 
 
 def user_record(cfg: dict) -> Record:
@@ -35,6 +36,9 @@ def release() -> None:
     for rec in _USERS.values():
         rec.close()
     _USERS.clear()
+    for rec in _NAMED_RECORDS.values():
+        rec.close()
+    _NAMED_RECORDS.clear()
 
 
 HUB_KINDS = ("project", "course")
@@ -199,13 +203,24 @@ def linked(rec: Record):
 
 def records_overview(rec: Record) -> list[dict]:
     """Every record of the home with its role, hub and title, for the switcher: which is the one being looked at."""
+    from . import organization
     out = []
     for name in home.projects():
         root = home.home() / "projects" / name
         cfg = home.config(root)
-        out.append({"name": name, "role": cfg.get("role") or "unlinked", "hub": cfg.get("project"),
+        if root.resolve() == rec.root.resolve():
+            owner = rec
+        else:
+            key = str(root.resolve())
+            owner = _NAMED_RECORDS.pop(key, None) or Record(root)
+            _NAMED_RECORDS[key] = owner
+            while len(_NAMED_RECORDS) > 8:
+                _NAMED_RECORDS.pop(next(iter(_NAMED_RECORDS))).close()
+        # Keep the incremental organization fold between switcher reads, just as user_record does.
+        title = organization.title(owner)
+        out.append({"name": name, "title": title, "role": cfg.get("role") or "unlinked", "hub": cfg.get("project"),
                     "current": root.resolve() == rec.root.resolve()})
     if not any(r["current"] for r in out):  # a record kept in a repository's .ros/
-        out.insert(0, {"name": rec.root.name, "role": home.config(rec.root).get("role") or "unlinked",
+        out.insert(0, {"name": rec.root.name, "title": organization.title(rec), "role": home.config(rec.root).get("role") or "unlinked",
                        "hub": home.config(rec.root).get("project"), "current": True})
     return out

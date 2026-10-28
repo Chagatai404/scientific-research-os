@@ -1,0 +1,22 @@
+[
+  {
+    "fixture": "sparse",
+    "record_nodes": 1200,
+    "visible_nodes": 4,
+    "visible_edges": 3,
+    "bounded": false,
+    "first_ms": 7.22,
+    "median_ms": 6.4,
+    "payload_bytes": 999
+  },
+  {
+    "fixture": "dense",
+    "record_nodes": 1200,
+    "visible_nodes": 70,
+    "visible_edges": 1334,
+    "bounded": false,
+    "first_ms": 94.93,
+    "median_ms": 93.56,
+    "payload_bytes": 158320
+  }
+]

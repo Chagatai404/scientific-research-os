@@ -1,0 +1,3758 @@
+{
+  "tools": {
+    "add_claim": {
+      "help": "Add or update a claim in the ledger.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "claim key or id"
+          },
+          "text": {
+            "type": "string",
+            "description": "the claim, one sentence"
+          },
+          "project": {
+            "type": "string",
+            "description": "project"
+          },
+          "author": {
+            "type": "string",
+            "description": "who (or which agent) produced it"
+          },
+          "assurance": {
+            "type": "string",
+            "description": "required assurance",
+            "enum": [
+              "draft",
+              "internal",
+              "presentation",
+              "submission"
+            ]
+          },
+          "numbers": {
+            "type": "array",
+            "description": "cited numbers: {value, file, column|key, tolerance}"
+          },
+          "artifacts": {
+            "type": "array",
+            "description": "files an auditor reads (paths)"
+          },
+          "citations": {
+            "type": "array",
+            "description": "sources cited"
+          }
+        },
+        "required": [
+          "key",
+          "text",
+          "project",
+          "author"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "add_edge": {
+      "help": "Add a typed edge between nodes.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "src": {
+            "type": "string",
+            "description": "source id"
+          },
+          "type": {
+            "type": "string",
+            "description": "edge type"
+          },
+          "dst": {
+            "type": "string",
+            "description": "target id"
+          },
+          "data": {
+            "type": "object",
+            "description": "fields"
+          }
+        },
+        "required": [
+          "src",
+          "type",
+          "dst"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "add_item": {
+      "help": "Add an immutable item. Returns its hash; the same content is the same item.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "description": "kind (choice|numeric|free), prompt, options+answer | answer+tolerance | rubric, explanation, hints, concepts, difficulty, supersedes"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "add_node": {
+      "help": "Add or update a graph node.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "<type>:<key>"
+          },
+          "type": {
+            "type": "string",
+            "description": "node type"
+          },
+          "data": {
+            "type": "object",
+            "description": "fields"
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "answer": {
+      "help": "Answer an item. Choice and numeric answers are checked now; free answers wait for a grade. dont_know=true instead of a response says \"I don't know\" (a miss, never a guess).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "type": "string",
+            "description": "lesson id"
+          },
+          "item": {
+            "type": "string",
+            "description": "item hash"
+          },
+          "response": {
+            "description": "the answer: option index or text, a number, or free text"
+          },
+          "dont_know": {
+            "type": "boolean",
+            "description": "the learner does not know"
+          }
+        },
+        "required": [
+          "lesson",
+          "item"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "approve": {
+      "help": "A person approves, rejects or asks for changes to a plan.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "experiment or plan id"
+          },
+          "decision": {
+            "type": "string",
+            "description": "the decision",
+            "enum": [
+              "approved",
+              "rejected",
+              "changes-requested"
+            ]
+          },
+          "by": {
+            "type": "string",
+            "description": "your name"
+          },
+          "note": {
+            "type": "string",
+            "description": "note"
+          }
+        },
+        "required": [
+          "subject",
+          "decision",
+          "by"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "ask": {
+      "help": "The learner asks a question, or asks for another explanation (mode).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "type": "string",
+            "description": "lesson id"
+          },
+          "text": {
+            "type": "string",
+            "description": "the question"
+          },
+          "mode": {
+            "type": "string",
+            "description": "another explanation: simpler, more-rigorous, derivation, visual, analogy, worked-example, physical-interpretation, implementation, prerequisites"
+          }
+        },
+        "required": [
+          "lesson"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "atlas": {
+      "help": "A graph laid out for drawing: knowledge (hubs and what you know of each, or one hub's or capability's neighbourhood) or research (question, hypothesis, experiment, claim, evidence, and what each needs you to know).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "description": "knowledge (default) or research",
+            "enum": [
+              "knowledge",
+              "research"
+            ]
+          },
+          "focus": {
+            "type": "string",
+            "description": "a hub, capability or research node id to look at closely"
+          },
+          "depth": {
+            "type": "integer",
+            "description": "steps around a capability (default 2)"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "at most this many nodes (300)"
+          },
+          "as_of": {
+            "type": "string",
+            "description": "ISO date (default today)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "automation": {
+      "help": "What the system has done on its own lately, and the jobs it has waiting.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "brief": {
+      "help": "The first call of every session: what needs the person's judgement (with the evidence), what is happening, what they learned, what is new, and what to do next. Also makes anything that followed from changes happen now.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "description": "ISO date (default today)"
+          },
+          "compact": {
+            "type": "boolean",
+            "description": "just the next action and the counts"
+          },
+          "text": {
+            "type": "boolean",
+            "description": "as the few lines a terminal shows"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "bundle_animate": {
+      "help": "Render a node's Manim animation from its spec and attach it.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "bundle": {
+            "type": "string",
+            "description": "bundle id"
+          },
+          "node": {
+            "type": "string",
+            "description": "node id"
+          },
+          "spec": {
+            "type": "string",
+            "description": "animation spec path inside the bundle"
+          },
+          "env": {
+            "type": "string",
+            "description": "a virtual environment holding Manim"
+          }
+        },
+        "required": [
+          "bundle",
+          "node",
+          "spec"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "bundle_check": {
+      "help": "Run the readiness gate: every row with what is missing, and ready true or false.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "bundle": {
+            "type": "string",
+            "description": "bundle id"
+          }
+        },
+        "required": [
+          "bundle"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "bundle_create": {
+      "help": "Create a lesson bundle with its goal as the only node.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "bundle": {
+            "type": "string",
+            "description": "bundle id"
+          },
+          "title": {
+            "type": "string",
+            "description": "title"
+          },
+          "goal": {
+            "type": "string",
+            "description": "the goal node, e.g. capability:x"
+          },
+          "lang": {
+            "type": "string",
+            "description": "narration language (en, tr)"
+          }
+        },
+        "required": [
+          "bundle",
+          "title",
+          "goal"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "bundle_file": {
+      "help": "Write one file into a bundle (text, or base64 for binary), e.g. a visual or its RESULT note.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "bundle": {
+            "type": "string",
+            "description": "bundle id"
+          },
+          "path": {
+            "type": "string",
+            "description": "path inside the bundle"
+          },
+          "text": {
+            "type": "string",
+            "description": "text content"
+          },
+          "base64": {
+            "type": "string",
+            "description": "binary content, base64"
+          }
+        },
+        "required": [
+          "bundle",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "bundle_plan": {
+      "help": "Read a bundle's plan, or replace it with plan=... (validated; voids the last gate verdict).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "bundle": {
+            "type": "string",
+            "description": "bundle id"
+          },
+          "plan": {
+            "type": "object",
+            "description": "the whole new plan"
+          }
+        },
+        "required": [
+          "bundle"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "bundle_tasks": {
+      "help": "Open one task per missing piece of a bundle for agents to make (and clip searches).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "bundle": {
+            "type": "string",
+            "description": "bundle id"
+          },
+          "clips": {
+            "type": "boolean",
+            "description": "also ask video scouts for clips"
+          }
+        },
+        "required": [
+          "bundle"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "bundle_voice": {
+      "help": "Speak every narration segment without audio with a local engine.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "bundle": {
+            "type": "string",
+            "description": "bundle id"
+          },
+          "provider": {
+            "type": "string",
+            "description": "kokoro (default), piper or chatterbox"
+          },
+          "env": {
+            "type": "string",
+            "description": "a virtual environment holding the engine (or set RESEARCH_OS_VOICE_ENVS)"
+          },
+          "model_dir": {
+            "type": "string",
+            "description": "Kokoro: the folder with kokoro-v1.0.onnx and voices-v1.0.bin"
+          }
+        },
+        "required": [
+          "bundle"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "bundles": {
+      "help": "Prepared bundles with their goal and whether each is ready.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "cancel": {
+      "help": "Withdraw an open task that is no longer needed, with the reason.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "task id"
+          },
+          "reason": {
+            "type": "string",
+            "description": "why"
+          }
+        },
+        "required": [
+          "task",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "capabilities": {
+      "help": "Each capability in a scope with its state, readiness, frontier flag and what blocks it.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "description": "a node id such as course:stat303 or capability:x (default: all)"
+          },
+          "as_of": {
+            "type": "string",
+            "description": "ISO date (default today)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "chain": {
+      "help": "One claim and everything it rests on, laid out for drawing: its question and experiment, the audit steps with their verdicts, the files and sources, the decision and the handouts.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "claim": {
+            "type": "string",
+            "description": "claim id"
+          }
+        },
+        "required": [
+          "claim"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "claim": {
+      "help": "Claim a task so no other agent takes it (the claim lapses after 30 minutes).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "task id"
+          },
+          "by": {
+            "type": "string",
+            "description": "agent name"
+          }
+        },
+        "required": [
+          "task",
+          "by"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "claim_status": {
+      "help": "One claim's audit status: verdict per step, missing steps, ownership, assurance met.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "claim": {
+            "type": "string",
+            "description": "claim id"
+          }
+        },
+        "required": [
+          "claim"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "claims": {
+      "help": "The claims ledger: each claim's verdict over its required audits, ownership, and what is missing.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "description": "only this project"
+          },
+          "as_of": {
+            "type": "string",
+            "description": "ISO date (default today)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "close": {
+      "help": "Close a lesson and write its log.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "type": "string",
+            "description": "lesson id"
+          },
+          "summary": {
+            "type": "string",
+            "description": "one-line summary"
+          }
+        },
+        "required": [
+          "lesson"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "code": {
+      "help": "Code that implements a node, with Graphify symbols.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string",
+            "description": "node id"
+          }
+        },
+        "required": [
+          "node"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "commit": {
+      "help": "Record one atomic commitment from a review comment, or resolve one (status=fulfilled|declined).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "the commitment (new)"
+          },
+          "source": {
+            "type": "string",
+            "description": "where it came from (new)"
+          },
+          "evidence_required": {
+            "type": "string",
+            "description": "what fulfils it (new)"
+          },
+          "commitment": {
+            "type": "string",
+            "description": "commitment id (resolve)"
+          },
+          "status": {
+            "type": "string",
+            "description": "fulfilled or declined (resolve)"
+          },
+          "evidence": {
+            "type": "string",
+            "description": "the evidence (resolve)"
+          },
+          "by": {
+            "type": "string",
+            "description": "who"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "compute_request": {
+      "help": "Grant execution permission for an already human-approved exact staged plan. Trusted native code runs in a disposable directory, not an OS sandbox.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "experiment": {
+            "type": "string",
+            "description": "experiment id"
+          },
+          "by": {
+            "type": "string",
+            "description": "your name"
+          },
+          "reason": {
+            "type": "string",
+            "description": "execution reason"
+          }
+        },
+        "required": [
+          "experiment",
+          "by",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "compute_stage": {
+      "help": "Stage code and immutable inputs as a proposed experiment; does not execute or change the original codebase.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "experiment": {
+            "type": "string",
+            "description": "experiment:<key>"
+          },
+          "files": {
+            "type": "object",
+            "description": "safe relative text files"
+          },
+          "argv": {
+            "type": "array",
+            "description": "python/Rscript/julia argv, no shell"
+          },
+          "inputs": {
+            "type": "array",
+            "description": "captured source references"
+          },
+          "timeout": {
+            "type": "integer",
+            "description": "1–600 seconds"
+          }
+        },
+        "required": [
+          "experiment",
+          "files",
+          "argv"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "compute_staged": {
+      "help": "Read the exact latest staged code and execution proposal.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "experiment": {
+            "type": "string",
+            "description": "experiment id"
+          }
+        },
+        "required": [
+          "experiment"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "context": {
+      "help": "Where this record stands, for an agent about to work: a project's research graph (next steps, claims) with the user's state in each capability it depends on; for the user-wide record, its knowledge and every linked project.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "description": "ISO date (default today)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "decide": {
+      "help": "A person decides on a claim (accepted, revise, rejected, retracted), question or proposal.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "id"
+          },
+          "outcome": {
+            "type": "string",
+            "description": "the outcome"
+          },
+          "by": {
+            "type": "string",
+            "description": "your name"
+          },
+          "rationale": {
+            "type": "string",
+            "description": "why"
+          }
+        },
+        "required": [
+          "subject",
+          "outcome",
+          "by",
+          "rationale"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "doctor": {
+      "help": "What is set up and what is not (vault, PDF toolchain, agent clients, jobs), each with the one command that fixes it.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "due": {
+      "help": "Reviews due by FSRS from graded answers and retrieval history, soonest first.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "description": "ISO date (default today)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "engage": {
+      "help": "Start what the person asked for, in their own words: teach me a course or topic, investigate a question, review, or continue. Makes the records and the goal, opens the work for agents, and lets lessons, notes, handouts and literature follow on their own. Saying it again changes nothing.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "intent": {
+            "type": "string",
+            "description": "what the person said, in their words"
+          },
+          "kind": {
+            "type": "string",
+            "description": "what it is (default: worked out from the words)",
+            "enum": [
+              "auto",
+              "course",
+              "topic",
+              "research",
+              "review",
+              "continue"
+            ]
+          },
+          "target": {
+            "type": "string",
+            "description": "a short key: a course code like stat303, or a topic or question key"
+          },
+          "title": {
+            "type": "string",
+            "description": "its name"
+          },
+          "deadline": {
+            "type": "string",
+            "description": "ISO date to finish by"
+          },
+          "pace": {
+            "type": "integer",
+            "description": "minutes a week to spend"
+          },
+          "materials": {
+            "type": "string",
+            "description": "where the course material is, or what it is (syllabus, textbook, a folder, a link)"
+          }
+        },
+        "required": [
+          "intent"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "evidence": {
+      "help": "Everything behind one decision: a claim's audit chain, numbers, citations, adversary memo, ownership and handouts; or an experiment plan and what approving it authorizes.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "the claim, experiment or proposal id from the queue"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "execution_configure": {
+      "help": "Set conservative workspace execution budgets. Native CLI internal inference calls are not a spend cap.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "values": {
+            "type": "object",
+            "description": "context characters, output tokens, tool_steps, deadline seconds, queue and provider_calls"
+          }
+        },
+        "required": [
+          "values"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "execution_limits": {
+      "help": "Read workspace context, output, step, deadline, queue and local provider-call budgets.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "export": {
+      "help": "Write this record's notes into an Obsidian vault (the same as vault_set + vault_sync), or a read-only single-file HTML snapshot.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "what to write",
+            "enum": [
+              "obsidian",
+              "static"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "description": "the vault folder (obsidian) or the HTML file (static)"
+          },
+          "folder": {
+            "type": "string",
+            "description": "folder inside the vault (default Research OS)"
+          }
+        },
+        "required": [
+          "kind",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "find": {
+      "help": "Find nodes by name or text across this record and the ones it is joined to, and notes in the vault.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "description": "text to look for"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "at most this many (default 20)"
+          }
+        },
+        "required": [
+          "q"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "finish": {
+      "help": "Finish a task with its result.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "task id"
+          },
+          "result": {
+            "description": "the result"
+          },
+          "by": {
+            "type": "string",
+            "description": "agent name"
+          }
+        },
+        "required": [
+          "task",
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "frontier": {
+      "help": "Capabilities ready to learn next: every prerequisite is ready and the capability is not yet retained.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "description": "a node id (default: all)"
+          },
+          "as_of": {
+            "type": "string",
+            "description": "ISO date (default today)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "gaps": {
+      "help": "What a target needs that the researcher does not yet have: the capabilities in its prerequisite closure that are not ready, which of them to start with, and which research steps they block.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "what to plan for: a capability, course, goal, subject or project id, or a research node of a project record; several, comma-separated. Default: a project record's whole research, or the user-wide record's goals"
+          },
+          "as_of": {
+            "type": "string",
+            "description": "ISO date (default today)"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "rows per page (default 20, at most 200)"
+          },
+          "offset": {
+            "type": "integer",
+            "description": "rows to skip"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "goal": {
+      "help": "State what you want to master: a goal with the capabilities or hubs it covers, a deadline, a pace in minutes a week and a priority. Plan it with `roadmap --target goal:<key>`.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "goal:<key>"
+          },
+          "title": {
+            "type": "string",
+            "description": "its name"
+          },
+          "targets": {
+            "type": "array",
+            "description": "node ids it covers: capability:x, or a course, subject, project or concept"
+          },
+          "deadline": {
+            "type": "string",
+            "description": "ISO date"
+          },
+          "pace": {
+            "type": "integer",
+            "description": "minutes a week"
+          },
+          "priority": {
+            "type": "integer",
+            "description": "higher first"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "grade": {
+      "help": "Grade an answer: correct, partially-correct or incorrect.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "attempt": {
+            "type": "string",
+            "description": "the attempt event id"
+          },
+          "verdict": {
+            "type": "string",
+            "description": "the verdict",
+            "enum": [
+              "correct",
+              "partially-correct",
+              "incorrect"
+            ]
+          },
+          "feedback": {
+            "type": "string",
+            "description": "what to tell the learner"
+          },
+          "criteria_met": {
+            "type": "array",
+            "description": "one true/false per rubric criterion"
+          },
+          "by": {
+            "type": "string",
+            "description": "grader (default tutor)"
+          }
+        },
+        "required": [
+          "attempt",
+          "verdict"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "handout_attach": {
+      "help": "Attach the PDF a build job made for one version of a handout: verify it, place it in the vault and link it from the note.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "handout": {
+            "type": "string",
+            "description": "the handout id (handout:<key>) or its key"
+          },
+          "source_hash": {
+            "type": "string",
+            "description": "the version (default: the current one)"
+          }
+        },
+        "required": [
+          "handout"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "handout_build": {
+      "help": "Deliver a handout: write its note into the vault now and build its PDF (queued as a job, or now with wait) when the gate passes.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "handout": {
+            "type": "string",
+            "description": "the handout id (handout:<key>) or its key"
+          },
+          "wait": {
+            "type": "boolean",
+            "description": "build the PDF now instead of queueing it"
+          },
+          "engine": {
+            "type": "string",
+            "description": "auto (default), latex or chromium",
+            "enum": [
+              "auto",
+              "latex",
+              "chromium"
+            ]
+          }
+        },
+        "required": [
+          "handout"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "handout_check": {
+      "help": "Run a handout's readiness gate: sources, no answer keys, math, structure, figures; a failing row opens a task.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "handout": {
+            "type": "string",
+            "description": "the handout id (handout:<key>) or its key"
+          }
+        },
+        "required": [
+          "handout"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "handout_create": {
+      "help": "Start a handout (lecture, recitation, chapter, literature, findings) for a scope in this record: composes what the record knows and opens the task that asks an agent to write it.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "what kind of handout",
+            "enum": [
+              "lecture",
+              "recitation",
+              "chapter",
+              "literature",
+              "findings"
+            ]
+          },
+          "scope": {
+            "type": "array",
+            "description": "node ids it is about: capabilities, a course or subject, a question, an experiment"
+          },
+          "title": {
+            "type": "string",
+            "description": "its title"
+          },
+          "key": {
+            "type": "string",
+            "description": "a short key (default from the title)"
+          }
+        },
+        "required": [
+          "kind",
+          "scope",
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "handout_file": {
+      "help": "Put an image a handout's sections refer to (figures/name.png) beside its source.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "handout": {
+            "type": "string",
+            "description": "the handout id (handout:<key>) or its key"
+          },
+          "path": {
+            "type": "string",
+            "description": "figures/<name>.png (or pdf, jpg, svg)"
+          },
+          "text": {
+            "type": "string",
+            "description": "text content (svg)"
+          },
+          "base64": {
+            "type": "string",
+            "description": "binary content, base64"
+          }
+        },
+        "required": [
+          "handout",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "handout_read": {
+      "help": "A handout's whole source: its sections as written, its sources and the context it is written from.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "handout": {
+            "type": "string",
+            "description": "the handout id (handout:<key>) or its key"
+          }
+        },
+        "required": [
+          "handout"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "handout_write": {
+      "help": "Write one section of a handout (Markdown, LaTeX math in $...$, boxes as :::definition, :::example, :::exercise ... === solution ... :::), with the sources it cites and the locators that ground it.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "handout": {
+            "type": "string",
+            "description": "the handout id (handout:<key>) or its key"
+          },
+          "section": {
+            "type": "string",
+            "description": "the section id (its role, e.g. gist, lecture, evidence)"
+          },
+          "text": {
+            "type": "string",
+            "description": "the section's Markdown"
+          },
+          "by": {
+            "type": "string",
+            "description": "who wrote it"
+          },
+          "title": {
+            "type": "string",
+            "description": "heading (to rename a section or add a new one)"
+          },
+          "locators": {
+            "type": "array",
+            "description": "where what it states comes from: a page, section or source key"
+          },
+          "derivation": {
+            "type": "boolean",
+            "description": "the section derives its results instead of citing them"
+          },
+          "sources": {
+            "type": "array",
+            "description": "sources to add: {key, text}, cited in text as [@key]"
+          }
+        },
+        "required": [
+          "handout",
+          "section",
+          "text",
+          "by"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "handouts": {
+      "help": "Every handout of this record with its status (draft, ready, built) and where its PDF is.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "hint": {
+      "help": "The next hint for an item, then its explanation.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "type": "string",
+            "description": "lesson id"
+          },
+          "item": {
+            "type": "string",
+            "description": "item hash"
+          }
+        },
+        "required": [
+          "lesson",
+          "item"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "history": {
+      "help": "Answers with their question and grade, oldest first: the newest 200 unless limit says otherwise.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "type": "string",
+            "description": "only this lesson"
+          },
+          "item": {
+            "type": "string",
+            "description": "only this item (any version)"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "how many of the newest answers (default 200; 0 for all)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "import": {
+      "help": "Import old files into this record (idempotent).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "what to import",
+            "enum": [
+              "learning",
+              "sessions",
+              "research",
+              "graphify",
+              "documents",
+              "projects",
+              "notes",
+              "session_notes",
+              "papers",
+              "legacy_tasks",
+              "visuals",
+              "resources",
+              "handouts"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "description": "folder (or graph.json for graphify)"
+          },
+          "evidence": {
+            "type": "string",
+            "description": "EvidenceAtom folder for research"
+          },
+          "repo": {
+            "type": "string",
+            "description": "repository root for graphify"
+          },
+          "project": {
+            "type": "string",
+            "description": "documents: the project id, project:<key>, they are about"
+          }
+        },
+        "required": [
+          "kind",
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "item": {
+      "help": "One item. Hidden fields (key, rubric, explanation) only with reveal=true, for tutors and authors.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "item hash"
+          },
+          "reveal": {
+            "type": "boolean",
+            "description": "include the key and explanation"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "items": {
+      "help": "Items testing a capability or concept, easiest first (learner view).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "concept": {
+            "type": "string",
+            "description": "node id, e.g. capability:x or concept:y"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "job_done": {
+      "help": "Finish a local job with what the run reported, and do what it said to do next (attach the PDF).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "the job's task id"
+          },
+          "result": {
+            "description": "what the run reported"
+          },
+          "by": {
+            "type": "string",
+            "description": "who ran it"
+          }
+        },
+        "required": [
+          "task",
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "jobs": {
+      "help": "Local engine runs waiting to be done by the process serving this record: a PDF build, a voice render.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "library": {
+      "help": "Lesson logs and lessons, newest first.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "link": {
+      "help": "Set a record up in the two graphs: with user_wide, it is the user-wide knowledge record; otherwise it is a project's or course's record, joined to the user-wide one (user, default the only one) under a hub id (project: or course:), with the hub created in both.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "string",
+            "description": "the user-wide record's name (default: the only one)"
+          },
+          "project": {
+            "type": "string",
+            "description": "this record's hub id: project:<key> or course:<key> (default project:<record name>)"
+          },
+          "title": {
+            "type": "string",
+            "description": "the hub's name"
+          },
+          "user_wide": {
+            "type": "boolean",
+            "description": "this is the user-wide knowledge record"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "literature_search": {
+      "help": "Search public scholarly metadata. Queries leave this computer; candidates are not verified scientific evidence.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "public search query"
+          },
+          "engine": {
+            "type": "string",
+            "description": "metadata service",
+            "enum": [
+              "crossref",
+              "europepmc"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "description": "1–20 results"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "log": {
+      "help": "The Markdown log of a lesson.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "type": "string",
+            "description": "lesson id"
+          }
+        },
+        "required": [
+          "lesson"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "map": {
+      "help": "The capability graph of a scope for drawing: nodes with state and position flags, requires edges.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "description": "a node id (default: all)"
+          },
+          "as_of": {
+            "type": "string",
+            "description": "ISO date (default today)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "migrate": {
+      "help": "Import a whole old vault (learning notes, sessions and their pages, research records, projects, notes, papers, research tasks, visuals, resources, handouts) and prove it: every answer arrived and every file is accounted for. Importing again adds only what is new.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "vault": {
+            "type": "string",
+            "description": "the vault folder"
+          },
+          "research_root": {
+            "type": "string",
+            "description": "where research records live, if not in the vault"
+          },
+          "evidence": {
+            "type": "string",
+            "description": "EvidenceAtom folder"
+          },
+          "graphify": {
+            "type": "string",
+            "description": "a Graphify graph.json"
+          }
+        },
+        "required": [
+          "vault"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "migrate_check": {
+      "help": "Is everything in the old vault accounted for (read in, derived or retired, with the reason), and has anything been added or changed since the last migration? Changes nothing.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "vault": {
+            "type": "string",
+            "description": "the old vault (default: the one migrated)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "next": {
+      "help": "The next step of a lesson, decided by the policy, with its reason.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "type": "string",
+            "description": "lesson id"
+          },
+          "scope": {
+            "type": "string",
+            "description": "scope (default: the lesson's)"
+          },
+          "as_of": {
+            "type": "string",
+            "description": "ISO date (default today)"
+          }
+        },
+        "required": [
+          "lesson"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "notebook_jobs": {
+      "help": "Inspect notebook requests, execution permissions and stored versus fresh output results.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "notebook_request": {
+      "help": "Request a committed scratch notebook trace or bounded mutation; execution is an explicit human permission.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "connected codebase id"
+          },
+          "path": {
+            "type": "string",
+            "description": "relative notebook path"
+          },
+          "by": {
+            "type": "string",
+            "description": "your name"
+          },
+          "reason": {
+            "type": "string",
+            "description": "why this notebook may run"
+          },
+          "mutation": {
+            "type": "object",
+            "description": "one bounded source or cell mutation"
+          },
+          "execute": {
+            "type": "boolean",
+            "description": "actually execute; false means dry run"
+          },
+          "groups": {
+            "type": "array",
+            "description": "approved dependency groups"
+          },
+          "timeout": {
+            "type": "integer",
+            "description": "per notebook timeout in seconds"
+          }
+        },
+        "required": [
+          "source",
+          "path",
+          "by",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "notebook_result": {
+      "help": "Record an actual notebook worker result idempotently against its request.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "string",
+            "description": "request id"
+          },
+          "result": {
+            "type": "object",
+            "description": "worker result"
+          }
+        },
+        "required": [
+          "request",
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "notebook_start": {
+      "help": "Claim a queued notebook request exactly once before starting its external process.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "string",
+            "description": "request id"
+          }
+        },
+        "required": [
+          "request"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "operation_finish": {
+      "help": "Persist an actual engine result, never a model assertion of completion.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "description": "operation id"
+          },
+          "result": {
+            "type": "object",
+            "description": "worker result"
+          }
+        },
+        "required": [
+          "identifier",
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "operation_list": {
+      "help": "Read actual scholarly retrieval and compute operation states and saved manifests.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "operation_start": {
+      "help": "Claim a queued operation once and return its bound engine packet.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "description": "operation id"
+          }
+        },
+        "required": [
+          "identifier"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "pedagogy_history": {
+      "help": "Read previous explanation variants and assistance with exact request and attempt attribution.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "type": "string",
+            "description": "saved lesson id"
+          }
+        },
+        "required": [
+          "lesson"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "pedagogy_reply": {
+      "help": "Save tutor feedback against the original request, item version and attempt without grading another answer.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "string",
+            "description": "request event id"
+          },
+          "text": {
+            "type": "string",
+            "description": "prepared response"
+          },
+          "by": {
+            "type": "string",
+            "description": "tutor or provider"
+          }
+        },
+        "required": [
+          "request",
+          "text",
+          "by"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "pedagogy_request": {
+      "help": "Request an explanation, tiered practice, raw-summary comparison, terms or bounded analogy without awarding mastery.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "type": "string",
+            "description": "saved lesson id"
+          },
+          "kind": {
+            "type": "string",
+            "description": "teaching action",
+            "enum": [
+              "explain",
+              "practice",
+              "compare-summary",
+              "terms",
+              "analogy",
+              "role-feedback"
+            ]
+          },
+          "item": {
+            "type": "string",
+            "description": "immutable item hash"
+          },
+          "attempt": {
+            "type": "string",
+            "description": "exact saved attempt id"
+          },
+          "text": {
+            "type": "string",
+            "description": "raw summary or selected passage"
+          },
+          "depth": {
+            "type": "string",
+            "description": "explanation level",
+            "enum": [
+              "intuitive",
+              "intermediate",
+              "formal"
+            ]
+          },
+          "tier": {
+            "type": "integer",
+            "description": "practice tier 1 to 3"
+          },
+          "bloom": {
+            "type": "string",
+            "description": "Bloom task level",
+            "enum": [
+              "remember",
+              "understand",
+              "apply",
+              "analyze",
+              "evaluate",
+              "create"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "description": "role for feedback"
+          }
+        },
+        "required": [
+          "lesson",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "precheck": {
+      "help": "Check every number a claim cites against its result file, before any audit.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "claim": {
+            "type": "string",
+            "description": "claim id"
+          },
+          "root": {
+            "type": "string",
+            "description": "project root the file paths are relative to"
+          }
+        },
+        "required": [
+          "claim",
+          "root"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "progress": {
+      "help": "What you did each week (answers, correct unaided answers, reviews, lessons, newly known capabilities) and where you stand: states, due reviews, estimated recall.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "weeks": {
+            "type": "integer",
+            "description": "how many weeks (default 12)"
+          },
+          "as_of": {
+            "type": "string",
+            "description": "ISO date (default today)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "propose": {
+      "help": "Propose a change to a skill or the policy; only a human decision applies it.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "change": {
+            "type": "string",
+            "description": "the change"
+          },
+          "rationale": {
+            "type": "string",
+            "description": "why"
+          },
+          "by": {
+            "type": "string",
+            "description": "agent"
+          }
+        },
+        "required": [
+          "change",
+          "rationale",
+          "by"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "provider_configure": {
+      "help": "Save an explicit model connection and capability profile without invoking inference.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "description": "provider transport",
+            "enum": [
+              "ollama",
+              "compatible",
+              "codex",
+              "claude"
+            ]
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "HTTP loopback endpoint, or empty for native CLI"
+          },
+          "model": {
+            "type": "string",
+            "description": "installed or explicitly configured model id"
+          },
+          "tools": {
+            "type": "boolean",
+            "description": "user-verified tool calling support"
+          },
+          "vision": {
+            "type": "boolean",
+            "description": "user-verified vision support"
+          },
+          "context_limit": {
+            "type": "integer",
+            "description": "context character budget"
+          }
+        },
+        "required": [
+          "provider",
+          "endpoint",
+          "model"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "provider_profiles": {
+      "help": "List explicitly configured local model endpoints and their declared capabilities.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "queue": {
+      "help": "The decision queue: everything waiting for the researcher.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "rebuild": {
+      "help": "Drop and rebuild the index from the record's files.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "reconcile": {
+      "help": "Look at what changed in this record and do what follows from it on its own: request audits for new claims, queue the run of an approved experiment, prepare the next lessons, check handouts, update the vault. Runs by itself after every change; call it to make it happen now.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "description": "call (cheap, the default), tick, scan or daily",
+            "enum": [
+              "call",
+              "tick",
+              "scan",
+              "daily"
+            ]
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "records": {
+      "help": "Every record (course, project, user-wide) with its role and hub, and which one this is.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "remove": {
+      "help": "Remove a graph node (id) or an edge (src, type, dst). The removal is recorded; history is kept.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "node id"
+          },
+          "src": {
+            "type": "string",
+            "description": "edge source"
+          },
+          "type": {
+            "type": "string",
+            "description": "edge type"
+          },
+          "dst": {
+            "type": "string",
+            "description": "edge target"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "reply": {
+      "help": "Answer a learner's question.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "ask": {
+            "type": "string",
+            "description": "the ask event id"
+          },
+          "text": {
+            "type": "string",
+            "description": "the answer"
+          },
+          "by": {
+            "type": "string",
+            "description": "who answers (default tutor)"
+          }
+        },
+        "required": [
+          "ask",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "request_audits": {
+      "help": "Open audit tasks for each required step without a verdict (claim text and paths only).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "claim": {
+            "type": "string",
+            "description": "claim id"
+          }
+        },
+        "required": [
+          "claim"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "research": {
+      "help": "The next mechanical transition of each research record (unranked).",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "roadmap": {
+      "help": "The order in which to learn what a target needs: waves of capabilities that can be studied in any order, each with why, effort, what it unlocks and where to start; with a pace (minutes a week) and a deadline, a schedule and whether it is feasible.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "what to plan for: a capability, course, goal, subject or project id, or a research node of a project record; several, comma-separated. Default: a project record's whole research, or the user-wide record's goals"
+          },
+          "as_of": {
+            "type": "string",
+            "description": "ISO date (default today)"
+          },
+          "pace": {
+            "type": "integer",
+            "description": "minutes of study a week (default: the goal's)"
+          },
+          "deadline": {
+            "type": "string",
+            "description": "ISO date to finish by (default: the goal's)"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "rows per page (default 20, at most 200)"
+          },
+          "offset": {
+            "type": "integer",
+            "description": "rows to skip"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "roadmap_tasks": {
+      "help": "Ask for the lesson material the roadmap's steps lack: one task for each step with no questions and no prepared lesson (idempotent).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "what to plan for: a capability, course, goal, subject or project id, or a research node of a project record; several, comma-separated. Default: a project record's whole research, or the user-wide record's goals"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "at most this many tasks (default 20)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "run_get": {
+      "help": "Inspect one saved execution and its partial output and operation references.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "string",
+            "description": "run id"
+          }
+        },
+        "required": [
+          "run"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "run_list": {
+      "help": "Read saved runs including explicit terminal states and committed tool results.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "description": "maximum rows"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "run_output": {
+      "help": "Checkpoint a batch of partial output, preserving it across reconnects and crashes.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "string",
+            "description": "run id"
+          },
+          "text": {
+            "type": "string",
+            "description": "output batch"
+          }
+        },
+        "required": [
+          "run",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "run_step": {
+      "help": "Record a committed operation result exactly once for its operation identifier.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "string",
+            "description": "run id"
+          },
+          "operation": {
+            "type": "string",
+            "description": "idempotency key"
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "tool name"
+          },
+          "result": {
+            "description": "canonical result"
+          }
+        },
+        "required": [
+          "run",
+          "operation",
+          "tool_name",
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "run_transition": {
+      "help": "Record a validated execution lifecycle transition without inferring completion from age.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "string",
+            "description": "run id"
+          },
+          "state": {
+            "type": "string",
+            "description": "next state"
+          },
+          "detail": {
+            "type": "string",
+            "description": "safe status details"
+          }
+        },
+        "required": [
+          "run",
+          "state"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "run_usage": {
+      "help": "Preserve provider-reported usage and cost distinctly from unavailable or estimated values.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "run": {
+            "type": "string",
+            "description": "run id"
+          },
+          "usage": {
+            "type": "object",
+            "description": "reported token usage"
+          },
+          "cost": {
+            "type": "number",
+            "description": "reported provider cost, when available"
+          }
+        },
+        "required": [
+          "run"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "source_capture": {
+      "help": "Retain an immutable source revision and capture a bounded passage with exact line locators.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "connection id"
+          },
+          "path": {
+            "type": "string",
+            "description": "relative file"
+          },
+          "start_line": {
+            "type": "integer",
+            "description": "first line"
+          },
+          "end_line": {
+            "type": "integer",
+            "description": "last line"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "source_change": {
+      "help": "Pause, resume or disconnect a source without deleting any original files.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "connection id"
+          },
+          "action": {
+            "type": "string",
+            "description": "action",
+            "enum": [
+              "remove",
+              "pause",
+              "resume"
+            ]
+          }
+        },
+        "required": [
+          "source",
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "source_children": {
+      "help": "Browse one directory lazily within an existing source connection.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "connection id"
+          },
+          "path": {
+            "type": "string",
+            "description": "relative folder"
+          },
+          "offset": {
+            "type": "integer",
+            "description": "page offset"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "page size"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "source_engine_root": {
+      "help": "Resolve a registered codebase for an explicitly requested local engine job.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "connection id"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "source_index_batch": {
+      "help": "Incrementally index at most twenty approved source files in a rebuildable lexical cache.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "connection id"
+          },
+          "paths": {
+            "type": "array",
+            "description": "relative paths"
+          },
+          "generation": {
+            "type": "string",
+            "description": "index pass id"
+          }
+        },
+        "required": [
+          "source",
+          "paths",
+          "generation"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "source_list": {
+      "help": "List source connections and their current availability without scanning their contents.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "source_location": {
+      "help": "Resolve a connected local path for an explicit host open or reveal action.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "connection id"
+          },
+          "path": {
+            "type": "string",
+            "description": "relative file or folder"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "source_preview": {
+      "help": "Preview a local file or retained cited revision without executing its contents.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "connection id"
+          },
+          "path": {
+            "type": "string",
+            "description": "relative file"
+          },
+          "revision": {
+            "type": "string",
+            "description": "cited content hash"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "source_protect_derived": {
+      "help": "Mark a record as containing local-only derived material; cloud turns remain blocked.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "origin": {
+            "type": "string",
+            "description": "source record identity"
+          },
+          "run": {
+            "type": "string",
+            "description": "originating run"
+          }
+        },
+        "required": [
+          "origin",
+          "run"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "source_register": {
+      "help": "Connect a local file, folder, vault or codebase without scanning or executing it.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "root": {
+            "type": "string",
+            "description": "explicitly selected absolute local path"
+          },
+          "kind": {
+            "type": "string",
+            "description": "connection kind",
+            "enum": [
+              "file",
+              "folder",
+              "vault",
+              "codebase"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "description": "display label"
+          },
+          "local_only": {
+            "type": "boolean",
+            "description": "block cloud disclosure; default true"
+          }
+        },
+        "required": [
+          "root"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "source_relocate": {
+      "help": "Explicitly relocate a connection while retaining its source and external record identity.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "connection id"
+          },
+          "root": {
+            "type": "string",
+            "description": "new explicitly selected absolute path"
+          }
+        },
+        "required": [
+          "source",
+          "root"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "source_report": {
+      "help": "Record a completed source engine report without modifying the original repository.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "connection id"
+          },
+          "result": {
+            "type": "object",
+            "description": "engine report"
+          }
+        },
+        "required": [
+          "source",
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "source_reports": {
+      "help": "Read saved understanding coverage reports for one connected codebase.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "connection id"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "source_search": {
+      "help": "Search an explicitly indexed connection with bounded local excerpts and source revisions.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "description": "query"
+          },
+          "source": {
+            "type": "string",
+            "description": "connection id"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "maximum matches"
+          }
+        },
+        "required": [
+          "q"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "source_use_vault": {
+      "help": "Use a connected vault for Research OS projection without importing or synchronizing any notes.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "vault connection id"
+          },
+          "folder": {
+            "type": "string",
+            "description": "generated Research OS folder inside the vault"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "start": {
+      "help": "Start a lesson and get the first step. On a bundle it starts only when the bundle is ready.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "description": "what to learn: capability:x, course:y, concept:z ... (default: the bundle's goal)"
+          },
+          "bundle": {
+            "type": "string",
+            "description": "a prepared bundle id"
+          },
+          "title": {
+            "type": "string",
+            "description": "lesson title"
+          },
+          "actor": {
+            "type": "string",
+            "description": "who is learning (default learner)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "status": {
+      "help": "What is in this record: capabilities and their states, due reviews, open tasks, lessons, problems.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "description": "ISO date to assess on (default today)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "support": {
+      "help": "What supports or invalidates a claim or other node.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "node": {
+            "type": "string",
+            "description": "node id"
+          }
+        },
+        "required": [
+          "node"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "tasks": {
+      "help": "Work waiting for an agent: grade, answer, visual, narration, animation, video, audit, verify, scout, ingest, outline, bundle, handout, run (job tasks are for the portal or MCP process).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "description": "only this kind"
+          },
+          "state": {
+            "type": "string",
+            "description": "open (default), claimed, done, cancelled or all"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "teach": {
+      "help": "Record that a capability was taught, how, and with what content.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "type": "string",
+            "description": "lesson id"
+          },
+          "capability": {
+            "type": "string",
+            "description": "capability id"
+          },
+          "mode": {
+            "type": "string",
+            "description": "explain, simpler, worked-example, visual ..."
+          },
+          "content": {
+            "type": "string",
+            "description": "what was shown"
+          }
+        },
+        "required": [
+          "lesson",
+          "capability"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "today": {
+      "help": "The home page: reviews due, the next lesson (ready or what is missing), answers waiting for the tutor.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "description": "ISO date (default today)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "transcription_accept": {
+      "help": "Mark an exact transcription draft reviewed by a person; original scan and prior drafts remain unchanged.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "draft": {
+            "type": "string",
+            "description": "immutable draft event id"
+          },
+          "by": {
+            "type": "string",
+            "description": "your name"
+          }
+        },
+        "required": [
+          "draft",
+          "by"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "transcription_draft": {
+      "help": "Save a faithful transcription draft bound to an immutable scan revision; retain uncertainty and apparent mistakes.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "source id"
+          },
+          "path": {
+            "type": "string",
+            "description": "relative scan path"
+          },
+          "revision": {
+            "type": "string",
+            "description": "source revision"
+          },
+          "text": {
+            "type": "string",
+            "description": "faithful LaTeX/Markdown draft"
+          },
+          "by": {
+            "type": "string",
+            "description": "author"
+          }
+        },
+        "required": [
+          "source",
+          "path",
+          "revision",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "transcription_list": {
+      "help": "Read preserved scan transcription drafts and human review receipts.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "source id"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "vault_find": {
+      "help": "Find notes of this record by title text, kind, record id or tag (an indexed lookup, not a scan).",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "description": "text in the title"
+          },
+          "kind": {
+            "type": "string",
+            "description": "capability, claim, lesson, decision, handout, ..."
+          },
+          "id": {
+            "type": "string",
+            "description": "the record id, e.g. capability:variance"
+          },
+          "tag": {
+            "type": "string",
+            "description": "a tag, e.g. ros/claim"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "at most this many (default 20)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "vault_note": {
+      "help": "Where one note (and its PDF) is: path, Obsidian link, portal link.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "the record id of the note"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "vault_resolve": {
+      "help": "Act on drift: update lets the record rewrite a note you edited (your edit is kept under My notes), restore brings back a note you deleted, reviewed marks an agent-written note as read and accepted.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "the note's record id or its path in the vault"
+          },
+          "action": {
+            "type": "string",
+            "description": "what to do",
+            "enum": [
+              "update",
+              "restore",
+              "reviewed"
+            ]
+          }
+        },
+        "required": [
+          "target",
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "vault_review": {
+      "help": "Write today's review note in the vault: what is due, learned, decided and added.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "description": "ISO date (default today)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "vault_root": {
+      "help": "The vault folder Research OS writes into (absolute), or nothing when no vault is set.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "vault_set": {
+      "help": "Choose the Obsidian vault (and the folder inside it, default 'Research OS') that holds the notes, PDFs and decisions; with no arguments it finds Obsidian's vaults and uses the only one.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "the vault folder"
+          },
+          "root": {
+            "type": "string",
+            "description": "the folder inside the vault (default Research OS)"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "vault_status": {
+      "help": "What is out of step in the vault: notes you edited, deleted or added, links that do not resolve, attachments nothing links to. Changes nothing.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "deep": {
+            "type": "boolean",
+            "description": "also count every file under the folder"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "vault_sync": {
+      "help": "Bring the vault in step with this record: read what you changed there, then write the notes the record changed. Incremental; dry_run says what would be written.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "description": "write nothing, say what would be written"
+          },
+          "full": {
+            "type": "boolean",
+            "description": "look at every note, not only what changed"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "verdict": {
+      "help": "Record an audit verdict. The claim's author cannot audit it.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "claim": {
+            "type": "string",
+            "description": "claim id"
+          },
+          "step": {
+            "type": "string",
+            "description": "audit step",
+            "enum": [
+              "integrity",
+              "result-claim",
+              "numbers",
+              "citations",
+              "kill-argument"
+            ]
+          },
+          "verdict": {
+            "type": "string",
+            "description": "six-state verdict",
+            "enum": [
+              "PASS",
+              "WARN",
+              "FAIL",
+              "BLOCKED",
+              "ERROR",
+              "NOT_APPLICABLE"
+            ]
+          },
+          "by": {
+            "type": "string",
+            "description": "auditor"
+          },
+          "notes": {
+            "type": "string",
+            "description": "findings"
+          },
+          "checklist": {
+            "type": "object",
+            "description": "integrity: each failure mode ok or concern"
+          },
+          "evidence": {
+            "type": "array",
+            "description": "files the verdict rests on"
+          }
+        },
+        "required": [
+          "claim",
+          "step",
+          "verdict",
+          "by"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "vision_dispatch_check": {
+      "help": "Check a consumed media permission still matches its exact queued turn and configured destination.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "request": {
+            "type": "string",
+            "description": "turn request id"
+          },
+          "model": {
+            "type": "string",
+            "description": "destination model"
+          },
+          "permissions": {
+            "type": "array",
+            "description": "one-shot permission event ids"
+          }
+        },
+        "required": [
+          "request",
+          "model",
+          "permissions"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "vision_permission": {
+      "help": "Grant one turn permission for this exact retained image/PDF and configured destination. Local-only sources remain blocked.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "source id"
+          },
+          "path": {
+            "type": "string",
+            "description": "relative attachment path"
+          },
+          "revision": {
+            "type": "string",
+            "description": "immutable attachment revision"
+          },
+          "model": {
+            "type": "string",
+            "description": "exact configured vision model"
+          }
+        },
+        "required": [
+          "source",
+          "path",
+          "revision",
+          "model"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "waive": {
+      "help": "A person accepts the risk of not being able to defend a claim.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "claim": {
+            "type": "string",
+            "description": "claim id"
+          },
+          "by": {
+            "type": "string",
+            "description": "your name"
+          },
+          "reason": {
+            "type": "string",
+            "description": "the risk"
+          }
+        },
+        "required": [
+          "claim",
+          "by",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": true
+    },
+    "work": {
+      "help": "Take the next task waiting for an agent, across every record: claimed for you, with the skill to read, the role to play and the tool that finishes it. Say who you are; call it again when you finish.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "by": {
+            "type": "string",
+            "description": "who is working: your name or agent id"
+          },
+          "kinds": {
+            "type": "array",
+            "description": "only these kinds of task (default: the most urgent of any)"
+          }
+        },
+        "required": [
+          "by"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "workspace_activity": {
+      "help": "See what was completed, what is running and what happens next, with recent recorded research actions and honest task states.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "workspace_chat": {
+      "help": "Read the messages and pending response of one conversation. Assistant messages are not scientific or learning evidence.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "conversation": {
+            "type": "string",
+            "description": "conversation id"
+          }
+        },
+        "required": [
+          "conversation"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "workspace_chat_complete": {
+      "help": "Append the response or failure for a saved message, idempotently, without creating assessment evidence or human decisions.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "conversation": {
+            "type": "string",
+            "description": "conversation id"
+          },
+          "request": {
+            "type": "string",
+            "description": "saved message request id"
+          },
+          "text": {
+            "type": "string",
+            "description": "response text or safe error"
+          },
+          "model": {
+            "type": "string",
+            "description": "provider:model"
+          },
+          "error": {
+            "type": "boolean",
+            "description": "whether the response failed"
+          }
+        },
+        "required": [
+          "conversation",
+          "request",
+          "text",
+          "model"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "workspace_chat_send": {
+      "help": "Save a conversational message and prepare its model request; the portal executes the optional provider outside the record lock.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "the person's message"
+          },
+          "model": {
+            "type": "string",
+            "description": "provider:model"
+          },
+          "conversation": {
+            "type": "string",
+            "description": "existing conversation id; omit to start and frame a goal"
+          },
+          "effort": {
+            "type": "string",
+            "description": "Codex reasoning effort; default medium",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "key": {
+            "type": "string",
+            "description": "turn idempotency key"
+          },
+          "mode": {
+            "type": "string",
+            "description": "chat, learn or research",
+            "enum": [
+              "chat",
+              "learn",
+              "research"
+            ]
+          },
+          "scope": {
+            "type": "array",
+            "description": "explicit versioned source passages"
+          }
+        },
+        "required": [
+          "text",
+          "model"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "workspace_cloud_guard": {
+      "help": "Check indexed privacy restrictions in the record and linked context before cloud access.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "workspace_connections": {
+      "help": "Read the selected record and configured vault connection without discovery, scans, sync or migration.",
+      "schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "workspace_document": {
+      "help": "Read a handout, lesson transcript or imported source as versioned document data, with stable sections and provenance.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "canonical document node id"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "workspace_entity": {
+      "help": "Read one entity with its incoming and outgoing typed references, including missing targets and cross-record links.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "canonical node id"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "at most 200 incoming and outgoing references; default 80"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "workspace_graph": {
+      "help": "Read a bounded graph neighbourhood with original directed typed edges and provenance for the interactive workspace.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "description": "knowledge, research, evidence or progress",
+            "enum": [
+              "knowledge",
+              "research",
+              "evidence",
+              "progress"
+            ]
+          },
+          "focus": {
+            "type": "string",
+            "description": "canonical node id; omit for hub overview"
+          },
+          "depth": {
+            "type": "integer",
+            "description": "neighbourhood hops, between zero and three"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "at most 200 nodes; default 120"
+          },
+          "relation": {
+            "type": "string",
+            "description": "only this canonical edge type"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "workspace_lesson_material": {
+      "help": "Open prepared sections freely without marking them learned; record assistance before assessment material is exposed.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "lesson": {
+            "type": "string",
+            "description": "saved lesson id"
+          },
+          "item": {
+            "type": "string",
+            "description": "current immutable assessment item, if any"
+          }
+        },
+        "required": [
+          "lesson"
+        ],
+        "additionalProperties": false
+      },
+      "writes": true,
+      "human": false
+    },
+    "workspace_resolve": {
+      "help": "Resolve an exact id, title or alias across linked records; return ambiguous or missing references explicitly.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "description": "node id, exact alias, wikilink or record::id with optional #anchor"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    },
+    "workspace_sessions": {
+      "help": "List canonical conversations with pagination independent of browser preferences.",
+      "schema": {
+        "type": "object",
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "description": "page offset"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "page size"
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "writes": false,
+      "human": false
+    }
+  },
+  "importers": [
+    "learning",
+    "sessions",
+    "research",
+    "graphify",
+    "documents",
+    "projects",
+    "notes",
+    "session_notes",
+    "papers",
+    "legacy_tasks",
+    "visuals",
+    "resources",
+    "handouts"
+  ],
+  "tasks": [
+    "audit",
+    "bundle",
+    "outline",
+    "video",
+    "visual",
+    "run",
+    "narration",
+    "review",
+    "job",
+    "grade",
+    "scout",
+    "animation",
+    "answer",
+    "verify",
+    "handout",
+    "item",
+    "ingest"
+  ],
+  "gate_rows": [
+    "narration",
+    "claims",
+    "voice",
+    "visuals",
+    "animation",
+    "clip",
+    "check items",
+    "probe items",
+    "close items",
+    "transfer item"
+  ],
+  "handout_kinds": [
+    "lecture",
+    "recitation",
+    "chapter",
+    "literature",
+    "findings"
+  ],
+  "audit_steps": [
+    "integrity",
+    "result-claim",
+    "numbers",
+    "citations",
+    "kill-argument"
+  ],
+  "engines": [
+    "__init__.py",
+    "animate.py",
+    "code_walkthrough.py",
+    "computational_manifest.py",
+    "desktop_operations.py",
+    "dialogue.py",
+    "knowledge.py",
+    "library_index.py",
+    "literature_check.py",
+    "notebook_coverage.py",
+    "notebook_trace.py",
+    "notebook_worker.py",
+    "ontology.py",
+    "paper_access.py",
+    "paper_library.py",
+    "paths.py",
+    "pdf.py",
+    "pdf_vision.py",
+    "providers.py",
+    "research.py",
+    "scientific_tools.py",
+    "scout.py",
+    "speech_text.py",
+    "validate_evidence.py",
+    "voice.py",
+    "voice_adapter.py"
+  ],
+  "skills": [
+    "audit",
+    "defend",
+    "learn",
+    "notes-to-latex",
+    "prepare",
+    "research"
+  ],
+  "roles": [
+    "adversary",
+    "auditor",
+    "librarian",
+    "scout",
+    "verifier",
+    "video-scout",
+    "visual-maker"
+  ],
+  "baseline": "2433fba47c753bc3f2c4eac6045ba91b14b9f534",
+  "integration_branch": "agent/codex/desktop-rebuild",
+  "tool_count": 148
+}

@@ -138,6 +138,7 @@ class Server:
                         selector = selector or args.pop("project", None)
                     rec = self.record(selector)
                     value = api.TOOLS[name].call(rec, args)
+                    value = api.external_result(value)
                     if api.TOOLS[name].writes and name not in ("reconcile", "job_done"):
                         self.follow_up(rec)
                     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)

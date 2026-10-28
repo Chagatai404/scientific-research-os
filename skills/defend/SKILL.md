@@ -5,6 +5,13 @@ description: Help the researcher own their work — write and practise defence i
 
 # Defend
 
+Notebook understanding is available in the desktop's Sources → Codebase view. The retained
+`notebook_coverage.py` and `notebook_trace.py` engines are also installed under this skill's
+`scripts/` directory. Coverage distinguishes imports from mentions; test-file presence never
+proves execution. Trace and mutation require an explicit human notebook permission, use a
+committed scratch copy and scrubbed environment, and preserve the original repository.
+Scratch execution is data isolation, not an OS security sandbox; run trusted notebooks only.
+
 A claim is owned when the researcher can defend it from memory, and still can at its review. Contract:
 `references/RESEARCH.md` (defence bridge).
 

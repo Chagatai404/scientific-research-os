@@ -15,6 +15,20 @@ baseline-*.log
 
 # Local listening-test and demo output
 voice-listening/
+node_modules/
+frontend/coverage/
+.test-*.log
+.test-*.json
+frontend/audit.json
 *.egg-info/
 build/
 dist/
+desktop/node_modules/
+desktop/protocol/
+desktop/protocol-selected/
+.desktop-*.log
+.desktop-build-notebook-*.txt
+desktop/dist/
+desktop/backend/
+.desktop-fixtures/
+.desktop-build/

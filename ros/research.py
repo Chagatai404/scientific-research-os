@@ -17,7 +17,7 @@ import csv
 import re
 from pathlib import Path
 
-from . import tasks
+from . import tasks, graph
 from .store import Record
 
 VERDICTS = ("PASS", "WARN", "FAIL", "BLOCKED", "ERROR", "NOT_APPLICABLE")
@@ -231,13 +231,14 @@ def approve(rec: Record, subject: str, decision: str, by: str, note: str = "") -
     """A human approves, rejects or asks for changes to a plan (an experiment, a run)."""
     if decision not in ("approved", "rejected", "changes-requested"):
         raise ValueError("decision is approved, rejected or changes-requested")
-    rec.append("approval", subject, {"decision": decision, "note": note}, actor=by)
     node = rec.node(subject)
+    revision=graph.plan_revision(node) if node else None
+    rec.append("approval", subject, {"decision": decision, "note": note, 'revision':revision}, actor=by)
     if node and node.get("type") == "experiment":  # the research frontier reads the plan's own state
         authorization = {"approved": "approved", "rejected": "rejected",
                          "changes-requested": "modification-requested"}[decision]
         rec.put_node(subject, "experiment", **{**{k: v for k, v in node.items() if k not in ("id", "type")},
-                                              "authorization": authorization})
+                                                "authorization": authorization, 'approved_revision':revision})
     return {"subject": subject, "decision": decision}
 
 

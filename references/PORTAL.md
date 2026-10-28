@@ -1,5 +1,35 @@
 # Portal
 
+An opt-in standalone workspace is available at `/workspace/` (React/TypeScript, committed static build).
+It currently offers a responsive shell, sanitized Markdown/math reading, a no-vault library, canonical
+references/backlinks, a focused canvas graph, and a lesson/research pilot. The original `/` portal remains
+the compatibility route and provides the complete human decision and vault conflict controls.
+See `docs/portal-redesign/REPORT.md` for acceptance evidence and remaining work; this is not a complete
+replacement yet. No record migration or vault rewriting is required to try it.
+
+Since 1.4.0 the workspace has two left columns (navigation, then sessions) and one page. Menus, pickers and dialogs share a
+single overlay controller, so only one is open at a time. Home shows the organizational map (`workspace_map`): workspace,
+named courses and projects, topics and material. Its plain lines are filing, not scientific relations. The Library
+(`library_add`, `library_process`) lists material at once and reads it in the background. Organization names and
+folders (`organization_*`, `workspace_organization`) are append-only preferences. Old `#sessions` and `#sources` links open
+Home and the Library.
+
+The workspace opens into a viewport graph with compact point nodes, directed typed links, pan/zoom/fit,
+an equivalent node list and bounded selection context. Its bottom question dock retains model selection,
+local dictation and Kokoro playback. Navigation is collapsible; draft and camera preferences are local browser
+state. Microphone transcripts remain drafts, and Send is blocked until recording/transcription finishes.
+
+`workspace_entity` queries indexed incident edges in the selected record and its explicitly linked records.
+Each reference includes `edge_record` (where the relation was asserted) and `record` (where its target lives).
+Dangling endpoints in one project never resolve against a sibling project's coincidentally matching ID.
+Title/alias indexes are cached by node-log stamp, so conversation and assessment events do not rebuild them.
+`workspace_resolve` also supports exact path-qualified note links through the configured vault's existing
+read-only manifest; missing/deleted/unreadable paths remain missing, without automatic sync or discovery.
+
+`ROS_NO_VAULT=1` disables automatic vault discovery for standalone use and tests. A vault explicitly
+selected in settings remains usable. New read-only operations: `workspace_document`, `workspace_entity`,
+`workspace_resolve`, `workspace_graph`. They use the same tool table as CLI and MCP.
+
 `ros serve` serves the portal at `http://127.0.0.1:8737/` (the same port every time; if one is already running, `ros serve`
 says so and opens it), in a browser or Obsidian's core Web Viewer. While it runs, the process is the single writer of
 every record it has open and keeps them in step on its own (`references/DIRECTOR.md`).
@@ -36,6 +66,11 @@ handouts about it. Every note in the vault carries a link back to that page in i
 
 `GET /api/<tool>?record=<name>&...` for reads and `POST /api/<tool>` (JSON, `X-ROS: 1`) for writes: every tool, on any
 record of the home. `GET /media/...`, `GET /vault/...` (byte ranges), `GET /events` (server-sent `change`).
+`GET /events?record=<name>` watches only that record; omitting `record` watches the server's default record.
+Record names accept plain or JSON-quoted strings, as API queries do. Unknown or invalid names return HTTP 400
+before the stream starts. Each stream sends an initial `change`, then polls only the selected record's event,
+node and edge file sizes; changes in another record do not trigger it. Idle polls send keep-alive comments.
+Streams reconnect after at most ten minutes and do not hold the API lock while waiting.
 
 The same operations exist as `ros` commands and MCP tools; the page adds nothing an agent cannot do except the
 person-only acts.

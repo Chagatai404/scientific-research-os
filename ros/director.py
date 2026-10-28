@@ -87,8 +87,11 @@ def _user_record(rec: Record) -> tuple[Record, bool]:
         return context.user_record({"user": found[0]}), False
     root = home.init("me")
     new = Record(root)
-    context.link(new, user_wide=True)
-    return new, True
+    try:
+        context.link(new, user_wide=True)
+    finally:
+        new.close()
+    return context.user_record({"user": root.name}), True
 
 
 def _ensure_record(user: Record, name: str, hub: str, title: str) -> Record:

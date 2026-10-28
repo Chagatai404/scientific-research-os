@@ -27,6 +27,7 @@ class Fixture(unittest.TestCase):
         os.environ["ROS_HOME"] = str(self.tmp / "ros")
         os.environ.pop("ROS_PROJECT", None)
         self.addCleanup(lambda: (os.environ.clear(), os.environ.update(self._env)))
+        self.addCleanup(api.release)
         self.opened = []
         patcher = mock.patch.object(automation, "SETTLE_SECONDS", 0)
         patcher.start()
@@ -99,9 +100,9 @@ class EngageTests(Fixture):
         self.assertEqual(out["vault"]["inbox"], "Research OS/Courses/STAT 303/Inbox")
         self.assertTrue((vault_dir / out["vault"]["inbox"]).is_dir())
         (vault_dir / out["vault"]["inbox"] / "syllabus.pdf").write_bytes(b"%PDF-1.4 x")
-        api.call("reconcile", Record(home.home() / "projects" / "stat303"), mode="scan")
         course = Record(home.home() / "projects" / "stat303")
         self.addCleanup(course.close)
+        api.call("reconcile", course, mode="scan")
         self.assertEqual([t["kind"] for t in tasks.tasks(course, "ingest")], ["ingest"])
 
     def test_a_topic_states_a_goal_and_asks_for_an_outline(self):

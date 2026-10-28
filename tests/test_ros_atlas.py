@@ -32,6 +32,7 @@ class Fixture(unittest.TestCase):
         self.addCleanup(lambda: (os.environ.clear(), os.environ.update(self._env)))
         self.rec, _ = demo.build(home.home() / "projects" / "stat")
         self.addCleanup(self.rec.close)
+        self.addCleanup(api.release)
 
 
 class LayoutTests(unittest.TestCase):
@@ -196,7 +197,7 @@ class FindTests(Fixture):
 
     def test_records_lists_what_exists(self):
         out = api.call("records", self.rec)
-        self.assertEqual(out, [{"name": "stat", "role": "unlinked", "hub": None, "current": True}])
+        self.assertEqual(out, [{"name": "stat", "title": "Stat", "role": "unlinked", "hub": None, "current": True}])
 
 
 if __name__ == "__main__":

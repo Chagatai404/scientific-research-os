@@ -15,7 +15,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from ros import automation, home, mcp, runner, serve, tasks, vault  # noqa: E402
+from ros import api, automation, home, mcp, runner, serve, tasks, vault  # noqa: E402
 from ros.lib import pdf  # noqa: E402
 from ros.store import Record  # noqa: E402
 
@@ -44,6 +44,7 @@ class Scenario(unittest.TestCase):
         os.environ.pop("ROS_PROJECT", None)
         os.environ.pop("RESEARCH_OS_VOICE_ENVS", None)
         self.addCleanup(lambda: (os.environ.clear(), os.environ.update(self._env)))
+        self.addCleanup(api.release)
         for patch in (mock.patch.object(automation, "SETTLE_SECONDS", 0), mock.patch.object(automation, "LEGACY_EVERY", 0)):
             patch.start()
             self.addCleanup(patch.stop)
@@ -93,13 +94,8 @@ class Scenario(unittest.TestCase):
         return httpd.server_address[1]
 
     def person(self, port, tool, record, **args):
-        c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
-        c.request("POST", f"/api/{tool}", body=json.dumps({"record": record, **args}),
-                  headers={"Host": f"127.0.0.1:{port}", "X-ROS": "1", "Sec-Fetch-Site": "same-origin"})
-        r = c.getresponse()
-        body = json.loads(r.read())
-        c.close()
-        return r.status, body
+        from support_human import decision
+        return decision(port, tool, args, record)
 
     def fetch(self, port, path):
         c = http.client.HTTPConnection("127.0.0.1", port, timeout=10)

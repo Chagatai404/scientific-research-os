@@ -22,6 +22,26 @@ Outside the record, `$ROS_HOME/settings.json` holds the person's choices (`vault
 `director_name`, `pdf_engine`, `portal_port`), and `$ROS_HOME/vault/<id>.sqlite` is the vault manifest (what the system
 wrote and what it saw: path, size, mtime, hash). Both are rebuildable or re-askable; neither is the truth.
 
+### Human organization preferences
+
+`workspace.renamed` (subject `workspace`, data `title`) records a readable workspace name while the backing record
+name remains stable. `organization.created` records an automatically assigned folder identity, `kind` (`course`,
+`project`, `collection`), `title`, and optional `parent`. Course/project folders have ordinary canonical nodes;
+collections need no scientific node. `organization.renamed` stores `title` for an existing item, and
+`organization.moved` stores its `parent` (empty means Inbox). These append-only preferences override display names
+and organizational placement only. They never change old events, source files, citations or scientific edges.
+Parents must be existing folders, with cycles rejected. New workspaces start unlinked to preserve data isolation.
+
+### Library material
+
+`library.added` (subject `material:<24 hex>`, derived from the connection and relative path) records that a person
+added a file: `source` (connection id), `path`, `title`, `format`, `size`, `mtime`. Adding reads no content.
+`library.state` moves it through `added` → `reading` → `ready`, or to `attention`, with a plain-language `detail`,
+`indexed` (searchable text exists), `revision` (SHA-256) and the file `size`/`mtime` it was read at. A changed file
+returns to `added`. `library.removed` hides an item; the original file and any cited history are untouched. A
+material's folder is an ordinary `organization.moved` event. The lexical index in `sources-cache.sqlite` stays
+disposable.
+
 ## Two graphs, two kinds of record
 
 Records are of two roles, set in `record.json` (the `link` tool writes it):
@@ -71,7 +91,12 @@ with a `deadline` the verdict is `feasible` (at most 85% of the capacity), `tigh
 ## Node types
 
 domain, subject, concept, capability, course, goal, project, block, paper, question, hypothesis, claim, experiment,
-decision, code-symbol, source, lesson, handout, visual.
+decision, code-symbol, source, lesson, handout, visual, conversation.
+
+`conversation` nodes are standalone portal discussions, separate from assessed lessons. Their canonical id is
+`conversation:<key>`. `conversation.message`, `conversation.response` and `conversation.error` events name that
+id as their subject and retain a request id, text and selected model. They are append-only, are not learning
+evidence, and never approve plans or accept claims. Existing records need no conversion to add this node type.
 
 ## Edge types
 
@@ -115,3 +140,20 @@ Importers (`import --kind`): `learning`, `sessions`, `research`, `graphify`, `do
 `kind` (choice, numeric, free), `prompt`, and per kind `options` + `answer` (index), `answer` + `tolerance`, or a
 hidden `rubric`; optional `explanation`, `hints`, `option_feedback`, `concepts` (node ids), `difficulty`,
 `supersedes`, `defence`.
+# Desktop facts
+
+`workspace.identity` records a stable UUID on the first explicit source connection. Read-only
+opening does not modify existing records. Canonical identity is record identity plus entity ID.
+`source.registered`, `source.removed` and `source.paused` record explicit connection grants;
+`source.revision` references an immutable SHA-256 snapshot and exact passage locator. `source.report`
+retains completed understanding reports. Source roots are host metadata, never provider-selected paths.
+`provider.configured` records local endpoint capability profiles without credentials or inference.
+`run.queued`, `run.state`, `run.output` and `run.step` preserve lifecycle, batched partial text and
+operation/result references. Usage and cost are unavailable unless reported by the provider.
+`notebook.requested` records explicit human execution permission and source revision;
+`notebook.finished` records the worker's actual result. A scratch clone isolates data, not the OS.
+
+- `source.derived_private`: destination record contains canonical output derived from a local-only source. Runtime marks it before scoped writes; later cloud turns in this record and linked director context are refused. It is a conservative record restriction, not content classification of manually pasted information.
+- `execution.limits`: explicit human workspace budgets for context characters, output, tool steps, deadline, queued runs and local provider calls. Native CLI internal calls remain provider managed, not a subscription spending ceiling.
+- `run.usage`: provider-reported usage/cost with reported provenance. Missing values mean unavailable, never zero.
+- Experiment plan approval carries `approved_revision`; changing plan content invalidates authorization. New human forms also bind their one-shot action to the current subject revision.

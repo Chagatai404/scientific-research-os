@@ -1,6 +1,6 @@
 # Scientific Research OS
 
-Version **1.2.1**. You are the director: say what you want to learn or find out, and agents set it up, prepare it
+Version **1.4.0**. You are the director: say what you want to learn or find out, and agents set it up, prepare it
 and keep your Obsidian vault current. You learn, and you judge the findings. It works with any AI agent: Claude, Codex,
 Gemini or a local model.
 
@@ -19,6 +19,33 @@ how the code is built and how to add to it is in [ARCHITECTURE](docs/ARCHITECTUR
 - **Remember.** Everything is kept in one Obsidian folder (`Research OS/`): notes with your own text left untouched,
   PDFs, decision logs, maps and bases. Drop a file into its Inbox and it is read in. The portal links to any note.
 - **See.** The portal's Graphs show what you know and what a project rests on, with the evidence behind each node.
+
+## Windows desktop
+
+Install `desktop/dist/Research-OS-Setup-1.3.0-x64.exe`. The installer includes Electron and the Python backend, adds shortcuts, and preserves records when uninstalled. The complete unpacked application is also at `desktop/dist/win-unpacked/Research OS.exe`.
+
+Connect sources, choose a model, and use Sessions, Learn, Research, Graph or Activity. Connections do not scan, sync or execute automatically. Codex and Claude use their existing CLI logins; local models use explicit loopback profiles. Scientific approvals, decisions and waivers remain human actions. For cloud image/PDF vision, configure the exact model's capability and explicitly allow each attachment revision for one turn. Local Only media stays on the computer. PDF pages are rendered locally, with the first four pages explicitly identified.
+
+Installed copies check the public GitHub release feed automatically and download newer stable releases. Settings shows progress and offers Restart & Install after active work finishes. An offline or empty release feed leaves the installed application usable. Future releases are built and published by the `desktop-v<version>` tag workflow; no release is published just by building locally. Unpacked and development copies use manual replacement.
+
+For development:
+
+```powershell
+npm --prefix frontend ci
+npm --prefix frontend run build
+npm --prefix desktop ci
+npm --prefix desktop start
+```
+
+[1.4.0 acceptance](docs/desktop-rebuild/ACCEPTANCE-1.4.0.md), [1.3.0 acceptance evidence](docs/desktop-rebuild/ACCEPTANCE.md), [capability ledger](docs/desktop-rebuild/CAPABILITY_PARITY.md), [architecture](docs/desktop-rebuild/ARCHITECTURE.md), and [backup/rollback](docs/desktop-rebuild/MIGRATION_AND_ROLLBACK.md) describe tested behavior and optional runtime limits. `python desktop/verify.py` runs the complete isolated gate. It makes no paid inference calls or personal vault changes. The desktop package is 1.3.0; the compatible scientific backend retains its 1.2.1 version identifier.
+
+## The desktop workspace
+
+Navigation and a sessions column sit side by side (`Ctrl/Cmd+B`, `Ctrl/Cmd+Shift+B`). Create and rename courses and
+projects, drag sessions into them, and add material to the Library once: it is listed at once and read in the
+background. The central map shows workspace, courses and projects, topics and material; Learn recommends a next step,
+and Research shows where a question stands. Plain lines on the map are filing, never scientific relations.
+The plan and its status are in [the desktop usability plan](docs/plans/desktop-usability-redesign.md).
 
 ## Start
 
@@ -102,6 +129,15 @@ what each step unlocks, and with `--deadline` says whether it is feasible. State
 notes (see the benchmark in `tests/test_ros_roadmap_bench.py`).
 
 ## Tests
+
+The rebuilt workspace preview is at `http://127.0.0.1:8737/workspace/` after starting this checkout's
+`ros serve`. It reads existing records and works without Obsidian. The original portal stays at `/`.
+The landing screen fills the window with an interactive knowledge graph and a compact question dock.
+Choose a model, dictate a draft or play responses with local Kokoro; availability depends on your installed engines.
+See [the slice report](docs/portal-redesign/REPORT.md) for implemented features and limits.
+Developers build it with `npm --prefix frontend ci` then `npm --prefix frontend run build`; end users
+need only Python because the browser build is included. Set `ROS_NO_VAULT=1` when testing so automatic
+vault discovery cannot select your personal vault.
 
 ```bash
 python -m unittest discover -s tests -p "test_*.py"     # about a minute

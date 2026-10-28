@@ -1,0 +1,941 @@
+E.F............EE.EEEEEEEEEEE.............................EEEE.EEFEEEEEEE.EEEE....sE.FFEEE.E............
+======================================================================
+ERROR: test_browser_authority_is_bound_to_subject_revision (test_ros_desktop.Desktop.test_browser_authority_is_bound_to_subject_revision)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_desktop.py", line 110, in test_browser_authority_is_bound_to_subject_revision
+    status,_=post('/api/approve',params,{'X-ROS':'1','Sec-Fetch-Site':'same-origin'}); self.assertEqual(status,403)
+             ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_desktop.py", line 108, in post
+    connection=http.client.HTTPConnection('127.0.0.1',port,timeout=5); connection.request('POST',path,json.dumps(packet),headers); response=connection.getresponse(); body=json.loads(response.read()); connection.close(); return response.status,body
+                                                                       ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1358, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1404, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\client.py", line 1023, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\socket.py", line 870, in create_connection
+    raise exceptions[0]
+  File "C:\Python314\Lib\socket.py", line 855, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+PermissionError: [WinError 10013] Eri�im izinlerince izin verilmeyen bir �ekilde bir yuvaya eri�ilmeye �al���ld�
+
+======================================================================
+ERROR: test_a_record_argument_picks_the_record_and_unknown_ones_are_refused (test_ros_serve.PoolAndVaultTests.test_a_record_argument_picks_the_record_and_unknown_ones_are_refused)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 168, in test_a_record_argument_picks_the_record_and_unknown_ones_are_refused
+    _, _, body = self.get("/api/claims")
+                 ~~~~~~~~^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 161, in get
+    c.request("GET", path, headers={"Host": f"127.0.0.1:{self.port}"})
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1358, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1404, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\client.py", line 1023, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\socket.py", line 870, in create_connection
+    raise exceptions[0]
+  File "C:\Python314\Lib\socket.py", line 855, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+PermissionError: [WinError 10013] Eri�im izinlerince izin verilmeyen bir �ekilde bir yuvaya eri�ilmeye �al���ld�
+
+======================================================================
+ERROR: test_a_second_portal_is_recognised_and_run_opens_it (test_ros_serve.PoolAndVaultTests.test_a_second_portal_is_recognised_and_run_opens_it)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\serve.py", line 530, in _bind
+    server = PortalServer(("127.0.0.1", port), make_handler(pool))
+  File "C:\Python314\Lib\socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\serve.py", line 505, in server_bind
+    super().server_bind()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Python314\Lib\socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+OSError: [WinError 10048] Normal olarak her yuva adresi (ileti�im kural�/a� adresi/ba�lant� noktas�) i�in yaln�zca bir kullan�ma izin veriliyor
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 212, in test_a_second_portal_is_recognised_and_run_opens_it
+    code = serve.run(self.other, self.port, False)
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\serve.py", line 551, in run
+    server = _bind(pool, port)
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\serve.py", line 536, in _bind
+    raise ValueError(f"port {port} is in use (is another 'ros serve' running?): pass --port N, or 0 for any "
+                     f"free port") from exc
+ValueError: port 55327 is in use (is another 'ros serve' running?): pass --port N, or 0 for any free port
+
+======================================================================
+ERROR: test_the_vault_serves_notes_and_pdfs_from_its_folder_only (test_ros_serve.PoolAndVaultTests.test_the_vault_serves_notes_and_pdfs_from_its_folder_only)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 181, in test_the_vault_serves_notes_and_pdfs_from_its_folder_only
+    status, headers, body = self.get("/vault/Research%20OS/Handouts/a.pdf")
+                            ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 161, in get
+    c.request("GET", path, headers={"Host": f"127.0.0.1:{self.port}"})
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1358, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1404, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\client.py", line 1023, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\socket.py", line 870, in create_connection
+    raise exceptions[0]
+  File "C:\Python314\Lib\socket.py", line 855, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+PermissionError: [WinError 10013] Eri�im izinlerince izin verilmeyen bir �ekilde bir yuvaya eri�ilmeye �al���ld�
+
+======================================================================
+ERROR: test_without_a_vault_nothing_is_served (test_ros_serve.PoolAndVaultTests.test_without_a_vault_nothing_is_served)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 205, in test_without_a_vault_nothing_is_served
+    self.assertEqual(self.get("/vault/Research%20OS/Handouts/a.pdf")[0], 404)
+                     ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 161, in get
+    c.request("GET", path, headers={"Host": f"127.0.0.1:{self.port}"})
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1358, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1404, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\client.py", line 1023, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\socket.py", line 870, in create_connection
+    raise exceptions[0]
+  File "C:\Python314\Lib\socket.py", line 855, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+PermissionError: [WinError 10013] Eri�im izinlerince izin verilmeyen bir �ekilde bir yuvaya eri�ilmeye �al���ld�
+
+======================================================================
+ERROR: test_default_and_selected_streams_watch_only_their_own_record (test_ros_serve.SelectedRecordEventsTests.test_default_and_selected_streams_watch_only_their_own_record)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 278, in test_default_and_selected_streams_watch_only_their_own_record
+    default = self.stream("/events")
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 245, in stream
+    conn.request("GET", path)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1358, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1404, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\client.py", line 1023, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\socket.py", line 870, in create_connection
+    raise exceptions[0]
+  File "C:\Python314\Lib\socket.py", line 855, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+PermissionError: [WinError 10013] Eri�im izinlerince izin verilmeyen bir �ekilde bir yuvaya eri�ilmeye �al���ld�
+
+======================================================================
+ERROR: test_plain_record_names_and_invalid_names_before_stream_headers (test_ros_serve.SelectedRecordEventsTests.test_plain_record_names_and_invalid_names_before_stream_headers)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 304, in test_plain_record_names_and_invalid_names_before_stream_headers
+    selected = self.stream("/events?record=other")
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 245, in stream
+    conn.request("GET", path)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1358, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1404, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\client.py", line 1023, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\socket.py", line 870, in create_connection
+    raise exceptions[0]
+  File "C:\Python314\Lib\socket.py", line 855, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+PermissionError: [WinError 10013] Eri�im izinlerince izin verilmeyen bir �ekilde bir yuvaya eri�ilmeye �al���ld�
+
+======================================================================
+ERROR: test_events_stream_announces_changes (test_ros_serve.ServeTests.test_events_stream_announces_changes)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 83, in test_events_stream_announces_changes
+    c.request("GET", "/events", headers={"Host": "localhost"})
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1358, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1404, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\client.py", line 1023, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\socket.py", line 870, in create_connection
+    raise exceptions[0]
+  File "C:\Python314\Lib\socket.py", line 855, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+PermissionError: [WinError 10013] Eri�im izinlerince izin verilmeyen bir �ekilde bir yuvaya eri�ilmeye �al���ld�
+
+======================================================================
+ERROR: test_foreign_host_is_refused (test_ros_serve.ServeTests.test_foreign_host_is_refused)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 55, in test_foreign_host_is_refused
+    status, _, _ = self.req("GET", "/api/status", headers={"Host": "evil.example:80"})
+                   ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 39, in req
+    c.request(method, path, body=json.dumps(body) if body is not None else None, headers=h)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1358, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1404, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\client.py", line 1023, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\socket.py", line 870, in create_connection
+    raise exceptions[0]
+  File "C:\Python314\Lib\socket.py", line 855, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+PermissionError: [WinError 10013] Eri�im izinlerince izin verilmeyen bir �ekilde bir yuvaya eri�ilmeye �al���ld�
+
+======================================================================
+ERROR: test_media_ranges_and_confinement (test_ros_serve.ServeTests.test_media_ranges_and_confinement)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 75, in test_media_ranges_and_confinement
+    status, headers, body = self.req("GET", path, headers={"Range": "bytes=0-43"})
+                            ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 39, in req
+    c.request(method, path, body=json.dumps(body) if body is not None else None, headers=h)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1358, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1404, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\client.py", line 1023, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\socket.py", line 870, in create_connection
+    raise exceptions[0]
+  File "C:\Python314\Lib\socket.py", line 855, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+PermissionError: [WinError 10013] Eri�im izinlerince izin verilmeyen bir �ekilde bir yuvaya eri�ilmeye �al���ld�
+
+======================================================================
+ERROR: test_model_check_is_explicit_bounded_and_sends_no_record_content (test_ros_serve.ServeTests.test_model_check_is_explicit_bounded_and_sends_no_record_content)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 94, in test_model_check_is_explicit_bounded_and_sends_no_record_content
+    status, _, body = self.req("POST", "/services/model-check", {"model": "codex:gpt-6.1-sol", "effort": "low"}, headers)
+                      ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 39, in req
+    c.request(method, path, body=json.dumps(body) if body is not None else None, headers=h)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1358, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1404, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\client.py", line 1023, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\socket.py", line 870, in create_connection
+    raise exceptions[0]
+  File "C:\Python314\Lib\socket.py", line 855, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+PermissionError: [WinError 10013] Eri�im izinlerince izin verilmeyen bir �ekilde bir yuvaya eri�ilmeye �al���ld�
+
+======================================================================
+ERROR: test_page_and_static_files (test_ros_serve.ServeTests.test_page_and_static_files)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 46, in test_page_and_static_files
+    status, headers, body = self.req("GET", "/")
+                            ~~~~~~~~^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 39, in req
+    c.request(method, path, body=json.dumps(body) if body is not None else None, headers=h)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1358, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1404, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\client.py", line 1023, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\socket.py", line 870, in create_connection
+    raise exceptions[0]
+  File "C:\Python314\Lib\socket.py", line 855, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+PermissionError: [WinError 10013] Eri�im izinlerince izin verilmeyen bir �ekilde bir yuvaya eri�ilmeye �al���ld�
+
+======================================================================
+ERROR: test_preserved_drawing_reference_is_an_inert_confined_download (test_ros_serve.ServeTests.test_preserved_drawing_reference_is_an_inert_confined_download)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 116, in test_preserved_drawing_reference_is_an_inert_confined_download
+    status, headers, data = self.req("GET", "/media/handouts/drawing-reference/figures/sketch.excalidraw")
+                            ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 39, in req
+    c.request(method, path, body=json.dumps(body) if body is not None else None, headers=h)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1358, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1404, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\client.py", line 1023, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\socket.py", line 870, in create_connection
+    raise exceptions[0]
+  File "C:\Python314\Lib\socket.py", line 855, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+PermissionError: [WinError 10013] Eri�im izinlerince izin verilmeyen bir �ekilde bir yuvaya eri�ilmeye �al���ld�
+
+======================================================================
+ERROR: test_reads_by_get_writes_only_by_post_with_header (test_ros_serve.ServeTests.test_reads_by_get_writes_only_by_post_with_header)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 59, in test_reads_by_get_writes_only_by_post_with_header
+    status, _, body = self.req("GET", "/api/today")
+                      ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_serve.py", line 39, in req
+    c.request(method, path, body=json.dumps(body) if body is not None else None, headers=h)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1358, in request
+    self._send_request(method, url, body, headers, encode_chunked)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1404, in _send_request
+    self.endheaders(body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1353, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1113, in _send_output
+    self.send(msg)
+    ~~~~~~~~~^^^^^
+  File "C:\Python314\Lib\http\client.py", line 1057, in send
+    self.connect()
+    ~~~~~~~~~~~~^^
+  File "C:\Python314\Lib\http\client.py", line 1023, in connect
+    self.sock = self._create_connection(
+                ~~~~~~~~~~~~~~~~~~~~~~~^
+        (self.host,self.port), self.timeout, self.source_address)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\socket.py", line 870, in create_connection
+    raise exceptions[0]
+  File "C:\Python314\Lib\socket.py", line 855, in create_connection
+    sock.connect(sa)
+    ~~~~~~~~~~~~^^^^
+PermissionError: [WinError 10013] Eri�im izinlerince izin verilmeyen bir �ekilde bir yuvaya eri�ilmeye �al���ld�
+
+======================================================================
+ERROR: test_only_a_directory_this_tool_made_is_ever_removed (test_notebook_trace.Copies.test_only_a_directory_this_tool_made_is_ever_removed)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 197, in test_only_a_directory_this_tool_made_is_ever_removed
+    scratch = nt.prepare_copy(self.repo, self.dir / 'scratch')
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (42604) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_the_copy_is_never_inside_the_repository_and_never_overwrites (test_notebook_trace.Copies.test_the_copy_is_never_inside_the_repository_and_never_overwrites)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 184, in test_the_copy_is_never_inside_the_repository_and_never_overwrites
+    nt.prepare_copy(self.repo, self.dir / 'scratch')
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (10752) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_the_copy_is_the_committed_state_without_secrets_ignored_files_or_an_environment (test_notebook_trace.Copies.test_the_copy_is_the_committed_state_without_secrets_ignored_files_or_an_environment)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 166, in test_the_copy_is_the_committed_state_without_secrets_ignored_files_or_an_environment
+    scratch = nt.prepare_copy(self.repo, self.dir / 'scratch')
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (28920) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_uncommitted_changes_are_counted_not_silently_included (test_notebook_trace.Copies.test_uncommitted_changes_are_counted_not_silently_included)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 177, in test_uncommitted_changes_are_counted_not_silently_included
+    scratch = nt.prepare_copy(self.repo, self.dir / 'scratch')
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (34540) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_the_groups_reach_both_uv_sync_and_uv_run_and_the_dry_run_names_them (test_notebook_trace.DependencyGroups.test_the_groups_reach_both_uv_sync_and_uv_run_and_the_dry_run_names_them)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 486, in test_the_groups_reach_both_uv_sync_and_uv_run_and_the_dry_run_names_them
+    nt.trace_notebook(self.repo, record, 'NB-1', run=True, parent=self.dir / 'run')
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 319, in trace_notebook
+    scratch = prepare_copy(repo, parent)
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (47048) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_without_groups_the_commands_are_unchanged_and_a_mutation_exercise_uses_them_too (test_notebook_trace.DependencyGroups.test_without_groups_the_commands_are_unchanged_and_a_mutation_exercise_uses_them_too)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 494, in test_without_groups_the_commands_are_unchanged_and_a_mutation_exercise_uses_them_too
+    nt.trace_notebook(self.repo, self.approved(), 'NB-1', run=True, parent=self.dir / 'a')
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 319, in trace_notebook
+    scratch = prepare_copy(repo, parent)
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (4424) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_the_exercise_runs_a_baseline_then_the_mutation_and_reports_only_what_changed (test_notebook_trace.Exercises.test_the_exercise_runs_a_baseline_then_the_mutation_and_reports_only_what_changed)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 352, in test_the_exercise_runs_a_baseline_then_the_mutation_and_reports_only_what_changed
+    out = nt.mutation_exercise(self.repo, record(), 'NB-1', {'kind': 'source', 'path': 'src/pkg/value.py', 'find': 'VALUE = 3', 'replace': 'VALUE = 10'}, run=True,
+                               parent=self.dir / 'scratch')
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 389, in mutation_exercise
+    scratch = prepare_copy(repo, parent)
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (29660) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_a_folder_the_clone_lacks_is_copied_into_the_scratch_copy_and_the_original_is_untouched (test_notebook_trace.Inputs.test_a_folder_the_clone_lacks_is_copied_into_the_scratch_copy_and_the_original_is_untouched)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 386, in setUp
+    self.copy = nt.prepare_copy(self.repo, self.dir / 'scratch')['copy']
+                ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (10340) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_a_refused_input_stops_the_run_before_uv_starts_and_removes_the_copy (test_notebook_trace.Inputs.test_a_refused_input_stops_the_run_before_uv_starts_and_removes_the_copy)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 386, in setUp
+    self.copy = nt.prepare_copy(self.repo, self.dir / 'scratch')['copy']
+                ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (35380) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_a_trace_copies_the_inputs_before_running_and_says_so (test_notebook_trace.Inputs.test_a_trace_copies_the_inputs_before_running_and_says_so)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 386, in setUp
+    self.copy = nt.prepare_copy(self.repo, self.dir / 'scratch')['copy']
+                ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (34864) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_a_tracked_file_in_the_copy_is_never_overwritten_by_an_input (test_notebook_trace.Inputs.test_a_tracked_file_in_the_copy_is_never_overwritten_by_an_input)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 386, in setUp
+    self.copy = nt.prepare_copy(self.repo, self.dir / 'scratch')['copy']
+                ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (11868) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_inputs_are_validated_in_the_approval_and_credentials_are_never_acceptable_names (test_notebook_trace.Inputs.test_inputs_are_validated_in_the_approval_and_credentials_are_never_acceptable_names)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 386, in setUp
+    self.copy = nt.prepare_copy(self.repo, self.dir / 'scratch')['copy']
+                ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (25612) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_oversized_missing_outside_credential_named_and_linked_inputs_are_refused_before_anything_is_copied (test_notebook_trace.Inputs.test_oversized_missing_outside_credential_named_and_linked_inputs_are_refused_before_anything_is_copied)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 386, in setUp
+    self.copy = nt.prepare_copy(self.repo, self.dir / 'scratch')['copy']
+                ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 1 [main] sh (43536) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_a_cell_mutation_clears_that_cells_stale_output_so_it_cannot_be_mistaken_for_a_result (test_notebook_trace.Mutations.test_a_cell_mutation_clears_that_cells_stale_output_so_it_cannot_be_mistaken_for_a_result)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 295, in setUp
+    self.copy = nt.prepare_copy(self.repo, self.dir / 'scratch')['copy']
+                ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (6448) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_a_symlink_cannot_carry_a_mutation_out_of_the_copy (test_notebook_trace.Mutations.test_a_symlink_cannot_carry_a_mutation_out_of_the_copy)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 295, in setUp
+    self.copy = nt.prepare_copy(self.repo, self.dir / 'scratch')['copy']
+                ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (35512) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_one_string_in_one_source_file_of_the_copy_changes_and_the_repository_does_not (test_notebook_trace.Mutations.test_one_string_in_one_source_file_of_the_copy_changes_and_the_repository_does_not)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 295, in setUp
+    self.copy = nt.prepare_copy(self.repo, self.dir / 'scratch')['copy']
+                ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (30964) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_the_text_must_occur_exactly_once_and_the_target_must_be_in_src_or_notebooks_of_the_copy (test_notebook_trace.Mutations.test_the_text_must_occur_exactly_once_and_the_target_must_be_in_src_or_notebooks_of_the_copy)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 295, in setUp
+    self.copy = nt.prepare_copy(self.repo, self.dir / 'scratch')['copy']
+                ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 1 [main] sh (39840) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_a_cell_that_raises_is_recorded_not_fatal_and_the_run_still_reports (test_notebook_trace.Tracing.test_a_cell_that_raises_is_recorded_not_fatal_and_the_run_still_reports)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 245, in test_a_cell_that_raises_is_recorded_not_fatal_and_the_run_still_reports
+    out, rec = self.run_trace(Fake(error_in_cell=True))
+               ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 215, in run_trace
+    return nt.trace_notebook(self.repo, rec, 'NB-1', run=kwargs.pop('run', True), parent=self.dir / 'scratch', **kwargs), rec
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 319, in trace_notebook
+    scratch = prepare_copy(repo, parent)
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 1 [main] sh (18248) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_a_notebook_that_has_not_kept_up_with_the_code_is_stale (test_notebook_trace.Tracing.test_a_notebook_that_has_not_kept_up_with_the_code_is_stale)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 238, in test_a_notebook_that_has_not_kept_up_with_the_code_is_stale
+    out, _ = self.run_trace(Fake())
+             ~~~~~~~~~~~~~~^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 215, in run_trace
+    return nt.trace_notebook(self.repo, rec, 'NB-1', run=kwargs.pop('run', True), parent=self.dir / 'scratch', **kwargs), rec
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 319, in trace_notebook
+    scratch = prepare_copy(repo, parent)
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (34888) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_a_notebook_whose_outputs_still_match_the_code_matches_and_the_run_is_recorded (test_notebook_trace.Tracing.test_a_notebook_whose_outputs_still_match_the_code_matches_and_the_run_is_recorded)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 226, in test_a_notebook_whose_outputs_still_match_the_code_matches_and_the_run_is_recorded
+    out, rec = self.run_trace(Fake())
+               ~~~~~~~~~~~~~~^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 215, in run_trace
+    return nt.trace_notebook(self.repo, rec, 'NB-1', run=kwargs.pop('run', True), parent=self.dir / 'scratch', **kwargs), rec
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 319, in trace_notebook
+    scratch = prepare_copy(repo, parent)
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (47124) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_keep_leaves_the_copy_for_inspection (test_notebook_trace.Tracing.test_keep_leaves_the_copy_for_inspection)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 284, in test_keep_leaves_the_copy_for_inspection
+    out, _ = self.run_trace(Fake(), keep=True)
+             ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 215, in run_trace
+    return nt.trace_notebook(self.repo, rec, 'NB-1', run=kwargs.pop('run', True), parent=self.dir / 'scratch', **kwargs), rec
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 319, in trace_notebook
+    scratch = prepare_copy(repo, parent)
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (31456) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+ERROR: test_the_process_environment_is_scrubbed_and_the_uv_calls_run_in_the_copy_without_a_shell (test_notebook_trace.Tracing.test_the_process_environment_is_scrubbed_and_the_uv_calls_run_in_the_copy_without_a_shell)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 253, in test_the_process_environment_is_scrubbed_and_the_uv_calls_run_in_the_copy_without_a_shell
+    self.run_trace(fake)
+    ~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 215, in run_trace
+    return nt.trace_notebook(self.repo, rec, 'NB-1', run=kwargs.pop('run', True), parent=self.dir / 'scratch', **kwargs), rec
+           ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 319, in trace_notebook
+    scratch = prepare_copy(repo, parent)
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\ros\lib\notebook_trace.py", line 118, in prepare_copy
+    raise TraceError('git clone failed: ' + cloned['stderr'].strip()[-300:])
+notebook_trace.TraceError: git clone failed: 0 [main] sh (22992) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+======================================================================
+FAIL: test_director_task_record_routes_committed_effects (test_ros_desktop.Desktop.test_director_task_record_routes_committed_effects)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_ros_desktop.py", line 89, in test_director_task_record_routes_committed_effects
+    self.assertIsNotNone(other.node('capability:routed'))
+    ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: unexpectedly None
+
+======================================================================
+FAIL: test_a_dry_run_and_a_refused_mutation_leave_nothing_behind (test_notebook_trace.Exercises.test_a_dry_run_and_a_refused_mutation_leave_nothing_behind)
+----------------------------------------------------------------------
+notebook_trace.TraceError: git clone failed: 0 [main] sh (28384) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 367, in test_a_dry_run_and_a_refused_mutation_leave_nothing_behind
+    with self.assertRaisesRegex(nt.TraceError, 'a mutation is'):
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: "a mutation is" does not match "git clone failed: 0 [main] sh (28384) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists."
+
+======================================================================
+FAIL: test_a_failed_environment_build_is_reported_and_the_copy_is_still_removed (test_notebook_trace.Tracing.test_a_failed_environment_build_is_reported_and_the_copy_is_still_removed)
+----------------------------------------------------------------------
+notebook_trace.TraceError: git clone failed: fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 272, in test_a_failed_environment_build_is_reported_and_the_copy_is_still_removed
+    with self.assertRaisesRegex(nt.TraceError, 'uv sync failed: resolution failed'):
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: "uv sync failed: resolution failed" does not match "git clone failed: fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists."
+
+======================================================================
+FAIL: test_a_missing_uv_is_reported_not_installed (test_notebook_trace.Tracing.test_a_missing_uv_is_reported_not_installed)
+----------------------------------------------------------------------
+notebook_trace.TraceError: git clone failed: 0 [main] sh (18416) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\tests\test_notebook_trace.py", line 279, in test_a_missing_uv_is_reported_not_installed
+    with self.assertRaisesRegex(nt.TraceError, 'does not install it'):
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: "does not install it" does not match "git clone failed: 0 [main] sh (18416) C:\Program Files\Git\usr\bin\sh.exe: *** fatal error - NtCreateDirectoryObject(\BaseNamedObjects\msys-2.0S5-1888ae32e00d56aa): 0xC0000022
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists."
+
+----------------------------------------------------------------------
+Ran 104 tests in 114.911s
+
+FAILED (failures=4, errors=36, skipped=1)

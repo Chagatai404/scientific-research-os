@@ -1,0 +1,57 @@
+import {validateDocument, type DocumentData} from './contracts';
+let session: Promise<{csrf: string}> | undefined;
+export async function mutationHeaders() {
+  session ??= fetch('/services/session').then(response => response.json()).then(body => body.result);
+  const value = await session;
+  return {'Content-Type': 'application/json', 'X-ROS': '1', 'X-ROS-CSRF': value.csrf};
+}
+export async function human<T>(name: string, args: Record<string, unknown>, record = ''): Promise<T> {
+  const prepared = await service<{approval: string}>('human-prepare', {name, args, record});
+  return service<T>('human-commit', {name, args, record, approval: prepared.approval});
+}
+
+// The HTTP adapter is the only transport. Domain checks stay in the shared Python tool table.
+export async function call<T>(name: string, args: Record<string, unknown> = {}, record?: string, write = false, signal?: AbortSignal): Promise<T> {
+  const data = {...(record ? {record} : {}), ...args};
+  const query = new URLSearchParams(Object.entries(data).filter(([, v]) => v != null).map(([k, v]) => [k, JSON.stringify(v)]));
+  const response = await fetch(`/api/${name}${write ? '' : '?' + query}`, write ? {
+    method: 'POST', headers: await mutationHeaders(), body: JSON.stringify(data), signal,
+  } : {signal});
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || `Request failed (${response.status})`);
+  return body.result as T;
+}
+export async function readDocument(id: string, record?: string, signal?: AbortSignal): Promise<DocumentData> {
+  return validateDocument(await call('workspace_document', {subject: id}, record, false, signal));
+}
+export async function service<T>(name: string, args?: Record<string, unknown>): Promise<T> {
+  const response = await fetch('/services/' + name, args ? {method: 'POST', headers: await mutationHeaders(), body: JSON.stringify(args)} : {});
+  const body = await response.json();
+  if (!response.ok || body.result?.ok === false) throw new Error(body.error || body.result?.error || 'The local service is unavailable');
+  return body.result as T;
+}
+export const readable = (id: string) => /^(handout|lesson|source|paper|visual):/.test(id) && !id.startsWith('bundle:');
+export function href(view: string, id = '', record = '', anchor = '', extra: Record<string, string> = {}) {
+  const params = new URLSearchParams();
+  if (record) params.set('r', record);
+  if (anchor) params.set('a', anchor);
+  for (const [key, value] of Object.entries(extra)) if (value) params.set(key, value);
+  return `#${view}${id ? '/' + encodeURIComponent(id) : ''}${params.size ? '?' + params : ''}`;
+}
+export const entityHref = (id: string, record = '', anchor = '') => href(readable(id) ? 'document' : 'node', id, record, anchor);
+export function routeOf(hash: string) {
+  const [path, query = ''] = hash.replace(/^#/, '').split('?');
+  const slash = path.indexOf('/');
+  const view = (slash < 0 ? path : path.slice(0, slash)) || 'overview';
+  let id = slash < 0 ? '' : path.slice(slash + 1);
+  try {id = decodeURIComponent(id);} catch { /* malformed links stay visible as missing targets */ }
+  const params = new URLSearchParams(query);
+  const renamed: Record<string, string> = {director: 'overview', vault: 'library', graphs: 'graph', sessions: 'overview', sources: 'library'};
+  return {view: renamed[view] || view, id, record: params.get('r') || '', anchor: params.get('a') || '', params: Object.fromEntries(params), legacy: view};
+}
+export function preference(key: string, fallback: string): string {
+  try {return localStorage.getItem('ros.workspace.' + key) ?? fallback;} catch {return fallback;}
+}
+export function savePreference(key: string, value: string) {
+  try {localStorage.setItem('ros.workspace.' + key, value);} catch { /* private browser mode */ }
+}

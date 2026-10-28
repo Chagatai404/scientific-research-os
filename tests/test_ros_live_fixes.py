@@ -115,7 +115,10 @@ class PortalDecisions(Fixture):
         self.assertEqual(self.post(port, {}), 403)  # curl, or an agent's HTTP client
         self.assertEqual(self.post(port, {"Sec-Fetch-Site": "cross-site"}), 403)
         self.assertEqual(api.call("queue", self.rec)[0]["kind"], "approve")  # still waiting
-        self.assertEqual(self.post(port, {"Sec-Fetch-Site": "same-origin"}), 200)  # the page's own request
+        self.assertEqual(self.post(port, {"Sec-Fetch-Site": "same-origin"}), 403)  # spoofed headers grant nothing
+        from support_human import decision
+        status, _ = decision(port, 'approve', {'subject': 'experiment:EXP-1', 'decision': 'approved', 'by': 'Researcher'})
+        self.assertEqual(status, 200)
         self.assertEqual([q for q in api.call("queue", self.rec) if q["kind"] == "approve"], [])
 
 

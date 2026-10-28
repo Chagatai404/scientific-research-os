@@ -37,7 +37,7 @@ MAX_PROBLEMS = 200
 ITEM_KINDS = {"choice", "numeric", "free"}
 # Node ids are "<type>:<key>", so a concept and a capability can share a key without colliding.
 NODE_TYPES = {"domain", "subject", "concept", "capability", "course", "goal", "project", "block", "paper", "question",
-              "hypothesis", "claim", "experiment", "decision", "code-symbol", "source", "lesson", "handout",
+              "hypothesis", "claim", "experiment", "decision", "code-symbol", "source", "lesson", "handout", "conversation",
               "visual"}
 EDGE_TYPES = {"requires", "teaches", "tests", "supports", "invalidates", "implements", "cites", "supersedes",
               "part-of", "about", "applied-in", "addresses", "decides", "relates"}
@@ -238,6 +238,18 @@ class Record:
             _append_lines(self.events_path, fresh)
             self.refresh()
         return len(fresh)
+
+    def append_once(self, event: dict) -> bool:
+        """Atomically claim an event id, refreshing even inside a cached reading scope.
+
+        Used for one-shot human capabilities across backend processes. The event log remains
+        the only authority; no reservation or lease files become a second source of truth.
+        """
+        if {'id','ts','actor','type','subject','data'}-event.keys():raise ValueError('incomplete event')
+        with _file_lock(self.lock_path):
+            self.refresh()
+            if self.index().execute('SELECT 1 FROM events WHERE id=?',(event['id'],)).fetchone():return False
+            _append_lines(self.events_path,[event]);self.refresh();return True
 
     def put_item(self, item: dict) -> str:
         """Store an immutable item and return its hash. Writing the same content again is a no-op."""

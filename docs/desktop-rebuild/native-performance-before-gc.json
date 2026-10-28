@@ -1,0 +1,371 @@
+{
+  "launch_ms": [
+    4050,
+    4605,
+    4551
+  ],
+  "cycles": 50,
+  "route_ms": [
+    152,
+    142,
+    160,
+    147,
+    158,
+    494,
+    141,
+    153,
+    147,
+    148,
+    142,
+    140,
+    146,
+    144,
+    158,
+    140,
+    142,
+    154,
+    161,
+    152,
+    158,
+    145,
+    142,
+    135,
+    139,
+    141,
+    133,
+    131,
+    137,
+    133,
+    134,
+    134,
+    131,
+    132,
+    133,
+    134,
+    132,
+    132,
+    132,
+    141,
+    132,
+    131,
+    133,
+    131,
+    133,
+    139,
+    141,
+    132,
+    139,
+    133
+  ],
+  "samples": [
+    {
+      "windows": 1,
+      "processes": [
+        {
+          "type": "Browser",
+          "cpu": 0,
+          "working_set_kb": 114748
+        },
+        {
+          "type": "GPU",
+          "cpu": 0,
+          "working_set_kb": 143864
+        },
+        {
+          "type": "Utility",
+          "cpu": 0,
+          "working_set_kb": 48776
+        },
+        {
+          "type": "Tab",
+          "cpu": 0,
+          "working_set_kb": 122556
+        }
+      ],
+      "cycle": 5,
+      "streams": 1,
+      "backend": {
+        "Id": 29504,
+        "Handles": 212,
+        "CPU": 0.671875,
+        "WorkingSet64": 38481920
+      }
+    },
+    {
+      "windows": 1,
+      "processes": [
+        {
+          "type": "Browser",
+          "cpu": 0.14895238720829398,
+          "working_set_kb": 115148
+        },
+        {
+          "type": "GPU",
+          "cpu": 0.1333203482817023,
+          "working_set_kb": 145536
+        },
+        {
+          "type": "Utility",
+          "cpu": 0.04816316194083091,
+          "working_set_kb": 48776
+        },
+        {
+          "type": "Tab",
+          "cpu": 0.2771768474727001,
+          "working_set_kb": 126352
+        }
+      ],
+      "cycle": 10,
+      "streams": 1
+    },
+    {
+      "windows": 1,
+      "processes": [
+        {
+          "type": "Browser",
+          "cpu": 0.6894375800456277,
+          "working_set_kb": 115268
+        },
+        {
+          "type": "GPU",
+          "cpu": 0.5283360956528478,
+          "working_set_kb": 145600
+        },
+        {
+          "type": "Utility",
+          "cpu": 0.1972502573125018,
+          "working_set_kb": 48808
+        },
+        {
+          "type": "Tab",
+          "cpu": 1.1843014979312858,
+          "working_set_kb": 126228
+        }
+      ],
+      "cycle": 15,
+      "streams": 1
+    },
+    {
+      "windows": 1,
+      "processes": [
+        {
+          "type": "Browser",
+          "cpu": 0.7220543226996479,
+          "working_set_kb": 115604
+        },
+        {
+          "type": "GPU",
+          "cpu": 0.5517697651339729,
+          "working_set_kb": 145784
+        },
+        {
+          "type": "Utility",
+          "cpu": 0.23703274892490903,
+          "working_set_kb": 48912
+        },
+        {
+          "type": "Tab",
+          "cpu": 1.0950655026456426,
+          "working_set_kb": 128296
+        }
+      ],
+      "cycle": 20,
+      "streams": 1
+    },
+    {
+      "windows": 1,
+      "processes": [
+        {
+          "type": "Browser",
+          "cpu": 0.7605076879643592,
+          "working_set_kb": 115760
+        },
+        {
+          "type": "GPU",
+          "cpu": 0.5330999308675163,
+          "working_set_kb": 145856
+        },
+        {
+          "type": "Utility",
+          "cpu": 0.26258312664996675,
+          "working_set_kb": 49024
+        },
+        {
+          "type": "Tab",
+          "cpu": 1.188551032802621,
+          "working_set_kb": 130480
+        }
+      ],
+      "cycle": 25,
+      "streams": 1
+    },
+    {
+      "windows": 1,
+      "processes": [
+        {
+          "type": "Browser",
+          "cpu": 0.699639061825169,
+          "working_set_kb": 115896
+        },
+        {
+          "type": "GPU",
+          "cpu": 0.5097375124500895,
+          "working_set_kb": 145904
+        },
+        {
+          "type": "Utility",
+          "cpu": 0.20012905509925563,
+          "working_set_kb": 49052
+        },
+        {
+          "type": "Tab",
+          "cpu": 1.0881265636086657,
+          "working_set_kb": 131700
+        }
+      ],
+      "cycle": 30,
+      "streams": 1
+    },
+    {
+      "windows": 1,
+      "processes": [
+        {
+          "type": "Browser",
+          "cpu": 0.7067086189459489,
+          "working_set_kb": 116040
+        },
+        {
+          "type": "GPU",
+          "cpu": 0.46874110441580547,
+          "working_set_kb": 145920
+        },
+        {
+          "type": "Utility",
+          "cpu": 0.20603191795351178,
+          "working_set_kb": 49124
+        },
+        {
+          "type": "Tab",
+          "cpu": 1.0250368144387503,
+          "working_set_kb": 133176
+        }
+      ],
+      "cycle": 35,
+      "streams": 1
+    },
+    {
+      "windows": 1,
+      "processes": [
+        {
+          "type": "Browser",
+          "cpu": 0.6862421265137341,
+          "working_set_kb": 116192
+        },
+        {
+          "type": "GPU",
+          "cpu": 0.4708418194663269,
+          "working_set_kb": 145928
+        },
+        {
+          "type": "Utility",
+          "cpu": 0.18861876043930054,
+          "working_set_kb": 49188
+        },
+        {
+          "type": "Tab",
+          "cpu": 1.0543002360606692,
+          "working_set_kb": 134692
+        }
+      ],
+      "cycle": 40,
+      "streams": 1
+    },
+    {
+      "windows": 1,
+      "processes": [
+        {
+          "type": "Browser",
+          "cpu": 0.7722295802756116,
+          "working_set_kb": 116316
+        },
+        {
+          "type": "GPU",
+          "cpu": 0.513866908311211,
+          "working_set_kb": 137772
+        },
+        {
+          "type": "Utility",
+          "cpu": 0.22652271307773614,
+          "working_set_kb": 49196
+        },
+        {
+          "type": "Tab",
+          "cpu": 1.5155447707413747,
+          "working_set_kb": 136984
+        }
+      ],
+      "cycle": 45,
+      "streams": 1
+    },
+    {
+      "windows": 1,
+      "processes": [
+        {
+          "type": "Browser",
+          "cpu": 0.6904824403656952,
+          "working_set_kb": 116404
+        },
+        {
+          "type": "GPU",
+          "cpu": 0.4865823075556275,
+          "working_set_kb": 137784
+        },
+        {
+          "type": "Utility",
+          "cpu": 0.1950052225318661,
+          "working_set_kb": 49204
+        },
+        {
+          "type": "Tab",
+          "cpu": 1.0113010878516013,
+          "working_set_kb": 137472
+        }
+      ],
+      "cycle": 50,
+      "streams": 1,
+      "backend": {
+        "Id": 29504,
+        "Handles": 218,
+        "CPU": 1.03125,
+        "WorkingSet64": 38629376
+      }
+    }
+  ],
+  "idle_processes": [
+    {
+      "type": "Browser",
+      "cpu": 0.016541390540046764,
+      "working_set_kb": 116696
+    },
+    {
+      "type": "GPU",
+      "cpu": 0.0027183959741616357,
+      "working_set_kb": 146044
+    },
+    {
+      "type": "Utility",
+      "cpu": 0.0036417887501297816,
+      "working_set_kb": 49208
+    },
+    {
+      "type": "Tab",
+      "cpu": 0.009467339840562677,
+      "working_set_kb": 137508
+    }
+  ],
+  "launch_p50_ms": 4551,
+  "launch_p95_ms": 4605,
+  "route_p50_ms": 140,
+  "route_p95_ms": 160,
+  "note": "Three launch samples and 50 synthetic navigation cycles on one Windows host; no provider token latency or GPU inference measured."
+}

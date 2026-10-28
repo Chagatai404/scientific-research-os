@@ -1,0 +1,38 @@
+schema_version: 1
+name: scientific-research-os
+languages:
+- python
+- typescript
+instructions:
+- AGENTS.md
+checks:
+- name: portal-regression
+  argv: [python, tests/check_portal_gate.py]
+  timeout_seconds: 1200
+  required: true
+  confirmed: true
+protected_paths:
+- .git
+- .engineering
+- .env
+- .env.*
+- '*.pem'
+- '*.key'
+budgets:
+  wall_seconds: 2400.0
+  provider_seconds: 600.0
+  model_calls: 3
+  context_chars: 24000
+  reported_input_tokens: null
+  reported_output_tokens: null
+  reported_cost_usd: null
+  role_limits: {}
+workflow:
+  max_repairs: 0
+  repair_headroom: false
+  stop_unchanged_repairs: false
+provider: codex
+role_models: {}
+pricing: []
+command_providers: {}
+routing: []

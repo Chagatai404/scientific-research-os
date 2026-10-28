@@ -1,0 +1,4 @@
+provider: github
+owner: Chagatai404
+repo: scientific-research-os
+updaterCacheDirName: research-os-desktop-updater

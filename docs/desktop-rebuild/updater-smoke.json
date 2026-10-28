@@ -1,0 +1,11 @@
+{
+  "state": "ready",
+  "version": "1.4.0",
+  "available": "9.9.9",
+  "percent": 100,
+  "exit": 0,
+  "installer_sha512": "fTZAZlEtJHk2WpBb+VPupOzgzB410vSH01/+dU2dQjUC/NbppcX4NWbxWFskmPBUea4JpI//lUP3lROffkyRaw==",
+  "installer_sha256": "219c91f09a6c9ad02e4a79dc1a97b0c0ba8056eabe5d51c15aba6ee3aab89efd",
+  "installation_performed": false,
+  "tested_at": "2026-10-28T14:51:42.389892+00:00"
+}

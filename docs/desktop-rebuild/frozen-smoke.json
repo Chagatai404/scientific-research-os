@@ -1,0 +1,18 @@
+{
+  "cli_tools": 161,
+  "python_on_path": false,
+  "pdf_page_scope": [
+    {
+      "revision": "synthetic-fixture",
+      "total_pages": 1,
+      "included_pages": [
+        1
+      ]
+    }
+  ],
+  "compute_ok": true,
+  "bundled_python": true,
+  "artifact_count": 2,
+  "backend_sha256": "884e77e73f123194286113352392a1ce32bff99192e7c35f60c81956cdcd4a31",
+  "tested_at": "2026-10-28T14:49:58.380719+00:00"
+}

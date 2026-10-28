@@ -33,6 +33,12 @@ def due(rec, as_of=None):
     return schedule.due(rec, iso_day(as_of))
 
 
+@tool("review_scope", "What to open a review lesson on: the node behind the first idea that is due for review, or nothing.",
+      as_of=P("string", "ISO date (default today)"))
+def review_scope(rec, as_of=None):
+    return schedule.next_scope(rec, iso_day(as_of))
+
+
 @tool("map", "The capability graph of a scope for drawing: nodes with state and position flags, requires edges.",
       scope=P("string", "a node id (default: all)"), as_of=P("string", "ISO date (default today)"))
 def map_(rec, scope=None, as_of=None):

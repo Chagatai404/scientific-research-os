@@ -29,8 +29,10 @@ indexed query. It is derived: lose it and the next scan rebuilds it from the ``r
 from __future__ import annotations
 
 from contextlib import contextmanager
+from concurrent.futures import ThreadPoolExecutor
+from collections import deque
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -171,6 +173,9 @@ class Parsed:
 
 
 def parse_note(text: str) -> Parsed:
+    # Windows editors can change only line endings. They must not pin an untouched
+    # generated region or create duplicate annotations. Original bytes stay on disk.
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     m = re.match(r"---[ \t]*\r?\n(.*?)(?:\r?\n)?---[ \t]*(?:\r?\n|\Z)", text, re.S)
     fm, raw = parse_block(m.group(1)) if m else ({}, {})
     rest = text[m.end():] if m else text
@@ -248,10 +253,14 @@ class Manifest:
     receive inbox files, the links each note makes, and a cursor per record."""
     SCHEMA = "3"
 
+    @staticmethod
+    def path_for(vault: Path) -> Path:
+        return home.home() / "vault" / (hashlib.sha256(str(vault.resolve()).encode()).hexdigest()[:10] + ".sqlite")
+
     def __init__(self, vault: Path):
         d = home.home() / "vault"
         d.mkdir(parents=True, exist_ok=True)
-        self.path = d / (hashlib.sha256(str(vault.resolve()).encode()).hexdigest()[:10] + ".sqlite")
+        self.path = self.path_for(vault)
         self.db = sqlite3.connect(self.path, check_same_thread=False, timeout=30)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
@@ -949,20 +958,29 @@ def scan(ctx: Ctx, apply: bool = True) -> dict:
         return out
     rows = {r["path"]: r for r in mf.under(base_rel)}
     seen: set[str] = set()
-    for e in _walk(base):
-        rel = Path(e.path).relative_to(ctx.vault).as_posix()
-        seen.add(rel)
-        out["files"] += 1
-        kind = FILES.get(Path(e.name).suffix.lower())
-        if kind is None:
-            continue
-        st = e.stat()
-        row = rows.get(rel)
-        if row and row["mtime_ns"] == st.st_mtime_ns and row["size"] == st.st_size:
-            continue
-        if row and row["record"] not in (None, "", ctx.record):
-            continue  # another record's note: its own scan handles it
-        _look(ctx, rel, Path(e.path), kind, st, row, out, apply)
+    def changed():
+        for e in _walk(base):
+            rel = Path(e.path).relative_to(ctx.vault).as_posix()
+            seen.add(rel)
+            out["files"] += 1
+            kind = FILES.get(Path(e.name).suffix.lower())
+            if kind is None:continue
+            st = e.stat();row = rows.get(rel)
+            if row and row["mtime_ns"] == st.st_mtime_ns and row["size"] == st.st_size:continue
+            if row and row["record"] not in (None, "", ctx.record):continue
+            yield rel,Path(e.path),kind,st,row
+    # Windows file-open latency dominates cold scans. Prefetch only small changed files;
+    # retain traversal order and apply every canonical effect on this calling thread.
+    # Eight <=2 MiB buffers bound memory; large artifacts keep their sequential path.
+    pending=deque()
+    def apply_next():
+        args,future=pending.popleft()
+        _look(ctx,*args,out,apply,data=future.result() if future else None)
+    with ThreadPoolExecutor(max_workers=4,thread_name_prefix='ros-vault-read') as readers:
+        for args in changed():
+            pending.append((args,readers.submit(args[1].read_bytes) if args[3].st_size<=2*1024*1024 else None))
+            if len(pending)>=8:apply_next()
+        while pending:apply_next()
     for rel, row in rows.items():
         if rel in seen or row["record"] not in (None, "", ctx.record) or row["status"] in ("planned", "dismissed"):
             continue
@@ -976,9 +994,9 @@ def _mine(ctx: Ctx, rel: str) -> bool:
     return hub["record"] == ctx.record if hub is not None else ctx.is_user
 
 
-def _look(ctx: Ctx, rel: str, abs_path: Path, kind: str, st, row, out: dict, apply: bool) -> None:
+def _look(ctx: Ctx, rel: str, abs_path: Path, kind: str, st, row, out: dict, apply: bool, data: bytes | None = None) -> None:
     mf, rec = ctx.mf, ctx.rec
-    data = abs_path.read_bytes()
+    if data is None:data = abs_path.read_bytes()
     sha = _sha(data)
     base = dict(path=rel, mtime_ns=st.st_mtime_ns, size=st.st_size, sha=sha)
     if kind != "note":
@@ -1347,6 +1365,50 @@ def locate(rec: Record, rid: str) -> dict | None:
         return out
 
 
+def reference_targets(rec: Record, target: str) -> list[str]:
+    """Resolve an exact note path from the existing manifest, without discovery or a vault scan.
+
+    Only indexed, existing Markdown notes of this record are link targets. This is a read of a projection,
+    never a sync or an import; a stale/deleted path stays missing until an explicit sync repairs its index.
+    """
+    setting = home.settings().get("vault")
+    if not setting or not target or any(ord(c) < 32 for c in target) or "\\" in target:
+        return []
+    parts = target.split("/")
+    if target.startswith("/") or any(p in ("", ".", "..") for p in parts) or ":" in parts[0]:
+        return []
+    try:
+        vault = Path(setting).expanduser().resolve()
+        manifest = Manifest.path_for(vault)
+        if not vault.is_dir() or not manifest.is_file():
+            return []
+    except (OSError, RuntimeError, ValueError):
+        return []
+    paths = [target.lower()] if target.lower().endswith(".md") else [target.lower(), target.lower() + ".md"]
+    # Opening a link must not initialize or migrate even the optional projection index.
+    try:
+        db = sqlite3.connect(manifest.as_uri() + "?mode=ro", uri=True)
+        try:
+            db.row_factory = sqlite3.Row
+            rows = db.execute("SELECT ros_id, path FROM files WHERE record=? AND lpath IN ("
+                              + ",".join("?" for _ in paths) + ") AND ros_id IS NOT NULL "
+                              "AND (status IS NULL OR status NOT IN ('dismissed', 'deleted'))",
+                              (rec.root.name, *paths)).fetchall()
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return []  # an unavailable/stale projection can be repaired by an explicit sync
+    ids = []
+    for row in rows:
+        try:
+            note = (vault / row["path"]).resolve()
+            if vault in note.parents and note.suffix.lower() == ".md" and note.is_file() and row["ros_id"] not in ids:
+                ids.append(row["ros_id"])
+        except (OSError, RuntimeError, ValueError):
+            continue  # unreadable paths and symlink loops remain missing links
+    return ids
+
+
 def find(rec: Record, q: str | None = None, kind: str | None = None, id: str | None = None, tag: str | None = None,
          limit: int = 20) -> list[dict]:
     """Search the manifest (indexed): notes of this record by title text, kind, record id or tag."""
@@ -1468,16 +1530,26 @@ def review_note(rec: Record, day: date | None = None) -> dict:
         return {"path": mf.by_key(ctx.key(sid))["path"], **{k: report[k] for k in ("created", "updated")}}
 
 
+def _review_window(iso: str, zone=None) -> tuple[str, str]:
+    """A local calendar day expressed as a half-open UTC range for indexed timestamp queries."""
+    start = datetime.combine(date.fromisoformat(iso), datetime.min.time(), tzinfo=zone)
+    end = start + timedelta(days=1)
+    return tuple(value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+                 for value in (start, end))
+
+
 def _build_review(ctx: Ctx, stub: Stub, iso: str):
     rec = ctx.rec
-    since = iso + "T00:00:00Z"
+    since, until = _review_window(iso)
+    def within(kind):
+        return [e for e in rec.events(type=kind, since=since) if e["ts"] < until]
     learning = graph.Learning(rec, ctx.as_of)
     due = learning.due()
-    learned = [e for e in rec.events(type="lesson.close", since=since) if not e["subject"].startswith("bundle:")]
-    decided = rec.events(type="decision", since=since)
-    found = rec.events(type="inbox.found", since=since)
-    notes = rec.events(type="note.annotate", since=since)
-    done = [t for t in tasks.tasks(rec, state="done") if (t.get("done") or "") >= since and t["kind"] != "job"]
+    learned = [e for e in within("lesson.close") if not e["subject"].startswith("bundle:")]
+    decided = within("decision")
+    found = within("inbox.found")
+    notes = within("note.annotate")
+    done = [t for t in tasks.tasks(rec, state="done") if since <= (t.get("done") or "") < until and t["kind"] != "job"]
     body = [f"# Review {iso}", "", f"[Open the portal]({ctx.portal('review')})", "",
             f"## Due now ({len(due)})", "", *([f"- {ctx.link(d['id'])} — due {d['next_review']}" for d in due[:30]]
                                               or ["Nothing is due."]), ""]

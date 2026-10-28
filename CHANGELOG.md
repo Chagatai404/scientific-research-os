@@ -1,5 +1,46 @@
 # Changelog
 
+## 1.4.0: an organized, guided desktop (local build, not published)
+
+- Reorganize the desktop around one idea: choose a course or project, add material, and see what to do next. Navigation and a separate sessions column are both open on a fresh profile, toggle independently (`Ctrl/⌘+B`, `Ctrl/⌘+Shift+B`) and remember their state; narrow windows show one replacing drawer.
+- Name and organize without technical identifiers: create, rename and move courses, projects, collections, sessions and material, and rename the workspace. Names and placement are append-only preferences; history, citations and source files are never rewritten, and old `#sessions` and `#sources` links still open.
+- Add one overlay controller. Menus, pickers, the command palette and dialogs replace one another; Escape, an outside press, a selection or navigation closes them and focus returns to the opener. Drafts survive.
+- Replace the attachment link with an in-place menu: upload files, choose from the Library, connect a folder or an Obsidian vault. Several removable attachments per message; the existing per-file permission for cloud models is unchanged.
+- Add the Library: material is listed the moment it is added and then read in the background (Added, Reading, Ready, or Needs attention with a reason), restartably and without duplicates; changed files are read again. Text and, where an optional PDF reader exists, PDFs become searchable. Study this and Use in research start from any ready item.
+- Replace the central graph with a stable branching map: workspace, named courses and projects, topics, material. Size, colour and a restrained glow carry meaning (and are explained in a legend); hover or keyboard focus shows names. Organization lines are navigation only and are never written as scientific relations; nameless items are listed under Needs organization instead of drawn.
+- Make Learn and Research guided: a recommended next step with its reason, startable reviews, a goal form that can start from material, a research stage trail, readable plans and typed decision forms instead of raw JSON. Raw operation forms move to Developer tools.
+- Fix course handout keys for long and non-ASCII titles. Add a reversible, hash-verified vault reconciliation tool (`desktop/vault_reconcile.py`) that only adds navigation notes and preserves authored, edited and dismissed notes.
+
+## Desktop 1.3.0 (local build, not published)
+
+- Add a thin Electron host with a frozen stdlib Python backend, owned process lifecycle, authenticated loopback transport and narrow source picker/open IPC.
+- Add explicit read-only source connections, immutable passage revisions, bounded FTS search, canonical session history and durable run activity/cancellation.
+- Add governed native Codex/Claude and local streaming transports, task-scoped tool effects, configurable execution budgets and reported usage. Preserve human scientific authority and local-only derived context restrictions.
+- Restore notebook understanding coverage and approved scratch trace/mutation, and add version-bound pedagogy, prepared reading, safe lazy diagrams, light/dark appearance and command navigation.
+- Add public scholarly metadata retrieval, exact-plan approved computation, immutable artifact hashes and observed/declarative reproduction manifests, without granting shell access to authoring models.
+- Add local PDF rendering and local/native vision payloads with explicit, single-turn attachment permissions bound to revision and destination. Keep Local Only sources blocked; preserve faithful transcription drafts and named human review.
+- Add sequential narration/visual playback, animation/keyframes and verified click-to-load video segments; expose ownership-aware vault preview/sync/conflict actions.
+- Add an NSIS installer, automatic stable-release downloads, safe restart controls, updater integrity checks and a tagged GitHub release workflow. Preserve records on uninstall.
+- Preserve CLI/MCP, old links and the compatibility portal. No personal record/vault migration or paid inference occurred. See the desktop acceptance ledger for final verification and optional engine/account limits.
+
+## Earlier standalone workspace preview
+
+- Add a dark React/TypeScript workspace at `/workspace/`, retaining the original portal at `/`.
+- Start persistent conversations with a selected Codex, Claude or local Ollama model; show the knowledge
+  graph on the landing page. Model requests run only after Send, outside the record lock.
+- Connect local Whisper dictation and Kokoro response playback; transcripts remain drafts until sent.
+- Replace the hero landing with a full-window point graph, compact bottom composer, collapsible navigation,
+  bounded node context, keyboard/list controls and saved camera. Isolate drafts by session and guard recording/send races.
+- Include backlinks asserted in linked records, cache titles by node changes, and resolve exact indexed note paths
+  without scanning, creating a vault manifest or rewriting notes. Preserve missing targets across sibling projects.
+- Let server-sent event streams watch the selected record while retaining the default-record endpoint.
+- Read handouts and sessions with sanitized AST Markdown, GFM, math, inline figures, source fingerprints
+  and stable section links. Add canonical references, typed backlinks, bounded canvas graphs and search.
+- Show completed, claimed and queued research tasks immediately. Preserve human approval and decision gates.
+- Add `ROS_NO_VAULT=1` and hermetic fixtures; handle Windows note line endings and close record handles.
+- Add renderer/domain and seven-width Chromium checks, synthetic graph measurements and rollback guidance.
+  The preview remains staged; see `docs/portal-redesign/REPORT.md` for results and outstanding work.
+
 ## 1.2.1: migration loses nothing
 
 - **Handouts read in study order.** Lecture handouts have descriptive headings, explanations before practice, optional

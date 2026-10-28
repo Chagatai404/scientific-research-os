@@ -1,0 +1,30 @@
+{
+  "version": "1.4.0",
+  "artifacts": [
+    {
+      "file": "desktop/dist/Research-OS-Setup-1.4.0-x64.exe",
+      "bytes": 133315609,
+      "sha256": "219c91f09a6c9ad02e4a79dc1a97b0c0ba8056eabe5d51c15aba6ee3aab89efd",
+      "sha512": "7d364066512d2479365a905bf953eea4ece0cc1e35d2f487d35ffe754d9d423502fcd6e9a5c5f83566f1585b2498f05479ae09a48fff9543f795139f7e4c916b"
+    },
+    {
+      "file": "desktop/dist/Research-OS-Setup-1.4.0-x64.exe.blockmap",
+      "bytes": 138580,
+      "sha256": "cf15ca35765e6dc36c54ad001f4d6d320da0a022431407d37814e6c59c3ed20a",
+      "sha512": "f852ee9684cedfb54395505d683dd78132844a518d45c5fb20b66f62554a0ef98cae938d2d7a404ec5576fc067a2fda96072b8ff6d525a2dfb105c8461188d07"
+    },
+    {
+      "file": "desktop/dist/latest.yml",
+      "bytes": 359,
+      "sha256": "a07acce35f58927916520f869f6e0d57602a3010d631633070f888fb5ec6fff9",
+      "sha512": "4a444c4543e71b94aa4e769b68fe780e136c6f16ccb687f5ab92f07f720aa5999f5c3b166d340cfc21eaa351d084e3014348f78f0a9d25b04c15b3a44bc0e671"
+    }
+  ],
+  "source_branch": "agent/codex/desktop-rebuild",
+  "base_commit": "27df821",
+  "signed": false,
+  "published": false,
+  "tools": 161,
+  "full_gate_pass": true,
+  "installer_tested": true
+}

@@ -9,6 +9,8 @@ import re
 import sys
 import tempfile
 import unittest
+from datetime import date, timedelta, timezone
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -70,6 +72,32 @@ class FrontmatterTests(unittest.TestCase):
 
 
 class SyncTests(Fixture):
+    def test_changed_note_reads_overlap_but_canonical_effects_stay_serial_and_warm_scan_reads_nothing(self):
+        import threading
+        import time
+        vault.sync(self.rec)
+        inbox=self.note('Inbox');files=[]
+        for i in range(12):
+            file=inbox/f'prefetch-{i}.md';file.write_text(f'# My note {i}\n');files.append(file)
+        original=Path.read_bytes;lock=threading.Lock();active=peak=reads=0
+        def read(file):
+            nonlocal active,peak,reads
+            if not file.name.startswith('prefetch-'):return original(file)
+            with lock:active+=1;peak=max(peak,active);reads+=1
+            try:time.sleep(.01);return original(file)
+            finally:
+                with lock:active-=1
+        thread=threading.get_ident();append=self.rec.append
+        def commit(*args,**kwargs):
+            self.assertEqual(threading.get_ident(),thread)
+            return append(*args,**kwargs)
+        with patch.object(Path,'read_bytes',read),patch.object(self.rec,'append',commit):
+            result=vault.sync(self.rec);self.assertEqual(result['found'],12)
+            self.assertGreater(peak,1);self.assertLessEqual(peak,4);self.assertEqual(reads,12)
+            vault.sync(self.rec);self.assertEqual(reads,12)
+        self.assertEqual(len(self.rec.events(type='inbox.found')),12)
+        self.assertTrue(all(file.read_text().startswith('# My note') for file in files))
+
     def test_first_sync_writes_the_layout_and_the_second_writes_nothing(self):
         out = vault.sync(self.rec)
         self.assertEqual(out["kind"], "full")
@@ -385,6 +413,19 @@ class StaticFilesTests(Fixture):
 
 
 class ReviewTests(Fixture):
+    def test_review_uses_the_local_calendar_day_and_excludes_the_next_day(self):
+        window = vault._review_window("2026-10-27", timezone(timedelta(hours=3)))
+        self.assertEqual(window, ("2026-10-26T21:00:00.000000Z", "2026-10-27T21:00:00.000000Z"))
+        self.rec.append("decision", "claim:width", {"outcome": "revise", "rationale": "Within local day"},
+                        ts="2026-10-26T21:30:00.000000Z")
+        self.rec.append("decision", "claim:width", {"outcome": "revise", "rationale": "Next local day"},
+                        ts="2026-10-27T21:00:00.000000Z")
+        with patch.object(vault, "_review_window", return_value=window):
+            out = vault.review_note(self.rec, date(2026, 10, 27))
+        text = (self.vault / out["path"]).read_text()
+        self.assertIn("Within local day", text)
+        self.assertNotIn("Next local day", text)
+
     def test_the_daily_review_lists_what_is_due_and_what_happened(self):
         self.rec.append("retrieval", "capability:mean", {**RETRIEVAL, "outcome": "pass", "review": "2026-09-02"})
         research.decide(self.rec, "claim:width", "revise", "Ada", "Needs the integrity audit.")

@@ -1,0 +1,132 @@
+python : ....................s............................................warning: in the working copy of 'README.md', 
+LF will be replaced by CRLF the next time Git touches it
+At C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\desktop\verify.ps1:13 char:25
++ ... 'python'; Cmd={python -m unittest discover -s tests -p 'test_*.py'}},
++                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (.................. Git touches it:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it
+.warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it
+.warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it
+.warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it
+...warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it
+.warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it
+.warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it
+.warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it
+.warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it
+.warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it
+.warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it
+.warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it
+.warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it
+.warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'README.md', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/split.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/util.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of '.env', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/model_loss.py', LF will be replaced by CRLF the next time Git touches it
+.......................................................................................................................
+..........................s............................................................................................
+.............C:\Python314\Lib\tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 302: 'Redirect'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+C:\Python314\Lib\tempfile.py:484: ResourceWarning: Implicitly cleaning up <HTTPError 403: 'Denied'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+.......................................................................................................................
+........................ssssss....................research-os portal: http://127.0.0.1:64617/
+.......................................................................................................................
+.......................................................................................................................
+..............................................................
+----------------------------------------------------------------------
+Ran 800 tests in 399.958s
+
+OK (skipped=8)
+
+  record built in 1.5s; 663 steps; cold 144 ms, repeat 3.7 ms, after an answer 44 ms

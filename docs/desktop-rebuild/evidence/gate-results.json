@@ -1,0 +1,59 @@
+{
+  "complete_gate": true,
+  "checks": [
+    {
+      "name": "python",
+      "exit": 0,
+      "seconds": 571.594,
+      "timed_out": false
+    },
+    {
+      "name": "frontend-tests",
+      "exit": 0,
+      "seconds": 31.526,
+      "timed_out": false
+    },
+    {
+      "name": "typecheck",
+      "exit": 0,
+      "seconds": 7.965,
+      "timed_out": false
+    },
+    {
+      "name": "frontend-build",
+      "exit": 0,
+      "seconds": 89.777,
+      "timed_out": false
+    },
+    {
+      "name": "legacy-browser",
+      "exit": 0,
+      "seconds": 31.774,
+      "timed_out": false
+    },
+    {
+      "name": "workspace-browser",
+      "exit": 0,
+      "seconds": 30.951,
+      "timed_out": false
+    },
+    {
+      "name": "desktop-browser",
+      "exit": 0,
+      "seconds": 17.465,
+      "timed_out": false
+    },
+    {
+      "name": "workspace-benchmark",
+      "exit": 0,
+      "seconds": 308.34,
+      "timed_out": false
+    },
+    {
+      "name": "desktop-lifecycle",
+      "exit": 0,
+      "seconds": 5.977,
+      "timed_out": false
+    }
+  ]
+}
