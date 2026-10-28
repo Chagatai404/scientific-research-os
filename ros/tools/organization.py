@@ -1,5 +1,6 @@
 """Tools for named workspaces, folders and stable item organization."""
 from .. import organization as org
+from .. import vault
 from ..registry import P, tool
 
 
@@ -12,7 +13,12 @@ def snapshot(rec):
       kind=P('string', 'folder kind', True, ('course', 'project', 'collection')),
       title=P('string', 'display name', True), parent=P('string', 'selected parent folder'))
 def create(rec, kind, title, parent=''):
-    return org.create(rec, kind, title, parent)
+    made = org.create(rec, kind, title, parent)
+    try:   # a course or project also gets its place in the person's vault; the record is already saved either way
+        made['vault_note'] = vault.project_folder(kind, made['title'])
+    except OSError:
+        made['vault_note'] = None
+    return made
 
 
 @tool('organization_rename', 'Rename an item without changing its identity, source file or evidence.', human=True,
@@ -37,3 +43,9 @@ def workspace_create(rec, title):
       title=P('string', 'new display name', True))
 def workspace_rename(rec, title):
     return org.workspace_rename(rec, title)
+
+
+@tool('organization_archive', 'Hide a course, project, session or material you no longer work on, with everything filed in it. Nothing is deleted and it can be restored.', human=True,
+      subject=P('string', 'selected item', True), archived=P('boolean', 'true to hide (default), false to restore'))
+def archive(rec, subject, archived=True):
+    return org.archive(rec, subject, archived)

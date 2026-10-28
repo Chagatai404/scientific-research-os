@@ -173,11 +173,14 @@ def _map_record(owner: Record, expand: str) -> dict:
     they are about and shown only when that place is expanded. Membership here is navigation, never a recorded edge."""
     place = organization.placement(owner)
     nodes = {n["id"]: n for n in owner.nodes()}
-    needs, hubs = [], {}
+    hidden = organization.hidden_set(owner, organization.state(owner)["parents"])   # archived: kept in the record, not shown
+    needs, hubs, shelved = [], {}, set()
     for n in nodes.values():
         if n["type"] in _HUB_CATEGORY:
             label = _map_label(owner, n)
-            if "{{" in label:
+            if hidden(n["id"]):
+                shelved.add(n["id"])
+            elif "{{" in label:
                 needs.append({"id": n["id"], "kind": n["type"], "reason": "A template placeholder, not a real place."})
             elif label:
                 hubs[n["id"]] = label
@@ -208,11 +211,15 @@ def _map_record(owner: Record, expand: str) -> dict:
         cat = _TOPIC_CATEGORY.get(n["type"])
         if not cat:
             continue
+        if hidden(n["id"]):
+            continue
         label = _map_label(owner, n)
         if not label:
             needs.append({"id": n["id"], "kind": n["type"], "reason": "No name or description is recorded for this item."})
             continue
         want = [h for h in parents_of(n["id"]) if out[h]["category"] == cat]
+        if not want and any(e["dst"] in shelved for e in owner.edges(src=n["id"], type="part-of")):
+            continue   # belongs only to something archived
         linked = bool(owner.edges(src=n["id"])) or bool(owner.edges(dst=n["id"]))
         if not want and not linked:
             needs.append({"id": n["id"], "kind": n["type"], "reason": "Not connected to a course, project or goal yet."})

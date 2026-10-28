@@ -1,3 +1,4 @@
+import {EffortSlider} from './controls';
 import {useEffect, useRef, useState, type FormEvent} from 'react';
 import {call, human, href, preference, savePreference, service} from './api';
 import {RichText} from './Document';
@@ -7,7 +8,7 @@ import {AttachMenu, chipKind, chipName, loadAttachments, saveAttachments, MAX_AT
 import {useResource} from './hooks';
 import type {SourceRef} from './desktop';
 import type {Run} from './Workbench';
-import {effortLabel, modelLabel, supportedEfforts, useModelPreferences, type ModelCatalog} from './modelPreferences';
+import {modelLabel, useModelPreferences, type ModelCatalog} from './modelPreferences';
 
 interface Chat {conversation: string; title: string; messages: {id: string; role: string; text: string; model?: string;scope?:SourceRef[]}[]; pending: string[]; interrupted: number}
 
@@ -19,7 +20,6 @@ export function Conversation({id, record}: {id: string; record: string}) {
   const [chat, setChat] = useState<Chat | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
-  const [mode, setMode] = useState('chat');
   const [attachments, setAttachmentList] = useState<Attached[]>(() => loadAttachments(record));
   const setAttachments = (next: Attached[]) => {setAttachmentList(next); saveAttachments(record, next);};
   const [note, setNote] = useState('');
@@ -92,7 +92,7 @@ export function Conversation({id, record}: {id: string; record: string}) {
     setSending(true); setError('');
     const value = text.trim(), submittedDraft = text;
     try {
-      const result = await call<{conversation: string; request: string}>('workspace_chat_send', {text: value, model: currentModel, key: turnKey.current, mode, ...(attachments.length ? {scope: attachments} : {}), ...(models.selectedEffort ? {effort: models.selectedEffort} : {}), ...(id ? {conversation: id} : {})}, record, true);
+      const result = await call<{conversation: string; request: string}>('workspace_chat_send', {text: value, model: currentModel, key: turnKey.current, ...(attachments.length ? {scope: attachments} : {}), ...(models.selectedEffort ? {effort: models.selectedEffort} : {}), ...(id ? {conversation: id} : {})}, record, true);
       // A request can finish while the person is writing the next message or navigating.
       // Preserve that newer draft and never steal the new page's input/focus.
       turnKey.current = crypto.randomUUID(); setAttachments([]);
@@ -158,9 +158,8 @@ export function Conversation({id, record}: {id: string; record: string}) {
       {attachment.kind === 'media' && !currentModel.startsWith('ollama:') && (attachment.localOnly ? <small className="chip-warning">This file stays on this computer. Choose a local model to let it read this file.</small> : <><small>Sending to {modelLabel(currentModel, capabilities.data?.models)}. Your permission covers this version of the file for one message within 10 minutes.</small><button type="button" onClick={() => permitAttachment(index)}>{attachment.visionPermission && attachment.permissionModel === currentModel ? 'Renew permission' : 'Allow this file to be sent'}</button></>)}
       <button type="button" className="chip-remove" aria-label={`Remove ${chipName(attachment)}`} onClick={() => setAttachments(attachments.filter((_, i) => i !== index))}>×</button></li>)}</ul>}<form className="goal-composer chat-composer" onSubmit={send}><label className="sr-only" htmlFor="chat-input">Your message</label><textarea id="chat-input" rows={2} value={text} onChange={e => {setText(e.target.value); savePreference(draftKey, e.target.value);}} placeholder={id ? 'Follow your thinking…' : 'What would you like to understand or investigate?'} required maxLength={12000} onKeyDown={e => {if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {e.preventDefault(); e.currentTarget.form?.requestSubmit();}}} />
       <div className="composer-footer"><div className="composer-tools"><AttachMenu record={record} count={attachments.length} onAttach={addAttachment} onNote={setNote}/>
-        <Menu kind="mode" label="What this message is for" buttonLabel="Session mode" buttonClassName="composer-mode" up button={<>{({chat: 'Conversation', learn: 'Prepare lesson', research: 'Investigate'} as Record<string, string>)[mode]} <span aria-hidden="true">⌄</span></>}>{close => <div className="model-options" role="group" aria-label="Session mode">{([['chat', 'Conversation', 'Think something through'], ['learn', 'Prepare lesson', 'Turn this into a lesson'], ['research', 'Investigate', 'Follow a research question']] as const).map(([value, label, hint]) => <button key={value} type="button" role="menuitemradio" aria-checked={mode === value} aria-pressed={mode === value} onClick={() => {setMode(value); close();}}><span>{label}</span><small>{hint}</small></button>)}</div>}</Menu>
         <Menu kind="model" label="Language model" buttonLabel={'Language model: ' + modelLabel(currentModel, capabilities.data?.models)} buttonClassName="model-picker" up button={<>{modelLabel(currentModel, capabilities.data?.models)} <span aria-hidden="true">⌄</span></>}>{close => <div className="model-options" role="group" aria-label="Language model">{capabilities.data?.models.map(m => <button key={m.id} type="button" aria-pressed={currentModel === m.id} onClick={() => {models.update(m.id); close();}}><span>{m.label}</span><small>{m.provider}</small></button>)}<a className="manage-models" href={href('settings', '', record)} onClick={close}>Manage models →</a>{!capabilities.data?.models.length && <p>Install and sign in to Codex or Claude, or start a local Ollama model.</p>}</div>}</Menu>
-        {supportedEfforts(models.selected).length > 0 && <Menu kind="effort" label="Reasoning effort" buttonLabel={'Reasoning effort: ' + effortLabel(models.selectedEffort || 'medium')} buttonClassName="effort-picker" up button={<>{effortLabel(models.selectedEffort || 'medium')} <span aria-hidden="true">⌄</span></>}>{close => <div className="model-options effort-options" role="group" aria-label="Reasoning effort">{supportedEfforts(models.selected).map(effort => <button key={effort} type="button" aria-pressed={models.selectedEffort === effort} onClick={() => {models.update(currentModel, effort); close();}}>{effortLabel(effort)}</button>)}</div>}</Menu>}
+        <EffortSlider model={models.selected} effort={models.selectedEffort} onChange={effort => models.update(currentModel, effort)} />
         <button className={'microphone ' + (recording ? 'recording' : '')} type="button" aria-label={recording ? 'Stop recording' : 'Dictate your question'} aria-pressed={recording} disabled={openingMicrophone || transcribing || !capabilities.data?.voice.whisper} onClick={dictate}>{recording ? '■ Stop' : transcribing ? 'Transcribing…' : '◉ Voice'}</button>
         <button type="button" className="voice-toggle" aria-pressed={voiceAuto} disabled={!capabilities.data?.voice.kokoro} onClick={() => {setVoiceAuto(!voiceAuto); savePreference('read-replies', voiceAuto ? 'off' : 'on');}}>♫ {voiceAuto ? 'Read replies on' : capabilities.data?.voice.kokoro ? 'Kokoro ready' : 'Voice unavailable'}</button></div>{pending && <button type="button" onClick={stop} disabled={!activeRun}>Stop</button>}<button className="primary send-message" disabled={pending || !models.selected || openingMicrophone || recording || transcribing} aria-label="Send message">{pending ? 'Working…' : 'Send ↑'}</button></div>
     </form>

@@ -11,7 +11,8 @@ export function UpdatePrompt() {
   const prompt = useOverlay('modal', 'update');
   const [status, setStatus] = useState<UpdateStatus | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   const offered = useRef('');
-  const {show} = prompt;
+  const showRef = useRef(prompt.show);
+  showRef.current = prompt.show;   // the overlay's opener changes identity as it renders; polling must not restart with it
   useEffect(() => {
     if (!host) return;
     let active = true;
@@ -20,13 +21,13 @@ export function UpdatePrompt() {
         const next = await host.updates();
         if (!active) return;
         setStatus(next);
-        if (next.available && (next.state === 'downloading' || next.state === 'ready') && later() !== next.available && offered.current !== next.available) {offered.current = next.available; show();}
+        if (next.available && (next.state === 'downloading' || next.state === 'ready') && later() !== next.available && offered.current !== next.available) {offered.current = next.available; showRef.current();}
       } catch { /* the Settings page reports connectivity */ }
     };
     void poll();
     const timer = setInterval(poll, 2000);
     return () => {active = false; clearInterval(timer);};
-  }, [host, show]);
+  }, [host]);
   if (!host) return null;
   const dismiss = (close: () => void) => {try {sessionStorage.setItem(key, status?.available || '');} catch { /* private mode */ } close();};
   async function install() {

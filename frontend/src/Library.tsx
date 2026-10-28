@@ -1,3 +1,4 @@
+import {Choice} from './controls';
 import {useEffect, useMemo, useState} from 'react';
 import {call, human, href} from './api';
 import type {Material, Organization} from './contracts';
@@ -28,7 +29,7 @@ export function AddMaterial({record, folder = '', onAdded, up = false, id = 'lib
     <button role="menuitem" disabled={busy || !desktop} onClick={async () => {close(); await run(() => pickAndAdd('vault', record, folder));}}>Connect an Obsidian vault<small>Notes are read here; your vault is never changed</small></button>
     {!desktop && <form className="path-add" onSubmit={e => {e.preventDefault(); close(); void run(() => pathAndAdd(path, kind, record, folder));}}>
       <label>Path on this computer<input value={path} onChange={e => setPath(e.target.value)} placeholder="C:/research/notes" required/></label>
-      <label>It is a<select value={kind} onChange={e => setKind(e.target.value as PickKind)}><option value="folder">Folder</option><option value="file">File</option><option value="vault">Obsidian vault</option></select></label>
+      <div className="field"><span className="pick-label">It is a</span><Choice label="It is a" value={kind} options={[['folder', 'Folder'], ['file', 'File'], ['vault', 'Obsidian vault']] as const} onChange={setKind}/></div>
       <button className="primary" disabled={busy}>Add</button></form>}
     {error && <p className="notice error" role="alert">{error}</p>}</div>}</Menu>;
 }
@@ -70,7 +71,7 @@ export function Library({record, tab}: {record: string; tab: string}) {
       <ul className="state-summary" aria-label="Progress">{(['added', 'reading', 'ready', 'attention'] as const).map(s => <li key={s} data-state={s}><strong>{counts[s]}</strong><span>{STATE[s]}</span></li>)}</ul>
       {waiting > 0 && <p className="muted" role="status">Reading {waiting} {waiting === 1 ? 'item' : 'items'} in the background. You can keep working.</p>}
       <div className="library-tools"><label>Find in titles and text<input type="search" value={filter} onChange={e => setFilter(e.target.value)} placeholder="A title or a few words"/></label>
-        <label>Show<select value={where} onChange={e => setWhere(e.target.value)}><option value="all">All material</option><option value="inbox">Inbox (not in a course or project)</option>{org.data.folders.map(f => <option key={f.id} value={f.id}>{f.title}</option>)}</select></label></div>
+        <div className="field"><span className="pick-label">Show</span><Choice label="Show" value={where} options={[['all', 'All material'], ['inbox', 'Inbox'], ...org.data.folders.map(f => [f.id, f.title] as const)]} onChange={setWhere}/></div></div>
       <div className={'library-grid ' + (open ? 'with-pane' : '')}>
         <ul className="entry-list material-list">{shown.map(m => <MaterialRow key={m.id} m={m} record={record} place={placeName(m.source)} folder={folderName(m.parent)} selected={selected === m.id} onOpen={() => setSelected(selected === m.id ? '' : m.id)} onChange={() => setVersion(v => v + 1)} onError={setStatus}/>)}{!shown.length && <li className="hint">Nothing matches. Clear the search or choose another folder.</li>}</ul>
         {open && <MaterialPane key={open.id} m={open} record={record} place={placeName(open.source)} onClose={() => setSelected('')}/>}</div>

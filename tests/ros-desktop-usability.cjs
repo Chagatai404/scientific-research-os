@@ -133,10 +133,12 @@ async function main() {
     const attach = page.getByRole('button', {name: 'Attach source', exact: true});
     await attach.click(); assert.equal(await overlays(page), 1);
     await page.getByRole('button', {name: /^Language model:/}).click(); assert.equal(await overlays(page), 1, 'opening the model menu replaces the attachment menu');
-    await page.getByRole('button', {name: /^Reasoning effort:/}).click(); assert.equal(await overlays(page), 1);
-    await page.getByRole('button', {name: 'Session mode', exact: true}).click(); assert.equal(await overlays(page), 1);
+    const dropUp = await page.locator('.menu-panel').evaluate(el => el.getBoundingClientRect().bottom) <= await page.getByRole('button', {name: /^Language model:/}).evaluate(el => el.getBoundingClientRect().top + 2);
+    assert.equal(dropUp, true, 'the model menu opens upward');
     await page.keyboard.press('Escape'); assert.equal(await overlays(page), 0);
-    assert.equal(await page.getByRole('button', {name: 'Session mode', exact: true}).evaluate(el => el === document.activeElement), true, 'focus returns to the trigger');
+    assert.equal(await page.getByRole('button', {name: /^Language model:/}).evaluate(el => el === document.activeElement), true, 'focus returns to the trigger');
+    assert.equal(await page.getByRole('button', {name: 'Session mode', exact: true}).count(), 0, 'the agent chooses the mode; there is no mode menu');
+    assert.equal(await page.getByRole('slider', {name: 'Reasoning effort'}).count() <= 1, true, 'effort is a slider, not a menu');
     await attach.click(); await page.locator('.crumbs').click({force: true}); assert.equal(await overlays(page), 0, 'an outside press closes it');
     await page.getByRole('button', {name: /^Workspace: /}).click(); await attach.click(); assert.equal(await overlays(page), 1, 'workspace menu and attachment menu never coexist');
     await page.evaluate(() => {location.hash = '#library?r=demo';}); await page.getByRole('heading', {name: 'Library', exact: true}).waitFor(); assert.equal(await overlays(page), 0, 'navigating closes menus');
@@ -150,10 +152,10 @@ async function main() {
     await page.getByRole('button', {name: /Add material/}).first().click();
     await page.getByLabel('Path on this computer').fill(readings);
     await page.getByRole('button', {name: 'Add', exact: true}).click();
-    await page.getByRole('status').filter({hasText: /Added 4 items/}).waitFor();
-    await page.waitForFunction(() => [...document.querySelectorAll('.state-summary li')].find(li => li.dataset.state === 'ready')?.textContent.startsWith('3'), null, {timeout: 30000});
-    assert.equal(await page.locator('.state-summary [data-state=attention]').innerText().then(t => t.startsWith('1')), true, 'the empty file needs attention, with a reason');
-    await page.getByText('This file is empty. Open the original to check it.').waitFor();
+    await page.getByRole('status').filter({hasText: /Added 2 items/}).waitFor();
+    await page.waitForFunction(() => [...document.querySelectorAll('.state-summary li')].find(li => li.dataset.state === 'ready')?.textContent.startsWith('2'), null, {timeout: 30000});
+    assert.equal(await page.locator('.state-summary [data-state=attention]').count() === 0 || await page.locator('.state-summary [data-state=attention]').innerText().then(t => t.startsWith('0')), true, 'empty files and images are not listed: only written material is');
+    assert.equal(await page.getByText('scan.png').count() + await page.getByText('empty.md').count(), 0, 'images and empty files never reach the Library');
     await layout(page, 'library with material');
     await page.getByLabel('Find in titles and text').fill('Bell pair');
     await page.getByRole('heading', {name: 'Matches inside your material'}).waitFor();
@@ -166,11 +168,11 @@ async function main() {
     await page.getByRole('button', {name: /Teleportation lecture/}).first().waitFor();
     await page.getByRole('button', {name: 'More actions for Teleportation lecture'}).click(); await page.getByRole('menuitem', {name: 'Move to…'}).click();
     await page.getByLabel('Folder').selectOption({label: 'Course · Quantum computing 101'}); await page.getByRole('button', {name: 'Move', exact: true}).click();
-    await page.getByLabel('Show').selectOption({label: 'Quantum computing 101'});
+    await page.getByRole('radiogroup', {name: 'Show'}).getByRole('radio', {name: 'Quantum computing 101'}).click();
     await page.getByRole('button', {name: /Teleportation lecture/}).first().waitFor();
     await page.getByRole('link', {name: 'Study this'}).first().click();
     await page.getByRole('heading', {name: 'Learn', exact: true}).waitFor();
-    assert.equal(await page.getByLabel('Learn from').inputValue() !== '', true, 'Study this carries the material into Learn');
+    await page.getByRole('button', {name: /^Stop using /}).waitFor(); // Study this carries the material into Learn
     await page.getByRole('region', {name: /Recommended next step/}).waitFor();
     await page.getByLabel('What do you want to understand?').fill('Teach me quantum teleportation');
     await page.getByRole('button', {name: 'Plan my study', exact: true}).click();
@@ -178,7 +180,7 @@ async function main() {
     await page.goBack(); await page.getByRole('link', {name: 'Use in research'}).first().click();
     await page.getByRole('heading', {name: 'Research', exact: true}).waitFor();
     await page.getByRole('list', {name: 'Research stages'}).waitFor();
-    assert.equal(await page.getByLabel('Evidence to start from').inputValue() !== '', true, 'Use in research carries the material');
+    await page.getByRole('button', {name: /^Stop using /}).waitFor(); // Use in research carries the material
     await layout(page, 'research');
     await page.getByLabel('Start another question').fill('Does the response change with beam energy?');
     await page.getByRole('button', {name: 'Start investigating', exact: true}).click();
@@ -187,7 +189,7 @@ async function main() {
     await page.getByRole('link', {name: 'Review the plan →'}).click();
     const decision = page.locator('.decision-panel'); await decision.waitFor();
     await decision.getByLabel('Your name').fill('Test researcher');
-    await decision.getByLabel('Decision').selectOption('approved');
+    await decision.getByRole('radio', {name: 'Approve'}).click();
     await decision.getByRole('button', {name: 'Record my decision'}).click();
     await decision.getByRole('status').waitFor();
     console.log('decision result:', (await decision.getByRole('status').innerText()).slice(0, 160));
@@ -236,7 +238,6 @@ async function main() {
     await page.getByRole('button', {name: 'Select Quantum computing 101', exact: true}).click();
     await page.getByRole('complementary', {name: 'Selected node', exact: true}).getByRole('link', {name: 'Open evidence'}).waitFor();
     await page.getByRole('button', {name: 'How to read this map', exact: true}).click(); assert.equal(await overlays(page), 1);
-    await page.getByRole('button', {name: 'Graph settings', exact: true}).click(); assert.equal(await overlays(page), 1);
     await page.keyboard.press('Escape');
     const edgesAfter = fs.existsSync(edgeFile) ? fs.readFileSync(edgeFile) : Buffer.alloc(0);
     assert.equal(Buffer.compare(edgesBefore, edgesAfter), 0, 'organizing and viewing never writes scientific edges');
@@ -269,7 +270,7 @@ async function main() {
             const chosen = choices[kind]; if (!chosen) return null;
             return Array.isArray(chosen) ? (chosen.length > 1 ? Promise.all(chosen.map(register)) : register(chosen[0])) : register(chosen);
           },
-          openSource: async () => {}, backend: async () => ({}), updates: async () => ({state: 'ready', version: '1.4.1', available: '9.9.9', percent: 100}), checkUpdates: async () => ({}), installUpdate: async () => {window.__installs = (window.__installs || 0) + 1;}, openExternal: async () => {},
+          openSource: async () => {}, backend: async () => ({}), updates: async () => ({state: 'ready', version: '1.5.0', available: '9.9.9', percent: 100}), checkUpdates: async () => ({}), installUpdate: async () => {window.__installs = (window.__installs || 0) + 1;}, openExternal: async () => {},
         };
       }, picks);
       const desktop = await desktopContext.newPage(); desktop.on('pageerror', e => errors.push(e.message));

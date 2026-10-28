@@ -1,3 +1,4 @@
+import {EffortSlider} from './controls';
 import {ConnectionSettings} from './ConnectionSettings';
 import {VaultActions} from './VaultActions';
 import {useEffect, useState, type FormEvent} from 'react';
@@ -40,7 +41,7 @@ export function Settings({record}: {record: string}) {
       <label htmlFor="settings-model">Conversation model</label><select id="settings-model" value={preferences.model} disabled={!catalog.data?.models.length} onChange={event => preferences.update(event.target.value)}>
         {!catalog.data?.models.some(model => model.id === preferences.model) && <option value={preferences.model}>{modelLabel(preferences.model)} · unavailable</option>}
         {catalog.data?.models.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}</select>
-      {supportedEfforts(preferences.selected).length > 0 && <><label htmlFor="settings-effort">Reasoning effort</label><select id="settings-effort" value={preferences.selectedEffort} onChange={event => preferences.update(preferences.model, event.target.value)}>{supportedEfforts(preferences.selected).map(effort => <option key={effort} value={effort}>{effortLabel(effort)}</option>)}</select></>}
+      <EffortSlider model={preferences.selected} effort={preferences.selectedEffort} onChange={effort => preferences.update(preferences.model, effort)} />
       {catalog.data && !catalog.data.models.length && <p>No model CLI is available. Install and sign in to Codex or Claude, or start Ollama, then reload.</p>}
       <div className="settings-actions"><button disabled={!!busy || !preferences.selected} onClick={checkModel}>{busy === 'model' ? 'Checking Model…' : 'Check Model Connection'}</button><button onClick={catalog.retry} disabled={!!busy}>Refresh Models</button></div>
       {catalog.data?.ollama && <p>{catalog.data.ollama.available ? `${catalog.data.ollama.models} Ollama Models Available Locally.` : catalog.data.ollama.hint}</p>}

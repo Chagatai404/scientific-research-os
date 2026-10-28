@@ -1,3 +1,4 @@
+import {Choice, MaterialPick} from './controls';
 import {useState, type FormEvent} from 'react';
 import {call, entityHref, href, human, preference, savePreference} from './api';
 import type {Organization, QueueItem} from './contracts';
@@ -9,6 +10,12 @@ import {ActivityBoard, type Activity} from './ActivityBoard';
 interface Claim {id: string; text?: string; verdict?: string; ownership?: string}
 
 const STAGES = ['Question', 'Gather evidence', 'Inspect evidence', 'Plan', 'Approve', 'Run', 'Review findings', 'Decide'];
+const CHECKS: [string, RegExp, string][] = [
+  ['Scout', /scout|literature|search/, 'searches the literature and authoritative sources'],
+  ['Verifier', /verif/, 'checks key claims against the cited source'],
+  ['Adversary', /advers|falsif/, 'tries to disprove the conclusion'],
+  ['Auditor', /audit|review/, 'reviews the claim from a fresh start'],
+];
 const WHY: Record<string, string> = {
   approve: 'A plan is waiting for your approval. Nothing runs until you decide.',
   decide: 'A finding has been checked. Only you can accept, revise or reject it.',
@@ -45,7 +52,7 @@ export function DecisionPanel({subject, kind, record}: {subject: string; kind: s
   return <form className="decision-panel" onSubmit={submit}><h3>{approving ? 'Your decision on this plan' : 'Your decision on this finding'}</h3>
     <p className="muted">{approving ? 'Approving means the plan may run as written. It does not say the result is true.' : 'Accepting records that you stand behind it. The checks above do not decide for you.'}</p>
     <label>Your name<input value={by} onChange={e => setBy(e.target.value)} required maxLength={80} autoComplete="name"/></label>
-    <label>Decision<select value={outcome} onChange={e => setOutcome(e.target.value)}>{approving ? <><option value="approved">Approve</option><option value="changes-requested">Ask for changes</option><option value="rejected">Reject</option></> : <><option value="accepted">Accept</option><option value="revise">Needs revision</option><option value="rejected">Reject</option><option value="retracted">Retract</option></>}</select></label>
+    <div className="field"><span className="pick-label">Decision</span><Choice label="Decision" value={outcome} options={approving ? [['approved', 'Approve'], ['changes-requested', 'Ask for changes'], ['rejected', 'Reject']] as const : [['accepted', 'Accept'], ['revise', 'Needs revision'], ['rejected', 'Reject'], ['retracted', 'Retract']] as const} onChange={setOutcome}/></div>
     <label>Why<textarea rows={3} value={note} onChange={e => setNote(e.target.value)} required={!approving} maxLength={2000} placeholder="One or two sentences others could follow"/></label>
     <button className="primary" disabled={busy || !by.trim()}>{busy ? 'Recording…' : 'Record my decision'}</button>{status && <p role="status" className="notice">{status}</p>}</form>;
 }
@@ -73,12 +80,15 @@ export function Research({record, material}: {record: string; material: string})
     <p className="lead muted">One question at a time. Each step says what is happening and what is waiting for you.</p>
     {!data ? <Notice error={result.error} retry={result.retry}/> : <>
       <ol className="stage-trail" aria-label="Research stages">{STAGES.map((name, i) => <li key={name} aria-current={i === stage!.index ? 'step' : undefined} className={i < stage!.index ? 'done' : ''}><span>{i + 1}</span>{name}</li>)}</ol>
+      <ul className="check-trail" aria-label="How your agent checks the work">{CHECKS.map(([name, match, what]) => {
+        const waiting = [...data.activity.running, ...data.activity.next].filter(t => match.test(t.kind)).length, done = data.activity.done.filter(t => match.test(t.kind)).length;
+        return <li key={name}><strong>{name}</strong><span>{what}</span><small>{waiting ? `${waiting} in progress or queued` : done ? `${done} finished` : 'Not needed yet'}</small></li>;})}</ul>
       <section className="next-card" aria-label="Next step"><div className="eyebrow">Next step</div>
         {stage!.next ? <><h2>{NEXT_LABEL[stage!.next.kind] || 'Review this'}</h2><p><strong>{stage!.next.headline || stage!.next.title || stage!.next.text || 'An item that needs you'}</strong></p><p className="muted">{stage!.why}</p><a className="button primary" href={href('node', stage!.next.subject, stage!.next.record || record)}>{NEXT_LABEL[stage!.next.kind] || 'Open'} →</a></>
           : <><h2>{stage!.index === 0 ? 'What question are you investigating?' : STAGES[stage!.index]}</h2><p className="muted">{stage!.why}</p></>}</section>
       <form className="goal-composer" onSubmit={start}><label htmlFor="research-question">{data.queue.length || data.claims.length ? 'Start another question' : 'What question are you investigating?'}</label>
         <textarea id="research-question" rows={3} value={question} onChange={e => setQuestion(e.target.value)} required maxLength={2000} placeholder="For example: does the calorimeter response change with beam energy?"/>
-        <div className="composer-footer"><label className="inline-pick">Evidence to start from<select value={picked} onChange={e => setPicked(e.target.value)}><option value="">Decide later</option>{ready.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}</select></label>
+        <div className="composer-footer"><MaterialPick label="Evidence to start from" items={ready} picked={picked} onPick={setPicked} none="Decide later"/>
           <button className="primary" disabled={busy || !question.trim()}>{busy ? 'Setting up…' : 'Start investigating'}</button></div>
         {!ready.length && <p className="muted">No readable material yet. <a href={href('library', '', record)}>Add material in the Library</a> to use it as evidence.</p>}</form>
       {status && <p role="status" className="notice">{status}</p>}

@@ -1,5 +1,6 @@
 import {CommandMenu} from './CommandMenu';
 import {UpdatePrompt} from './UpdatePrompt';
+import {InlineTitle} from './InlineTitle';
 import {useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent} from 'react';
 import {call, href, preference, routeOf, savePreference} from './api';
 import type {DocumentData, RecordInfo} from './contracts';
@@ -161,7 +162,7 @@ function Shell() {
     <header inert={modalDrawer} className="top-strip">
       <button ref={navToggle} className="icon-button" aria-expanded={showNav} aria-controls="workspace-navigation" aria-label={showNav ? 'Collapse navigation' : 'Show navigation'} title={`${showNav ? 'Collapse' : 'Show'} navigation (${navKeys})`} onClick={toggleNavigation}><Icon name="panel-nav" /></button>
       <button ref={sessionsToggle} className="icon-button" aria-expanded={showSessions} aria-label={showSessions ? 'Collapse sessions' : 'Show sessions'} title={`${showSessions ? 'Collapse' : 'Show'} sessions (${sessionKeys})`} onClick={toggleSessions}><Icon name="panel-sessions" /></button>
-      <nav className="crumbs" aria-label="Breadcrumb"><span>{workspace?.title || 'Workspace'}</span><span aria-hidden="true">›</span><strong aria-current="page">{labels[route.view] || 'Workspace'}</strong></nav>
+      <nav className="crumbs" aria-label="Breadcrumb">{workspace?.title ? <InlineTitle title={workspace.title} record={route.record} /> : <span>Workspace</span>}<span aria-hidden="true">›</span><strong aria-current="page">{labels[route.view] || 'Workspace'}</strong></nav>
       <form role="search" onSubmit={submitSearch}><label className="sr-only" htmlFor="global-search">Search connected records</label><input id="global-search" type="search" ref={search} placeholder="Search your knowledge…" value={query} onChange={e => setQuery(e.target.value)} /><kbd>{modifier}K</kbd></form>
       <a className="settings-toggle" href={href('settings', '', route.record)} aria-label="Settings" aria-current={route.view === 'settings' ? 'page' : undefined} title="Settings"><Icon name="settings" /></a>
       {selectedId && <button className="context-toggle" aria-controls="inspector" aria-expanded={context} onClick={() => {setContext(!context); savePreference('context', context ? 'closed' : 'open');}}>{context ? 'Hide context' : 'Show context'}</button>}

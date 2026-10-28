@@ -1,3 +1,4 @@
+import {MaterialPick} from './controls';
 import {PreparedReading} from './PreparedReading';
 import {MediaArtifacts} from './MediaArtifacts';
 import {Pedagogy} from './Pedagogy';
@@ -58,7 +59,7 @@ export function Learn({id, record, material = ''}: {id: string; record: string; 
       {lastSession.startsWith('#session') && <p><a href={lastSession}>Resume your last lesson →</a></p>}</section>
     <form className="goal-composer" onSubmit={plan}><label htmlFor="learn-goal">What do you want to understand?</label>
       <textarea id="learn-goal" rows={3} value={goal} onChange={e => setGoal(e.target.value)} required={!chosen} maxLength={4000} placeholder={chosen ? `Teach me ${chosen.title}` : 'Teach me mathematical statistics, or explain quantum teleportation'}/>
-      <div className="composer-footer"><label className="inline-pick">Learn from<select value={picked} onChange={e => setPicked(e.target.value)}><option value="">Your own words only</option>{ready.map(m => <option key={m.id} value={m.id}>{m.title}</option>)}</select></label>
+      <div className="composer-footer"><MaterialPick label="Learn from" items={ready} picked={picked} onPick={setPicked} none="Your own words only"/>
         <button className="primary" disabled={busy || (!goal.trim() && !chosen)}>{busy ? 'Setting up…' : 'Plan my study'}</button></div>
       {!ready.length && <p className="muted">No readable material yet. <a href={href('library', '', record)}>Add material in the Library</a> to study from it.</p>}</form>
     {setup && <p className="notice" role="status">{setup}</p>}

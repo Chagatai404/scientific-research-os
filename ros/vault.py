@@ -1304,6 +1304,39 @@ def custom_stub(rec: Record, rid: str, kind: str, sub: str, title: str,
     return Stub(rid, kind, folder, title, wrapped)
 
 
+PROJECTS_DIR = "01 Projects"
+
+
+def project_folder(kind: str, title: str) -> str | None:
+    """Give a course or project made in the app its place in the vault: ``01 Projects/<title>/<title>.md``, an index that
+    embeds the live lists of the lecture notes, handouts and sources the app writes for it under the managed folder.
+    Only a vault that already keeps a ``01 Projects`` folder is touched, an existing note is never overwritten, and the
+    app's own generated notes stay where the sync owns them. Returns the note's path below the vault, or None."""
+    if kind not in ("course", "project") or not configured():
+        return None
+    vault = vault_path()
+    if not (vault / PROJECTS_DIR).is_dir():
+        return None
+    name = safe_name(title)
+    managed = f"{home.settings()['vault_root']}/{'Courses' if kind == 'course' else 'Projects'}/{name}"
+    folder = vault / PROJECTS_DIR / name
+    note = folder / f"{name}.md"
+    if note.exists():
+        return f"{PROJECTS_DIR}/{name}/{name}.md"
+    body = "\n".join([
+        "---", "type: course" if kind == "course" else "type: project", "status: active", "created-by: research-os",
+        "tags:", f"  - {kind}", "---", "", f"# {title}", "",
+        "Created in Research OS. Lecture notes, handouts and sources the app prepares for this "
+        f"{kind} are written under `{managed}`; the lists below show them here as they appear.", "",
+        "## Lecture notes", "", "```query", f'path:"{managed}" tag:#lecture', "```", "",
+        "## Handouts", "", "```query", f'path:"{managed}/Handouts"', "```", "",
+        "## Sources", "", "```query", f'path:"{managed}/Sources"', "```", "",
+        "## My notes", "", "Write your own notes in this folder.", ""])
+    folder.mkdir(parents=True, exist_ok=True)
+    _atomic(note, body.encode("utf-8"))
+    return f"{PROJECTS_DIR}/{name}/{name}.md"
+
+
 def put_note(rec: Record, stub: Stub, dry_run: bool = False) -> dict:
     """Write one note on behalf of another module (a handout): same ownership, hashing and flow-back as any note."""
     vault = vault_path()
