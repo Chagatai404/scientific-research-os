@@ -38,4 +38,4 @@ plan and a really due review; Research question and a typed approval; seven dest
 - Not measured: graph frame time, the 1,000-node bound, high-DPI beyond the 200% zoom check. User-pinned graph importance is not implemented.
 - Material has one primary folder; a second membership is not modelled. PDF text search needs an optional `pdftotext`.
 - The vault's files have not been added to the personal Library; the vault notes were reorganized (11 additive files, backup
-  `C:\Users\ASUS\ros-rollout-backups\20261028-vault-organize`).
+  `C:\Users\you\ros-rollout-backups\20261028-vault-organize`).

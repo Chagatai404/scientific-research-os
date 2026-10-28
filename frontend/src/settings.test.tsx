@@ -40,7 +40,7 @@ test('Settings connects real records, checks services only on clicks and shares 
   const oldFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string, options?: RequestInit) => {
     requests.push({url: String(url), body: options?.body ? JSON.parse(String(options.body)) : undefined});
-    const result = String(url).startsWith('/services/catalog') ? {models: [sol, {id: 'claude:sonnet', label: 'Claude Sonnet', provider: 'claude', reasoning_efforts: []}], voice: {kokoro: false, whisper: false, label: 'Unavailable'}} : String(url).startsWith('/api/workspace_connections') ? {record: {name: 'ams-ecal-qml', title: 'ams-ecal-qml', role: 'project', root: 'C:/records/qml', node_counts: {source: 12}}, vault: {configured: true, path: 'C:/Users/ASUS/Obsidian/Knowledge', root: 'Research OS', folder: 'C:/Users/ASUS/Obsidian/Knowledge/Research OS'}, backend: {operation_count: 42}} : {ok: true, model: DEFAULT_MODEL, text: 'READY'};
+    const result = String(url).startsWith('/services/catalog') ? {models: [sol, {id: 'claude:sonnet', label: 'Claude Sonnet', provider: 'claude', reasoning_efforts: []}], voice: {kokoro: false, whisper: false, label: 'Unavailable'}} : String(url).startsWith('/api/workspace_connections') ? {record: {name: 'ams-ecal-qml', title: 'ams-ecal-qml', role: 'project', root: 'C:/records/qml', node_counts: {source: 12}}, vault: {configured: true, path: 'C:/Users/you/Obsidian/Knowledge', root: 'Research OS', folder: 'C:/Users/you/Obsidian/Knowledge/Research OS'}, backend: {operation_count: 42}} : {ok: true, model: DEFAULT_MODEL, text: 'READY'};
     return {ok: true, json: async () => ({result})} as Response;
   }) as typeof fetch;
   dom.window.localStorage.setItem('ros.workspace.model', 'codex:default');
@@ -52,7 +52,7 @@ test('Settings connects real records, checks services only on clicks and shares 
     assert.match(doc.body.textContent!, /AMS ECAL QML/);
     assert.match(doc.body.textContent!, /Sources?|Source/);
     assert.match(doc.body.textContent!, /12/);
-    assert.equal((doc.querySelector('#vault-path') as HTMLInputElement).value, 'C:/Users/ASUS/Obsidian/Knowledge');
+    assert.equal((doc.querySelector('#vault-path') as HTMLInputElement).value, 'C:/Users/you/Obsidian/Knowledge');
     assert.equal(dom.window.localStorage.getItem('ros.workspace.model'), DEFAULT_MODEL);
     assert.equal(doc.querySelectorAll('input').length, 2);
     assert.doesNotMatch(doc.body.textContent!, /Original portal|Another model|provider:model|API key/i);
@@ -72,7 +72,7 @@ test('Settings connects real records, checks services only on clicks and shares 
     assert.match(requests.at(-1)!.url, /^\/api\/vault_status/);
     assert.equal(requests.filter(request => /vault_sync|vault_set/.test(request.url)).length, 0);
     await act(async () => {doc.querySelector('form')!.dispatchEvent(new dom.window.Event('submit', {bubbles: true, cancelable: true}));});
-    assert.deepEqual(requests.find(request => request.url === '/api/vault_set')?.body, {record: 'qml', path: 'C:/Users/ASUS/Obsidian/Knowledge', root: 'Research OS'});
+    assert.deepEqual(requests.find(request => request.url === '/api/vault_set')?.body, {record: 'qml', path: 'C:/Users/you/Obsidian/Knowledge', root: 'Research OS'});
   } finally {
     await act(async () => root.unmount()); globalThis.fetch = oldFetch; dom.window.close();
     for (const [name, descriptor] of previous) {if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name);}

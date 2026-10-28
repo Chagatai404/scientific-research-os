@@ -24,7 +24,7 @@ Read-only inspection was performed against the current repository and the config
 | Menus have independent state | Native selects and unrelated HTML `details` across shell/composer/graph | Centralize transient overlay ownership |
 | Research mixes workflow with a tool catalog | `views.tsx`, `Operations.tsx`, `Workbench.tsx` | Replace schema/JSON forms with task-specific screens |
 | Learn mostly lists prepared bundles | `Learn.tsx`; live brief reports 58 due reviews and zero ready lessons | Provide an actionable entry point even before a lesson exists |
-| Vault is connected, not absent | Active Knowledge vault connection is local-only; settings point to `C:/Users/ASUS/Obsidian/Knowledge`; recent sync exists | Preserve the connection and its privacy setting |
+| Vault is connected, not absent | Active Knowledge vault connection is local-only; settings point to `C:/Users/you/Obsidian/Knowledge`; recent sync exists | Preserve the connection and its privacy setting |
 | Full source discovery is incomplete | 272 non-hidden files, including 249 Markdown, 7 PDF, 8 PNG; no `sources-cache.sqlite` in either active record | Build a durable discovery/indexing workflow rather than requiring an obscure manual index button |
 | Generated projection is not whole-vault import | Manifest has 169 rows, all under `Research OS/`; includes 8 dismissed and 1 user-edited entry | Never resurrect dismissed generated notes or overwrite the edited note |
 | Human note coverage is partial | 95 Markdown files outside generated root; 79 match absolute node paths; 16 lack that direct mapping | Reconcile each unmatched file; lack of a path match does not alone prove its content was never imported |
