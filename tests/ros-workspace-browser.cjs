@@ -65,13 +65,13 @@ async function homeCamera(page) {
   for (let i = 0; i < 40; i++) {
     const now = await page.evaluate(async () => {
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      return document.querySelector('.graph-frame').getBoundingClientRect().width + ':' + localStorage.getItem('ros.workspace.camera:' + JSON.stringify(['', 'map', '', '', 1, false, '']));
+      return document.querySelector('.graph-frame').getBoundingClientRect().width + ':' + localStorage.getItem('ros.workspace.camera:' + JSON.stringify(['', 'map', '']));
     });
     if (now === last) break;
     last = now; await page.waitForTimeout(80);
   }
   return page.evaluate(() => {
-    const key = 'ros.workspace.camera:' + JSON.stringify(['', 'map', '', '', 1, false, '']);
+    const key = 'ros.workspace.camera:' + JSON.stringify(['', 'map', '']);
     const camera = JSON.parse(localStorage.getItem(key));
     const frame = document.querySelector('.graph-frame').getBoundingClientRect();
     return {zoom: camera.zoom, x: (frame.width / 2 - camera.x) / camera.zoom, y: (frame.height / 2 - camera.y) / camera.zoom};
@@ -252,6 +252,7 @@ async function main() {
     await page.unroute('**/api/workspace_chat_send');
     await page.goto(workspace + '#overview'); await page.getByTestId('graph-home').waitFor();
     assert.match(await page.getByRole('button', {name: /^Language model:/}).innerText(), /GPT-6.1 Sol/);
+    assert.equal(await page.getByRole('button', {name: 'Session mode', exact: true}).count(), 0, 'there is no mode menu');
     assert.equal(await page.locator('#custom-model').count(), 0, 'model choices must come from the provider catalog');
     await page.locator('.settings-toggle').click();
     await page.getByRole('heading', {name: 'Settings', exact: true}).waitFor();
@@ -260,7 +261,7 @@ async function main() {
     const counts = await page.locator('.record-counts li').evaluateAll(rows => Object.fromEntries(rows.map(row => [row.querySelector('span').textContent.toLowerCase(), Number(row.querySelector('strong').textContent)])));
     assert.deepEqual(counts, connections.record.node_counts, 'Settings displays actual indexed record counts');
     assert.equal(await page.getByLabel('Conversation model', {exact: true}).inputValue(), 'codex:gpt-6.1-sol');
-    await page.getByLabel('Reasoning effort', {exact: true}).selectOption('high');
+    await page.getByRole('slider', {name: 'Reasoning effort'}).fill('2');
     await matrix(page, 'settings');
     assert.equal(modelChecks.length, 0, 'opening Settings must never issue a paid model check automatically');
     await page.getByRole('button', {name: 'Check Model Connection', exact: true}).click();
@@ -273,23 +274,25 @@ async function main() {
     await page.reload(); await page.getByLabel('Vault path', {exact: true}).waitFor();
     await page.waitForFunction(value => { const same = text => text.split(String.fromCharCode(92)).join('/').toLowerCase(); return same(document.querySelector('#vault-path').value) === same(value); }, server.vault);
     assert.equal(await page.getByLabel('Research OS folder inside the vault', {exact: true}).inputValue(), 'Browser Research');
-    assert.equal(await page.getByLabel('Reasoning effort', {exact: true}).inputValue(), 'high');
+    assert.equal(await page.getByRole('slider', {name: 'Reasoning effort'}).getAttribute('aria-valuetext'), 'High');
     assert.equal(modelChecks.length, 1, 'reloading Settings does not check a model automatically');
     await page.goto(workspace + '#overview'); await page.getByTestId('graph-home').waitFor();
-    assert.match(await page.getByRole('button', {name: /^Reasoning effort:/}).innerText(), /High/);
+    assert.equal(await page.getByRole('slider', {name: 'Reasoning effort'}).getAttribute('aria-valuetext'), 'High');
+    await page.getByRole('slider', {name: 'Reasoning effort'}).focus(); await page.keyboard.press('ArrowLeft');
+    assert.equal(await page.getByRole('slider', {name: 'Reasoning effort'}).getAttribute('aria-valuetext'), 'Medium', 'the slider changes effort');
+    await page.keyboard.press('ArrowRight');
     for (const width of widths) {
       await page.setViewportSize({width, height: 1000});
-      for (const picker of [/^Language model:/, /^Reasoning effort:/]) {
-        await page.getByRole('button', {name: picker}).click();
-        const bounds = await page.locator('.menu-panel').evaluate(element => {const r = element.getBoundingClientRect(); return {inside: r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1};});
-        assert.equal(bounds.inside, true, `${picker} remains within viewport @${width}`);
-        await page.keyboard.press('Escape');
-      }
+      await page.getByRole('button', {name: /^Language model:/}).click();
+      const bounds = await page.locator('.menu-panel').evaluate(element => {const r = element.getBoundingClientRect(); return {inside: r.left >= -1 && r.right <= innerWidth + 1 && r.top >= -1 && r.bottom <= innerHeight + 1};});
+      assert.equal(bounds.inside, true, `model menu remains within viewport @${width}`);
+      await page.keyboard.press('Escape');
+      const slider = await page.getByRole('slider', {name: 'Reasoning effort'}).boundingBox();
+      assert.ok(slider && slider.x >= 0 && slider.x + slider.width <= width, `effort slider fits @${width}`);
       await graphHome(page, `model/effort composer @${width}`);
     }
     await page.setViewportSize({width: 1440, height: 1000});
     assert.equal(await page.locator('select:visible').count(), 0, 'the landing uses menus, not native selects, for its pickers');
-    await page.getByRole('button', {name: 'Session mode', exact: true}).waitFor();
     assert.match(await page.locator('html').evaluate(el => getComputedStyle(el).colorScheme), /dark/);
     const longDraft = 'A long scientific question about variance and the assumptions behind its estimate. '.repeat(45);
     await page.getByLabel('Your message', {exact: true}).fill(longDraft);
@@ -307,7 +310,7 @@ async function main() {
     await page.getByRole('button', {name: /^Language model:/}).click();
     await page.getByRole('button', {name: /Claude Sonnet/}).click();
     assert.match(await page.getByRole('button', {name: /^Language model:/}).innerText(), /Claude Sonnet/);
-    assert.equal(await page.getByRole('button', {name: /^Reasoning effort:/}).count(), 0, 'models with no reasoning-effort support do not offer unsupported controls');
+    assert.equal(await page.getByRole('slider', {name: 'Reasoning effort'}).count(), 0, 'models with no reasoning-effort support do not offer unsupported controls');
     await page.getByRole('button', {name: 'Dictate your question', exact: true}).click();
     await page.getByRole('button', {name: 'Stop recording', exact: true}).waitFor();
     assert.equal(await page.getByRole('button', {name: 'Send message', exact: true}).isDisabled(), true, 'recording must remain a draft until capture stops');
@@ -379,33 +382,24 @@ async function main() {
     await page.getByRole('button', {name: 'Node list', exact: true}).click();
     await page.getByRole('link', {name: 'Open Mean', exact: true}).first().waitFor();
     await page.getByRole('button', {name: 'Node list', exact: true}).click();
-    await page.getByLabel('Graph settings', {exact: true}).click();
-    await page.getByRole('combobox', {name: /Filter relations/}).selectOption('requires');
-    await page.getByLabel('Graph settings', {exact: true}).click();
-    await page.locator('canvas').waitFor();
+    // One central map: three colour branches, no lens tabs, names on hover, a focused item dims the rest.
     await page.goto(workspace + '#graph?r=demo');
-    await page.getByLabel('Graph settings', {exact: true}).click();
-    await page.getByRole('combobox', {name: /Filter relations/}).selectOption('');
-    await page.getByLabel('Graph settings', {exact: true}).click();
-    const laneResponse = page.waitForResponse(response => {
-      const url = new URL(response.url());
-      return url.pathname === '/api/workspace_graph' && url.searchParams.get('mode') === '"research"';
-    });
-    await page.getByRole('group', {name: 'Graph lens', exact: true}).getByRole('button', {name: 'Research', exact: true}).click();
-    const laneGraph = (await (await laneResponse).json()).result;
-    await page.getByLabel('Graph settings', {exact: true}).click();
-    await page.getByRole('button', {name: 'Directed lanes', exact: true}).click();
-    await page.getByLabel('Graph settings', {exact: true}).click();
+    await page.locator('.graph-frame canvas').waitFor();
+    assert.equal(await page.getByRole('group', {name: 'Graph lens', exact: true}).count(), 0, 'there are no lens tabs');
+    assert.equal(await page.getByLabel('Graph settings', {exact: true}).count(), 0, 'there is no settings menu to learn');
+    const focusGroup = page.getByRole('group', {name: 'Focus on', exact: true});
+    assert.deepEqual(await focusGroup.getByRole('button').allInnerTexts(), ['Knowledge', 'Research', 'Goals']);
+    await focusGroup.getByRole('button', {name: 'Knowledge', exact: true}).click();
+    assert.equal(await focusGroup.getByRole('button', {name: 'Knowledge', exact: true}).getAttribute('aria-pressed'), 'true');
+    await focusGroup.getByRole('button', {name: 'Knowledge', exact: true}).click();
     await page.getByRole('button', {name: 'Fit graph', exact: true}).click();
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    const laneNode = laneGraph.nodes[0];
-    assert.ok(laneNode, 'research fixture provides a directed-lane node');
-    const lanePoint = await page.evaluate(node => {
-      const camera = JSON.parse(localStorage.getItem('ros.workspace.camera:' + JSON.stringify(['demo', 'research', '', '', 1, true, ''])));
-      return {x: (node.x + 8) * camera.zoom + camera.x, y: (node.y + node.h / 2) * camera.zoom + camera.y};
-    }, laneNode);
-    await page.locator('.graph-frame canvas').click({position: lanePoint});
-    await page.getByRole('complementary', {name: 'Selected node', exact: true}).getByRole('heading', {name: laneNode.label, exact: true}).waitFor();
+    await page.getByRole('button', {name: 'Node list', exact: true}).click();
+    await page.getByRole('button', {name: 'Select Variance', exact: true}).focus();
+    await page.getByRole('tooltip').waitFor();
+    assert.match(await page.getByRole('tooltip').innerText(), /Variance/);
+    await page.getByRole('button', {name: 'Select Variance', exact: true}).click();
+    await page.getByRole('complementary', {name: 'Selected node', exact: true}).getByRole('heading', {name: 'Variance', exact: true}).waitFor();
     await page.goto(workspace + '#research?r=demo');
     await page.getByRole('heading', {name: 'Claims ledger'}).waitFor(); await matrix(page, 'research');
     await page.goto(workspace + '#session/' + encodeURIComponent(server.lesson) + '?r=demo');

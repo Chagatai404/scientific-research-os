@@ -19,9 +19,9 @@ export interface Folder {id: string; title: string; kind: 'course' | 'project' |
 export interface SessionRow {id: string; title: string; kind: string; parent: string}
 export interface Material {id: string; title: string; kind: string; parent: string; state: 'added' | 'reading' | 'ready' | 'attention'; detail: string; source: string; path: string; indexed: boolean; added: string}
 export interface Organization {workspace: {name: string; title: string}; folders: Folder[]; sessions: SessionRow[]; library: Material[]; names: Record<string, string>; parents: Record<string, string>}
-export interface MapNode {id: string; label: string; kind: string; role: 'center' | 'hub' | 'topic' | 'source'; tip: string; parent: string; cluster: string; weight: number; record: string; canonical: boolean}
-export interface MapEdge {src: string; dst: string; type: string; structure: boolean; provenance?: string | null; verified?: boolean | null}
-export interface OrganizationMap {center: string; title: string; nodes: MapNode[]; edges: MapEdge[]; needs_organization: {id: string; kind: string; reason: string; record: string}[]; needs_count: number; omitted: Record<string, number>; counts: {nodes: number; hubs: number}}
+export interface MapNode {id: string; label: string; kind: string; role: 'center' | 'category' | 'hub' | 'topic' | 'source'; category: string; tip: string; parent: string; cluster: string; weight: number; record: string; canonical: boolean; material: number}
+export interface MapEdge {src: string; dst: string; type: string; structure: boolean; cross: boolean; provenance?: string | null; verified?: boolean | null}
+export interface OrganizationMap {center: string; title: string; nodes: MapNode[]; edges: MapEdge[]; needs_organization: {id: string; kind: string; reason: string; record: string}[]; needs_count: number; counts: {nodes: number; hubs: number}}
 
 export function validateDocument(value: unknown): DocumentData {
   if (!value || typeof value !== 'object') throw new Error('Invalid document response');

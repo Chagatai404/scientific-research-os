@@ -98,7 +98,7 @@ export function SessionsPane({record, records, active}: {record: string; records
     return <li key={f.id}><div className="row folder" onDragOver={e => e.preventDefault()} onDrop={e => drop(e, f.id)}>
       <button className="folder-toggle" aria-expanded={open} onClick={() => toggle(f.id)}><span className="chev" aria-hidden="true">{open ? '▾' : '▸'}</span><span className="glyph" aria-hidden="true">{f.kind === 'course' ? '◈' : f.kind === 'project' ? '◆' : '▣'}</span><span className="label">{f.title}</span><span className="count">{own.length + inner.length || ''}</span></button>
       <RowMenu subject={f} record={record} folder/></div>
-      {open && <ul>{inner.map(renderFolder)}{own.map(renderSession)}{!inner.length && !own.length && <li className="hint">Drag a session here, or use ⋯ › Move to…</li>}</ul>}</li>;
+      {open && <ul>{inner.map(renderFolder)}{own.map(renderSession)}</ul>}</li>;
   };
   const roots = kids.get('') || [], loose = sessionsIn('');
   const current = records.find(r => r.name === record || (!record && r.current));
@@ -119,6 +119,7 @@ export function SessionsPane({record, records, active}: {record: string; records
           {(loose.length > 0 || roots.length > 0) && <li><div className="row folder inbox" onDragOver={e => e.preventDefault()} onDrop={e => drop(e, '')}><span className="folder-toggle static"><span className="glyph" aria-hidden="true">▤</span><span className="label">Inbox</span><span className="count">{loose.length || ''}</span></span></div>
             <ul>{loose.map(renderSession)}{!loose.length && <li className="hint">Sessions you have not filed.</li>}</ul></li>}</ul>}
     </nav>
+    {data && roots.length > 0 && <p className="hint">Drag a session onto a course or project, or use ⋯ › Move to…</p>}
     <Dialogs record={record} folders={folders}/>
   </aside>;
 }

@@ -19,7 +19,9 @@ from .store import event_id, make_event, now
 
 STATES = ('added', 'reading', 'ready', 'attention')
 TYPES = ('library.added', 'library.state', 'library.removed')
-CONTENT = sources.TEXT | sources.MEDIA | {'.canvas'}
+# The Library holds written source material only: no images, audio, video or program code.
+CONTENT = {'.md', '.txt', '.pdf', '.docx', '.doc', '.ppt', '.pptx', '.tex', '.rst', '.ipynb', '.bib', '.xlsx'}
+VAULT_SKIP = {'99 Archive', '90 Templates', 'Research OS', '00 Inbox'}
 MAX_ADD = 5000
 MAX_TEXT_BYTES = 2 << 20
 MAX_PDF_BYTES = 200 << 20
@@ -57,6 +59,11 @@ def _walk(base: Path, root: Path, skip=frozenset(), skip_names=frozenset()):
             path = here / name
             if sources.excluded((name,)) or name in skip_names or path.is_symlink() or path.suffix.lower() not in CONTENT:
                 continue
+            try:
+                if path.stat().st_size == 0:
+                    continue   # an empty file is not material
+            except OSError:
+                continue
             yield path.relative_to(root).as_posix(), path
 
 
@@ -76,7 +83,7 @@ def add(rec, source: str, path: str = '') -> dict:
             if row['kind'] == 'vault':
                 # What the app wrote into the vault is a projection of the record, never new evidence; templates and
                 # archived cleanup are not material either.
-                skip = {(home.settings().get('vault_root') or 'Research OS').replace(chr(92), '/').split('/')[0], '90 Templates', '99 Archive'}
+                skip = VAULT_SKIP | {(home.settings().get('vault_root') or 'Research OS').replace(chr(92), '/').split('/')[0]}
                 names = {'Material Index.md'}
             for rel, item in _walk(base, root, skip, names):
                 found.append((rel, item))
@@ -147,6 +154,21 @@ def _pdf_text(target: Path) -> str | None:
     return out.decode('utf-8', errors='replace')[:MAX_TEXT_BYTES]
 
 
+def _office_text(target: Path) -> str | None:
+    """Plain text of a .docx or .pptx (a zip of XML), without any library."""
+    import zipfile
+    try:
+        with zipfile.ZipFile(target) as z:
+            names = sorted((n for n in z.namelist() if n.startswith('ppt/slides/slide') or n == 'word/document.xml'), key=lambda n: (len(n), n))
+            parts = []
+            for n in names[:400]:
+                xml = z.read(n).decode('utf-8', errors='replace').replace('</w:p>', chr(10)).replace('</a:p>', chr(10))
+                parts.append(re.sub(r'<[^>]+>', ' ', xml))
+    except (OSError, zipfile.BadZipFile, KeyError):
+        return None
+    return re.sub(r'[ ]+', ' ', chr(10).join(parts)).strip()[:MAX_TEXT_BYTES]
+
+
 def _hash(target: Path) -> str:
     digest = hashlib.sha256()
     with target.open('rb') as stream:
@@ -183,6 +205,11 @@ def _read(rec, m: dict) -> dict:
         sources.index_document(rec, m['source'], m['path'], stat.st_size, stat.st_mtime_ns, revision, text, 'library')
         return dict(base, state='ready', detail='Read and searchable', indexed=True, revision=revision, title=_title(m['path'], text))
     revision = _hash(target) if stat.st_size <= MAX_PDF_BYTES else ''
+    if suffix in ('.docx', '.pptx'):
+        text = _office_text(target)
+        if text and len(text) > 20:
+            sources.index_document(rec, m['source'], m['path'], stat.st_size, stat.st_mtime_ns, revision, text, 'library')
+            return dict(base, state='ready', detail='Read and searchable', indexed=True, revision=revision, title=_title(m['path'], text))
     return dict(base, state='ready', detail='Kept as the original. Open it with its own application.', indexed=False, revision=revision)
 
 

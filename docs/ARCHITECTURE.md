@@ -242,6 +242,13 @@ assets before freezing the sidecar. Run `npm --prefix desktop run verify`, build
   and the whole-journey `node tests/ros-desktop-usability.cjs` (sidebars, organization, one-overlay rule, Library,
   attachments, map, layouts). Both browser suites accept `ROS_TEST_BASE`, `ROS_TEST_FOLDER` and `ROS_TEST_LESSON` to run
   against a Vite dev server over a disposable record.
+- The central map (`ros/workspace.py` `overview_map`) is a read model: workspace -> Knowledge/Research/Goals -> places
+  (course, subject, domain, project, goal) -> topics, with the recorded edges between them (`cross` when they join two
+  branches). Membership lines are navigation and never written as edges; files and notes are counted on their place and
+  listed only when it is expanded. Archived items (`organization_archive`, folded with `organization.v2`) are hidden,
+  never deleted. The frontend lays it out deterministically (`frontend/src/graphLayout.ts`, rings plus clusters, no worker).
+- `vault.project_folder` gives a course or project created through `organization_create` an index note under the vault's
+  `01 Projects` folder (never overwriting); the sync-owned notes stay under the configured root.
 - Use `ROS_NO_VAULT=1` for hermetic tests and standalone use: it disables automatic vault discovery;
   deliberately configured temporary vaults still work. Never let tests discover a personal vault.
 - Whole workflows by prompting only: `tests/test_ros_e2e_director.py` drives an agent through `mcp.Server.handle` and a

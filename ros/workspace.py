@@ -146,15 +146,19 @@ def resolve(rec: Record, target: str) -> dict:
     return {"status": "resolved" if len(matches) == 1 else "ambiguous" if matches else "missing", "matches": matches}
 
 
-_MAP_TOPICS = {"domain", "subject", "concept", "capability", "goal", "question", "hypothesis", "claim", "experiment",
-               "decision", "block"}
-_MAP_SOURCES = {"source", "paper", "handout", "lesson", "conversation", "visual", "code-symbol"}
+_HUB_RANK = {"course": 0, "subject": 1, "domain": 2, "project": 3, "goal": 4}
+_HUB_CATEGORY = {"course": "knowledge", "subject": "knowledge", "domain": "knowledge", "project": "research", "goal": "goals"}
+_TOPIC_CATEGORY = {"capability": "knowledge", "concept": "knowledge", "block": "knowledge", "question": "research",
+                   "hypothesis": "research", "claim": "research", "experiment": "research", "decision": "research"}
+_MATERIAL = {"source", "paper", "handout", "visual"}
+CATEGORIES = {"knowledge": ("Knowledge", "What you know and are learning: subjects, courses and the skills in them"),
+              "research": ("Research", "The research you are conducting: projects and what they ask, test and claim"),
+              "goals": ("Goals", "What you are working toward")}
 _MEANING = {"capability": "A skill or idea you can learn", "concept": "An idea", "claim": "A statement being tested",
             "question": "An open question", "hypothesis": "A proposed explanation", "experiment": "A planned or finished test",
-            "decision": "A recorded decision", "goal": "Something you set out to do", "handout": "A reading prepared for you",
-            "lesson": "A learning session", "conversation": "A saved conversation", "paper": "A paper", "source": "Source material",
-            "visual": "A figure or animation", "domain": "A field of study", "subject": "A subject", "block": "A block of a course"}
-_LIBRARY_TIP = {"ready": "Ready to study or cite", "attention": "Needs attention: ", "added": "Waiting to be read", "reading": "Being read"}
+            "decision": "A recorded decision", "goal": "Something you are working toward", "course": "A course you study",
+            "subject": "A field you are learning", "domain": "A field of study", "project": "A research or software project",
+            "block": "A block of a course"}
 
 
 def _map_label(rec, node) -> str:
@@ -164,111 +168,127 @@ def _map_label(rec, node) -> str:
     return (text or str(node.get("text") or "").strip().split("\n")[0])[:90].strip()
 
 
-def _map_record(owner: Record, per_hub: int, expand: str) -> dict:
-    """One record's hubs, topics and material as a tree. Membership lines here are navigation, never recorded edges."""
-    snap, place = organization.snapshot(owner), organization.placement(owner)
-    folders = {f["id"]: f for f in snap["folders"]}
-    hubs = {i: f for i, f in folders.items() if f["kind"] in ("course", "project")}
+def _map_record(owner: Record, expand: str) -> dict:
+    """One record's places and topics. Individual files and notes belong to the Library, so they are counted on the place
+    they are about and shown only when that place is expanded. Membership here is navigation, never a recorded edge."""
+    place = organization.placement(owner)
+    nodes = {n["id"]: n for n in owner.nodes()}
+    hidden = organization.hidden_set(owner, organization.state(owner)["parents"])   # archived: kept in the record, not shown
+    needs, hubs, shelved = [], {}, set()
+    for n in nodes.values():
+        if n["type"] in _HUB_CATEGORY:
+            label = _map_label(owner, n)
+            if hidden(n["id"]):
+                shelved.add(n["id"])
+            elif "{{" in label:
+                needs.append({"id": n["id"], "kind": n["type"], "reason": "A template placeholder, not a real place."})
+            elif label:
+                hubs[n["id"]] = label
+    # A course, subject, project or domain of one name is one place; the earlier kind wins.
+    alias, first = {}, {}
+    for i in sorted(hubs, key=lambda i: (_HUB_RANK[nodes[i]["type"]], i)):
+        alias[i] = first.setdefault(hubs[i].casefold().strip(), i)
+    canonical = {i for i, a in alias.items() if i == a}
+    group = {}
+    for i, a in alias.items():
+        group.setdefault(a, []).append(i)
 
-    def home_of(item_id: str):
-        """(hub, collection) holding an item, following folder parents; ('', '') when unplaced."""
-        folder, coll, seen = place.get(item_id, ""), "", set()
-        while folder and folder not in seen:
-            seen.add(folder)
-            if folder in hubs:
-                return folder, coll
-            if folders.get(folder, {}).get("kind") == "collection" and not coll:
-                coll = folder
-            folder = folders.get(folder, {}).get("parent", "")
-        return "", coll
+    def parents_of(item_id):
+        found = {alias[e["dst"]] for e in owner.edges(src=item_id, type="part-of") if e["dst"] in alias}
+        chosen = place.get(item_id, "")
+        return ([alias[chosen]] if chosen in alias else []) + sorted(found, key=lambda h: (_HUB_RANK[nodes[h]["type"]], h))
 
-    pool = []
-    for n in owner.nodes():
-        if n["type"] in _MAP_TOPICS or n["type"] in _MAP_SOURCES:
-            pool.append({"id": n["id"], "kind": n["type"], "label": _map_label(owner, n), "node": n,
-                         "tip": str(n.get("summary") or n.get("text") or _MEANING.get(n["type"], n["type"]))[:220],
-                         "role": "topic" if n["type"] in _MAP_TOPICS else "source"})
-    for m in snap["library"]:
-        pool.append({"id": m["id"], "kind": "library", "label": m["title"], "node": None, "role": "source",
-                     "tip": _LIBRARY_TIP[m["state"]] + (m["detail"] if m["state"] == "attention" else "")})
-    for f in snap["folders"]:
-        if f["kind"] == "collection":
-            pool.append({"id": f["id"], "kind": "collection", "label": f["title"], "node": None, "role": "topic", "tip": "A collection you made"})
-    needs, groups, files = [], {}, {}
-    for item in list(pool):
-        if item["kind"] == "code-symbol" and not item["label"] and item["node"].get("file"):
-            # Nameless code symbols are shown as the file they come from, not as opaque points.
-            where = str(item["node"]["file"])
-            files.setdefault(where, []).append(item["id"])
-            pool.remove(item)
-    for where, ids in sorted(files.items()):
-        pool.append({"id": "file:" + where, "kind": "source-file", "label": PurePath(where).name, "node": None, "role": "source", "canonical": False,
-                     "tip": f"Code in {where}; its {len(ids)} parts have no recorded names yet."})
-    for item in pool:
-        if not item["label"]:
-            needs.append({"id": item["id"], "kind": item["kind"], "reason": "No name or description is recorded for this item."})
+    out, edges = {}, []
+    for hub in sorted(canonical):
+        n = nodes[hub]
+        material = len({e["src"] for h in group[hub] for t in ("about", "part-of", "supports") for e in owner.edges(dst=h, type=t)
+                        if nodes.get(e["src"], {}).get("type") in _MATERIAL})
+        material += sum(1 for v, p in place.items() if p in group[hub] and v not in nodes)
+        out[hub] = {"id": hub, "label": hubs[hub], "kind": n["type"], "role": "hub", "category": _HUB_CATEGORY[n["type"]],
+                    "tip": _MEANING.get(n["type"], n["type"]), "parent": "", "cluster": hub, "weight": 0, "record": owner.root.name,
+                    "canonical": True, "material": material}
+    for n in nodes.values():
+        cat = _TOPIC_CATEGORY.get(n["type"])
+        if not cat:
             continue
-        hub, coll = home_of(item["id"])
-        item["hub"], item["coll"] = hub or "inbox:" + owner.root.name, coll
-        groups.setdefault(item["hub"], []).append(item)
-    nodes, edges, omitted = {}, [], {}
-    for hub_id, items in groups.items():
-        for item in items:
-            canonical = item.get("canonical", item["kind"] not in ("library", "collection"))
-            item["weight"] = len(owner.edges(src=item["id"])) + len(owner.edges(dst=item["id"])) if canonical else 0
-        items.sort(key=lambda i: (i["role"] != "topic", -i["weight"], i["label"].casefold(), i["id"]))
-        cap = 200 if hub_id == expand else per_hub
-        kept, hidden = items[:cap], max(0, len(items) - cap)
-        if hidden:
-            omitted[hub_id] = hidden
-        by_id = {i["id"]: i for i in kept}
-        collections = {i["id"] for i in kept if i["kind"] == "collection"}
-        for item in kept:
-            parent = item["coll"] if item["coll"] in collections and item["id"] != item["coll"] else hub_id
-            if item["role"] == "source" and item.get("canonical", True) and item["kind"] != "library":
-                near = sorted(other for other in ({x["dst"] if x["src"] == item["id"] else x["src"] for x in
-                              owner.edges(src=item["id"]) + owner.edges(dst=item["id"])}) if other in by_id and other != item["id"]
-                              and by_id[other]["role"] == "topic" and by_id[other]["kind"] != "collection")
-                if near:
-                    parent = near[0]
-            nodes[item["id"]] = {"id": item["id"], "label": item["label"], "kind": item["kind"], "role": item["role"], "tip": item["tip"],
-                                 "parent": parent, "cluster": hub_id, "weight": item["weight"], "record": owner.root.name,
-                                 "canonical": item.get("canonical", item["kind"] not in ("library", "collection"))}
-            edges.append({"src": parent, "dst": item["id"], "type": "membership", "structure": True})
-    for i, hub in hubs.items():
-        nodes[i] = {"id": i, "label": hub["title"], "kind": hub["kind"], "role": "hub", "tip": f"A {hub['kind']}", "parent": "",
-                    "cluster": i, "weight": 0, "record": owner.root.name, "canonical": True}
-    for hub_id in groups:
-        if hub_id.startswith("inbox:"):
-            nodes[hub_id] = {"id": hub_id, "label": "Inbox", "kind": "inbox", "role": "hub", "parent": "", "cluster": hub_id, "weight": 0,
-                             "tip": "Material not yet placed in a course or project", "record": owner.root.name, "canonical": False}
-    real = []
-    for n in list(nodes.values()):
-        if n["canonical"] and n["kind"] not in ("collection", "inbox") and n["role"] != "hub":
-            for e in owner.edges(src=n["id"]):
-                if e["dst"] in nodes and not (n["parent"] == e["dst"] and e["type"] == "part-of"):
-                    real.append({"src": e["src"], "dst": e["dst"], "type": e["type"], "provenance": e.get("provenance"),
-                                 "verified": e.get("verified"), "structure": False})
-    return {"nodes": nodes, "edges": edges + real, "needs": needs, "omitted": omitted}
+        if hidden(n["id"]):
+            continue
+        label = _map_label(owner, n)
+        if not label:
+            needs.append({"id": n["id"], "kind": n["type"], "reason": "No name or description is recorded for this item."})
+            continue
+        want = [h for h in parents_of(n["id"]) if out[h]["category"] == cat]
+        if not want and any(e["dst"] in shelved for e in owner.edges(src=n["id"], type="part-of")):
+            continue   # belongs only to something archived
+        linked = bool(owner.edges(src=n["id"])) or bool(owner.edges(dst=n["id"]))
+        if not want and not linked:
+            needs.append({"id": n["id"], "kind": n["type"], "reason": "Not connected to a course, project or goal yet."})
+            continue
+        parent = want[0] if want else ""
+        out[n["id"]] = {"id": n["id"], "label": label, "kind": n["type"], "role": "topic", "category": cat,
+                        "tip": str(n.get("summary") or n.get("text") or _MEANING.get(n["type"], n["type"]))[:220],
+                        "parent": parent, "cluster": parent or "category:" + cat, "weight": 0, "record": owner.root.name,
+                        "canonical": True, "material": 0}
+    if expand in out and out[expand]["role"] == "hub":
+        shown = 0
+        for h in group[expand]:
+            for t in ("about", "part-of", "supports"):
+                for e in owner.edges(dst=h, type=t):
+                    m = nodes.get(e["src"])
+                    if m and m["type"] in _MATERIAL and m["id"] not in out and shown < 60 and _map_label(owner, m):
+                        out[m["id"]] = {"id": m["id"], "label": _map_label(owner, m), "kind": m["type"], "role": "source",
+                                        "category": out[expand]["category"], "tip": str(m.get("text") or "Source material")[:220],
+                                        "parent": expand, "cluster": expand, "weight": 0, "record": owner.root.name,
+                                        "canonical": True, "material": 0}
+                        shown += 1
+    seen = set()
+    for src in list(out):
+        for e in owner.edges(src=src):
+            dst = alias.get(e["dst"], e["dst"])
+            key = (src, e["type"], dst)
+            if dst in out and dst != src and key not in seen and not (e["type"] == "part-of" and out[src]["parent"] == dst):
+                seen.add(key)
+                edges.append({"src": src, "dst": dst, "type": e["type"], "provenance": e.get("provenance"),
+                              "verified": e.get("verified"), "structure": False,
+                              "cross": out[src]["category"] != out[dst]["category"]})
+    degree = {}
+    for e in edges:
+        degree[e["src"]] = degree.get(e["src"], 0) + 1
+        degree[e["dst"]] = degree.get(e["dst"], 0) + 1
+    children = {}
+    for n in out.values():
+        children[n["parent"]] = children.get(n["parent"], 0) + 1
+    for i, n in out.items():
+        n["weight"] = degree.get(i, 0) + children.get(i, 0)
+    return {"nodes": out, "edges": edges, "needs": needs}
 
 
-def overview_map(rec: Record, per_hub: int = 24, expand: str = "") -> dict:
-    """The central organizational map: workspace -> courses and projects -> topics -> supporting material."""
-    per_hub = max(4, min(int(per_hub), 200))
-    nodes, edges, needs, omitted = {}, [], [], {}
+def overview_map(rec: Record, expand: str = "") -> dict:
+    """The central map: workspace -> Knowledge, Research and Goals -> places -> topics, with the recorded links between them."""
+    nodes, edges, needs = {}, [], []
     with context.linked(rec) as records:
         for owner in records:
-            part = _map_record(owner, per_hub, expand)
+            part = _map_record(owner, expand)
             nodes.update(part["nodes"])
             edges += part["edges"]
             needs += [dict(n, record=owner.root.name) for n in part["needs"]]
-            omitted.update(part["omitted"])
     centre = "workspace:" + rec.root.name
-    nodes[centre] = {"id": centre, "label": organization.title(rec), "kind": "workspace", "role": "center",
-                     "tip": "Everything in this workspace", "parent": "", "cluster": centre, "weight": 0, "record": rec.root.name, "canonical": False}
-    edges += [{"src": centre, "dst": n["id"], "type": "membership", "structure": True} for n in nodes.values() if n["role"] == "hub"]
-    return {"center": centre, "title": organization.title(rec), "nodes": list(nodes.values()), "edges": edges,
-            "needs_organization": needs[:60], "needs_count": len(needs), "omitted": omitted,
+    used = {n["category"] for n in nodes.values()}
+    for cat in [c for c in CATEGORIES if c in used]:
+        label, tip = CATEGORIES[cat]
+        nodes["category:" + cat] = {"id": "category:" + cat, "label": label, "kind": "category", "role": "category", "category": cat,
+                                    "tip": tip, "parent": centre, "cluster": "category:" + cat, "weight": 0, "record": rec.root.name,
+                                    "canonical": False, "material": 0}
+    for n in nodes.values():
+        if n["role"] in ("hub", "topic") and not n["parent"]:
+            n["parent"] = "category:" + n["category"]
+    nodes[centre] = {"id": centre, "label": organization.title(rec), "kind": "workspace", "role": "center", "category": "",
+                     "tip": "Everything in this workspace", "parent": "", "cluster": centre, "weight": 0, "record": rec.root.name,
+                     "canonical": False, "material": 0}
+    structure = [{"src": n["parent"], "dst": n["id"], "type": "membership", "structure": True, "cross": False}
+                 for n in nodes.values() if n["parent"]]
+    return {"center": centre, "title": organization.title(rec), "nodes": list(nodes.values()), "edges": structure + edges,
+            "needs_organization": needs[:80], "needs_count": len(needs),
             "counts": {"nodes": len(nodes), "hubs": sum(n["role"] == "hub" for n in nodes.values())}}
 
 

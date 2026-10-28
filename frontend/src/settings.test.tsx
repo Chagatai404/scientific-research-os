@@ -54,7 +54,7 @@ test('Settings connects real records, checks services only on clicks and shares 
     assert.match(doc.body.textContent!, /12/);
     assert.equal((doc.querySelector('#vault-path') as HTMLInputElement).value, 'C:/Users/you/Obsidian/Knowledge');
     assert.equal(dom.window.localStorage.getItem('ros.workspace.model'), DEFAULT_MODEL);
-    assert.equal(doc.querySelectorAll('input').length, 2);
+    assert.equal(doc.querySelectorAll('input').length, 3);
     assert.doesNotMatch(doc.body.textContent!, /Original portal|Another model|provider:model|API key/i);
     assert.equal(requests.length, 2, 'initial render reads only catalog and connections');
     const click = async (text: string) => {await act(async () => {Array.from(doc.querySelectorAll('button')).find(button => button.textContent === text)!.click();});};
@@ -63,11 +63,11 @@ test('Settings connects real records, checks services only on clicks and shares 
     assert.match(doc.body.textContent!, /Requested GPT-6.1 Sol · Medium. Request passed/);
     const select = doc.querySelector('#settings-model') as HTMLSelectElement;
     await act(async () => {select.value = 'claude:sonnet'; select.dispatchEvent(new dom.window.Event('change', {bubbles: true}));});
-    assert.equal(doc.querySelector('#settings-effort'), null);
+    assert.equal(doc.querySelector('input[aria-label="Reasoning effort"]'), null);
     await click('Check Model Connection');
     assert.deepEqual(requests.at(-1)?.body, {record:'qml', model: 'claude:sonnet'});
     await act(async () => {dom.window.localStorage.setItem('ros.workspace.model', DEFAULT_MODEL); dom.window.localStorage.setItem('ros.workspace.effort', 'high'); dom.window.dispatchEvent(new dom.window.Event('ros:model-preferences'));});
-    assert.equal((doc.querySelector('#settings-effort') as HTMLSelectElement).value, 'high');
+    assert.equal((doc.querySelector('input[aria-label="Reasoning effort"]') as HTMLInputElement).getAttribute('aria-valuetext'), 'High');
     await click('Check Vault Status');
     assert.match(requests.at(-1)!.url, /^\/api\/vault_status/);
     assert.equal(requests.filter(request => /vault_sync|vault_set/.test(request.url)).length, 0);

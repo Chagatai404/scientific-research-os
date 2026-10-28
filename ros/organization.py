@@ -33,9 +33,26 @@ def state(rec):
             value['parents'][subject] = data['parent']
         elif event['type'] == 'workspace.renamed':
             value['workspace_title'] = data['title']
-    return rec.fold('organization.v1', ('organization.created', 'organization.renamed',
-                    'organization.moved', 'workspace.renamed'),
-                    lambda: {'folders': {}, 'names': {}, 'parents': {}}, step)
+        elif event['type'] == 'organization.archived':
+            (value['archived'].add if data.get('archived', True) else value['archived'].discard)(subject)
+    return rec.fold('organization.v2', ('organization.created', 'organization.renamed',
+                    'organization.moved', 'workspace.renamed', 'organization.archived'),
+                    lambda: {'folders': {}, 'names': {}, 'parents': {}, 'archived': set()}, step)
+
+
+def hidden_set(rec, parent_of: dict):
+    """A predicate: is this item archived, or inside something archived? Archived things stay in the record."""
+    archived = state(rec)['archived']
+
+    def hidden(item):
+        for _ in range(20):
+            if not item:
+                return False
+            if item in archived:
+                return True
+            item = parent_of.get(item, '')
+        return False
+    return hidden
 
 
 def title(rec):
@@ -80,15 +97,21 @@ def snapshot(rec):
         return {'id': ident, 'title': display_name(rec, ident, node.get('title') or node.get('label') or 'Untitled item'),
                 'kind': kind or node.get('type') or node.get('kind') or 'source', 'parent': parent}
 
-    folder_rows = [dict(row(n, n['kind']), parent=st['parents'].get(n['id'], n.get('parent', '')))
-                   for n in folders.values()]
+    folder_rows = [dict(row(n, n['kind']), parent=st['parents'].get(n['id'], n.get('parent', ''))) for n in folders.values()]
     sessions = [row(n) for n in nodes if n['type'] in ('conversation', 'lesson') and not n['id'].startswith('bundle:')]
     materials = [row(n) for n in nodes if n['type'] in ('source', 'paper', 'handout')]
     materials.extend(row(n) for n in sources.connections(rec))
+    # What is archived, or filed inside something archived, is kept but not shown.
+    parent_of = {r['id']: r['parent'] for r in folder_rows + sessions + materials}
+    parent_of.update({m['id']: st['parents'].get(m['id'], '') for m in library.state(rec).values()})
+    hidden = hidden_set(rec, parent_of)
+    folder_rows = [r for r in folder_rows if not hidden(r['id'])]
+    sessions = [r for r in sessions if not hidden(r['id'])]
+    materials = [r for r in materials if not hidden(r['id'])]
     shelf = [{'id': m['id'], 'title': display_name(rec, m['id'], m.get('title') or 'Untitled material'),
               'kind': m.get('format') or 'file', 'parent': st['parents'].get(m['id'], ''), 'state': m['state'],
               'detail': m['detail'], 'source': m['source'], 'path': m['path'], 'indexed': bool(m.get('indexed')),
-              'added': m['added']} for m in library.state(rec).values()]
+              'added': m['added']} for m in library.state(rec).values() if not hidden(m['id'])]
     return {'workspace': {'name': rec.root.name, 'title': title(rec)},
             'folders': sorted(folder_rows, key=lambda n: (n['kind'], n['title'].casefold(), n['id'])),
             'sessions': sessions[::-1], 'materials': materials, 'library': sorted(shelf, key=lambda m: (m['added'], m['id']), reverse=True),
@@ -158,6 +181,13 @@ def move(rec, subject, parent=''):
     _parent(rec, parent, subject)
     rec.append('organization.moved', subject, {'parent': parent}, actor='person')
     return {'id': subject, 'parent': parent}
+
+
+def archive(rec, subject, archived=True):
+    """Hide an item and everything filed in it, or bring it back. Nothing is deleted."""
+    _subject(rec, subject)
+    rec.append('organization.archived', subject, {'archived': bool(archived)}, actor='person')
+    return {'id': subject, 'archived': bool(archived)}
 
 
 def move_many(rec, subjects, parent=''):

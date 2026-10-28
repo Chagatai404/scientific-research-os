@@ -1,6 +1,6 @@
 # Scientific Research OS
 
-Version **1.4.0**. You are the director: say what you want to learn or find out, and agents set it up, prepare it
+Version **1.5.0**. You are the director: say what you want to learn or find out, and agents set it up, prepare it
 and keep your Obsidian vault current. You learn, and you judge the findings. It works with any AI agent: Claude, Codex,
 Gemini or a local model.
 
@@ -22,11 +22,11 @@ how the code is built and how to add to it is in [ARCHITECTURE](docs/ARCHITECTUR
 
 ## Windows desktop
 
-Install `desktop/dist/Research-OS-Setup-1.3.0-x64.exe`. The installer includes Electron and the Python backend, adds shortcuts, and preserves records when uninstalled. The complete unpacked application is also at `desktop/dist/win-unpacked/Research OS.exe`.
+Install `Research-OS-Setup-<version>-x64.exe` from the [latest release](https://github.com/Chagatai404/scientific-research-os/releases/latest) (or build it into `desktop/dist/`). The installer includes Electron and the Python backend, adds shortcuts, and preserves records when uninstalled. The complete unpacked application is also at `desktop/dist/win-unpacked/Research OS.exe`.
 
-Connect sources, choose a model, and use Sessions, Learn, Research, Graph or Activity. Connections do not scan, sync or execute automatically. Codex and Claude use their existing CLI logins; local models use explicit loopback profiles. Scientific approvals, decisions and waivers remain human actions. For cloud image/PDF vision, configure the exact model's capability and explicitly allow each attachment revision for one turn. Local Only media stays on the computer. PDF pages are rendered locally, with the first four pages explicitly identified.
+Connect sources, choose a model in Settings, and use Sessions, Learn, Research, Graph or Activity; the agent decides how to answer each message. Connections do not scan, sync or execute automatically. Codex and Claude use their existing CLI logins; local models use explicit loopback profiles. Scientific approvals, decisions and waivers remain human actions. For cloud image/PDF vision, configure the exact model's capability and explicitly allow each attachment revision for one turn. Local Only media stays on the computer. PDF pages are rendered locally, with the first four pages explicitly identified.
 
-Installed copies check the public GitHub release feed automatically and download newer stable releases. Settings shows progress and offers Restart & Install after active work finishes. An offline or empty release feed leaves the installed application usable. Future releases are built and published by the `desktop-v<version>` tag workflow; no release is published just by building locally. Unpacked and development copies use manual replacement.
+Installed copies check the public GitHub release feed automatically and download newer stable releases. A pop-up at launch offers Restart & install or Later, and Settings shows progress. An offline or empty release feed leaves the installed application usable. Future releases are built and published by the `desktop-v<version>` tag workflow; no release is published just by building locally. Unpacked and development copies use manual replacement.
 
 For development:
 
@@ -37,14 +37,18 @@ npm --prefix desktop ci
 npm --prefix desktop start
 ```
 
-[1.4.0 acceptance](docs/desktop-rebuild/ACCEPTANCE-1.4.0.md), [1.3.0 acceptance evidence](docs/desktop-rebuild/ACCEPTANCE.md), [capability ledger](docs/desktop-rebuild/CAPABILITY_PARITY.md), [architecture](docs/desktop-rebuild/ARCHITECTURE.md), and [backup/rollback](docs/desktop-rebuild/MIGRATION_AND_ROLLBACK.md) describe tested behavior and optional runtime limits. `python desktop/verify.py` runs the complete isolated gate. It makes no paid inference calls or personal vault changes. The desktop package is 1.3.0; the compatible scientific backend retains its 1.2.1 version identifier.
+[1.5 acceptance](docs/desktop-rebuild/ACCEPTANCE-1.5.0.md), [1.4.x acceptance](docs/desktop-rebuild/ACCEPTANCE-1.4.0.md), [1.3.0 acceptance evidence](docs/desktop-rebuild/ACCEPTANCE.md), [capability ledger](docs/desktop-rebuild/CAPABILITY_PARITY.md), [architecture](docs/desktop-rebuild/ARCHITECTURE.md), and [backup/rollback](docs/desktop-rebuild/MIGRATION_AND_ROLLBACK.md) describe tested behavior and optional runtime limits. `python desktop/verify.py` runs the complete isolated gate. It makes no paid inference calls or personal vault changes. The desktop package and the backend share the product version above.
 
 ## The desktop workspace
 
 Navigation and a sessions column sit side by side (`Ctrl/Cmd+B`, `Ctrl/Cmd+Shift+B`). Create and rename courses and
 projects, drag sessions into them, and add material to the Library once: it is listed at once and read in the
-background. The central map shows workspace, courses and projects, topics and material; Learn recommends a next step,
-and Research shows where a question stands. Plain lines on the map are filing, never scientific relations.
+background. The one central map shows your workspace, then Knowledge (blue), Research (green) and Goals (amber), then your
+courses, projects and goals and the topics filed in them; hover anything to see its name while the rest fades. Plain
+lines on the map are filing, never scientific relations. Learn recommends a next step, and Research shows where a
+question stands and how it is being checked (Scout, Verifier, Adversary, Auditor). The Library lists written material
+only. Anything you no longer want visible can be archived (kept, not deleted). A course or project made in the app also
+gets a `01 Projects/<name>/` index in your Obsidian vault that lists its lecture notes, handouts and sources.
 The plan and its status are in [the desktop usability plan](docs/plans/desktop-usability-redesign.md).
 
 ## Start
