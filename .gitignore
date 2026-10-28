@@ -32,3 +32,6 @@ desktop/dist/
 desktop/backend/
 .desktop-fixtures/
 .desktop-build/
+
+# Built by desktop/build-voice.py from the engines on the build machine (about 1.2 GB)
+desktop/voice/
