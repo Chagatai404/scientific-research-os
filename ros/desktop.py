@@ -46,7 +46,9 @@ def main():
                 action = request.pop('action')
                 result = dialogue.catalog() if action == 'catalog' else getattr(dialogue, action)(request) if action in ('reply', 'speech', 'transcribe') else {'ok': False, 'error': 'unsupported worker'}
                 print(json.dumps(dict(result, ok=True)))
-            except Exception: print(json.dumps({'ok': False, 'error': 'Optional worker unavailable; check engine setup.'}))
+            except Exception as exc:
+                # A voice engine's own explanation (not installed, no microphone audio, too large) is useful; anything else is not.
+                print(json.dumps({'ok': False, 'error': str(exc) if isinstance(exc, ValueError) and str(exc) else 'Optional worker unavailable; check engine setup.'}))
             return 0
         raise ValueError('unknown frozen worker')
     selected = os.environ.get('ROS_PROJECT')

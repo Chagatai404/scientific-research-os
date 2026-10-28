@@ -80,11 +80,28 @@ def codex_models():
     return models
 
 
+def voice_pack():
+    """The voice engines shipped inside the installed app (Python, Kokoro, faster-whisper and both models), or None.
+    ROS_VOICE_PACK names one explicitly; the frozen backend looks beside itself, at <install>/resources/voice."""
+    for candidate in (os.environ.get("ROS_VOICE_PACK"), Path(sys.executable).resolve().parents[2] / "voice" if getattr(sys, "frozen", False) else None):
+        if candidate and (Path(candidate) / "python" / "python.exe").is_file():
+            return Path(candidate)
+    return None
+
+
 def voice_paths():
-    base = Path.home() / "voice-envs"
-    return (Path(os.environ.get("ROS_KOKORO_ENV") or base / "kokoro"),
-            Path(os.environ.get("ROS_KOKORO_MODELS") or base / "kokoro-models"),
-            Path(os.environ.get("ROS_WHISPER_ENV") or base / "whisper"))
+    """Where the Kokoro environment, Kokoro model files and Whisper environment are: a path you set, else the bundled pack, else ~/voice-envs."""
+    pack, base = voice_pack(), Path.home() / "voice-envs"
+    def choose(name, bundled, fallback):
+        return Path(os.environ.get(name) or (pack / bundled if pack else fallback))
+    return (choose("ROS_KOKORO_ENV", "kokoro", base / "kokoro"), choose("ROS_KOKORO_MODELS", Path("models") / "kokoro", base / "kokoro-models"),
+            choose("ROS_WHISPER_ENV", "whisper", base / "whisper"))
+
+
+def whisper_model():
+    """The bundled 'small' model folder when there is one (no download, works offline), else the model's name."""
+    pack = voice_pack()
+    return str(pack / "models" / "whisper-small") if pack and (pack / "models" / "whisper-small" / "model.bin").is_file() else "small"
 
 
 def ollama_model(item):
@@ -129,7 +146,7 @@ def catalog():
         pass
     kokoro, weights, whisper = voice_paths()
     def installed(env, module):
-        return any((env / sub / module).exists() for sub in ("Lib/site-packages", "lib/python3.11/site-packages", "lib/python3.12/site-packages"))
+        return any((env / sub / module).exists() for sub in ("site-packages", "Lib/site-packages", "lib/python3.11/site-packages", "lib/python3.12/site-packages"))
     ready = installed(kokoro, "kokoro_onnx") and (weights / "kokoro-v1.0.onnx").is_file() and (weights / "voices-v1.0.bin").is_file()
     return {"models": models, "default_model": DEFAULT_MODEL, "default_effort": "medium", "ollama": ollama, "voice": {"kokoro": ready, "whisper": installed(whisper, "faster_whisper"),
                                           "language": "en", "label": "Kokoro · Heart / Sky" if ready else "Kokoro needs setup"},
@@ -211,7 +228,7 @@ def transcribe(request):
     with tempfile.TemporaryDirectory(prefix="ros-dictate-") as folder:
         path = Path(folder) / "recording.webm"
         path.write_bytes(data)
-        result = voice.transcribe(path, [str(whisper)], lang=request.get("language") or None)
+        result = voice.transcribe(path, [str(whisper)], lang=request.get("language") or None, model=whisper_model())
     return {"text": result.get("text", "")}
 
 

@@ -270,7 +270,7 @@ async function main() {
             const chosen = choices[kind]; if (!chosen) return null;
             return Array.isArray(chosen) ? (chosen.length > 1 ? Promise.all(chosen.map(register)) : register(chosen[0])) : register(chosen);
           },
-          openSource: async () => {}, backend: async () => ({}), updates: async () => ({state: 'ready', version: '1.5.0', available: '9.9.9', percent: 100}), checkUpdates: async () => ({}), installUpdate: async () => {window.__installs = (window.__installs || 0) + 1;}, openExternal: async () => {},
+          openSource: async () => {}, backend: async () => ({}), updates: async () => ({state: 'ready', version: '1.5.1', available: '9.9.9', percent: 100}), checkUpdates: async () => ({}), installUpdate: async () => {window.__installs = (window.__installs || 0) + 1;}, openExternal: async () => {},
         };
       }, picks);
       const desktop = await desktopContext.newPage(); desktop.on('pageerror', e => errors.push(e.message));

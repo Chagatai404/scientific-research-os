@@ -57,10 +57,10 @@ class VoiceError(ValueError):
 
 # ---------------------------------------------------------------- running the adapter
 
-def run_command(args: list, timeout: int = DEFAULT_TIMEOUT) -> dict:
+def run_command(args: list, timeout: int = DEFAULT_TIMEOUT, extra_env: dict | None = None) -> dict:
     """Run a program without a shell. The one place this module starts a process, so tests replace it."""
     started = time.monotonic()
-    env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', TOKENIZERS_PARALLELISM='false')
+    env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', TOKENIZERS_PARALLELISM='false', **(extra_env or {}))
     try:
         done = subprocess.run([str(a) for a in args], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout, env=env, **({'creationflags': getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)} if os.name == 'nt' else {}))
     except FileNotFoundError:
@@ -79,12 +79,22 @@ def python_of(env: Path) -> Path | None:
     return None
 
 
+def launcher(env: Path) -> tuple[Path | None, dict]:
+    """The Python and extra environment that run an engine. A normal virtual environment has its own Python; the voice pack that ships in the
+    app holds only ``site-packages`` per engine and one shared relocatable Python beside them (``<pack>/python``)."""
+    packages = env / 'site-packages'
+    if packages.is_dir() and not python_of(env):
+        shared = python_of(env.parent / 'python')
+        return shared, {'PYTHONPATH': str(packages), 'PYTHONNOUSERSITE': '1', 'HF_HUB_OFFLINE': '1'}
+    return python_of(env), {}
+
+
 def adapter(env: Path, *args, timeout: int = DEFAULT_TIMEOUT) -> dict:
     """Run ``voice_adapter.py`` in an environment and return its JSON, or ``{'ok': False, 'error': ...}``."""
-    python = python_of(Path(env))
+    python, extra = launcher(Path(env))
     if python is None:
         return {'ok': False, 'error': f'no Python found in {env}'}
-    done = run_command([python, ADAPTER, *args], timeout=timeout)
+    done = run_command([python, ADAPTER, *args], timeout=timeout, **({'extra_env': extra} if extra else {}))
     for line in reversed(done['stdout'].strip().splitlines()):
         try:
             result = json.loads(line)

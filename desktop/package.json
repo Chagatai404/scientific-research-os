@@ -1,6 +1,6 @@
 {
   "name": "research-os-desktop",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "private": true,
   "description": "Local research and learning workbench",
   "author": "Research OS",
@@ -15,7 +15,8 @@
     "contracts": "python ../tests/desktop_contract_gate.py",
     "browser": "node ../tests/ros-desktop-browser.cjs",
     "workspace-browser": "node ../tests/ros-workspace-browser.cjs",
-    "installer": "node notices.cjs && electron-builder --win nsis --publish never"
+    "voice": "python build-voice.py",
+    "installer": "node notices.cjs && python build-voice.py && electron-builder --win nsis --publish never"
   },
   "devDependencies": {
     "electron": "^43.8.4",
@@ -31,6 +32,7 @@
       "main.cjs",
       "preload.cjs",
       "lifecycle.cjs",
+      "printer.cjs",
       "package.json",
       "updates.cjs",
       "THIRD_PARTY_NOTICES.txt",
@@ -40,6 +42,10 @@
       {
         "from": "backend",
         "to": "backend"
+      },
+      {
+        "from": "voice",
+        "to": "voice"
       },
       {
         "from": "app-update.yml",

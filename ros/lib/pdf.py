@@ -511,9 +511,19 @@ def browser() -> str | None:
     return None
 
 
+def app_printer() -> list[str] | None:
+    """The Chromium that ships inside the desktop app, as a command prefix, or None. The app names itself in ROS_PDF_ELECTRON (and, when run
+    from source, its folder in ROS_PDF_ELECTRON_APP), so printing needs no Chrome, Edge or LaTeX on the computer."""
+    exe = os.environ.get("ROS_PDF_ELECTRON")
+    if not exe or not Path(exe).is_file():
+        return None
+    app = os.environ.get("ROS_PDF_ELECTRON_APP")
+    return [exe] + ([app] if app else [])
+
+
 def detect() -> dict:
     """What this computer can build a PDF with, in the order they are tried."""
-    latex, chrome = _tool("xelatex"), browser()
+    latex, chrome = _tool("xelatex"), browser() or (app_printer() or [None])[0]
     return {"latex": latex, "chromium": chrome, "pandoc": shutil.which("pandoc"),
             "engines": [n for n, p in (("latex", latex), ("chromium", chrome)) if p],
             "note": None if (latex or chrome) else "PDF needs a toolchain: MiKTeX or TeX Live (xelatex), or Edge, "
@@ -627,7 +637,12 @@ def compile_latex(folder: Path, main: str = "main.tex", timeout: float = 300, al
 
 
 def print_chromium(page: Path, pdf: Path, timeout: float = 120) -> dict:
-    """Print an HTML page to PDF with a headless browser, in a throwaway profile."""
+    """Print an HTML page to PDF: with the app's own Chromium when running inside the desktop app, else a headless browser in a throwaway profile."""
+    own = app_printer()
+    if own:
+        code, out = _run(own + ["--ros-print-pdf", str(Path(page).resolve()), str(pdf)], Path(page).parent, timeout)
+        if pdf.is_file() and pdf.stat().st_size > 0 and code == 0:
+            return {"ok": True, "missing": False, "timed_out": False, "output": out[-1500:], "via": "app"}
     exe = browser()
     if exe is None:
         return {"ok": False, "missing": True, "timed_out": False}
@@ -678,7 +693,7 @@ def build(folder: Path, source: str = "", engine: str = "auto", timeout: float =
             tried.append({"engine": "latex", "ok": False, "why": "; ".join(log["problems"][:5]) or "the compile failed"})
             problems += log["problems"][:8]
         elif eng == "chromium" and (folder / "index.html").is_file():
-            if browser() is None:
+            if browser() is None and app_printer() is None:
                 tried.append({"engine": "chromium", "ok": False, "why": "no Chrome, Edge or Chromium was found"})
                 continue
             pdf = out / f"{name}.pdf"
