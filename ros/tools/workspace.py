@@ -37,10 +37,10 @@ def graph(rec, mode="knowledge", focus=None, depth=1, limit=120, relation=None):
     return ws.subgraph(rec, mode, focus, depth, limit, relation)
 
 
-@tool("workspace_map", "Read the organizational map: workspace, courses and projects, topics and supporting material, with named branches and only recorded scientific relations.",
-      per_hub=P("integer", "visible children per course or project; default 24"), expand=P("string", "course or project to show in full"))
-def overview_map(rec, per_hub=24, expand=""):
-    return ws.overview_map(rec, per_hub, expand)
+@tool("workspace_map", "Read the central map: workspace, then Knowledge, Research and Goals, their places and topics, and the recorded links between them. Files and notes belong to the Library and appear only when a place is expanded.",
+      expand=P("string", "a course, subject or project whose files and notes to show"))
+def overview_map(rec, expand=""):
+    return ws.overview_map(rec, expand)
 
 
 @tool("workspace_chat_send", "Save a conversational message and prepare its model request; the portal executes the optional provider outside the record lock.",

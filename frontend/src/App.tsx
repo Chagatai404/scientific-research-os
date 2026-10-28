@@ -1,4 +1,5 @@
 import {CommandMenu} from './CommandMenu';
+import {UpdatePrompt} from './UpdatePrompt';
 import {useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent} from 'react';
 import {call, href, preference, routeOf, savePreference} from './api';
 import type {DocumentData, RecordInfo} from './contracts';
@@ -144,7 +145,7 @@ function Shell() {
   };
   return <div data-drawer={drawer || undefined} inert={modalOpen} onClickCapture={event => {const anchor = event.target instanceof Element ? event.target.closest('a') : null; if (event.isTrusted && window.researchDesktop && anchor && anchor.protocol === 'https:' && anchor.origin !== location.origin) {event.preventDefault(); window.researchDesktop.openExternal(anchor.href).catch(e => setExternalError(e.message));}}}
     className={`workspace shell ${showNav ? 'nav-open' : ''} ${showSessions ? 'sessions-open' : ''} ${showInspector ? 'context-open' : ''} ${graphSurface ? 'graph-surface' : ''} ${drawer ? 'drawer-open' : ''}`}>
-    {externalError && <div className="external-error" role="alert">{externalError}<button onClick={() => setExternalError('')}>Dismiss</button></div>}<CommandMenu record={route.record} />
+    {externalError && <div className="external-error" role="alert">{externalError}<button onClick={() => setExternalError('')}>Dismiss</button></div>}<CommandMenu record={route.record} /><UpdatePrompt />
     <a inert={modalDrawer} className="skip-link" href="#main" onClick={e => {e.preventDefault(); main.current?.focus();}}>Skip to content</a>
     <aside ref={navPanel} id="workspace-navigation" className="nav-rail" hidden={!showNav} role={mobile && drawer === 'nav' ? 'dialog' : undefined} aria-modal={mobile && drawer === 'nav' || undefined} aria-label="Workspace navigation" onKeyDown={trap}>
       {mobile && drawer === 'nav' && <button className="drawer-close" onClick={closeDrawer}>Collapse navigation</button>}

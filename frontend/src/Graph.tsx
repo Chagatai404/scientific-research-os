@@ -99,6 +99,7 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
         ctx.strokeStyle = (b.color || NEUTRAL) + (incident ? 'cc' : '4d'); ctx.lineWidth = (incident ? 1.6 : 1) / camera.zoom;
         ctx.beginPath(); ctx.moveTo(a.px, a.py); ctx.lineTo(b.px, b.py); ctx.stroke(); continue;
       }
+      if (isMap && !incident && camera.zoom < 1.1) continue;   // at overview scale only the filing branches are drawn
       const pad = lanes ? 20 : ((b.r || 3.8) + 3) / camera.zoom, bx = b.px - dx / distance * pad, by = b.py - dy / distance * pad;
       ctx.strokeStyle = incident ? '#a4bbb6' : isMap ? '#cfd8e0a0' : '#7c87945c'; ctx.lineWidth = (incident ? 1.4 : isMap ? 1 : .7) / camera.zoom;
       ctx.setLineDash(edge.verified === false ? [4 / camera.zoom, 4 / camera.zoom] : []); ctx.beginPath(); ctx.moveTo(a.px, a.py); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
@@ -107,6 +108,19 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
     }
     const boxes: {x: number; y: number; w: number}[] = [];
     const order = [...points].sort((a, b) => (Number(a.id === selected) + Number(a.id === hover)) - (Number(b.id === selected) + Number(b.id === hover)));
+    const labelled = new Set<string>();
+    if (isMap && !lanes) {
+      // Biggest and focused labels claim space first; a label that would sit on another is left for hover or zoom.
+      const rank = (n: (typeof points)[number]) => n.id === selected || n.id === hover ? 1e9 : n.role === 'center' ? 1e8 : (n.r || 0) * 100 + (n.weight || 0);
+      for (const n of [...points].sort((x, y) => rank(y) - rank(x))) {
+        const role = n.role, focused = n.id === selected || n.id === hover;
+        if (!(focused || role === 'center' || role === 'hub' || (role === 'topic' ? camera.zoom > .55 : camera.zoom > .95))) continue;
+        ctx.font = `${(role === 'center' ? 14 : role === 'hub' ? 12.5 : 11) / camera.zoom}px system-ui`;
+        const text = clip(n.label, role === 'hub' || role === 'center' ? 40 : 35) + (role === 'hub' && map?.omitted[n.id] ? ` +${map.omitted[n.id]}` : '');
+        const w = ctx.measureText(text).width * camera.zoom, cx = n.px * camera.zoom + camera.x, cy = n.py * camera.zoom + camera.y + (n.r || 6) * (focused ? 1.25 : 1) * camera.zoom + 15;
+        if (focused || role === 'center' || !boxes.some(o => Math.abs(cx - o.x) < (w + o.w) / 2 + 6 && Math.abs(cy - o.y) < 16)) {labelled.add(n.id); boxes.push({x: cx, y: cy, w});}
+      }
+    }
     for (const n of order) {
       const focused = selected === n.id || hover === n.id, role = n.role;
       const color = isMap ? n.color || NEUTRAL : colors[n.group % colors.length], radius = isMap ? (n.r || 4) * (focused ? 1.25 : 1) : (focused ? 6 : 3.8) / camera.zoom;
@@ -121,13 +135,13 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
       const sx = n.px * camera.zoom + camera.x + 10, sy = n.py * camera.zoom + camera.y; ctx.font = `${(role === 'center' ? 14 : role === 'hub' ? 12.5 : 11) / camera.zoom}px system-ui`;
       const label = clip(n.label, role === 'hub' || role === 'center' ? 40 : 35), w = ctx.measureText(label).width * camera.zoom, clear = !boxes.some(b => sx < b.x + b.w + 10 && sx + w > b.x - 10 && Math.abs(sy - b.y) < 20);
       const persistent = isMap && (role === 'center' || role === 'hub');
-      const wanted = focused || lanes || persistent || (isMap ? (role === 'topic' ? camera.zoom > .55 : camera.zoom > .95) && clear : camera.zoom > .35 && clear);
+      const wanted = isMap && !lanes ? labelled.has(n.id) : focused || lanes || (camera.zoom > .35 && clear);
       if (wanted) {
         ctx.fillStyle = lanes ? '#121416' : focused || persistent ? '#f0f3f6' : '#adb5bf';
         const omitted = isMap && role === 'hub' && map?.omitted[n.id] ? ` +${map.omitted[n.id]}` : '';
         if (isMap && !lanes) {ctx.textAlign = 'center'; ctx.fillText(label + omitted, n.px, n.py + (n.r || 6) * (focused ? 1.25 : 1) + 15 / camera.zoom); ctx.textAlign = 'start';}
         else ctx.fillText(label, n.px + (lanes ? -n.w / 2 + 8 : 10 / camera.zoom), n.py + 4 / camera.zoom);
-        boxes.push({x: sx, y: sy, w});
+        if (!isMap || lanes) boxes.push({x: sx, y: sy, w});
       }
     }
   }, [graph, layout, points, selected, hover, camera, size, lanes]);

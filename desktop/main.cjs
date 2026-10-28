@@ -55,7 +55,7 @@ async function start() {
   ipcMain.handle('updates:check',event=>{sender(event);return updateManager.check();});
   ipcMain.handle('updates:install',event=>{sender(event);return updateManager.apply();});
   if(updatesEnabled && process.env.ROS_DESKTOP_SMOKE!=='1') {
-    const first=setTimeout(()=>void updateManager.check(),15000);first.unref();
+    const first=setTimeout(()=>void updateManager.check(),3000);first.unref();
     const recurring=setInterval(()=>void updateManager.check(),6*60*60*1000);recurring.unref();
     app.once('before-quit',()=>{clearTimeout(first);clearInterval(recurring);});
   }

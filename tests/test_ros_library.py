@@ -205,6 +205,22 @@ class MapTests(unittest.TestCase):
         self.assertEqual(by_id[course['id']]['label'], 'Mathematical Statistics')
         self.assertEqual(by_id['lesson:one']['parent'], course['id'])
 
+    def test_a_course_and_project_of_one_name_share_a_place_and_templates_are_not_places(self):
+        r = self.rec
+        r.put_node('course:stat', 'course', title='STAT303 Mathematical Statistics I')
+        r.put_node('project:stat-twin', 'project', title='STAT303 Mathematical Statistics I')
+        r.put_node('project:template', 'project', title='{{title}}')
+        r.put_node('capability:var', 'capability', title='Variance')
+        r.put_node('capability:mean', 'capability', title='Mean')
+        r.put_edge('capability:var', 'part-of', 'course:stat')
+        r.put_edge('capability:mean', 'part-of', 'project:stat-twin')
+        view = api.call('workspace_map', r)
+        hubs = [n['label'] for n in view['nodes'] if n['role'] == 'hub']
+        self.assertEqual(hubs, ['STAT303 Mathematical Statistics I'])
+        by_id = {n['id']: n for n in view['nodes']}
+        self.assertEqual((by_id['capability:var']['parent'], by_id['capability:mean']['parent']), ('course:stat', 'course:stat'))
+        self.assertIn('project:template', {n['id'] for n in view['needs_organization']})
+
 
 if __name__ == '__main__':
     unittest.main()

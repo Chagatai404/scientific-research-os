@@ -1,6 +1,13 @@
 # Changelog
 
-## 1.4.0: an organized, guided desktop (local build, not published)
+## 1.4.1: update pop-up and a calmer map
+
+- Show a pop-up at launch when an update has been found: it reports the download and offers Restart and install, or Later (until the next launch). The first update check now runs a few seconds after launch.
+- Declutter the map on real data: a course and a project of the same name are one place, template placeholders are listed under Needs organization, labels no longer overlap, and recorded relations appear when you focus an item or zoom in, while the filing branches stay visible.
+- The sessions column shows its drag-and-drop hint once instead of under every empty course.
+- Remove personal example paths from the app, tests and documents.
+
+## 1.4.0: an organized, guided desktop
 
 - Reorganize the desktop around one idea: choose a course or project, add material, and see what to do next. Navigation and a separate sessions column are both open on a fresh profile, toggle independently (`Ctrl/⌘+B`, `Ctrl/⌘+Shift+B`) and remember their state; narrow windows show one replacing drawer.
 - Name and organize without technical identifiers: create, rename and move courses, projects, collections, sessions and material, and rename the workspace. Names and placement are append-only preferences; history, citations and source files are never rewritten, and old `#sessions` and `#sources` links still open.

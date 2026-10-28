@@ -269,11 +269,23 @@ async function main() {
             const chosen = choices[kind]; if (!chosen) return null;
             return Array.isArray(chosen) ? (chosen.length > 1 ? Promise.all(chosen.map(register)) : register(chosen[0])) : register(chosen);
           },
-          openSource: async () => {}, backend: async () => ({}), updates: async () => ({state: 'idle', version: '0'}), checkUpdates: async () => ({}), installUpdate: async () => {}, openExternal: async () => {},
+          openSource: async () => {}, backend: async () => ({}), updates: async () => ({state: 'ready', version: '1.4.1', available: '9.9.9', percent: 100}), checkUpdates: async () => ({}), installUpdate: async () => {window.__installs = (window.__installs || 0) + 1;}, openExternal: async () => {},
         };
       }, picks);
       const desktop = await desktopContext.newPage(); desktop.on('pageerror', e => errors.push(e.message));
       await desktop.goto(base + '#library?r=demo'); await desktop.getByRole('heading', {name: 'Library', exact: true}).waitFor();
+      // A found update is offered at launch; Later lasts until the next launch; Restart & install reaches the host.
+      await desktop.getByRole('dialog', {name: 'An update is ready'}).waitFor();
+      await desktop.getByRole('button', {name: 'Later', exact: true}).click();
+      assert.equal(await desktop.getByRole('dialog').count(), 0, 'Later closes the pop-up');
+      await desktop.reload(); await desktop.getByRole('heading', {name: 'Library', exact: true}).waitFor(); await desktop.waitForTimeout(2600);
+      assert.equal(await desktop.getByRole('dialog').count(), 0, 'Later is remembered for the rest of this launch');
+      const relaunch = await desktopContext.newPage(); relaunch.on('pageerror', e => errors.push(e.message));
+      await relaunch.goto(base + '#overview?r=demo');
+      await relaunch.getByRole('dialog', {name: 'An update is ready'}).waitFor();
+      await relaunch.getByRole('button', {name: 'Restart & install', exact: true}).click();
+      await relaunch.waitForFunction(() => window.__installs === 1);
+      await relaunch.close();
       await desktop.getByRole('button', {name: /Add material/}).first().click();
       assert.equal(await desktop.getByRole('menuitem', {name: /Upload files/}).isEnabled(), true, 'the picker entries are live in the desktop app');
       await desktop.getByRole('menuitem', {name: /Upload files/}).click();
