@@ -4,17 +4,17 @@
 
   • electron-builder  version=26.18.0 os=10.0.26200
   • loaded configuration  file=package.json ("build" field)
-  • executing @electron/rebuild  electronVersion=40.10.6 arch=x64 buildFromSource=false workspaceRoot=C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\desktop projectDir=./ appDir=./
+  • executing @electron/rebuild  electronVersion=40.10.6 arch=x64 buildFromSource=false workspaceRoot=C:\Users\you\.codex\worktrees\f2e5\scientific-research-os\desktop projectDir=./ appDir=./
   • installing native dependencies  arch=x64
   • completed installing native dependencies
   • packaging       platform=win32 arch=x64 electron=40.10.6 appOutDir=dist\win-unpacked
   • using custom unpacked Electron distribution  electronDist=node_modules\electron\dist
-  • copying unpacked Electron  source=C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\desktop\node_modules\electron\dist destination=C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\desktop\dist\win-unpacked
-  • searching for node modules  pm=npm searchDir=C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\desktop
-  • no node modules found in collection, trying next search directory  pm=npm searchDir=C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\desktop
-  • searching for node modules  pm=traversal searchDir=C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\desktop
+  • copying unpacked Electron  source=C:\Users\you\.codex\worktrees\f2e5\scientific-research-os\desktop\node_modules\electron\dist destination=C:\Users\you\.codex\worktrees\f2e5\scientific-research-os\desktop\dist\win-unpacked
+  • searching for node modules  pm=npm searchDir=C:\Users\you\.codex\worktrees\f2e5\scientific-research-os\desktop
+  • no node modules found in collection, trying next search directory  pm=npm searchDir=C:\Users\you\.codex\worktrees\f2e5\scientific-research-os\desktop
+  • searching for node modules  pm=traversal searchDir=C:\Users\you\.codex\worktrees\f2e5\scientific-research-os\desktop
   • using manual traversal of node_modules to build dependency tree
-  • no node modules found in collection, trying next search directory  pm=traversal searchDir=C:\Users\ASUS\.codex\worktrees\f2e5\scientific-research-os\desktop
+  • no node modules found in collection, trying next search directory  pm=traversal searchDir=C:\Users\you\.codex\worktrees\f2e5\scientific-research-os\desktop
   • no node modules returned while searching directories  searchDirectories=[""]
   • updating asar integrity executable resource  executablePath=dist\win-unpacked\Research OS.exe
   • executable resource editing and code signing skipped — signAndEditExecutable is false. To skip only code signing while keeping icon and metadata applied, use signExecutable: false instead.  exe=dist\win-unpacked\Research OS.exe
