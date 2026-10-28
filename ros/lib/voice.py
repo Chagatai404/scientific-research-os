@@ -94,7 +94,7 @@ def adapter(env: Path, *args, timeout: int = DEFAULT_TIMEOUT) -> dict:
     python, extra = launcher(Path(env))
     if python is None:
         return {'ok': False, 'error': f'no Python found in {env}'}
-    done = run_command([python, ADAPTER, *args], timeout=timeout, extra_env=extra)
+    done = run_command([python, ADAPTER, *args], timeout=timeout, **({'extra_env': extra} if extra else {}))
     for line in reversed(done['stdout'].strip().splitlines()):
         try:
             result = json.loads(line)
