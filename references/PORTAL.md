@@ -7,6 +7,13 @@ the compatibility route and provides the complete human decision and vault confl
 See `docs/portal-redesign/REPORT.md` for acceptance evidence and remaining work; this is not a complete
 replacement yet. No record migration or vault rewriting is required to try it.
 
+Since 1.4.0 the workspace has two left columns (navigation, then sessions) and one page. Menus, pickers and dialogs share a
+single overlay controller, so only one is open at a time. Home shows the organizational map (`workspace_map`): workspace,
+named courses and projects, topics and material. Its plain lines are filing, not scientific relations. The Library
+(`library_add`, `library_process`) lists material at once and reads it in the background. Organization names and
+folders (`organization_*`, `workspace_organization`) are append-only preferences. Old `#sessions` and `#sources` links open
+Home and the Library.
+
 The workspace opens into a viewport graph with compact point nodes, directed typed links, pan/zoom/fit,
 an equivalent node list and bounded selection context. Its bottom question dock retains model selection,
 local dictation and Kokoro playback. Navigation is collapsible; draft and camera preferences are local browser

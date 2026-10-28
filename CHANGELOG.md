@@ -1,6 +1,6 @@
 # Changelog
 
-## Desktop 1.4.0 (local build, not published)
+## 1.4.0: an organized, guided desktop (local build, not published)
 
 - Reorganize the desktop around one idea: choose a course or project, add material, and see what to do next. Navigation and a separate sessions column are both open on a fresh profile, toggle independently (`Ctrl/⌘+B`, `Ctrl/⌘+Shift+B`) and remember their state; narrow windows show one replacing drawer.
 - Name and organize without technical identifiers: create, rename and move courses, projects, collections, sessions and material, and rename the workspace. Names and placement are append-only preferences; history, citations and source files are never rewritten, and old `#sessions` and `#sources` links still open.

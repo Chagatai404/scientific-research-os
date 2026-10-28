@@ -1,6 +1,6 @@
 # Scientific Research OS
 
-Version **1.2.1**. You are the director: say what you want to learn or find out, and agents set it up, prepare it
+Version **1.4.0**. You are the director: say what you want to learn or find out, and agents set it up, prepare it
 and keep your Obsidian vault current. You learn, and you judge the findings. It works with any AI agent: Claude, Codex,
 Gemini or a local model.
 
@@ -37,7 +37,15 @@ npm --prefix desktop ci
 npm --prefix desktop start
 ```
 
-[Acceptance evidence](docs/desktop-rebuild/ACCEPTANCE.md), [capability ledger](docs/desktop-rebuild/CAPABILITY_PARITY.md), [architecture](docs/desktop-rebuild/ARCHITECTURE.md), and [backup/rollback](docs/desktop-rebuild/MIGRATION_AND_ROLLBACK.md) describe tested behavior and optional runtime limits. `python desktop/verify.py` runs the complete isolated gate. It makes no paid inference calls or personal vault changes. The desktop package is 1.3.0; the compatible scientific backend retains its 1.2.1 version identifier.
+[1.4.0 acceptance](docs/desktop-rebuild/ACCEPTANCE-1.4.0.md), [1.3.0 acceptance evidence](docs/desktop-rebuild/ACCEPTANCE.md), [capability ledger](docs/desktop-rebuild/CAPABILITY_PARITY.md), [architecture](docs/desktop-rebuild/ARCHITECTURE.md), and [backup/rollback](docs/desktop-rebuild/MIGRATION_AND_ROLLBACK.md) describe tested behavior and optional runtime limits. `python desktop/verify.py` runs the complete isolated gate. It makes no paid inference calls or personal vault changes. The desktop package is 1.3.0; the compatible scientific backend retains its 1.2.1 version identifier.
+
+## The desktop workspace
+
+Navigation and a sessions column sit side by side (`Ctrl/Cmd+B`, `Ctrl/Cmd+Shift+B`). Create and rename courses and
+projects, drag sessions into them, and add material to the Library once: it is listed at once and read in the
+background. The central map shows workspace, courses and projects, topics and material; Learn recommends a next step,
+and Research shows where a question stands. Plain lines on the map are filing, never scientific relations.
+The plan and its status are in [the desktop usability plan](docs/plans/desktop-usability-redesign.md).
 
 ## Start
 

@@ -15,6 +15,8 @@ The Python suite needs `ROS_BROWSER` (the gate sets it) for the handout PDF test
 
 ## Packaged application
 
+Product version is 1.4.0 everywhere (`VERSION`, `pyproject.toml`, `ros.__version__`, `desktop/package.json`, installer name); the packaged app reports 1.4.0. The installer was rebuilt after the version bump and the packaged checks below were rerun on it.
+
 - Frozen backend, no Python on PATH: 161 tools, PDF rendering and bundled computation pass.
 - Native packaged GUI launches (protocol `ros.desktop.v1`), no horizontal overflow, new two-column shell visible.
 - NSIS install, launch and uninstall in an isolated copy: the record, an organization-preferences file and a source file

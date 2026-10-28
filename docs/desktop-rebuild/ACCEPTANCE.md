@@ -1,5 +1,7 @@
 # Desktop acceptance evidence
 
+> This ledger records the 1.3.0 build. The current 1.4.0 results are in [ACCEPTANCE-1.4.0.md](ACCEPTANCE-1.4.0.md).
+
 Verified 2026-10-28T12:58:17+03:00 (Europe/Istanbul). Windows 11 AMD64, Python 3.14.4, Electron 43.8.4. Branch `agent/codex/desktop-rebuild`, based exactly on `2433fba47c753bc3f2c4eac6045ba91b14b9f534`. No push, merge or public release.
 
 ## Deliverable and launch

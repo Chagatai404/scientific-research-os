@@ -1,30 +1,30 @@
 {
-  "version": "1.3.0",
+  "version": "1.4.0",
   "artifacts": [
     {
-      "file": "desktop/dist/Research-OS-Setup-1.3.0-x64.exe",
-      "bytes": 133474590,
-      "sha256": "786d0a5b99d29a7306a910d63b50d4b1fdd9b104452e8a67d12b92b4df24d46d",
-      "sha512": "58553ae3fe5d7e6b6dcfa2922cbc48d70dc58da61e6ea7991482c725f48e8f4e721b5a5d60591815f9c4e116ee75c192ef4f26e2a127d8c7541eb85beb327132"
+      "file": "desktop/dist/Research-OS-Setup-1.4.0-x64.exe",
+      "bytes": 133315609,
+      "sha256": "219c91f09a6c9ad02e4a79dc1a97b0c0ba8056eabe5d51c15aba6ee3aab89efd",
+      "sha512": "7d364066512d2479365a905bf953eea4ece0cc1e35d2f487d35ffe754d9d423502fcd6e9a5c5f83566f1585b2498f05479ae09a48fff9543f795139f7e4c916b"
     },
     {
-      "file": "desktop/dist/Research-OS-Setup-1.3.0-x64.exe.blockmap",
-      "bytes": 138733,
-      "sha256": "e6cb9e5cea2150a5a321f9a86f64461efb6b0cb6d8aa3a401042582949d9d302",
-      "sha512": "4235053bccb2bde15a4048c1009898a54e93eb4168ece2dc3701fc81189443208f7448696c185618abb61e75543020ed5929fdbe77b1c513c89f5dbbe2772803"
+      "file": "desktop/dist/Research-OS-Setup-1.4.0-x64.exe.blockmap",
+      "bytes": 138580,
+      "sha256": "cf15ca35765e6dc36c54ad001f4d6d320da0a022431407d37814e6c59c3ed20a",
+      "sha512": "f852ee9684cedfb54395505d683dd78132844a518d45c5fb20b66f62554a0ef98cae938d2d7a404ec5576fc067a2fda96072b8ff6d525a2dfb105c8461188d07"
     },
     {
       "file": "desktop/dist/latest.yml",
       "bytes": 359,
-      "sha256": "04eb77e1d43f2467a47e6090f0486e88ee776db40ee2e0876bf89b67ca39df89",
-      "sha512": "876734a50f8ea3e68d52e4972c2914cc2ead85b8f03188d2911f40fb3a1fa8e09b693571127e287ade729491c218f2401f5babc14742297ec385cc35a6aca0bd"
+      "sha256": "a07acce35f58927916520f869f6e0d57602a3010d631633070f888fb5ec6fff9",
+      "sha512": "4a444c4543e71b94aa4e769b68fe780e136c6f16ccb687f5ab92f07f720aa5999f5c3b166d340cfc21eaa351d084e3014348f78f0a9d25b04c15b3a44bc0e671"
     }
   ],
   "source_branch": "agent/codex/desktop-rebuild",
-  "base_commit": "2433fba47c753bc3f2c4eac6045ba91b14b9f534",
+  "base_commit": "27df821",
   "signed": false,
   "published": false,
-  "tools": 148,
+  "tools": 161,
   "full_gate_pass": true,
   "installer_tested": true
 }
