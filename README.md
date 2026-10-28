@@ -67,10 +67,10 @@ and `ROS_WHISPER_ENV`.
 |---|---|
 | The app (Electron) and its Python backend, no Python install needed | Windows 10 or 11, 64-bit |
 | Kokoro and faster-whisper with their Python, packages and models | A model sign-in for agents: the Codex or Claude CLI (or a local Ollama), which you log into yourself |
-| PDF reading and rendering, computation workers | Google Chrome (or MiKTeX / TeX Live) to print handout PDFs: not bundled yet, and Edge did not print on the reference machine |
+| PDF reading, handout PDF printing (through the app's own Chromium) and computation workers | |
 | The update client | An Obsidian vault, only if you want your notes there |
 
-Also not bundled: Manim for animations. Nothing here needs a GPU.
+Also not bundled: Manim for animations, and LaTeX (handouts print without it). Nothing here needs a GPU.
 
 ### Requirements and tested hardware
 

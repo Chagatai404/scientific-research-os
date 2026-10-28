@@ -4,6 +4,7 @@
 
 - Fix "Optional worker unavailable" for Kokoro read-aloud and speech-to-text dictation in the installed app: the packaged backend did not include the voice adapter script, so every voice request failed. It is now bundled, a test guards it, and the app reports the engine's own reason when it can (for example a recording that is too large).
 - Bundle everything voice needs inside the installer so it works on a computer with nothing installed: a private Python 3.12, Kokoro and faster-whisper with their packages (CPU only), and both models (`desktop/build-voice.py`). The installer is now about 0.95 GB (1.6 GB installed). The voice licences ship in `resources/voice/LICENSES.txt`.
+- Print handout PDFs with the app's own Chromium, so they no longer need Chrome, Edge or LaTeX on the computer (a system browser or LaTeX is still used when the app is not running them, for example from the command line).
 - Make the reasoning-effort slider a compact single-line control so it no longer breaks the layout of the typing bar, in the composer and in Settings.
 - Rewrite the README around the current version and its capabilities.
 

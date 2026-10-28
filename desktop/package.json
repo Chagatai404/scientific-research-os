@@ -32,6 +32,7 @@
       "main.cjs",
       "preload.cjs",
       "lifecycle.cjs",
+      "printer.cjs",
       "package.json",
       "updates.cjs",
       "THIRD_PARTY_NOTICES.txt",

@@ -12,7 +12,10 @@ if(process.env.ROS_DESKTOP_PROFILE){
   fs.mkdirSync(profile,{recursive:true});fs.mkdirSync(path.join(profile,'cache'),{recursive:true});
   app.setPath('userData',profile);app.setPath('sessionData',profile);app.setPath('cache',path.join(profile,'cache'));
 }
-if (!app.requestSingleInstanceLock()) app.quit();
+const printer = require('./printer.cjs');
+// Print mode: the backend asks this app's own Chromium to turn a handout page into a PDF. No window, no lock, no backend.
+if (printer.requested(process.argv)) printer.run(app, BrowserWindow, process.argv);
+else if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => {if (window) {if (window.isMinimized()) window.restore(); window.show(); window.focus();}});
   app.on('before-quit', () => {exiting = true; terminate(child);});
@@ -28,7 +31,7 @@ async function start() {
   const root = path.resolve(__dirname, '..');
   const executable = app.isPackaged ? path.join(process.resourcesPath, 'backend', 'research-os-backend', 'research-os-backend.exe') : process.env.ROS_PYTHON || 'python';
   const argv = app.isPackaged ? [] : ['-m', 'ros.desktop'];
-  child = spawn(executable, argv, {cwd: app.isPackaged ? app.getPath('userData') : root, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'], env: {...process.env, PYTHONUNBUFFERED: '1', ...(app.isPackaged ? {} : {PYTHONPATH: [root,path.join(root,'.desktop-build','python-packages'),process.env.PYTHONPATH||''].join(path.delimiter)})}});
+  child = spawn(executable, argv, {cwd: app.isPackaged ? app.getPath('userData') : root, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'], env: {...process.env, PYTHONUNBUFFERED: '1', ROS_PDF_ELECTRON: process.execPath, ...(app.isPackaged ? {} : {ROS_PDF_ELECTRON_APP: __dirname}), ...(app.isPackaged ? {} : {PYTHONPATH: [root,path.join(root,'.desktop-build','python-packages'),process.env.PYTHONPATH||''].join(path.delimiter)})}});
   child.stderr.on('data', () => {}); // provider diagnostics may contain account information
   const ready = await handshake(child); origin = 'http://127.0.0.1:' + ready.port; credential = ready.credential;
   const ses = session.fromPartition('persist:research-os');
