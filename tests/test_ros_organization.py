@@ -86,6 +86,27 @@ class OrganizationTests(unittest.TestCase):
             other.close()
         self.assertEqual(self.rec.root.name, 'demo')
 
+    def test_knowledge_also_lists_the_sessions_of_its_linked_workspaces(self):
+        me = Record(Path(self.tmp.name) / 'projects' / 'me')
+        try:
+            api.call('link', me, user_wide=True)
+            api.call('link', self.rec, project='project:demo')
+            api.call('workspace_rename', self.rec, title='Demo workspace')
+            self.rec.put_node('conversation:one', 'conversation', title='Asked in the project')
+            me.put_node('conversation:mine', 'conversation', title='Asked in Knowledge')
+            knowledge = api.call('workspace_organization', me)
+        finally:
+            api.release(); me.close()
+        shared = next(s for s in knowledge['sessions'] if s['id'] == 'conversation:one')
+        self.assertEqual((shared['record'], shared['workspace'], shared['parent']), ('demo', 'Demo workspace', ''))
+        self.assertNotIn('record', next(s for s in knowledge['sessions'] if s['id'] == 'conversation:mine'))
+        # The workspace's bare project hub is not listed beside its sessions; the sessions are the content.
+        self.assertNotIn('project:demo', [f['id'] for f in knowledge['folders']])
+        # The session stays in its own workspace, and a workspace does not list Knowledge's sessions.
+        own = api.call('workspace_organization', self.rec)['sessions']
+        self.assertEqual([s['id'] for s in own], ['conversation:one'])
+        self.assertNotIn('record', own[0])
+
     def test_snapshot_cache_avoids_rescanning_nodes_on_event_only_updates(self):
         api.call('workspace_organization', self.rec)
         self.rec.append('test.observation', 'x', {})

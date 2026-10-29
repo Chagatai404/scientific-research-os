@@ -5,4 +5,4 @@ The record is plain files (``events.jsonl``, ``items/<sha256>.json``, ``graph/no
 """
 from __future__ import annotations
 
-__version__ = "1.5.1"
+__version__ = "1.5.2"

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.2: sessions answer again, effort for Claude, sessions in Knowledge
+
+- Fix sessions that never answered with Codex or Claude. Codex 0.165 rejected the connector overrides the app passed it (`mcp_servers={}` followed by quoted per-server names), exited with "invalid transport" and the app reported only "Codex stopped before a terminal turn event". Overrides now name each connector and plugin the way Codex parses them, and that message now includes the exit code. Claude Code 2.1 ships a native `claude.exe` behind its npm `.cmd` shim, which the launcher refused ("Install the native CLI or its standard Node package"); it now starts the native binary, and still falls back to the older `cli.js`.
+- Bring back the reasoning-effort slider for Claude. Claude Sonnet and Opus take an effort (low to max, passed to the CLI as `--effort`) in the composer, Settings, the connection check and the tutor button; Haiku and local models have none, so no slider is shown for them.
+- A session now appears in every workspace it belongs to. Knowledge, the outer workspace, also lists the sessions of every workspace linked to it, tagged with the workspace and opened, renamed and answered in the workspace that owns them. A workspace's own empty project folder is no longer listed beside its sessions in Knowledge. Nothing is copied: the session stays one record in one place.
+
 ## 1.5.1: voice works in the installed app
 
 - Fix "Optional worker unavailable" for Kokoro read-aloud and speech-to-text dictation in the installed app: the packaged backend did not include the voice adapter script, so every voice request failed. It is now bundled, a test guards it, and the app reports the engine's own reason when it can (for example a recording that is too large).

@@ -36,6 +36,12 @@ import webbrowser
 from . import api, home, runner, runtime
 from .store import Record
 
+
+def _takes_effort(model):
+    """Codex models and Claude Sonnet/Opus have a reasoning-effort setting (same rule as ros/conversation.py)."""
+    return bool(re.match(r'(codex:|claude:.*(sonnet|opus))', model))
+
+
 STATIC = Path(__file__).resolve().parent / "portal"
 MEDIA_DIRS = ("bundles", "logs", "operation-artifacts")
 VAULT_TYPES = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".md", ".canvas", ".base"}
@@ -307,7 +313,7 @@ def make_handler(rec: "Record | Pool"):
                     model, effort = args.get("model"), args.get("effort", "medium")
                     if not isinstance(model, str) or not re.fullmatch(r"(codex|claude|ollama|compatible):[A-Za-z0-9_.:/-]{1,100}", model) \
                             or effort not in ("low", "medium", "high", "xhigh", "max") \
-                            or (not model.startswith("codex:") and effort != "medium"):
+                            or (not _takes_effort(model) and effort != "medium"):
                         return self._send(HTTPStatus.BAD_REQUEST, {"error": "choose a supported model and effort"})
                     # A user-requested transport check sends no record, source, file path or transcript.
                     profile=next((p for p in api.call('provider_profiles',pool.get(args.get('record'))) if p['id']==model),None)
@@ -315,7 +321,7 @@ def make_handler(rec: "Record | Pool"):
                                       "messages": [{"role": "user", "content": "Reply exactly READY."}],
                                       "context": {"purpose": "User-requested model connection check."}}, timeout=60)
                     out = {"ok": bool(result.get("ok")), "model": result.get("model", model),
-                           "effort": effort if model.startswith("codex:") else None,
+                           "effort": effort if _takes_effort(model) else None,
                            "text": str(result.get("text", ""))[:200]}
                     if not out["ok"]:
                         out["error"] = result.get("error") or "The model connection check failed."

@@ -164,4 +164,51 @@ class ProviderStreams(unittest.TestCase):
         with patch.object(providers,'local_open',return_value=io.BytesIO(b'bad-json\n')):
             with self.assertRaises(providers.ProviderError): providers.local({'model':'ollama:fixture','messages':[],'system':'test'},lambda _:None,None,threading.Event(),lambda _:None)
 
+class FakeProcess:
+    def __init__(self, lines=()): self.stdin=io.StringIO(); self.stdout=iter(lines); self.returncode=1
+    def poll(self): return self.returncode
+
+class ProviderLaunch(unittest.TestCase):
+    """The installed CLIs are reached through npm .cmd shims; those must start, and Codex must accept our arguments."""
+    def run_adapter(self, adapter, request, lines=()):
+        launched=[]
+        def launch(argv, cwd): launched.append(argv); return FakeProcess(lines)
+        with patch.object(providers,'launch',launch):
+            try: adapter(dict(request,system='s',messages=[],deadline=2),lambda _:None,None,threading.Event(),lambda _:None)
+            except providers.ProviderError as exc: error=exc
+            else: error=None
+        return launched[0], error
+    @unittest.skipUnless(os.name=='nt','npm .cmd shims exist only on Windows')
+    def test_an_npm_shim_resolves_to_the_native_binary_or_the_node_script(self):
+        for package,entry,native in (('@anthropic-ai/claude-code','bin/claude.exe',True),('@anthropic-ai/claude-code','cli.js',False),('@openai/codex','bin/codex.js',False)):
+            with tempfile.TemporaryDirectory() as folder:
+                root=Path(folder); name=package.split('/')[1].replace('-code',''); shim=root/(name+'.cmd'); shim.write_text('@echo off')
+                target=root/'node_modules'/package/entry; target.parent.mkdir(parents=True); target.write_text('')
+                with patch.object(providers.subprocess,'Popen') as popen, patch.object(providers.shutil,'which',return_value='node.exe'):
+                    providers.launch([str(shim),'--print'],folder)
+                argv=popen.call_args.args[0]
+                self.assertEqual(argv, [str(target),'--print'] if native else ['node.exe',str(target),'--print'])
+        with tempfile.TemporaryDirectory() as folder:
+            shim=Path(folder)/'claude.cmd'; shim.write_text('@echo off')
+            with self.assertRaises(providers.ProviderError): providers.launch([str(shim)],folder)
+    def test_codex_overrides_name_servers_and_plugins_the_way_codex_parses_them(self):
+        with tempfile.TemporaryDirectory() as home:
+            (Path(home)/'config.toml').write_text('[mcp_servers.my-server]\nurl="x"\n[mcp_servers."odd.name"]\nurl="x"\n[plugins."pdf@runtime"]\nenabled=true\n',encoding='utf-8')
+            with patch.dict(os.environ,{'CODEX_HOME':home}), patch.object(providers,'codex_executable',return_value='codex'):
+                argv,error=self.run_adapter(providers.codex,{'model':'codex:gpt-6.1-sol'})
+        overrides=[argv[i+1] for i,value in enumerate(argv) if value=='-c']
+        self.assertIn('mcp_servers.my-server.enabled=false',overrides); self.assertIn('plugins.pdf@runtime.enabled=false',overrides)
+        # A quoted segment is read literally and a `mcp_servers={}` reset empties every transport: both make Codex exit with "invalid transport".
+        self.assertFalse([o for o in overrides if '"' in o or o.startswith('mcp_servers=')])
+        self.assertFalse([o for o in overrides if 'odd.name' in o])
+        self.assertIn('terminal turn event',str(error)); self.assertIn('exit 1',str(error))
+    def test_claude_gets_an_effort_only_for_models_that_take_one(self):
+        result=json.dumps({'type':'result','result':'ok'})+'\n'
+        for model,effort,expected in (('claude:sonnet','high',['--effort','high']),('claude:opus','max',['--effort','max']),('claude:haiku','high',None)):
+            with patch.object(providers.shutil,'which',return_value='claude'):
+                argv,error=self.run_adapter(providers.claude,{'model':model,'effort':effort},[result])
+            self.assertIsNone(error)
+            if expected: self.assertEqual(argv[argv.index('--effort'):argv.index('--effort')+2],expected)
+            else: self.assertNotIn('--effort',argv)
+
 if __name__=='__main__': unittest.main()

@@ -27,9 +27,9 @@ function Dialogs({record, folders}: {record: string; folders: Folder[]}) {
       return <NameForm label={`Name your ${KIND_LABEL[kind].toLowerCase()}`} onDone={close} action={async title => {await human('organization_create', {kind, title, parent}, record); changed();}}/>;
     }}</Modal>
     <Modal id="rename" title="Rename">{(close, data) => {
-      const {id = '', title = ''} = (data || {}) as {id?: string; title?: string};
+      const {id = '', title = '', owner = ''} = (data || {}) as {id?: string; title?: string; owner?: string};
       return <><p className="muted">Only the name changes. Its history, links and citations stay as they are.</p>
-        <NameForm initial={title} label="New name" onDone={close} action={async name => {await human(id === 'workspace' ? 'workspace_rename' : 'organization_rename', id === 'workspace' ? {title: name} : {subject: id, title: name}, record); changed();}}/></>;
+        <NameForm initial={title} label="New name" onDone={close} action={async name => {await human(id === 'workspace' ? 'workspace_rename' : 'organization_rename', id === 'workspace' ? {title: name} : {subject: id, title: name}, owner || record); changed();}}/></>;
     }}</Modal>
     <Modal id="move" title="Move to">{(close, data) => {
       const {id = '', title = ''} = (data || {}) as {id?: string; title?: string};
@@ -52,11 +52,12 @@ function MoveForm({id, title, record, close, options}: {id: string; title: strin
     <div className="modal-actions"><button type="button" onClick={close}>Cancel</button><button className="primary">Move</button></div></form>;
 }
 
-function RowMenu({subject, record, folder = false}: {subject: {id: string; title: string}; record: string; folder?: boolean}) {
+/** A row's actions. A session listed from another workspace (`owner`) is renamed there and cannot be filed here. */
+function RowMenu({subject, record, folder = false, owner = ''}: {subject: {id: string; title: string}; record: string; folder?: boolean; owner?: string}) {
   const overlay = useOverlayController();
   return <Menu kind="item" id={subject.id} label={`Actions for ${subject.title}`} buttonLabel={`Actions for ${subject.title}`} button={<span aria-hidden="true">⋯</span>} buttonClassName="row-menu" align="right">{() => <div className="menu-list" role="menu">
-    <button role="menuitem" onClick={() => overlay.show('modal', 'rename', {id: subject.id, title: subject.title})}>Rename…</button>
-    <button role="menuitem" onClick={() => overlay.show('modal', 'move', {id: subject.id, title: subject.title})}>Move to…</button>
+    <button role="menuitem" onClick={() => overlay.show('modal', 'rename', {id: subject.id, title: subject.title, owner})}>Rename…</button>
+    {!owner && <button role="menuitem" onClick={() => overlay.show('modal', 'move', {id: subject.id, title: subject.title})}>Move to…</button>}
     {folder && <button role="menuitem" onClick={() => overlay.show('modal', 'create', {kind: 'collection', parent: subject.id})}>New collection inside…</button>}
     {!folder && <a role="menuitem" className="button" href={href('library', '', record)}>Open Library</a>}
   </div>}</Menu>;
@@ -88,10 +89,11 @@ export function SessionsPane({record, records, active}: {record: string; records
     if (!id) return;
     try {await human('organization_move', {subject: id, parent}, record); changed();} catch { /* the keyboard path (Move to…) reports the reason */ }
   }
-  const sessionLink = (s: SessionRow) => href(s.id.startsWith('lesson:') ? 'session' : 'chat', s.id, record);
-  const renderSession = (s: SessionRow) => <li key={s.id}><div className="row session" draggable onDragStart={e => e.dataTransfer.setData('text/ros-session', s.id)}>
-    <a href={sessionLink(s)} aria-current={active === s.id ? 'page' : undefined} title={s.title}><span className="glyph" aria-hidden="true">{s.id.startsWith('lesson:') ? '◔' : '✎'}</span><span className="label">{s.title}</span></a>
-    <RowMenu subject={s} record={record}/></div></li>;
+  // A session listed from a linked workspace (Knowledge shows its projects' sessions) opens, and is renamed, in the record that owns it.
+  const sessionLink = (s: SessionRow) => href(s.id.startsWith('lesson:') ? 'session' : 'chat', s.id, s.record || record);
+  const renderSession = (s: SessionRow) => <li key={s.id}><div className="row session" draggable={!s.record} onDragStart={e => {if (!s.record) e.dataTransfer.setData('text/ros-session', s.id);}}>
+    <a href={sessionLink(s)} aria-current={active === s.id ? 'page' : undefined} title={s.workspace ? `${s.title} · ${s.workspace}` : s.title}><span className="glyph" aria-hidden="true">{s.id.startsWith('lesson:') ? '◔' : '✎'}</span><span className="label">{s.title}</span>{s.workspace && <small className="workspace-tag">{s.workspace}</small>}</a>
+    <RowMenu subject={s} record={record} owner={s.record}/></div></li>;
   const renderFolder = (f: Folder): ReactNode => {
     if (needle && !subtreeHasMatch(f)) return null;
     const open = needle ? true : !collapsed.includes(f.id), inner = kids.get(f.id) || [], own = sessionsIn(f.id);

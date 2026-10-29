@@ -6,6 +6,13 @@ import uuid
 from . import director, tasks, runs, sources, execution
 
 
+def takes_effort(model):
+    """Codex models and Claude Sonnet/Opus have a reasoning-effort setting. Kept in step with ros/lib/dialogue.py,
+    which the domain layer may not import."""
+    provider, _, name = model.partition(":")
+    return provider == "codex" or provider == "claude" and any(family in name for family in ("sonnet", "opus"))
+
+
 def send(rec, text, model, conversation=None, effort="medium", key=None, mode="chat", scope=None):
     if mode not in ('chat', 'learn', 'research'): raise ValueError('choose chat, learn or research')
     if scope is not None and (not isinstance(scope, list) or len(scope) > 8): raise ValueError('attach at most eight passages')
@@ -23,9 +30,9 @@ def send(rec, text, model, conversation=None, effort="medium", key=None, mode="c
     if model == "codex:default": model = "codex:gpt-6.1-sol"
     if effort not in ("low", "medium", "high", "xhigh", "max"):
         raise ValueError("reasoning effort must be low, medium, high, xhigh or max")
-    if not model.startswith("codex:") and effort != "medium":
-        raise ValueError("reasoning effort selection is currently supported only for Codex models")
-    selected_effort = effort if model.startswith("codex:") else None
+    if not takes_effort(model) and effort != "medium":
+        raise ValueError("reasoning effort selection is supported only for Codex, Claude Sonnet and Claude Opus models")
+    selected_effort = effort if takes_effort(model) else None
     attachments,images,permissions = [],[],[]
     destination=None
     for ref in (scope or [])[:8]:
@@ -83,7 +90,7 @@ def history(rec, conversation):
         if event["type"] == "conversation.message":
             scopes[data['request']]=data.get('scope',[])
             messages.append({"id": event["id"], "role": "user", "text": data["text"], "model": data["model"],
-                             "effort": data.get("effort", "medium" if data["model"].startswith("codex:") else None), "ts": event["ts"], 'scope':data.get('scope',[])})
+                             "effort": data.get("effort", "medium" if takes_effort(data["model"]) else None), "ts": event["ts"], 'scope':data.get('scope',[])})
             pending[data["request"]] = event["ts"]
         elif event["type"] in ("conversation.response", "conversation.error"):
             pending.pop(data["request"], None)
@@ -103,7 +110,7 @@ def complete(rec, conversation, request, text, model, error=False):
     if model == "codex:default": model = "codex:gpt-6.1-sol"
     rec.append("conversation.error" if error else "conversation.response", conversation,
                {"request": request, "text": str(text)[:60000], "model": model,
-                "effort": original.get("effort", "medium" if original["model"].startswith("codex:") else None)}, actor=model)
+                "effort": original.get("effort", "medium" if takes_effort(original["model"]) else None)}, actor=model)
     return {"recorded": True}
 
 def cloud_guard(rec):

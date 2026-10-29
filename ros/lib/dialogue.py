@@ -21,6 +21,13 @@ REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 DEFAULT_MODEL = "codex:gpt-6.1-sol"
 
 
+def takes_effort(model):
+    """Whether the model id has a reasoning-effort setting: Codex models, and Claude Sonnet and Opus (the CLI's --effort).
+    Haiku has no such control, so no slider is offered for it."""
+    provider, _, name = model.partition(":")
+    return provider == "codex" or provider == "claude" and any(family in name for family in ("sonnet", "opus"))
+
+
 def codex_executable():
     """Prefer the installed Windows desktop runtime, then the command on PATH.
 
@@ -131,7 +138,7 @@ def catalog():
     if codex_executable():
         models += codex_models()
     if shutil.which("claude") or shutil.which("claude.cmd"):
-        models += [{"id": "claude:" + name, "label": label, "provider": "Claude", "reasoning_efforts": []} for name, label in
+        models += [{"id": "claude:" + name, "label": label, "provider": "Claude", "reasoning_efforts": list(REASONING_EFFORTS) if takes_effort("claude:" + name) else []} for name, label in
                    (("sonnet", "Claude Sonnet"), ("opus", "Claude Opus"), ("haiku", "Claude Haiku"))]
     ollama = {"available": False, "models": 0, "hint": "Start Ollama on this computer, then refresh models."}
     try:
@@ -162,8 +169,8 @@ def reply(request):
     effort = request.get("effort", "medium")
     if effort not in REASONING_EFFORTS:
         raise ValueError("reasoning effort must be low, medium, high, xhigh or max")
-    if provider != "codex" and effort != "medium":
-        raise ValueError("reasoning effort selection is currently supported only for Codex models")
+    if not takes_effort(model) and effort != "medium":
+        raise ValueError("reasoning effort selection is supported only for Codex, Claude Sonnet and Claude Opus models")
     messages = request["messages"][-30:]
     system = ("You are the Research OS learning and research companion. Respond conversationally in Markdown. "
               "Start helping in the first response: a short explanation or one focused question and an actionable next step. "
@@ -196,6 +203,7 @@ def reply(request):
         else:
             argv = [executable, "--print", "--output-format", "json", "--model", name, "--tools", "", "--strict-mcp-config",
                     "--mcp-config", '{"mcpServers":{}}', "--no-session-persistence", "--setting-sources", ""]
+            if takes_effort(model): argv += ["--effort", effort]
         done = subprocess.run(argv, input=transcript, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=folder,
                               timeout=180, **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}))
         if done.returncode:
@@ -208,7 +216,7 @@ def reply(request):
             if result.get("is_error"): raise ValueError("Claude could not complete this request. Check its login or usage limit.")
             text = result.get("result", "")
         if not text.strip(): raise ValueError("The model returned no response. Your message is saved; try again.")
-        return {"text": text[:60000], "model": model, "effort": effort if provider == "codex" else None}
+        return {"text": text[:60000], "model": model, "effort": effort if takes_effort(model) else None}
 
 
 def speech(request):

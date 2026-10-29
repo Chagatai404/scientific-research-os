@@ -59,7 +59,7 @@ class ConversationTests(unittest.TestCase):
 
     def test_effort_is_per_message_and_invalid_selection_writes_nothing(self):
         before = self.rec.events(type="conversation")
-        for model, effort in (("codex:gpt-6.1-sol", "ultra"), ("claude:sonnet", "high")):
+        for model, effort in (("codex:gpt-6.1-sol", "ultra"), ("claude:haiku", "high"), ("ollama:qwen3", "high")):
             with self.assertRaises(ValueError):
                 api.call("workspace_chat_send", self.rec, text="Explain variance", model=model, effort=effort)
         self.assertEqual(before, self.rec.events(type="conversation"))
@@ -135,7 +135,9 @@ class ConversationTests(unittest.TestCase):
         self.assertNotIn("codex:default", models)
         self.assertNotIn("codex:gpt-reserve", models)
         self.assertEqual(models["codex:gpt-6-astra"]["reasoning_efforts"], ["high"])
-        self.assertEqual(models["claude:sonnet"]["reasoning_efforts"], [])
+        self.assertEqual(models["claude:sonnet"]["reasoning_efforts"], ["low", "medium", "high", "xhigh", "max"])
+        self.assertEqual(models["claude:opus"]["reasoning_efforts"], ["low", "medium", "high", "xhigh", "max"])
+        self.assertEqual(models["claude:haiku"]["reasoning_efforts"], [])
         self.assertNotIn("private-account-value", json.dumps(catalog))
 
     def test_catalog_does_not_invoke_a_model_and_voice_paths_are_host_selected(self):

@@ -71,6 +71,7 @@
 .row>a,.folder-toggle{display:flex;flex:1;align-items:center;justify-content:flex-start;gap:8px;min-width:0;min-height:44px;padding:6px 8px;border:0;background:transparent;color:var(--ink);font-size:.84rem;font-weight:500;text-align:left;text-decoration:none}
 .row>a[aria-current]{color:var(--accent);font-weight:650}
 .row .label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .workspace-tag{flex:0 1 auto;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:.7rem}
 .row .glyph,.row .chev{flex:0 0 auto;color:var(--muted);font-size:.8rem;width:14px;text-align:center}
 .row .count{flex:0 0 auto;font-size:.7rem;color:var(--muted)}
 .row-menu{min-width:44px;padding:0;border:0;background:transparent;color:var(--muted);opacity:.65}
