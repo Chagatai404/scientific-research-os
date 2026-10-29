@@ -190,3 +190,5 @@
 .mode-picker button[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--bg,#fff)}
 .mode-picker small{flex-basis:100%;text-align:center}
 .mode-badge{max-width:736px;margin:0 auto 4px;font-size:.76rem}
+@media(max-width:560px){.composer-caption.idle{display:none}.mode-picker{gap:4px;margin-bottom:4px}.mode-picker button{flex:1 1 0;min-height:44px;padding:0 6px;font-size:.78rem}.mode-picker small{display:none}}
+@media(max-height:760px){.mode-picker small{display:none}}
