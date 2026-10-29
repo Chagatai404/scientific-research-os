@@ -181,8 +181,15 @@ async function main() {
       .catch(async () => { throw new Error('no approval form; the page shows: ' + (await page.locator('main').innerText())); });
     const approval = page.locator('form[data-human="approve"]');
     await approval.getByLabel('Your name').fill('Researcher');
+    // The announcement is a status line that a later re-render may clear; on a slow runner polling can miss it. Remember it was shown.
+    await page.evaluate(() => {
+      window.__announced = [];
+      const status = document.getElementById('status');
+      new MutationObserver(() => window.__announced.push(status.textContent)).observe(status, {childList: true, characterData: true, subtree: true});
+    });
     await approval.getByRole('button', {name: 'Record'}).click();
-    await page.getByText('Recorded.').waitFor();
+    await page.waitForFunction(() => window.__announced.includes('Recorded.'), null, {timeout: 30000})
+      .catch(async () => { throw new Error('the decision was not announced as recorded; the status line said: ' + JSON.stringify(await page.evaluate(() => window.__announced))); });
     await page.locator('form[data-human="approve"]').waitFor({state: 'detached', timeout: 5000});  // gone from the queue
     const katex = await page.evaluate(() => typeof window.katex);
     assert.equal(katex, 'object', 'KaTeX did not load');
