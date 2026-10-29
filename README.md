@@ -1,6 +1,6 @@
 # Scientific Research OS
 
-Version **1.6.0**. A Windows desktop app (and a Python toolkit) where you are the director: say what you want to learn
+Version **1.6.1**. A Windows desktop app (and a Python toolkit) where you are the director: say what you want to learn
 or find out, and agents prepare it, keep your Obsidian vault current and check the work. You learn, and you judge the
 findings. It works with Claude, Codex, Gemini or a local model.
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.6.1 (in progress): a session can read a whole project
+## 1.6.1: a session can read a whole project
 
 - Fix "I've hit my tool-call limit for this turn" ending a session half way through a project. A reply had 8 tool calls and 180 seconds, and the agent spent five of the eight on orientation (`brief`, `today`, `context`, a graph read, a search), so a question about a project's experiments read three notes and stopped around the middle of October. The defaults are now 40 tool calls, 600 seconds and 41 local-provider calls, and Settings accepts up to 200 calls and 1,800 seconds. A saved copy of the old values (Settings saved every field whenever you changed one) is not kept, so existing workspaces get the new limits; a value you set on purpose is.
 - The session prompt now states the budget ("You have 40 tool calls in this reply"), asks for one or two calls of orientation, and says what to do when about three are left: stop, say what was read and what was not, and tell you to say "continue" for a fresh budget. The message a model gets when the budget is used says the same, so a limit ends in an honest account instead of a trailing sentence.
