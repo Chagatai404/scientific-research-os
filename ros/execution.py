@@ -56,11 +56,15 @@ def notebook_jobs(rec):
             else:state[event['subject']].update(state='completed' if event['data']['result'].get('ok') else 'failed', result=event['data']['result'])
     return list(rec.fold('notebooks.v2', ('notebook.requested', 'notebook.started', 'notebook.finished'), dict, step).values())[::-1]
 
-DEFAULT_LIMITS={'context':24000,'output':4096,'tool_steps':8,'deadline':180,'queue':8,'provider_calls':9}
-LIMIT_RANGES={'context':(2000,200000),'output':(256,16000),'tool_steps':(0,32),'deadline':(10,600),'queue':(1,32),'provider_calls':(1,33)}
+DEFAULT_LIMITS={'context':24000,'output':4096,'tool_steps':40,'deadline':600,'queue':8,'provider_calls':41}
+LIMIT_RANGES={'context':(2000,200000),'output':(256,16000),'tool_steps':(0,200),'deadline':(10,1800),'queue':(1,32),'provider_calls':(1,201)}
+# Until 1.6.1 a session had 8 tool calls and 180 seconds: five went on orientation, and reading a project's records ended with "I hit my
+# tool-call limit". A saved copy of those old values is a limit nobody chose (Settings saves every field), so it is not kept.
+OLD_DEFAULTS={'tool_steps':8,'deadline':180,'provider_calls':9}
 def limits(rec):
     events=rec.events(type='execution.limits',limit=1)
-    return dict(DEFAULT_LIMITS,**(events[0]['data'] if events else {}))
+    saved={k:v for k,v in (events[0]['data'] if events else {}).items() if OLD_DEFAULTS.get(k)!=v}
+    return dict(DEFAULT_LIMITS,**saved)
 def configure_limits(rec,values):
     if not isinstance(values,dict) or set(values)-set(DEFAULT_LIMITS):raise ValueError('unknown execution budget')
     result=limits(rec)

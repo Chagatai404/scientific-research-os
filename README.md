@@ -40,7 +40,8 @@ check the public release feed and download newer stable versions; a pop-up at la
   teaches, asks again and keeps reviews for later, and what you type is recorded as your answer, word for word. A
   conversation keeps the type it was started in. Ask only reads. Learn, Research and Defend sessions can hand work to an
   independent agent (literature scout, source verifier, adversary, librarian) that runs in a fresh context and reports
-  back.
+  back. A reply may make up to 40 tool calls in 10 minutes (Settings → Tool Steps and Deadline); when they run out the agent
+  says what it read and what it did not, and "continue" carries on with a fresh budget.
 - **Sessions** (left column) lists your courses and projects. Create, rename and drag sessions into them; click the
   workspace name at the top to rename it. Archive what you no longer want visible: it is hidden, never deleted.
 - **Library** lists written material (notes, text, PDFs, Word and PowerPoint). Add a file, folder or Obsidian vault once;

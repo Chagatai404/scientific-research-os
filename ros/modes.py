@@ -144,7 +144,7 @@ def agent_text(name: str) -> str:
     return _FRONTMATTER.sub("", path.read_text(encoding="utf-8"), count=1).strip()
 
 
-def prompt(name: str, context: str, room: int) -> str:
+def prompt(name: str, context: str, room: int, steps: int | None = None) -> str:
     """The system prompt of a session: the standing rules, the mode's brief, the skill when it fits in `room` characters
     (else the model reads it with the `skill` tool) and the bounded context."""
     m = mode(name)
@@ -152,6 +152,12 @@ def prompt(name: str, context: str, room: int) -> str:
              "granted tools. Human approvals, claim decisions and waivers must be made in the application. Never assert a "
              "tool effect unless a tool returned its committed result. Mode: " + name + ".")
     parts = [rules, m.brief]
+    if steps:
+        parts.append(f"You have {steps} tool calls in this reply. Spend one or two orienting (`brief`, `today`), the rest on what the person "
+                     "asked, most important first, and plan so you do not run out half way; a page of a long note is one call. When about "
+                     "three are left, stop reading and say what you read, what you did not get to, and that the person can say "
+                     "\"continue\" to carry on with a fresh budget. Never present a record you did not read as read, and do not "
+                     "apologise for the limit.")
     if "delegate" in m.writes:
         parts.append("For a literature search, an independent check of a source against a claim, a hostile review of a "
                      "conclusion or filing new material, use `delegate` (roles: " + ", ".join(ROLE_NAMES) + "). A role runs "
