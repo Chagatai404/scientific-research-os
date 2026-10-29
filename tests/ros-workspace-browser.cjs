@@ -327,6 +327,8 @@ async function main() {
     assert.equal(Object.hasOwn(sentMessages.at(-1), 'effort'), false, 'unsupported reasoning effort is not sent to Claude');
     await page.getByLabel('Your message', {exact: true}).fill(longDraft);
     await page.reload(); await page.locator('.message.assistant').first().waitFor();
+    // The model's display name arrives with the catalog, a moment after the first message; wait for it rather than race it.
+    await page.waitForFunction(() => /Claude Sonnet/.test([...document.querySelectorAll('button')].find(b => /^Language model:/.test(b.getAttribute('aria-label') || ''))?.innerText || ''), null, {timeout: 10000}).catch(() => {});
     assert.match(await page.getByRole('button', {name: /^Language model:/}).innerText(), /Claude Sonnet/, 'selected model preference survives reload');
     assert.equal(await page.getByLabel('Your message', {exact: true}).inputValue(), longDraft, 'conversation draft survives reload');
     const conversationUrl = page.url();
