@@ -1,11 +1,11 @@
 {
   "state": "ready",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "available": "9.9.9",
   "percent": 100,
   "exit": 0,
-  "installer_sha512": "VWlRz9K92BKzQB9z17cPJkvDa9GBEPwTfjZ/p9xPRv15Sru9TZg7J+cWzHd3blydwB8WYyRb2T4LtX+T/Kt2hw==",
-  "installer_sha256": "8295c5a8675428756b909b4956e895b49cd833c22b8f2266ee165c3ef02254fe",
+  "installer_sha512": "WlOXYWH48yBash9R6kEQRHJRdkAdpxw+4WyQGLPQJ6PrCSNCuaTrfojxE+1xVspLDZMrE+uHEzyaaNkTf1h4nA==",
+  "installer_sha256": "c9d66228015090e221a326d1ba0b24ed318b448c9a865bb7625ea4eaa158cb82",
   "installation_performed": false,
-  "tested_at": "2026-10-29T19:17:59.911977+00:00"
+  "tested_at": "2026-10-29T22:02:10.920477+00:00"
 }
