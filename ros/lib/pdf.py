@@ -484,14 +484,24 @@ def _tool(name: str) -> str | None:
 
 def browser() -> str | None:
     """A Chromium-family browser: ``ROS_BROWSER``, one on the path, the usual install places, or Playwright's."""
+    found = browsers()
+    return found[0] if found else None
+
+
+def browsers() -> list[str]:
+    """Every Chromium-family browser found, most preferred first: ``ROS_BROWSER``, those on the path, the usual install places, Playwright's.
+    More than one matters because an installed browser can be present and still unable to print (a stub, an update half done)."""
+    out: list[str] = []
+
+    def add(path):
+        if path and path not in out:
+            out.append(path)
     env = os.environ.get("ROS_BROWSER")
     if env and Path(env).is_file():
-        return env
+        add(env)
     for name in ("chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "chrome", "msedge",
                  "microsoft-edge"):
-        found = shutil.which(name)
-        if found:
-            return found
+        add(shutil.which(name))
     places = [r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
               r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
               r"C:\Program Files\Google\Chrome\Application\chrome.exe",
@@ -501,14 +511,14 @@ def browser() -> str | None:
               "/Applications/Chromium.app/Contents/MacOS/Chromium"]
     for p in places:
         if Path(p).is_file():
-            return p
+            add(p)
     root = os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or str(Path.home() / ".cache" / "ms-playwright")
     for pattern in ("chromium-*/chrome-linux/chrome", "chromium-*/chrome-win/chrome.exe",
                     "chromium-*/chrome-mac/Chromium.app/Contents/MacOS/Chromium"):
         hits = sorted(glob.glob(str(Path(root) / pattern)))
         if hits:
-            return hits[-1]
-    return None
+            add(hits[-1])
+    return out
 
 
 def app_printer() -> list[str] | None:
@@ -646,14 +656,23 @@ def print_chromium(page: Path, pdf: Path, timeout: float = 120) -> dict:
     exe = browser()
     if exe is None:
         return {"ok": False, "missing": True, "timed_out": False}
-    with tempfile.TemporaryDirectory(prefix="ros-chrome-") as profile:
-        cmd = [exe, "--headless", "--disable-gpu", "--no-pdf-header-footer", "--hide-scrollbars",
-               "--virtual-time-budget=12000", f"--user-data-dir={profile}", f"--print-to-pdf={pdf}"]
-        if hasattr(os, "geteuid") and os.geteuid() == 0:
-            cmd.append("--no-sandbox")
-        code, out = _run(cmd + [Path(page).resolve().as_uri()], Path(page).parent, timeout)
-    return {"ok": pdf.is_file() and pdf.stat().st_size > 0 and code is not None, "missing": False,
-            "timed_out": code is None, "output": out[-1500:]}
+    # On Windows the browser's helper processes can still hold files in the profile as the print returns; the PDF is already written, so a
+    # profile folder that cannot be removed this second must not fail the print (the OS clears the temp folder later).
+    # The browser we chose first, then any other found: an installed browser can exit 0 and print nothing (Edge as a stub, mid-update).
+    # A timeout is not retried: that would double the wait.
+    res = {"ok": False, "missing": False, "timed_out": False, "output": ""}
+    for candidate in [exe] + [other for other in browsers() if other != exe]:
+        with tempfile.TemporaryDirectory(prefix="ros-chrome-", ignore_cleanup_errors=True) as profile:
+            cmd = [candidate, "--headless", "--disable-gpu", "--no-pdf-header-footer", "--hide-scrollbars",
+                   "--virtual-time-budget=12000", f"--user-data-dir={profile}", f"--print-to-pdf={pdf}"]
+            if hasattr(os, "geteuid") and os.geteuid() == 0:
+                cmd.append("--no-sandbox")
+            code, out = _run(cmd + [Path(page).resolve().as_uri()], Path(page).parent, timeout)
+        res = {"ok": pdf.is_file() and pdf.stat().st_size > 0 and code is not None, "missing": False,
+               "timed_out": code is None, "output": out[-1500:]}
+        if res["ok"] or res["timed_out"]:
+            break
+    return res
 
 
 def _pages(pdf: Path) -> int:
