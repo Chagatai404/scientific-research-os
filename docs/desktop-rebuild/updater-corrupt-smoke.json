@@ -1,10 +1,12 @@
 {
   "state": "unavailable",
-  "version": "1.3.0",
+  "version": "1.6.0",
   "error": "The release feed could not be reached. Your installed version remains available.",
   "available": "9.9.9",
   "percent": 100,
   "exit": 0,
   "installer_sha512": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
-  "installation_performed": false
+  "installer_sha256": "8295c5a8675428756b909b4956e895b49cd833c22b8f2266ee165c3ef02254fe",
+  "installation_performed": false,
+  "tested_at": "2026-10-29T19:18:22.882744+00:00"
 }

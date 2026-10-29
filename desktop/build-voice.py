@@ -26,6 +26,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / 'voice'
@@ -60,6 +61,19 @@ def base_python(engine: str = 'kokoro') -> Path:
         if line.startswith('home'):
             return Path(os.path.realpath(line.split('=', 1)[1].strip()))
     raise SystemExit(f'{engine}/pyvenv.cfg names no base Python')
+
+
+def remove_tree(path: Path, attempts: int = 30) -> None:
+    """Delete a tree on Windows, where a virus scanner or the search indexer may still hold a file of a pack built a minute ago: retry a locked
+    file for up to a minute before giving up."""
+    for attempt in range(attempts):
+        try:
+            shutil.rmtree(path)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(2)
 
 
 def copy_tree(src: Path, dst: Path, skip: set[str]) -> None:
@@ -107,7 +121,7 @@ def main() -> int:
         print('voice sources found under', SRC)
         return 0
     if OUT.exists():
-        shutil.rmtree(OUT)
+        remove_tree(OUT)
     py = base_python()
     OUT.mkdir(parents=True)
     # Python: the interpreter, its DLLs and a trimmed standard library. No pip, no tkinter, no tests.

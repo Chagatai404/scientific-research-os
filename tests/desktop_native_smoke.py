@@ -38,6 +38,8 @@ def main():
               'executable_sha256':executable_sha256,'tested_at':datetime.now(timezone.utc).isoformat()}
     if (folder/'desktop-smoke.json').exists():
         result['page'] = json.loads((folder/'desktop-smoke.json').read_text(encoding='utf-8'))
+    if (folder/'desktop-smoke-error.txt').exists():
+        result['startup_error'] = (folder/'desktop-smoke-error.txt').read_text(encoding='utf-8')[:1500]  # why the app could not start, e.g. a module missing from app.asar
     (folder/'result.json').write_text(json.dumps(result,indent=2)+'\n', encoding='utf-8')
     if not args.dev:(ROOT/'docs/desktop-rebuild/packaged-smoke.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
     print(json.dumps(result,indent=2))

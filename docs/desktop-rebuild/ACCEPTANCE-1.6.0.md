@@ -34,8 +34,26 @@ Verified 2026-10-29 on Windows 11 Pro, branch `release/1.6.0-guided-sessions`.
   with a fresh context, and the grants. Dispatch tests cover the fresh context, the bound `finish`, the kinds never taken, the hourly
   limit, the pause switch, two failures, and the thread's lifecycle.
 
+- Packaged build, rebuilt after the defect below: `desktop_frozen_smoke.py` (172 CLI tools, no Python on PATH, compute works),
+  `desktop_native_smoke.py` (the packaged app starts, loads "Home · Research OS", version 1.6.0, no horizontal overflow),
+  `desktop_updater_smoke.py` (downloads and verifies a 9.9.9 feed, no install) and `--corrupt` (a feed with a wrong hash is rejected).
+  `app.asar` was checked for `fs-extra`, `electron-updater`, `builder-util-runtime`, `js-yaml`, `lazy-val`, `semver`,
+  `graceful-fs`, `jsonfile` and `universalify`.
+
+## A defect found and fixed before release
+
+The first installer build started with "Research OS could not start: Cannot find module 'fs-extra'". The build had linked
+`desktop/node_modules` to another worktree with a directory junction; electron-builder could not resolve the dependency tree through
+it (it printed `cannot find path for dependency ... fs-extra@undefined`) and left electron-updater's dependencies out of `app.asar`.
+The packaged native smoke only reported a timeout, because the app waited behind an error dialog. Fixed by building with a real
+`desktop/node_modules`; in a smoke run (`ROS_DESKTOP_SMOKE=1`) `main.cjs` now writes the startup error to `desktop-smoke-error.txt`
+and exits 1, and `desktop_native_smoke.py` reports it as `startup_error`. `build-voice.py` also retries deleting the previous pack
+when Windows still holds a file in it. Nothing from the first build was released.
+
 ## Limits
 
+- `desktop_installer_smoke.py` (isolated install, launch and uninstall) was not run: it refuses to run while any Research OS
+  installation is registered on the computer, and this one has one. The installer itself was built and its `latest.yml` hash matches.
 - No session was run end to end with a real Claude or Codex model in the installed app. The loop is verified with fixture providers;
   how well a real model follows the Learn skill is not measured.
 - Dispatch and delegation were verified with fixture providers; no real model has taken a task yet. On first start the dispatcher will
