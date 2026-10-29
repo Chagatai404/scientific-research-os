@@ -6,7 +6,7 @@ import {JSDOM} from 'jsdom';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {Notice} from './ui';
 import {Settings, workspaceLabel} from './Settings';
-import {DEFAULT_MODEL, modelLabel, normalizeModel, resolveEffort, supportedEfforts} from './modelPreferences';
+import {DEFAULT_MODEL, modelLabel, normalizeModel, resolveEffort, supportedEfforts, takesEffort} from './modelPreferences';
 
 const sol = {id: DEFAULT_MODEL, label: 'GPT-6.1 Sol', provider: 'codex', reasoning_efforts: ['low', 'medium', 'high', 'xhigh', 'max']};
 test('error recovery preserves selected record and uses native Settings', () => {
@@ -28,6 +28,14 @@ test('old provider defaults migrate to explicit Sol and reasoning choices obey p
   assert.equal(resolveEffort('high', {id: 'ollama:model', label: 'Local', provider: 'ollama'}), undefined);
   assert.deepEqual(supportedEfforts({...sol, reasoning_efforts: ['unknown', 'medium']}), ['medium']);
   assert.equal(workspaceLabel('ams-ecal-qml'), 'AMS ECAL QML');
+});
+
+test('Claude Sonnet and Opus offer the effort slider; Haiku and local models do not', () => {
+  const claude = {id: 'claude:sonnet', label: 'Claude Sonnet', provider: 'Claude', reasoning_efforts: ['low', 'medium', 'high', 'xhigh', 'max']};
+  assert.deepEqual(supportedEfforts(claude), ['low', 'medium', 'high', 'xhigh', 'max']);
+  assert.equal(resolveEffort('high', claude), 'high');
+  assert.deepEqual([DEFAULT_MODEL, 'claude:sonnet', 'claude:opus'].map(takesEffort), [true, true, true]);
+  assert.deepEqual(['claude:haiku', 'ollama:qwen3', 'compatible:x'].map(takesEffort), [false, false, false]);
 });
 
 test('Settings connects real records, checks services only on clicks and shares saved model preferences', async () => {

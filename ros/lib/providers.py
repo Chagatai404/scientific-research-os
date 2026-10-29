@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 import urllib.request
 from pathlib import Path
 
-from .dialogue import codex_executable, codex_models, provider_failure
+from .dialogue import codex_executable, codex_models, provider_failure, takes_effort
 
 class ProviderError(ValueError): pass
 
@@ -42,12 +42,15 @@ def terminate(process):
 
 def launch(argv, cwd):
     if os.name == 'nt' and Path(argv[0]).suffix.lower() in ('.cmd','.bat'):
-        packages={'codex':('node_modules','@openai','codex','bin','codex.js'),'claude':('node_modules','@anthropic-ai','claude-code','cli.js')}
-        parts=packages.get(Path(argv[0]).stem.lower())
-        script=Path(argv[0]).parent.joinpath(*parts) if parts else None
+        # An npm .cmd shim is never run through cmd.exe. Newer packages ship a native binary beside the shim's package;
+        # older ones a JavaScript entry point that node runs.
+        packages={'codex':(('node_modules','@openai','codex','bin','codex.js'),),
+                  'claude':(('node_modules','@anthropic-ai','claude-code','bin','claude.exe'),('node_modules','@anthropic-ai','claude-code','cli.js'))}
+        root=Path(argv[0]).parent
+        found=next((root.joinpath(*parts) for parts in packages.get(Path(argv[0]).stem.lower(),()) if root.joinpath(*parts).is_file()),None)
         node=shutil.which('node')
-        if not script or not script.is_file() or not node:raise ProviderError('Install the native CLI or its standard Node package; this command shim cannot be launched safely.')
-        argv=[node,str(script),*argv[1:]]
+        if not found or (found.suffix.lower()!='.exe' and not node):raise ProviderError('Install the native CLI or its standard Node package; this command shim cannot be launched safely.')
+        argv=[str(found),*argv[1:]] if found.suffix.lower()=='.exe' else [node,str(found),*argv[1:]]
     return subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding='utf-8', errors='replace', bufsize=1,
                             **({'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {'start_new_session': True}))
 
@@ -74,13 +77,18 @@ def codex(request, emit, tool_call, cancel, own):
     executable = codex_executable()
     if not executable: raise ProviderError('Codex is not installed. Sign in through its CLI after installation.')
     with tempfile.TemporaryDirectory(prefix='ros-codex-context-') as directory:
-        overrides=['-c','features.shell_tool=false','-c','features.apply_patch=false','-c','mcp_servers={}']
-        # Disable inherited connectors/plugins individually; replacing an empty TOML table may merge rather than clear.
+        overrides=['-c','features.shell_tool=false','-c','features.apply_patch=false']
+        # Disable inherited connectors/plugins one by one. Never also override `mcp_servers={}`: Codex applies overrides in
+        # order, so the empty table wipes each server's transport and the later `.enabled=false` leaves it invalid
+        # ("invalid transport"), which makes Codex exit before any turn.
         try:
             import tomllib
             config=tomllib.loads((Path(os.environ.get('CODEX_HOME') or Path.home()/'.codex')/'config.toml').read_text(encoding='utf-8'))
             for section in ('mcp_servers','plugins'):
-                for name in config.get(section,{}):overrides += ['-c',section+'.'+json.dumps(name)+'.enabled=false']
+                # Codex's `-c` path parser takes each segment literally: a quoted name becomes a second, transport-less entry
+                # (rejected as "invalid transport"). Names with a dot, quote or space cannot be written, so they are skipped.
+                for name in config.get(section,{}):
+                    if name and not any(c in name for c in '."\'= \t'):overrides += ['-c',section+'.'+name+'.enabled=false']
         except (OSError,ValueError):pass
         process = launch([executable, 'app-server', '--listen', 'stdio://', *overrides], directory)
         own(process)
@@ -91,7 +99,7 @@ def codex(request, emit, tool_call, cancel, own):
             if params is not None: message['params'] = params
             process.stdin.write(json.dumps(message) + '\n'); process.stdin.flush(); return sequence
         try:
-            init = send('initialize', {'clientInfo': {'name': 'research_os', 'title': 'Research OS', 'version': '1.5.1'}, 'capabilities': {'experimentalApi': True}})
+            init = send('initialize', {'clientInfo': {'name': 'research_os', 'title': 'Research OS', 'version': '1.5.2'}, 'capabilities': {'experimentalApi': True}})
             start_id = turn_id = None
             usage=None
             for event in lines(process, cancel, request.get('deadline', 180)):
@@ -120,7 +128,7 @@ def codex(request, emit, tool_call, cancel, own):
                 elif 'id' in event and method:
                     # Decline every unknown approval/permission request. Scientific approvals are never provider permissions.
                     process.stdin.write(json.dumps({'id': event['id'], 'error': {'code': -32601, 'message': 'This operation is not granted by Research OS'}}) + '\n'); process.stdin.flush()
-            raise ProviderError('Codex stopped before a terminal turn event.')
+            raise ProviderError('Codex stopped before a terminal turn event (exit %s). Run `codex` in a terminal to see why.' % process.poll())
         finally: terminate(process)
 
 def claude(request, emit, tool_call, cancel, own):
@@ -130,6 +138,7 @@ def claude(request, emit, tool_call, cancel, own):
         bridge = request.get('bridge')
         config = {'mcpServers': {'research_os': {'type': 'http', 'url': bridge['url'], 'headers': {'Authorization': 'Bearer ' + bridge['token']}}}} if bridge else {'mcpServers': {}}
         argv = [executable, '--print', '--verbose', '--output-format', 'stream-json', '--include-partial-messages', '--model', request['model'].split(':', 1)[1], '--tools', '', '--strict-mcp-config', '--mcp-config', json.dumps(config), '--no-session-persistence', '--setting-sources', '', '--system-prompt', request['system']]
+        if request.get('effort') and takes_effort(request['model']): argv += ['--effort', request['effort']]
         if bridge: argv += ['--allowedTools', 'mcp__research_os__*']
         if request.get('images'): argv += ['--input-format', 'stream-json']
         process = launch(argv, directory); own(process)

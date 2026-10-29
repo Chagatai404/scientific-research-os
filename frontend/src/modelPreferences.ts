@@ -10,6 +10,8 @@ export function normalizeModel(value: string) {return !value || value === 'codex
 export function modelLabel(model: string, models: ModelChoice[] = []) {
   return models.find(value => value.id === model)?.label || (normalizeModel(model) === DEFAULT_MODEL ? 'GPT-6.1 Sol' : model.split(':').slice(1).join(':').replace(/[-_]/g, ' ') || 'Choose a model');
 }
+/** Mirrors the backend: Codex models and Claude Sonnet/Opus take an effort; Haiku and local models do not. */
+export function takesEffort(model: string) {return model.startsWith('codex:') || /^claude:.*(sonnet|opus)/.test(model);}
 export function supportedEfforts(model?: ModelChoice) {return model?.reasoning_efforts?.filter(value => EFFORTS.includes(value)) || [];}
 export function resolveEffort(effort: string, model?: ModelChoice) {
   const choices = supportedEfforts(model);

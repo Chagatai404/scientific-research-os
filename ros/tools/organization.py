@@ -1,12 +1,12 @@
 """Tools for named workspaces, folders and stable item organization."""
 from .. import organization as org
-from .. import vault
+from .. import vault, workspace as ws
 from ..registry import P, tool
 
 
-@tool('workspace_organization', 'Read named folders, sessions and material without moving or scanning source files.')
+@tool('workspace_organization', 'Read named folders, sessions and material without moving or scanning source files. The user-wide Knowledge record also lists the sessions of its linked workspaces.')
 def snapshot(rec):
-    return org.snapshot(rec)
+    return ws.sessions_listing(rec)
 
 
 @tool('organization_create', 'Create a named project, course or library collection.', human=True,

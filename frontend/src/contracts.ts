@@ -16,7 +16,8 @@ export interface QueueItem {kind: string; subject: string; title?: string; text?
 export interface Evidence {subject: string; kind: string; node?: NodeData; title?: string; text?: string; verdict?: string; ownership?: string; assurance?: string; can_accept?: boolean; required?: string[]; steps?: Record<string, {verdict: string; by: string; notes?: string}>; artifacts?: string[]; citations?: {citation: string}[]; adversary_memo?: string; authorizes?: string; plan?: Record<string, unknown>; links?: {vault?: {obsidian: string}; handouts?: LibraryItem[]}; [key: string]: unknown}
 
 export interface Folder {id: string; title: string; kind: 'course' | 'project' | 'collection'; parent: string}
-export interface SessionRow {id: string; title: string; kind: string; parent: string}
+/** `record` and `workspace` are set only on a session listed from another (linked) workspace, e.g. a project's session in Knowledge. */
+export interface SessionRow {id: string; title: string; kind: string; parent: string; record?: string; workspace?: string}
 export interface Material {id: string; title: string; kind: string; parent: string; state: 'added' | 'reading' | 'ready' | 'attention'; detail: string; source: string; path: string; indexed: boolean; added: string}
 export interface Organization {workspace: {name: string; title: string}; folders: Folder[]; sessions: SessionRow[]; library: Material[]; names: Record<string, string>; parents: Record<string, string>}
 export interface MapNode {id: string; label: string; kind: string; role: 'center' | 'category' | 'hub' | 'topic' | 'source'; category: string; tip: string; parent: string; cluster: string; weight: number; record: string; canonical: boolean; material: number}

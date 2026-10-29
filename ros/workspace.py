@@ -263,6 +263,27 @@ def _map_record(owner: Record, expand: str) -> dict:
     return {"nodes": out, "edges": edges, "needs": needs}
 
 
+def sessions_listing(rec: Record) -> dict:
+    """The organization snapshot as the sessions pane reads it. Knowledge, the user-wide record, is the outer set: it also
+    lists the sessions of every workspace linked to it (read-only; each row names the record that owns it, so opening or
+    renaming it acts there), and no longer lists a linked workspace's own project hub as a bare folder beside them."""
+    out = organization.snapshot(rec)
+    if home.config(rec.root).get("role") != "user":
+        return out
+    rows, hubs = [], set()
+    with context.linked(rec) as records:
+        for other in records[1:]:
+            if home.config(other.root).get("project"):
+                hubs.add(home.config(other.root)["project"])
+            name = organization.title(other)
+            rows += [dict(s, parent="", record=other.root.name, workspace=name) for s in organization.snapshot(other)["sessions"]]
+    mine = {s["id"] for s in out["sessions"]}
+    out["sessions"] = out["sessions"] + [r for r in rows if r["id"] not in mine]
+    used = {x["parent"] for x in out["folders"] + out["sessions"]}
+    out["folders"] = [f for f in out["folders"] if f["id"] not in hubs or f["id"] in used]
+    return out
+
+
 def overview_map(rec: Record, expand: str = "") -> dict:
     """The central map: workspace -> Knowledge, Research and Goals -> places -> topics, with the recorded links between them."""
     nodes, edges, needs = {}, [], []
