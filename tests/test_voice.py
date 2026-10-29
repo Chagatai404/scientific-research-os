@@ -16,6 +16,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ros.lib import voice as vc
 
+_isolation = []
+
+
+def setUpModule():
+    """No engine of the computer these tests run on may leak in: an empty home folder (no ~/voice-envs) and no ROS_* settings, so
+    "nothing is set up" really is nothing."""
+    home = tempfile.TemporaryDirectory()
+    clean = {k: v for k, v in os.environ.items() if not k.startswith('ROS_')}
+    patched = mock.patch.dict(os.environ, {**clean, 'USERPROFILE': home.name, 'HOME': home.name}, clear=True)
+    patched.start()
+    _isolation.extend([patched, home])
+
+
+def tearDownModule():
+    patched, home = _isolation
+    patched.stop(); home.cleanup(); _isolation.clear()
+
 
 def tone(path, seconds=0.5, rate=22050, channels=1, width=2):
     with wave.open(str(path), 'wb') as handle:

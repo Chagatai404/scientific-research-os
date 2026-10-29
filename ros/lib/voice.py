@@ -104,9 +104,54 @@ def adapter(env: Path, *args, timeout: int = DEFAULT_TIMEOUT) -> dict:
     return {'ok': False, 'error': (done['stderr'].strip().splitlines() or ['the adapter printed nothing'])[-1][:300]}
 
 
+def voice_pack() -> Path | None:
+    """The voice engines shipped inside the installed app (Python, Kokoro, faster-whisper and both models), or None.
+    ROS_VOICE_PACK names one explicitly; the frozen backend looks beside itself, at <install>/resources/voice."""
+    for candidate in (os.environ.get('ROS_VOICE_PACK'), Path(sys.executable).resolve().parents[2] / 'voice' if getattr(sys, 'frozen', False) else None):
+        if candidate and (Path(candidate) / 'python' / 'python.exe').is_file():
+            return Path(candidate)
+    return None
+
+
+def voice_paths() -> tuple[Path, Path, Path]:
+    """Where the Kokoro environment, Kokoro model files and Whisper environment are: a path you set, else the bundled pack, else ~/voice-envs."""
+    pack, base = voice_pack(), Path.home() / 'voice-envs'
+    def choose(name, bundled, fallback):
+        return Path(os.environ.get(name) or (pack / bundled if pack else fallback))
+    return (choose('ROS_KOKORO_ENV', 'kokoro', base / 'kokoro'), choose('ROS_KOKORO_MODELS', Path('models') / 'kokoro', base / 'kokoro-models'),
+            choose('ROS_WHISPER_ENV', 'whisper', base / 'whisper'))
+
+
+def whisper_model() -> str:
+    """The bundled 'small' model folder when there is one (no download, works offline), else the model's name."""
+    pack = voice_pack()
+    return str(pack / 'models' / 'whisper-small') if pack and (pack / 'models' / 'whisper-small' / 'model.bin').is_file() else 'small'
+
+
+def holds(env: Path, module: str) -> bool:
+    """Whether an environment folder has the package (a venv, or the pack's bare site-packages)."""
+    return any((env / sub / module).exists() for sub in ('site-packages', 'Lib/site-packages', 'lib/python3.11/site-packages', 'lib/python3.12/site-packages'))
+
+
+def kokoro_ready() -> tuple[Path, Path] | None:
+    """The Kokoro environment and the folder of its model files when both are set up here, else None."""
+    env, weights, _ = voice_paths()
+    ok = holds(env, 'kokoro_onnx') and (weights / 'kokoro-v1.0.onnx').is_file() and (weights / 'voices-v1.0.bin').is_file()
+    return (env, weights) if ok else None
+
+
 def environments(envs: list[str] | None = None) -> list[Path]:
+    """The environments to look in: those named, else RESEARCH_OS_VOICE_ENVS, else the Kokoro that came with the app."""
     named = [Path(e) for e in (envs or []) if e]
-    return named or [Path(p) for p in os.environ.get(ENV_VARIABLE, '').split(os.pathsep) if p]
+    listed = [Path(p) for p in os.environ.get(ENV_VARIABLE, '').split(os.pathsep) if p]
+    ready = kokoro_ready()
+    return named or listed or ([ready[0]] if ready else [])
+
+
+def default_voices(provider: str) -> dict:
+    """Engine settings nobody had to pass: Kokoro's model folder from the pack (or ROS_KOKORO_MODELS)."""
+    ready = kokoro_ready() if provider == 'kokoro' else None
+    return {'model_dir': str(ready[1])} if ready else {}
 
 
 def detect(envs: list[str] | None = None) -> list[dict]:
@@ -279,7 +324,7 @@ def speak(root: Path, script: str, lang: str, provider: str, envs: list[str] | N
         raise VoiceError('the script cannot be spoken yet: ' + '; '.join(prepared['problems']))
     if not prepared['segments']:
         raise VoiceError('the script has nothing to say')
-    root, voices = Path(root).resolve(), voices or {}
+    root, voices = Path(root).resolve(), voices or default_voices(provider)
     if provider == 'kokoro':
         for seg in prepared['segments']:
             kokoro_settings(voices, seg['lang'], device, rate)

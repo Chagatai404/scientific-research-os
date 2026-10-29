@@ -17,6 +17,8 @@ import tempfile
 import urllib.request
 
 
+from .voice import holds, kokoro_ready, voice_pack, voice_paths, whisper_model  # noqa: F401  (one definition of where the voice engines are)
+
 REASONING_EFFORTS = ("low", "medium", "high", "xhigh", "max")
 DEFAULT_MODEL = "codex:gpt-6.1-sol"
 
@@ -87,30 +89,6 @@ def codex_models():
     return models
 
 
-def voice_pack():
-    """The voice engines shipped inside the installed app (Python, Kokoro, faster-whisper and both models), or None.
-    ROS_VOICE_PACK names one explicitly; the frozen backend looks beside itself, at <install>/resources/voice."""
-    for candidate in (os.environ.get("ROS_VOICE_PACK"), Path(sys.executable).resolve().parents[2] / "voice" if getattr(sys, "frozen", False) else None):
-        if candidate and (Path(candidate) / "python" / "python.exe").is_file():
-            return Path(candidate)
-    return None
-
-
-def voice_paths():
-    """Where the Kokoro environment, Kokoro model files and Whisper environment are: a path you set, else the bundled pack, else ~/voice-envs."""
-    pack, base = voice_pack(), Path.home() / "voice-envs"
-    def choose(name, bundled, fallback):
-        return Path(os.environ.get(name) or (pack / bundled if pack else fallback))
-    return (choose("ROS_KOKORO_ENV", "kokoro", base / "kokoro"), choose("ROS_KOKORO_MODELS", Path("models") / "kokoro", base / "kokoro-models"),
-            choose("ROS_WHISPER_ENV", "whisper", base / "whisper"))
-
-
-def whisper_model():
-    """The bundled 'small' model folder when there is one (no download, works offline), else the model's name."""
-    pack = voice_pack()
-    return str(pack / "models" / "whisper-small") if pack and (pack / "models" / "whisper-small" / "model.bin").is_file() else "small"
-
-
 def ollama_model(item):
     """Keep the provider's exact model id while making local choices readable."""
     if not isinstance(item, dict): return None
@@ -151,11 +129,9 @@ def catalog():
                       "hint": "Installed local models are ready to select." if choices else "Ollama is running; no installed models were found."}
     except (OSError, ValueError):
         pass
-    kokoro, weights, whisper = voice_paths()
-    def installed(env, module):
-        return any((env / sub / module).exists() for sub in ("site-packages", "Lib/site-packages", "lib/python3.11/site-packages", "lib/python3.12/site-packages"))
-    ready = installed(kokoro, "kokoro_onnx") and (weights / "kokoro-v1.0.onnx").is_file() and (weights / "voices-v1.0.bin").is_file()
-    return {"models": models, "default_model": DEFAULT_MODEL, "default_effort": "medium", "ollama": ollama, "voice": {"kokoro": ready, "whisper": installed(whisper, "faster_whisper"),
+    ready = kokoro_ready() is not None
+    whisper = voice_paths()[2]
+    return {"models": models, "default_model": DEFAULT_MODEL, "default_effort": "medium", "ollama": ollama, "voice": {"kokoro": ready, "whisper": holds(whisper, "faster_whisper"),
                                           "language": "en", "label": "Kokoro · Heart / Sky" if ready else "Kokoro needs setup"},
             "notice": "CLI model choices use your existing provider login. Availability is checked by the provider when you send. Local models stay on this computer."}
 

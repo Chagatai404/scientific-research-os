@@ -53,6 +53,27 @@ class VoicePackTests(unittest.TestCase):
             self.assertEqual(dialogue.voice_paths()[0], Path(self.tmp.name) / 'voice-envs' / 'kokoro')
             self.assertEqual(dialogue.whisper_model(), 'small')
 
+    def test_lesson_narration_finds_the_bundled_kokoro_without_any_setting(self):
+        from ros import prepare
+        self.assertEqual(voice.environments(), [], 'nothing is set up yet')
+        self.assertFalse(prepare.voice_configured())
+        (self.pack / 'kokoro' / 'site-packages' / 'kokoro_onnx').mkdir()
+        (self.pack / 'models' / 'kokoro' / 'kokoro-v1.0.onnx').write_bytes(b'')
+        (self.pack / 'models' / 'kokoro' / 'voices-v1.0.bin').write_bytes(b'')
+        self.assertEqual(voice.environments(), [self.pack / 'kokoro'])
+        self.assertEqual(voice.default_voices('kokoro'), {'model_dir': str(self.pack / 'models' / 'kokoro')})
+        self.assertEqual(voice.default_voices('piper'), {})
+        self.assertTrue(prepare.voice_configured(), 'the narration job is scheduled in the installed app')
+        self.assertTrue(dialogue.catalog()['voice']['kokoro'], 'read-aloud and narration agree about the engine')
+        with patch.dict(os.environ, {voice.ENV_VARIABLE: str(Path(self.tmp.name) / 'mine')}):
+            self.assertEqual(voice.environments(), [Path(self.tmp.name) / 'mine'], 'a set environment still wins')
+        self.assertEqual(voice.environments(['x']), [Path('x')], 'so does a named one')
+
+    def test_a_partial_pack_is_not_reported_as_ready(self):
+        (self.pack / 'kokoro' / 'site-packages' / 'kokoro_onnx').mkdir()
+        self.assertIsNone(voice.kokoro_ready(), 'the model files are missing')
+        self.assertEqual(voice.environments(), [])
+
     def test_engines_run_from_the_shared_python_with_their_own_packages_and_never_the_users_site(self):
         python, extra = voice.launcher(self.pack / 'kokoro')
         self.assertEqual(python, self.pack / 'python' / 'python.exe')

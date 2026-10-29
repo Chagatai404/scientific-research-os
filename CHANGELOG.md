@@ -6,6 +6,7 @@
 - Grant sessions the whole loop: `start`, `next`, `answer`, `ask`, `hint`, `close` for Learn and Defend; retention (`today`, `due`, `review_scope`, `frontier`, `capabilities`, `map`, `progress`) and finding earlier work (`find`, `records`, `library`, `vault_find`, `evidence`, `log`) in every type; `link` in Learn and Research. `verdict`, `approve`, `decide` and `waive` are never granted.
 - What you type is what is recorded. In a Learn or Defend session the supervisor replaces the model's `response` for `answer` and `text` for `ask` with your own latest message, takes "I don't know" only from your words, and allows one answer per message, so a model cannot write learner evidence.
 - New tools `skill`, `session_grant`, `session_prompt` and `session_bind`; `workspace_chat` now returns the conversation's `mode`.
+- Fix lesson narration in the installed app. Read-aloud found the bundled Kokoro, but prepared-lesson narration only looked at `RESEARCH_OS_VOICE_ENVS` (which the app never sets), so the automatic narration job was never scheduled and `bundle_voice` had no engine or model folder: lessons stayed "not ready". One resolver in `ros/lib/voice.py` (`voice_pack`, `voice_paths`, `kokoro_ready`, `environments`, `default_voices`) now serves read-aloud, dictation and narration alike. Animations still need a Manim environment, which the app does not bundle.
 
 ## 1.5.2: sessions answer again, effort for Claude, sessions in Knowledge
 
