@@ -18,6 +18,11 @@ INDEX_JOBS = {}
 INDEX_WORKER = threading.Semaphore(1)
 ENGINE_WORKER = threading.Semaphore(1)
 
+def out_of_steps(steps):
+    """What the model is told when it has used its tool calls: stop, and say plainly what is left, so the person can say "continue"."""
+    return (f'tool step budget reached: the {steps} tool calls of this reply are used. Call no more tools. Say what you did, what you did not '
+            'get to, and that the person can say "continue" to carry on with a fresh budget.')
+
 def execute_operation(rec,identifier):
     import sys
     from pathlib import Path
@@ -189,7 +194,7 @@ def execute(rec, result, request, legacy_engine=None):
         if previous: return previous['result']
         if name == 'delegate':
             budget['steps'] += 1
-            if budget['steps'] > limits['tool_steps']: raise ValueError('tool step budget reached')
+            if budget['steps'] > limits['tool_steps']: raise ValueError(out_of_steps(limits['tool_steps']))
             flush()
             value = run_role(api.call('delegate', rec, **args), operation)
             api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
@@ -200,7 +205,7 @@ def execute(rec, result, request, legacy_engine=None):
             budget['answers'] = 1
         args = api.call('session_bind', rec, tool=name, args=args, said=said)
         budget['steps'] += 1
-        if budget['steps'] > limits['tool_steps']: raise ValueError('tool step budget reached')
+        if budget['steps'] > limits['tool_steps']: raise ValueError(out_of_steps(limits['tool_steps']))
         flush()
         target = rec if name in ('work', 'engage', 'brief') else selected[0]
         with api.LOCK:
@@ -272,7 +277,7 @@ def execute(rec, result, request, legacy_engine=None):
                 context_limit=min(limits['context'], profile['context_limit'] if profile else limits['context'])
                 context = json.dumps(request.get('context', {}), ensure_ascii=False)[:context_limit//2]
                 packet = dict(request, deadline=limits['deadline'], steps=limits['tool_steps'], output_limit=limits['output'], provider_calls=limits['provider_calls'],
-                              system=api.call('session_prompt', rec, mode=row['mode'], context=context, room=context_limit // 3),
+                              system=api.call('session_prompt', rec, mode=row['mode'], context=context, room=context_limit // 3, steps=limits['tool_steps']),
                               tools=[{'name': name, 'description': api.TOOLS[name].help, 'parameters': api.TOOLS[name].schema()} for name in sorted(allowed)])
                 packet.pop('_vision_permissions',None)
                 # Character bound is explicit; original messages remain in the record.

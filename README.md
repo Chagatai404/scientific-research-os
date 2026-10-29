@@ -1,6 +1,6 @@
 # Scientific Research OS
 
-Version **1.6.0**. A Windows desktop app (and a Python toolkit) where you are the director: say what you want to learn
+Version **1.6.1**. A Windows desktop app (and a Python toolkit) where you are the director: say what you want to learn
 or find out, and agents prepare it, keep your Obsidian vault current and check the work. You learn, and you judge the
 findings. It works with Claude, Codex, Gemini or a local model.
 
@@ -40,7 +40,8 @@ check the public release feed and download newer stable versions; a pop-up at la
   teaches, asks again and keeps reviews for later, and what you type is recorded as your answer, word for word. A
   conversation keeps the type it was started in. Ask only reads. Learn, Research and Defend sessions can hand work to an
   independent agent (literature scout, source verifier, adversary, librarian) that runs in a fresh context and reports
-  back.
+  back. A reply may make up to 40 tool calls in 10 minutes (Settings → Tool Steps and Deadline); when they run out the agent
+  says what it read and what it did not, and "continue" carries on with a fresh budget.
 - **Sessions** (left column) lists your courses and projects. Create, rename and drag sessions into them; click the
   workspace name at the top to rename it. Archive what you no longer want visible: it is hidden, never deleted.
 - **Library** lists written material (notes, text, PDFs, Word and PowerPoint). Add a file, folder or Obsidian vault once;
@@ -113,7 +114,7 @@ npm --prefix desktop start
 
 `python desktop/verify.py` runs the full isolated gate (Python, frontend, browser journeys, packaged lifecycle). It makes
 no paid inference calls and never touches your vault. Acceptance notes:
-[1.6](docs/desktop-rebuild/ACCEPTANCE-1.6.0.md), [1.5.2](docs/desktop-rebuild/ACCEPTANCE-1.5.2.md), [1.5.1](docs/desktop-rebuild/ACCEPTANCE-1.5.1.md), [1.5](docs/desktop-rebuild/ACCEPTANCE-1.5.0.md), [1.4](docs/desktop-rebuild/ACCEPTANCE-1.4.0.md),
+[1.6.1](docs/desktop-rebuild/ACCEPTANCE-1.6.1.md), [1.6](docs/desktop-rebuild/ACCEPTANCE-1.6.0.md), [1.5.2](docs/desktop-rebuild/ACCEPTANCE-1.5.2.md), [1.5.1](docs/desktop-rebuild/ACCEPTANCE-1.5.1.md), [1.5](docs/desktop-rebuild/ACCEPTANCE-1.5.0.md), [1.4](docs/desktop-rebuild/ACCEPTANCE-1.4.0.md),
 [architecture](docs/desktop-rebuild/ARCHITECTURE.md), [backup and rollback](docs/desktop-rebuild/MIGRATION_AND_ROLLBACK.md).
 
 ## Use it from a terminal or an agent

@@ -212,6 +212,42 @@ class Sessions(unittest.TestCase):
         step = next(s for s in api.call("run_get", self.rec, run=sent["run"])["steps"] if s["operation"] == "read-plan")
         self.assertEqual(step["result"]["read"]["chars"], 30000, "the committed step shows how much was sent")
 
+    def test_a_session_has_room_to_read_a_project_and_is_told_its_budget(self):
+        limits = api.call("execution_limits", self.rec)
+        self.assertEqual((limits["tool_steps"], limits["deadline"], limits["provider_calls"]), (40, 600, 41), "8 calls and 180 s were not enough to read a project")
+        seen = {}
+        def provider(request, emit, tool, cancel, own):
+            seen["system"] = request["system"]
+            for number in range(15): tool("context", {}, f"read-{number}")  # more than the old limit of 8
+            emit("Read it all."); return {}
+        sent = self.run_turn("Give me the picture of the project", provider, mode="research")
+        run = api.call("run_get", self.rec, run=sent["run"])
+        self.assertEqual((run["state"], len(run["steps"])), ("completed", 15), run.get("detail"))
+        self.assertIn("You have 40 tool calls in this reply", seen["system"]); self.assertIn('"continue"', seen["system"])
+        self.assertIn("did not get to", seen["system"])
+
+    def test_running_out_of_calls_tells_the_model_what_to_say_and_the_run_still_completes(self):
+        api.call("execution_configure", self.rec, values={"tool_steps": 3})
+        told = []
+        def provider(request, emit, tool, cancel, own):
+            for number in range(5):
+                try: tool("context", {}, f"read-{number}")
+                except ValueError as exc: told.append(str(exc)); break
+            emit("I read 3 of them; the rest are for you to continue."); return {}
+        sent = self.run_turn("Read everything", provider, mode="research")
+        self.assertEqual(api.call("run_get", self.rec, run=sent["run"])["state"], "completed")
+        self.assertEqual(len(told), 1)
+        for phrase in ("3 tool calls", "Call no more tools", "what you did not get to", '"continue"'): self.assertIn(phrase, told[0])
+
+    def test_a_saved_copy_of_the_old_limits_is_not_a_choice_but_a_deliberate_value_is_kept(self):
+        old = {"context": 24000, "output": 4096, "tool_steps": 8, "deadline": 180, "queue": 8, "provider_calls": 9}
+        self.rec.append("execution.limits", "workspace", old, actor="person")  # what Settings saved before 1.6.1, whatever the person changed
+        got = api.call("execution_limits", self.rec)
+        self.assertEqual({k: got[k] for k in ("tool_steps", "deadline", "provider_calls")}, {"tool_steps": 40, "deadline": 600, "provider_calls": 41})
+        self.rec.append("execution.limits", "workspace", dict(old, tool_steps=2, deadline=60, provider_calls=3), actor="person")
+        got = api.call("execution_limits", self.rec)
+        self.assertEqual({k: got[k] for k in ("tool_steps", "deadline", "provider_calls")}, {"tool_steps": 2, "deadline": 60, "provider_calls": 3})
+
     def test_the_skill_tool_serves_the_shipped_text_and_refuses_unknown_names(self):
         self.assertIn("You are the tutor", api.call("skill", self.rec, skill="learn")["text"])
         with self.assertRaises(KeyError): api.call("skill", self.rec, skill="../AGENTS")

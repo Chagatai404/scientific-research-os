@@ -34,9 +34,10 @@ def session_grant(rec, mode):
 @tool("session_prompt", "The system prompt of a session: standing rules, the mode's brief, its skill and the bounded context.",
       mode=P("string", "chat, learn, research or defend", True, enum=modes.NAMES),
       context=P("string", "the session's context as JSON text", True),
-      room=P("integer", "characters the skill may take before it is read with the skill tool instead", True))
-def session_prompt(rec, mode, context, room):
-    return modes.prompt(mode, context, room)
+      room=P("integer", "characters the skill may take before it is read with the skill tool instead", True),
+      steps=P("integer", "how many tool calls the reply may make, so the model can plan them and say what it did not get to"))
+def session_prompt(rec, mode, context, room, steps=None):
+    return modes.prompt(mode, context, room, steps)
 
 
 @tool("session_bind", "Arguments of a tool call with the person's own words in place of the model's for the tools that "
