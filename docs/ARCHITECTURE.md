@@ -18,6 +18,7 @@ document and that test in the same commit.
                vault · handouts · automation · director · atlas
                organization (display names and membership, independent of scientific edges)
                library (material added by the person: listed at once, read in the background)
+               modes (what a desktop session is in each mode: its skill, its tool grant, the person's own words)
      │
  core          store (the record) · home (where records live)
  engines       lib/ (speech, voice, Manim, papers, scouting, evidence atoms, manifests, walkthrough, old readers)
@@ -136,6 +137,17 @@ belongs. Use `ctx.view` (a `probe.LessonView`: the lesson, read once) and `ctx.l
 fresh scans. Return
 `{"action", "reason", ...}`; the reason is logged and must say why in a sentence. Add a test that drives a lesson to
 the new decision.
+
+### A session mode (what a desktop conversation is allowed and told to do)
+
+A session is the agent loop of a skill with a filtered grant, so a mode is one `Mode(...)` row in `ros/modes.py`: the
+skill that guides it (`skills/<name>/SKILL.md`, put into the system prompt when it fits, else read with the `skill`
+tool), what the session adds to it, the tools it may read and write, and the director kind that sets a record up for it.
+`runtime.execute` reads the row only through the `session_grant`, `session_prompt` and `session_bind` tools, never by
+import. Grant a tool to a mode only if a person could not mistake a model's call of it for their own act: tools that
+record what the learner wrote (`answer`, `ask`) are bound to the person's own words by `modes.bind`, `verdict`, `approve`,
+`decide` and `waive` are never granted, and work that takes minutes (voice, animation) stays a `job` task for the runner.
+Add the mode to `tests/test_ros_sessions.py`, which checks every grant against the registry.
 
 ### A readiness check for prepared lessons
 

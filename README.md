@@ -34,8 +34,11 @@ check the public release feed and download newer stable versions; a pop-up at la
 
 ### Using it
 
-- **Home** is the map and one question box. The composer has a model drop-up, a reasoning-effort slider, dictation and
-  read-aloud; the agent decides how to answer, so there is no mode to pick.
+- **Home** is the map and one question box. The composer has a session type (**Ask**, **Learn**, **Research**,
+  **Defend**), a model drop-up, a reasoning-effort slider, dictation and read-aloud. A session runs the skill of its type
+  (`skills/learn`, `research`, `defend`) with the tools that skill needs: a Learn session probes what you know, plans,
+  teaches, asks again and keeps reviews for later, and what you type is recorded as your answer, word for word. A
+  conversation keeps the type it was started in. Ask only reads.
 - **Sessions** (left column) lists your courses and projects. Create, rename and drag sessions into them; click the
   workspace name at the top to rename it. Archive what you no longer want visible: it is hidden, never deleted.
 - **Library** lists written material (notes, text, PDFs, Word and PowerPoint). Add a file, folder or Obsidian vault once;

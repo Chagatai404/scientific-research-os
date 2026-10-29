@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.6.0 (in progress): sessions run the skills
+
+- Bring back the guided workflow in desktop sessions. Since 1.5.0 the composer sent no mode, so every session was a read-only chat with a generic prompt and none of the teaching loop. A session now has a type, **Ask**, **Learn**, **Research** or **Defend**, chosen in the composer and kept by the conversation (a follow-up inherits it and is never downgraded). `ros/modes.py` is the one table: each type's skill (put into the system prompt, or read with the new `skill` tool when it does not fit the model's context), its tool grant, and the director kind that sets a record up for it.
+- Grant sessions the whole loop: `start`, `next`, `answer`, `ask`, `hint`, `close` for Learn and Defend; retention (`today`, `due`, `review_scope`, `frontier`, `capabilities`, `map`, `progress`) and finding earlier work (`find`, `records`, `library`, `vault_find`, `evidence`, `log`) in every type; `link` in Learn and Research. `verdict`, `approve`, `decide` and `waive` are never granted.
+- What you type is what is recorded. In a Learn or Defend session the supervisor replaces the model's `response` for `answer` and `text` for `ask` with your own latest message, takes "I don't know" only from your words, and allows one answer per message, so a model cannot write learner evidence.
+- New tools `skill`, `session_grant`, `session_prompt` and `session_bind`; `workspace_chat` now returns the conversation's `mode`.
+
 ## 1.5.2: sessions answer again, effort for Claude, sessions in Knowledge
 
 - Fix sessions that never answered with Codex or Claude. Codex 0.165 rejected the connector overrides the app passed it (`mcp_servers={}` followed by quoted per-server names), exited with "invalid transport" and the app reported only "Codex stopped before a terminal turn event". Overrides now name each connector and plugin the way Codex parses them, and that message now includes the exit code. Claude Code 2.1 ships a native `claude.exe` behind its npm `.cmd` shim, which the launcher refused ("Install the native CLI or its standard Node package"); it now starts the native binary, and still falls back to the older `cli.js`.

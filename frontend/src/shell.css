@@ -184,3 +184,9 @@
 .pick-matches{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}.pick-matches button{width:100%;text-align:left;padding:6px 8px;border:0;border-radius:6px;background:transparent;color:var(--ink);font:inherit;cursor:pointer}.pick-matches button:hover{background:var(--hover,#ffffff14)}
 
 .graph-toolbar{gap:6px}
+.mode-picker{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px 8px;max-width:736px;margin:0 auto 8px}
+.mode-picker button{min-height:44px;padding:0 16px;border:1px solid var(--line);border-radius:999px;background:transparent;color:var(--muted);font-size:.8rem;cursor:pointer}
+.mode-picker button:hover{background:var(--soft);color:var(--ink)}
+.mode-picker button[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--bg,#fff)}
+.mode-picker small{flex-basis:100%;text-align:center}
+.mode-badge{max-width:736px;margin:0 auto 4px;font-size:.76rem}

@@ -17,14 +17,6 @@ FOREGROUND = threading.Semaphore(1)
 INDEX_JOBS = {}
 INDEX_WORKER = threading.Semaphore(1)
 ENGINE_WORKER = threading.Semaphore(1)
-SAFE_READS = {'context', 'brief', 'tasks', 'items', 'item', 'history', 'bundles', 'bundle_plan', 'claim_status', 'claims', 'support', 'code', 'research', 'gaps', 'roadmap', 'workspace_document', 'workspace_entity', 'workspace_graph', 'handout_read', 'handouts', 'status'}
-SAFE_WRITES = {'engage', 'work', 'claim', 'finish', 'bundle_create', 'bundle_plan', 'bundle_file', 'bundle_check', 'bundle_tasks', 'add_node', 'add_edge', 'add_item', 'add_claim', 'request_audits', 'reply', 'grade', 'teach', 'propose', 'handout_create', 'handout_write', 'handout_file', 'handout_check'}
-SAFE_READS |= {'pedagogy_history'}
-SAFE_WRITES |= {'pedagogy_reply'}
-SAFE_READS |= {'compute_staged','operation_list'}
-SAFE_WRITES |= {'compute_stage','literature_search'}
-SAFE_WRITES |= {'transcription_draft'}
-SAFE_READS |= {'transcription_list'}
 
 def execute_operation(rec,identifier):
     import sys
@@ -179,8 +171,9 @@ def execute(rec, result, request, legacy_engine=None):
         if len(buffer) > 500 or time.monotonic() - last > .4: flush()
     row = api.call('run_get', rec, run=run)
     private_scope = any(s.get('localOnly') for s in api.call('source_list',rec) if s['id'] in {ref.get('sourceId') for ref in row.get('scope',[])})
-    allowed = SAFE_READS | (SAFE_WRITES if row['mode'] != 'chat' else set())
-    allowed &= set(api.TOOLS)
+    allowed = set(api.call('session_grant', rec, mode=row['mode']))
+    # The person's own latest words: what `answer` and `ask` record, whatever the model writes (see ros/modes.py).
+    said = next((m['content'] for m in reversed(request.get('messages', [])) if m['role'] == 'user'), '')
     # A model's self-labelled reviewer cannot constitute independent audit. Audit verdicts are never offered.
     def tool_call(name, args, operation):
         if name not in allowed or api.TOOLS[name].human: raise ValueError('operation is not granted to this run')
@@ -194,6 +187,11 @@ def execute(rec, result, request, legacy_engine=None):
             if any((r.get('sourceId'),r.get('relativePath'),r.get('revision')) not in granted for r in args.get('inputs',[])):raise ValueError('Compute inputs must be explicitly attached to this run.')
         previous = next((s for s in api.call('run_get', rec, run=run)['steps'] if s['operation'] == operation), None)
         if previous: return previous['result']
+        if name == 'answer':
+            if not said.strip(): raise ValueError('the learner has not written an answer yet')
+            if budget.get('answers'): raise ValueError('one answer per message: show the next step and wait for the learner')
+            budget['answers'] = 1
+        args = api.call('session_bind', rec, tool=name, args=args, said=said)
         budget['steps'] += 1
         if budget['steps'] > limits['tool_steps']: raise ValueError('tool step budget reached')
         flush()
@@ -242,7 +240,7 @@ def execute(rec, result, request, legacy_engine=None):
                 context_limit=min(limits['context'], profile['context_limit'] if profile else limits['context'])
                 context = json.dumps(request.get('context', {}), ensure_ascii=False)[:context_limit//2]
                 packet = dict(request, deadline=limits['deadline'], steps=limits['tool_steps'], output_limit=limits['output'], provider_calls=limits['provider_calls'],
-                              system='You are Research OS. Distinguish hypotheses, evidence and understanding. Use only the supplied context and granted tools. Human approvals, claim decisions and waivers must be made in the application. Never assert a tool effect unless a tool returned its committed result. Mode: ' + row['mode'] + '. Context: ' + context,
+                              system=api.call('session_prompt', rec, mode=row['mode'], context=context, room=context_limit // 3),
                               tools=[{'name': name, 'description': api.TOOLS[name].help, 'parameters': api.TOOLS[name].schema()} for name in sorted(allowed)])
                 packet.pop('_vision_permissions',None)
                 # Character bound is explicit; original messages remain in the record.

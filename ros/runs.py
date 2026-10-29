@@ -1,6 +1,8 @@
 """Durable execution facts. Transport supervision lives outside the domain and record lock."""
 import uuid
 
+from . import modes
+
 TERMINAL = {'completed', 'failed', 'cancelled', 'interrupted'}
 TRANSITIONS = {'queued': {'running', 'cancelled', 'interrupted', 'failed'}, 'running': {'waiting_for_input', 'waiting_for_approval', *TERMINAL}, 'waiting_for_input': {'running', *TERMINAL}, 'waiting_for_approval': {'running', *TERMINAL}}
 
@@ -32,7 +34,7 @@ def get(rec, run):
 def enqueue(rec, key, conversation, request, model, mode='chat', scope=None):
     previous=by_key(rec,key)
     if previous: return previous
-    if mode not in ('chat', 'learn', 'research'): raise ValueError('choose chat, learn or research mode')
+    modes.mode(mode)
     run = 'run:' + uuid.uuid4().hex
     rec.append('run.queued', run, {'key': key, 'conversation': conversation, 'request': request, 'model': model, 'mode': mode, 'scope': scope or [], 'usage': None, 'cost': None})
     return get(rec, run)

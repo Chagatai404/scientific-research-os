@@ -1,5 +1,5 @@
 """Tools for the standalone workspace: readable documents and canonical entity references."""
-from .. import conversation as chat, workspace as ws, organization as org
+from .. import conversation as chat, modes, workspace as ws, organization as org
 from ..registry import P, TOOLS, tool
 
 
@@ -47,8 +47,8 @@ def overview_map(rec, expand=""):
       writes=True, text=P("string", "the person's message", True), model=P("string", "provider:model", True),
       conversation=P("string", "existing conversation id; omit to start and frame a goal"),
       effort=P("string", "Codex reasoning effort; default medium", enum=("low", "medium", "high", "xhigh", "max")),
-      key=P("string", "turn idempotency key"), mode=P("string", "chat, learn or research", enum=("chat", "learn", "research")), scope=P("array", "explicit versioned source passages"))
-def chat_send(rec, text, model, conversation=None, effort="medium", key=None, mode="chat", scope=None):
+      key=P("string", "turn idempotency key"), mode=P("string", "chat, learn, research or defend", enum=modes.NAMES), scope=P("array", "explicit versioned source passages"))
+def chat_send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None):
     return chat.send(rec, text, model, conversation, effort, key, mode, scope)
 
 @tool('workspace_sessions', 'List canonical conversations with pagination independent of browser preferences.', offset=P('integer', 'page offset'), limit=P('integer', 'page size'))
