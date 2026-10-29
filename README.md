@@ -1,6 +1,6 @@
 # Scientific Research OS
 
-Version **1.5.2**. A Windows desktop app (and a Python toolkit) where you are the director: say what you want to learn
+Version **1.6.0**. A Windows desktop app (and a Python toolkit) where you are the director: say what you want to learn
 or find out, and agents prepare it, keep your Obsidian vault current and check the work. You learn, and you judge the
 findings. It works with Claude, Codex, Gemini or a local model.
 
@@ -34,8 +34,13 @@ check the public release feed and download newer stable versions; a pop-up at la
 
 ### Using it
 
-- **Home** is the map and one question box. The composer has a model drop-up, a reasoning-effort slider, dictation and
-  read-aloud; the agent decides how to answer, so there is no mode to pick.
+- **Home** is the map and one question box. The composer has a session type (**Ask**, **Learn**, **Research**,
+  **Defend**), a model drop-up, a reasoning-effort slider, dictation and read-aloud. A session runs the skill of its type
+  (`skills/learn`, `research`, `defend`) with the tools that skill needs: a Learn session probes what you know, plans,
+  teaches, asks again and keeps reviews for later, and what you type is recorded as your answer, word for word. A
+  conversation keeps the type it was started in. Ask only reads. Learn, Research and Defend sessions can hand work to an
+  independent agent (literature scout, source verifier, adversary, librarian) that runs in a fresh context and reports
+  back.
 - **Sessions** (left column) lists your courses and projects. Create, rename and drag sessions into them; click the
   workspace name at the top to rename it. Archive what you no longer want visible: it is hidden, never deleted.
 - **Library** lists written material (notes, text, PDFs, Word and PowerPoint). Add a file, folder or Obsidian vault once;
@@ -46,15 +51,21 @@ check the public release feed and download newer stable versions; a pop-up at la
 - **Graph** is the central map. Hover anything to see its name while the rest fades; choose Knowledge, Research or
   Goals to focus. Plain lines are filing, never scientific relations.
 - **Activity** shows what the agents have finished, are doing and will do next.
+- **Settings → Agents** controls the agents that work by themselves. The desktop takes the tasks the record opens (grade a
+  written answer, answer a question, outline a course, ingest a file, scout sources, write items, narration, a lesson
+  bundle or a handout, review), one at a time, with the model you last wrote to or the one you choose, at most 6 an hour
+  unless you change it, each in a fresh context with only the tools its task needs. You can pause it. It never takes
+  audits, verdicts, experiment runs, or work that needs rendering or the web, and Settings lists what it leaves for you and why.
 
-Codex and Claude use their existing CLI logins; local models use explicit loopback profiles. Connections never scan,
-sync or execute on their own. Approvals, decisions and waivers are always your acts. Cloud image/PDF vision needs the
+Codex and Claude use their existing CLI logins; local models use explicit loopback profiles. Connections never scan or
+sync on their own, and nothing runs an experiment on its own. Approvals, decisions and waivers are always your acts. Cloud image/PDF vision needs the
 model's capability configured and each attachment allowed for one turn; Local Only media stays on the computer.
 
 ### Voice
 
 Read-aloud (Kokoro) and dictation (faster-whisper, the multilingual "small" model) ship inside the installer: a private
-Python 3.12, both engines with their packages, and both models, about 1.2 GB. They run on the CPU, offline, in a separate
+Python 3.12, both engines with their packages, and both models, plus ManimGX with its own Python for lesson animations,
+about 1.45 GB together. They run on the CPU, offline, in a separate
 process; nothing is downloaded and nothing is sent to a speech service. The composer shows what is ready. Their
 licences (Apache-2.0 and MIT models; GPL phonemizer and espeak-ng used by Kokoro) are in `resources/voice/LICENSES.txt`
 inside the install. Developers: `python desktop/build-voice.py` assembles the pack from the engines on the build machine
@@ -67,10 +78,12 @@ and `ROS_WHISPER_ENV`.
 |---|---|
 | The app (Electron) and its Python backend, no Python install needed | Windows 10 or 11, 64-bit |
 | Kokoro and faster-whisper with their Python, packages and models | A model sign-in for agents: the Codex or Claude CLI (or a local Ollama), which you log into yourself |
-| PDF reading, handout PDF printing (through the app's own Chromium) and computation workers | |
-| The update client | An Obsidian vault, only if you want your notes there |
+| ManimGX for lesson animations, with its own Python 3.13+ and software rendering (it renders a 1080p scene without a GPU) | An Obsidian vault, only if you want your notes there |
+| PDF reading, handout PDF printing (through the app's own Chromium) and computation workers | ffmpeg, for the poster frame and key-frame strip of each animation |
+| The update client | |
 
-Also not bundled: Manim for animations, and LaTeX (handouts print without it). Nothing here needs a GPU.
+Also not bundled: ffmpeg and LaTeX (handouts print without it). ManimGX's native wheel carries GPL components; it runs as its
+own process from `resources/voice/animation`, and `LICENSES.txt` in the pack lists what it contains. Nothing here needs a GPU.
 
 ### Requirements and tested hardware
 
@@ -100,7 +113,7 @@ npm --prefix desktop start
 
 `python desktop/verify.py` runs the full isolated gate (Python, frontend, browser journeys, packaged lifecycle). It makes
 no paid inference calls and never touches your vault. Acceptance notes:
-[1.5.2](docs/desktop-rebuild/ACCEPTANCE-1.5.2.md), [1.5.1](docs/desktop-rebuild/ACCEPTANCE-1.5.1.md), [1.5](docs/desktop-rebuild/ACCEPTANCE-1.5.0.md), [1.4](docs/desktop-rebuild/ACCEPTANCE-1.4.0.md),
+[1.6](docs/desktop-rebuild/ACCEPTANCE-1.6.0.md), [1.5.2](docs/desktop-rebuild/ACCEPTANCE-1.5.2.md), [1.5.1](docs/desktop-rebuild/ACCEPTANCE-1.5.1.md), [1.5](docs/desktop-rebuild/ACCEPTANCE-1.5.0.md), [1.4](docs/desktop-rebuild/ACCEPTANCE-1.4.0.md),
 [architecture](docs/desktop-rebuild/ARCHITECTURE.md), [backup and rollback](docs/desktop-rebuild/MIGRATION_AND_ROLLBACK.md).
 
 ## Use it from a terminal or an agent

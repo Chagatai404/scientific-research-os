@@ -58,16 +58,19 @@ def main():
     server = serve._bind(rec, 0)
     server.desktop_credential = secrets.token_hex(32)
     runtime.recover(rec)
+    dispatcher = None if os.environ.get('ROS_NO_DISPATCH') else runtime.Dispatcher(rec).start()  # agents take waiting tasks (Settings pauses it)
     version = (Path(__file__).resolve().parents[1] / 'VERSION').read_text().strip()
     print(json.dumps({'protocol': PROTOCOL, 'version': version, 'port': server.server_address[1], 'credential': server.desktop_credential}), flush=True)
     def commands():
         for line in sys.stdin:
             if line.strip() == 'shutdown': break
+        if dispatcher: dispatcher.stop()
         runtime.shutdown()
         server.shutdown()
     threading.Thread(target=commands, daemon=True).start()
     try: server.serve_forever()
     finally:
+        if dispatcher: dispatcher.stop()
         runtime.shutdown(); server.server_close(); rec.close(); api.release()
     return 0
 

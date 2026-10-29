@@ -37,9 +37,14 @@ class Fake:
     def __init__(self, layout='layout: no problems in 12 samples', inspect_code=0, fail=False, slides='5.7.0', versions=None, probe=PROBE, raw=None):
         self.calls, self.layout, self.inspect_code, self.fail, self.slides = [], layout, inspect_code, fail, slides
         self.versions, self.probe, self.raw = versions or {}, probe, raw
+        self.extra = []
 
-    def __call__(self, args, cwd=None, timeout=900):
+    def __call__(self, args, cwd=None, timeout=900, extra_env=None):
         self.calls.append([str(a) for a in args])
+        if extra_env:
+            self.extra.append(extra_env)
+        if [str(a) for a in args[1:3]] == ['-m', 'manimgx']:  # the bundled ManimGX runs as `python -m manimgx ...`
+            args = ['manimgx', *args[3:]]
         name = Path(args[0]).stem.lower()
         ok = {'code': 0, 'stdout': '', 'stderr': '', 'seconds': 1.5}
         if '--version' in args:
@@ -199,6 +204,50 @@ class Detection(Base):
             self.assertEqual(an.choose(dict(SPEC, slides=True), envs)['backend'], 'manim')
             self.assertEqual(an.choose(SPEC, envs, backend='manim')['backend'], 'manim')
             self.assertIsNone(an.choose(dict(SPEC, backend='manim'), [str(gx)]))
+
+
+class Bundled(Base):
+    """The ManimGX that ships inside the desktop app: its own Python 3.13+ and packages, run as a module, found without any setting."""
+
+    def pack(self):
+        pack = self.dir / 'voice'
+        for part in ('python', 'animation/python', 'animation/manimgx/site-packages/manimgx'):
+            (pack / part).mkdir(parents=True)
+        (pack / 'python' / 'python.exe').write_bytes(b'')
+        (pack / 'animation' / 'python' / 'python.exe').write_bytes(b'')
+        return pack
+
+    def test_it_is_found_after_named_environments_and_before_the_path_and_runs_as_a_module(self):
+        pack, ce = self.pack(), make_env(self.dir, 'ce', ('manim',))
+        fake = Fake()
+        with mock.patch.dict(os.environ, {'ROS_VOICE_PACK': str(pack)}), mock.patch.object(an, 'run_command', fake):
+            found = an.capabilities([str(ce)])['backends']
+            self.assertEqual([(b['backend'], bool(b.get('bundled'))) for b in found], [('manim', False), ('manimgx', True)])
+            entry = an.choose(SPEC, [str(ce)])
+            self.assertTrue(entry['bundled'])
+            self.assertEqual(entry['argv'][1:], ['-m', 'manimgx'])
+            self.assertEqual(entry['extra_env']['PYTHONNOUSERSITE'], '1')
+            self.assertEqual(entry['extra_env']['PYTHONPATH'], str(pack / 'animation' / 'manimgx' / 'site-packages'))
+
+    def test_a_render_through_it_uses_the_module_launcher_and_names_manimgx_in_the_record(self):
+        pack, fake = self.pack(), Fake()
+        with mock.patch.dict(os.environ, {'ROS_VOICE_PACK': str(pack)}):
+            result = self.run_render(fake, [])
+        self.assertTrue(result['rendered']); self.assertEqual(result['backend'], 'manimgx')
+        launched = [c for c in fake.calls if c[1:3] == ['-m', 'manimgx']]
+        self.assertEqual([c[3] for c in launched], ['--version', 'inspect', 'render'])
+        self.assertTrue(all(extra['PYTHONNOUSERSITE'] == '1' for extra in fake.extra) and len(fake.extra) >= 3)
+        record = json.loads((self.vault / 'Visuals' / 'vis-complete-square' / 'vis-complete-square.render.json').read_text(encoding='utf-8'))
+        self.assertTrue(all(c['argv'][0] == 'manimgx' for c in record['commands'] if c['argv'][1] in ('inspect', 'render')), record['commands'])
+
+    def test_no_pack_or_an_incomplete_one_adds_nothing(self):
+        pack = self.pack()
+        with mock.patch.object(an, 'run_command', Fake()):
+            self.assertEqual(an.capabilities([])['backends'], [])
+            with mock.patch.dict(os.environ, {'ROS_VOICE_PACK': str(pack)}):
+                self.assertEqual(len(an.capabilities([])['backends']), 1)
+                (pack / 'animation' / 'python' / 'python.exe').unlink()
+                self.assertEqual(an.capabilities([])['backends'], [])
 
 
 class Rendering(Base):

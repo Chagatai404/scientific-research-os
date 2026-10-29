@@ -314,9 +314,10 @@ def open_tasks(rec: Record, bundle: str, clips: bool = False) -> list[str]:
 
 
 def voice_configured() -> bool:
-    """Whether a local voice engine has been set up (``RESEARCH_OS_VOICE_ENVS``): nothing is installed for you."""
+    """Whether a local voice engine is set up: ``RESEARCH_OS_VOICE_ENVS``, or the Kokoro that came with the app or sits in
+    ``~/voice-envs``. Nothing is installed for you."""
     from .lib import voice
-    return bool(os.environ.get(voice.ENV_VARIABLE))
+    return bool(voice.environments())
 
 
 def render_voice(rec: Record, bundle: str, provider: str = "kokoro", envs: list[str] | None = None,

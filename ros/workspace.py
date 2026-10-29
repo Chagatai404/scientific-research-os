@@ -17,6 +17,70 @@ from .store import Record
 _ALIASES: dict = {}
 _NODE_COUNTS: dict = {}
 
+READ_CHUNK = 30000  # characters of a vault note one read returns; `offset` pages through the rest
+READ_LIMIT = 4_000_000  # bytes: a larger file is not a note
+READ_SUFFIXES = {".md", ".markdown", ".txt"}
+
+
+def readable_roots(rec: Record) -> list[Path]:
+    """The folders a read of a source's file may come from: the configured Obsidian vault, a vault the record was migrated
+    from, and any folder the person allowed for this record (``readable_roots`` in its settings). Never a path a node names:
+    a model may write source nodes, so a node's path is a request, not a permission."""
+    roots: list[Path] = []
+    def add(value):
+        try:
+            path = Path(str(value)).expanduser().resolve()
+        except (OSError, ValueError, RuntimeError):
+            return
+        if path.is_dir() and path not in roots:
+            roots.append(path)
+    try:
+        add(vault.vault_path())
+    except ValueError:
+        pass
+    cfg = home.config(rec.root)
+    owners = [cfg]
+    if cfg.get("user"):
+        try:
+            owners.append(home.config(home.resolve(cfg["user"])))
+        except ValueError:
+            pass
+    for owner in owners:
+        add(owner.get("legacy_vault"))
+        for value in owner.get("readable_roots") or []:
+            add(value)
+    return roots
+
+
+def vault_text(rec: Record, path: str, offset: int = 0) -> dict:
+    """One page of a note that lives in the person's vault, with what was read so the person can see what is sent to a model.
+    Refuses a path outside the readable folders, a hidden file or folder (``.obsidian``, ``.git``, ``.env``), and anything but a
+    note (Markdown or text) of reasonable size."""
+    roots = readable_roots(rec)
+    try:
+        target = Path(path).expanduser().resolve()
+    except (OSError, ValueError, RuntimeError):
+        raise ValueError("that source's file path is not valid") from None
+    inside = next((r for r in roots if target.is_relative_to(r)), None)
+    if inside is None:
+        raise ValueError("this file is outside the folders Research OS may read for this record "
+                         + ("(" + "; ".join(str(r) for r in roots) + ")" if roots else "(none is set: choose a vault in Settings)"))
+    if any(part.startswith(".") for part in target.relative_to(inside).parts):
+        raise ValueError("hidden files and folders are never read")
+    if target.suffix.lower() not in READ_SUFFIXES or not target.is_file():
+        raise ValueError("only Markdown and text notes are read")
+    size = target.stat().st_size
+    if size > READ_LIMIT:
+        raise ValueError(f"this note is {size // 1_000_000} MB, more than the {READ_LIMIT // 1_000_000} MB a read allows")
+    if not isinstance(offset, int) or offset < 0:
+        raise ValueError("offset is a character position, 0 or more")
+    text = target.read_text(encoding="utf-8-sig", errors="replace")
+    page = text[offset:offset + READ_CHUNK]
+    end = offset + len(page)
+    return {"text": page, "read": {"path": str(target), "root": str(inside), "offset": offset, "chars": len(page), "total": len(text),
+                                   "more": end < len(text), "next_offset": end if end < len(text) else None,
+                                   "sent": "These characters are returned to whoever asked, including a cloud model."}}
+
 def lesson_material(rec,lesson,item=None):
     node=rec.node(lesson) or {}
     if node.get('type') != 'lesson' or not node.get('bundle'):raise ValueError('this session has no prepared reading bundle')
@@ -382,8 +446,11 @@ def subgraph(rec: Record, mode: str = "knowledge", focus: str | None = None,
             "bounded": omitted, "limit": limit, "depth": depth}
 
 
-def document(rec: Record, subject: str) -> dict:
+def document(rec: Record, subject: str, offset: int = 0) -> dict:
+    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+        raise ValueError("offset is a character position, 0 or more")
     node = rec.node(subject)
+    read = None
     if not node:
         raise KeyError(f"no such document {subject}")
     if node["type"] == "handout":
@@ -398,15 +465,23 @@ def document(rec: Record, subject: str) -> dict:
         sections = [{"id": "transcript", "title": "Session transcript", "text": text}]
         sources, digest, media_base = [], hashlib.sha256(text.encode()).hexdigest(), ""
     elif node["type"] in ("source", "paper", "visual"):
-        text = node.get("text") or node.get("markdown") or node.get("summary") or "No readable text has been imported for this source."
+        text = node.get("text") or node.get("markdown") or node.get("summary")
+        if not text and node.get("path"):
+            # A note that was filed by path (a migrated vault) has no copy of its text in the record: read it from the vault.
+            try:
+                page = vault_text(rec, node["path"], offset)
+                text, read = page["text"], page["read"]
+            except (ValueError, OSError) as exc:
+                text = f"This source's file could not be read: {exc}."
+        text = text or "No readable text has been imported for this source."
         sections = [{"id": "content", "title": "Source content", "text": str(text)}]
-        sources, digest, media_base = [], hashlib.sha256(json.dumps(node, sort_keys=True).encode()).hexdigest(), ""
+        sources, digest, media_base = [], hashlib.sha256(json.dumps([node, offset, read], sort_keys=True).encode()).hexdigest(), ""
     else:
         raise ValueError("readable documents are handouts, sessions, sources, papers or visuals")
     return {"schema": "ros.document.v1", "id": subject, "record": rec.root.name,
             "title": node.get("title") or subject, "kind": node["type"], "sections": sections,
             "sources": sources, "source_hash": digest, "media_base": media_base,
-            "legacy": bool(node.get("legacy")), "status": node.get("status") or "recorded"}
+            "legacy": bool(node.get("legacy")), "status": node.get("status") or "recorded", **({"read": read} if read else {})}
 
 
 def activity(rec: Record) -> dict:

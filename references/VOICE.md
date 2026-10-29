@@ -29,7 +29,7 @@ Word order for `\sum`, `\int` and `\lim` in Turkish avoids suffixes ("1 ile sons
 
 ## Providers
 
-`python -m ros.lib.voice providers [--env DIR ...]` lists the manifest and which engines the named environments hold. `RESEARCH_OS_VOICE_ENVS` names environments without a flag.
+`python -m ros.lib.voice providers [--env DIR ...]` lists the manifest and which engines the named environments hold. `RESEARCH_OS_VOICE_ENVS` names environments without a flag. With neither, `voice.environments()` uses the Kokoro that came with the desktop app (its `voice` pack, or `ROS_VOICE_PACK`, `ROS_KOKORO_ENV` and `ROS_KOKORO_MODELS`) or the one in `~/voice-envs`, when its package and both model files are present; `voice.default_voices('kokoro')` supplies the model folder. Read-aloud, dictation and lesson narration (`bundle_voice` and the automatic narration job) share this one resolver, so they cannot disagree about whether an engine exists.
 
 | Provider | Languages | Local | Engine licence | Voice or model licence | Measured here |
 |---|---|---|---|---|---|

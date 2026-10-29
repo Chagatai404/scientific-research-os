@@ -20,7 +20,11 @@ else {
   app.on('second-instance', () => {if (window) {if (window.isMinimized()) window.restore(); window.show(); window.focus();}});
   app.on('before-quit', () => {exiting = true; terminate(child);});
   app.on('window-all-closed', () => app.quit());
-  app.whenReady().then(start).catch(error => {dialog.showErrorBox('Research OS could not start', error.message); app.quit();});
+  app.whenReady().then(start).catch(error => {
+    // A smoke run has nobody to press OK: say what failed in a file and exit non-zero instead of waiting behind a dialog.
+    if (process.env.ROS_DESKTOP_SMOKE === '1') {try {require('node:fs').writeFileSync(path.join(process.env.ROS_HOME || app.getPath('userData'), 'desktop-smoke-error.txt'), String(error && error.stack || error));} catch {} app.exit(1); return;}
+    dialog.showErrorBox('Research OS could not start', error.message); app.quit();
+  });
 }
 function sender(event) {if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || !allowedURL(event.senderFrame.url, origin)) throw new Error('Untrusted desktop request');}
 async function operation(name, args = {}) {

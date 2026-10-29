@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import re
 import uuid
 
-from . import director, tasks, runs, sources, execution
+from . import director, modes, tasks, runs, sources, execution
 
 
 def takes_effort(model):
@@ -13,8 +13,11 @@ def takes_effort(model):
     return provider == "codex" or provider == "claude" and any(family in name for family in ("sonnet", "opus"))
 
 
-def send(rec, text, model, conversation=None, effort="medium", key=None, mode="chat", scope=None):
-    if mode not in ('chat', 'learn', 'research'): raise ValueError('choose chat, learn or research')
+def send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None):
+    # A conversation keeps the mode it was started in; a follow-up that names another mode is refused, never downgraded.
+    kept = (rec.node(conversation) or {}).get("mode", "chat") if conversation else None
+    if mode and kept and mode != kept: raise ValueError(f'this conversation is in {kept} mode; start a new conversation for {mode}')
+    mode = modes.mode(mode or kept or "chat").name
     if scope is not None and (not isinstance(scope, list) or len(scope) > 8): raise ValueError('attach at most eight passages')
     if key:
         previous = runs.by_key(rec, key)
@@ -62,8 +65,8 @@ def send(rec, text, model, conversation=None, effort="medium", key=None, mode="c
             raise ValueError('This conversation includes local-only content and derived responses. Start a separate conversation for a cloud provider.')
     else:
         conversation = "conversation:" + uuid.uuid4().hex[:12]
-        if mode != 'chat': setup = director.engage(rec, text, kind='topic' if mode == 'learn' else 'research')
-        rec.put_node(conversation, "conversation", title=text[:100], model=model)
+        if modes.mode(mode).engages: setup = director.engage(rec, text, kind=modes.mode(mode).engages)
+        rec.put_node(conversation, "conversation", title=text[:100], model=model, mode=mode)
     request = "message:" + uuid.uuid4().hex
     for permission in permissions:execution.consume_vision_permission(rec,permission,request)
     scope=[{k:v for k,v in ref.items() if k!='visionPermission'} for ref in scope or []]
@@ -98,7 +101,7 @@ def history(rec, conversation):
                              "text": data["text"], "model": data.get("model"), "effort": data.get("effort"), "ts": event["ts"], 'scope':scopes.get(data['request'],[])})
     saved_runs = {r['request']: r for r in runs.listing(rec, 500) if r['conversation'] == conversation}
     active = [request for request in pending if saved_runs.get(request, {}).get('state') in ('queued', 'running', 'waiting_for_input', 'waiting_for_approval')]
-    return {"conversation": conversation, "title": node["title"], "messages": messages[-100:], "pending": active, "interrupted": len(pending) - len(active)}
+    return {"conversation": conversation, "title": node["title"], "mode": node.get("mode", "chat"), "messages": messages[-100:], "pending": active, "interrupted": len(pending) - len(active)}
 
 
 def complete(rec, conversation, request, text, model, error=False):

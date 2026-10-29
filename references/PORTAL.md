@@ -30,6 +30,14 @@ read-only manifest; missing/deleted/unreadable paths remain missing, without aut
 selected in settings remains usable. New read-only operations: `workspace_document`, `workspace_entity`,
 `workspace_resolve`, `workspace_graph`. They use the same tool table as CLI and MCP.
 
+`workspace_document` on a `source` filed by path (a migrated vault note whose text the record does not hold) reads the note
+from the vault: Markdown or text only, up to 4 MB, 30,000 characters per call (`offset` continues from the result's
+`read.next_offset`), and only inside the folders in `workspace.readable_roots(rec)`: the selected vault, a vault the record
+was migrated from (`legacy_vault`) and the folders listed under `readable_roots` in the record's `record.json`. A node's own
+path never widens that set (a model may write source nodes), hidden files and folders (`.obsidian`, `.git`, `.env`) are never
+read, and the result's `read` block says what was returned. What is returned reaches the session's model, a cloud model
+included, and the committed step in the run keeps it.
+
 `ros serve` serves the portal at `http://127.0.0.1:8737/` (the same port every time; if one is already running, `ros serve`
 says so and opens it), in a browser or Obsidian's core Web Viewer. While it runs, the process is the single writer of
 every record it has open and keeps them in step on its own (`references/DIRECTOR.md`).
