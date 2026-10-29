@@ -156,6 +156,62 @@ class Sessions(unittest.TestCase):
             with self.assertRaises(ValueError): api.call("delegate", self.rec, role=bad, brief="x")
         with self.assertRaisesRegex(ValueError, "brief"): api.call("delegate", self.rec, role="scout", brief="  ")
 
+    def vault(self):
+        """A vault folder the person allowed for this record, an unrelated folder with a secret in it, and nodes pointing at both."""
+        from ros import home
+        base = Path(self.tmp.name)
+        vault, outside = base / "old-vault", base / "elsewhere"
+        for folder in (vault / "Research Records", vault / ".obsidian", outside): folder.mkdir(parents=True)
+        (vault / "Research Records" / "PLAN.md").write_text("# Plan\n" + "Phase one. " * 6000, encoding="utf-8")
+        (vault / ".obsidian" / "workspace.md").write_text("hidden", encoding="utf-8")
+        (vault / "Research Records" / "tool.py").write_text("print(1)", encoding="utf-8")
+        (outside / "secret.md").write_text("api key: not-a-real-key", encoding="utf-8")
+        home.set_config(self.rec.root, readable_roots=[str(vault)])
+        paths = {"plan": vault / "Research Records" / "PLAN.md", "hidden": vault / ".obsidian" / "workspace.md",
+                 "code": vault / "Research Records" / "tool.py", "secret": outside / "secret.md",
+                 "traversal": vault / ".." / "elsewhere" / "secret.md"}
+        for name, path in paths.items(): self.rec.put_node("source:" + name, "source", title=name, path=str(path))
+        return vault, paths
+
+    def test_a_source_filed_by_path_is_read_from_the_vault_in_pages_and_says_what_was_sent(self):
+        self.vault()
+        first = api.call("workspace_document", self.rec, subject="source:plan")
+        read = first["read"]
+        self.assertEqual((read["offset"], read["chars"], read["more"]), (0, 30000, True)); self.assertTrue(first["sections"][0]["text"].startswith("# Plan"))
+        self.assertIn("cloud model", read["sent"]); self.assertTrue(read["path"].endswith("PLAN.md"))
+        pages, offset = [first["sections"][0]["text"]], read["next_offset"]
+        while offset is not None:
+            page = api.call("workspace_document", self.rec, subject="source:plan", offset=offset)
+            pages.append(page["sections"][0]["text"]); offset = page["read"]["next_offset"]
+        self.assertEqual(len(pages), 3); self.assertEqual(sum(map(len, pages)), read["total"])
+        self.assertNotEqual(first["source_hash"], api.call("workspace_document", self.rec, subject="source:plan", offset=30000)["source_hash"])
+
+    def test_a_node_cannot_widen_what_may_be_read(self):
+        self.vault()
+        for name in ("secret", "traversal", "hidden", "code"):
+            document = api.call("workspace_document", self.rec, subject="source:" + name)
+            text = document["sections"][0]["text"]
+            self.assertIn("could not be read", text, name); self.assertNotIn("api key", text); self.assertNotIn("hidden", text.replace("hidden files", "")); self.assertNotIn("read", document, name)
+        self.rec.put_node("source:summary", "source", title="s", summary="kept in the record", path=str(Path(self.tmp.name) / "elsewhere" / "secret.md"))
+        self.assertEqual(api.call("workspace_document", self.rec, subject="source:summary")["sections"][0]["text"], "kept in the record")
+        with self.assertRaisesRegex(ValueError, "character position"): api.call("workspace_document", self.rec, subject="source:plan", offset=-1)
+
+    def test_with_no_folder_allowed_nothing_is_read(self):
+        from ros import home
+        _, _ = self.vault()
+        home.set_config(self.rec.root, readable_roots=[])
+        self.assertIn("none is set", api.call("workspace_document", self.rec, subject="source:plan")["sections"][0]["text"])
+
+    def test_a_session_reads_the_plan_through_workspace_document_and_the_run_keeps_what_was_read(self):
+        self.vault()
+        got = {}
+        def provider(request, emit, tool, cancel, own):
+            got.update(tool("workspace_document", {"subject": "source:plan"}, "read-plan")); emit("I read the first page."); return {}
+        sent = self.run_turn("What does my plan say?", provider, mode="research")
+        self.assertTrue(got["sections"][0]["text"].startswith("# Plan"))
+        step = next(s for s in api.call("run_get", self.rec, run=sent["run"])["steps"] if s["operation"] == "read-plan")
+        self.assertEqual(step["result"]["read"]["chars"], 30000, "the committed step shows how much was sent")
+
     def test_the_skill_tool_serves_the_shipped_text_and_refuses_unknown_names(self):
         self.assertIn("You are the tutor", api.call("skill", self.rec, skill="learn")["text"])
         with self.assertRaises(KeyError): api.call("skill", self.rec, skill="../AGENTS")

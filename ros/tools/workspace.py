@@ -9,9 +9,10 @@ def connections(rec):
 
 
 @tool("workspace_document", "Read a handout, lesson transcript or imported source as versioned document data, with stable sections and provenance.",
-      subject=P("string", "canonical document node id", True))
-def document(rec, subject):
-    result = ws.document(rec, subject)
+      subject=P("string", "canonical document node id", True),
+      offset=P("integer", "character position to continue a long note from (the result's read.next_offset)"))
+def document(rec, subject, offset=0):
+    result = ws.document(rec, subject, offset)
     return dict(result, title=org.display_name(rec, subject, result.get('title') or 'Document'))
 
 
