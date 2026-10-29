@@ -149,6 +149,13 @@ record what the learner wrote (`answer`, `ask`) are bound to the person's own wo
 `decide` and `waive` are never granted, and work that takes minutes (voice, animation) stays a `job` task for the runner.
 Add the mode to `tests/test_ros_sessions.py`, which checks every grant against the registry.
 
+A **role** is the same idea for an independent agent (`agents/<name>.md`): one `Role(...)` row in `ros/modes.py` with the
+tools it may use and what its final message is. A working session hands it one piece of work with the `delegate` tool;
+`runtime.execute` runs it as its own bounded provider run, outside the registry lock, with a fresh context (its
+instructions and the brief, never the conversation), its own tool grant and its own step budget, and returns its report.
+A role records nothing itself and never holds `verdict`, `approve`, `decide`, `waive` or `delegate`; audits are never run
+inside a session, because an independent audit needs an agent that did not do the work.
+
 ### A readiness check for prepared lessons
 
 Write `def _check(gate: Gate, node: dict | None) -> (problems, warnings)` in `ros/prepare.py` and append

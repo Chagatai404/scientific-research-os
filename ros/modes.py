@@ -54,18 +54,40 @@ MODES = {m.name: m for m in (
          "per turn, and the learner's next message answers it. Call `answer` with `lesson` and `item` only; the system passes "
          "the learner's own words, so never paraphrase or invent an answer. Teach live from the record's items and say so "
          "until a prepared lesson exists. When a task from `work` names a skill, read it with `skill` first.",
-         _READS, BASE_WRITES | LOOP | {"link"}, "topic"),
+         _READS, BASE_WRITES | LOOP | {"link", "delegate"}, "topic"),
     Mode("research", "research",
          "Work on the record's question, claims and evidence. You may add nodes, claims and items and request audits; you "
          "may not decide, approve, waive or give an audit verdict. Look for the person's earlier plans and sources with "
          "`find`, `records` and `vault_find` before proposing new ones, and `link` what you build on.",
-         _READS, BASE_WRITES | {"link"}, "research"),
+         _READS, BASE_WRITES | {"link", "delegate"}, "research"),
     Mode("defend", "defend",
          "Help the person own a claim: write defence items with `add_item`, practise them with `start --scope claim:<id>` "
          "and report ownership with `claim_status`. Recall is graded against the item's rubric; never suggest a waiver.",
-         _READS, BASE_WRITES | LOOP, None),
+         _READS, BASE_WRITES | LOOP | {"delegate"}, None),
 )}
 NAMES = tuple(MODES)
+
+
+@dataclass(frozen=True)
+class Role:
+    """An independent agent (agents/<name>.md) a session can hand one piece of work to. It runs in a fresh context: it sees
+    its own instructions and the brief, never the conversation that asked, and may use only the tools listed here."""
+    name: str
+    tools: frozenset
+    returns: str  # what its final message is
+
+
+ROLES = {r.name: r for r in (
+    Role("scout", frozenset({"skill", "context", "research", "literature_search"}),
+         "the scout report as JSON, as its instructions describe"),
+    Role("verifier", frozenset({"skill", "claims", "claim_status", "support", "items", "item", "literature_search"}),
+         "whether each source supports, partly supports, contradicts or does not address the claim, with exact locations and limits"),
+    Role("adversary", frozenset({"skill", "claims", "claim_status", "support", "research", "gaps"}),
+         "the strongest competing explanations and the cheapest discriminating test for each"),
+    Role("librarian", frozenset({"skill", "tasks", "find", "records", "library", "vault_find", "context", "add_node", "add_edge"}),
+         "what the material is and what it was linked to"),
+)}
+ROLE_NAMES = tuple(ROLES)
 
 _FRONTMATTER = re.compile(r"\A---\n.*?\n---\n", re.S)
 DONT_KNOW = re.compile(r"^\s*(?:i\s+)?(?:do\s*n['’]?t|dont)\s+know\b|^\s*idk\b|^\s*no\s+idea\b|^\s*not\s+sure\b", re.I)
@@ -96,6 +118,25 @@ def skill(name: str) -> dict:
     return {"name": name, "text": _FRONTMATTER.sub("", text, count=1).strip()}
 
 
+def role(name: str) -> Role:
+    if name not in ROLES:
+        raise ValueError("choose " + ", ".join(ROLE_NAMES[:-1]) + " or " + ROLE_NAMES[-1] + "; audits are run outside sessions, by a fresh agent")
+    return ROLES[name]
+
+
+def dispatch(name: str, brief: str) -> dict:
+    """What a role is given: its system prompt (the agent's own instructions), the brief and nothing else, and its tools."""
+    r, brief = role(name), (brief or "").strip()
+    if not brief or len(brief) > 8000:
+        raise ValueError("the brief is between 1 and 8000 characters: give the role everything it needs, it sees nothing else")
+    agent = (REPO / "agents" / f"{name}.md").read_text(encoding="utf-8")
+    system = ("You are running as an independent role inside a Research OS session. You see only the brief below, never the "
+              "conversation that asked. Use only your granted tools; you cannot approve, decide, waive or give an audit verdict. "
+              "Never present a guess as a finding. Your final message is your report, " + r.returns + "; the session that asked "
+              "decides what is recorded.\n\n" + _FRONTMATTER.sub("", agent, count=1).strip())
+    return {"role": name, "system": system, "brief": brief, "tools": sorted(r.tools)}
+
+
 def prompt(name: str, context: str, room: int) -> str:
     """The system prompt of a session: the standing rules, the mode's brief, the skill when it fits in `room` characters
     (else the model reads it with the `skill` tool) and the bounded context."""
@@ -104,6 +145,12 @@ def prompt(name: str, context: str, room: int) -> str:
              "granted tools. Human approvals, claim decisions and waivers must be made in the application. Never assert a "
              "tool effect unless a tool returned its committed result. Mode: " + name + ".")
     parts = [rules, m.brief]
+    if "delegate" in m.writes:
+        parts.append("For a literature search, an independent check of a source against a claim, a hostile review of a "
+                     "conclusion or filing new material, use `delegate` (roles: " + ", ".join(ROLE_NAMES) + "). A role runs "
+                     "in a fresh context and sees only the brief you write, so put the claim, the sources and the regime in "
+                     "it; it returns a report and records nothing. Do not do that work yourself and call it independent. "
+                     "Audits are never run in a session.")
     if m.skill:
         text = skill(m.skill)["text"]
         parts.append(f"--- Skill: {m.skill} ---\n{text}\n--- End of skill ---" if len(text) <= room

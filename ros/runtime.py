@@ -187,6 +187,13 @@ def execute(rec, result, request, legacy_engine=None):
             if any((r.get('sourceId'),r.get('relativePath'),r.get('revision')) not in granted for r in args.get('inputs',[])):raise ValueError('Compute inputs must be explicitly attached to this run.')
         previous = next((s for s in api.call('run_get', rec, run=run)['steps'] if s['operation'] == operation), None)
         if previous: return previous['result']
+        if name == 'delegate':
+            budget['steps'] += 1
+            if budget['steps'] > limits['tool_steps']: raise ValueError('tool step budget reached')
+            flush()
+            value = run_role(api.call('delegate', rec, **args), operation)
+            api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
+            return value
         if name == 'answer':
             if not said.strip(): raise ValueError('the learner has not written an answer yet')
             if budget.get('answers'): raise ValueError('one answer per message: show the next step and wait for the learner')
@@ -217,6 +224,47 @@ def execute(rec, result, request, legacy_engine=None):
         if len(json.dumps(value)) > 80000: value = {'error': 'result exceeds context budget; inspect the operation in Research'}
         api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
         return value
+    def run_role(spec, operation):
+        """One independent role as its own bounded provider run: a fresh context (its instructions and the brief, never this
+        conversation), its own tools, a report as the result. It runs outside the registry lock, on its own step budget, and
+        its tool calls appear among this run's committed steps as <role>:<tool>."""
+        if private_scope: raise ValueError('Local-only material cannot be sent to a delegated role.')
+        if not request['model'].startswith(('ollama:', 'compatible:')): api.call('workspace_cloud_guard', rec)
+        role, grant, chunks, used = spec['role'], set(spec['tools']), [], [0]
+        def role_emit(text):
+            if entry['cancel'].is_set(): raise providers.ProviderError('cancelled')
+            chunks.append(text)
+            if sum(map(len, chunks)) > min(60000, limits['output'] * 6): raise providers.ProviderError('Output budget reached.')
+        def role_call(name, args, step):
+            if name not in grant or api.TOOLS[name].human: raise ValueError('operation is not granted to this role')
+            if not isinstance(args, dict): raise ValueError('tool arguments must be an object')
+            if name == 'item' and args.get('reveal'): raise ValueError('a role never reads hidden rubrics')
+            if entry['cancel'].is_set(): raise ValueError('run cancelled')
+            identifier = operation + '/' + step
+            previous = next((s for s in api.call('run_get', rec, run=run)['steps'] if s['operation'] == identifier), None)
+            if previous: return previous['result']
+            used[0] += 1
+            if used[0] > min(limits['tool_steps'], 8): raise ValueError('tool step budget reached')
+            with api.LOCK: value = api.call(name, selected[0], **args)
+            if len(json.dumps(value)) > 80000: value = {'error': 'result exceeds context budget'}
+            api.call('run_step', rec, run=run, operation=identifier, tool_name=role + ':' + name, result=value)
+            return value
+        profile = request.get('vision_profile') or next((p for p in api.call('provider_profiles', rec) if p['id'] == request['model']), None)
+        packet = dict(request, images=[], context={}, messages=[{'role': 'user', 'content': spec['brief']}], system=spec['system'],
+                      deadline=limits['deadline'], steps=min(limits['tool_steps'], 8), output_limit=limits['output'], provider_calls=limits['provider_calls'],
+                      tools=[{'name': n, 'description': api.TOOLS[n].help, 'parameters': api.TOOLS[n].schema()} for n in sorted(grant)])
+        packet.pop('_vision_permissions', None); packet.pop('bridge', None)
+        if profile: packet.update(endpoint=profile['endpoint'], tool_support=profile['tools'])
+        provider = packet['model'].split(':', 1)[0]
+        if provider == 'claude':
+            with ToolBridge(role_call, packet['tools']) as bridge:
+                packet['bridge'] = bridge
+                providers.ADAPTERS[provider](packet, role_emit, role_call, entry['cancel'], entry['owned'].append)
+        else:
+            providers.ADAPTERS[provider](packet, role_emit, role_call, entry['cancel'], entry['owned'].append)
+        report = ''.join(chunks).strip()
+        if not report: raise ValueError('The role returned no report; nothing was inferred.')
+        return {'role': role, 'report': report[:20000]}
     try:
         while not FOREGROUND.acquire(timeout=.1):
             if entry['cancel'].is_set(): return

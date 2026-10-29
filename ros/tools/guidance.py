@@ -15,6 +15,16 @@ def instructions(rec, skill):
     return modes.skill(skill)
 
 
+@tool("delegate", "Hand one piece of work to an independent role (scout, verifier, adversary, librarian) that runs in a fresh "
+      "context with only your brief and returns a report. Over a desktop session the role runs for you; elsewhere this returns "
+      "what to run it with: its instructions, its brief and its tools.", writes=True,
+      role=P("string", "scout, verifier, adversary or librarian", True, enum=modes.ROLE_NAMES),
+      brief=P("string", "everything the role needs; it sees nothing else", True))
+def delegate(rec, role, brief):
+    spec = modes.dispatch(role, brief)
+    return dict(spec, tools=[n for n in spec["tools"] if n in TOOLS and not TOOLS[n].human])
+
+
 @tool("session_grant", "The tools a session in a mode may call: the mode's grant without the acts only a person may make.",
       mode=P("string", "chat, learn, research or defend", True, enum=modes.NAMES))
 def session_grant(rec, mode):

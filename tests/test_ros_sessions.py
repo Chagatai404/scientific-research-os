@@ -118,6 +118,44 @@ class Sessions(unittest.TestCase):
         self.assertEqual(api.call("workspace_chat", self.rec, conversation=plain["conversation"])["mode"], "chat")
         self.assertEqual(api.call("workspace_chat_send", self.rec, text="Hi", model="ollama:fixture")["setup"], {}, "no mode, no setup")
 
+    def test_a_delegated_role_runs_fresh_with_only_its_brief_and_its_own_tools(self):
+        seen = {}
+        brief = "Claim: the variance of 1, 3, 5, 7, 9 is 8. Source: any statistics text. Regime: a population, not a sample."
+        def provider(request, emit, tool, cancel, own):
+            if "independent role" in request["system"]:
+                seen["role"] = {"system": request["system"], "messages": request["messages"], "context": request["context"],
+                                "tools": {t["name"] for t in request["tools"]}}
+                for forbidden in ("verdict", "approve", "delegate", "answer", "start"):
+                    with self.assertRaises(ValueError, msg=forbidden): tool(forbidden, {}, "no-" + forbidden)
+                with self.assertRaisesRegex(ValueError, "hidden rubrics"): tool("item", {"item": self.item, "reveal": True}, "no-reveal")
+                tool("claims", {}, "read-claims")
+                emit("SUPPORTS: the source states the result."); return {}
+            seen["parent"] = tool("delegate", {"role": "verifier", "brief": brief}, "ask-verifier")
+            emit("The verifier reports support."); return {}
+        sent = self.run_turn("Check my claim, and be independent about it", provider, mode="research")
+        self.assertEqual(seen["parent"]["role"], "verifier"); self.assertIn("SUPPORTS", seen["parent"]["report"])
+        role = seen["role"]
+        self.assertEqual(role["messages"], [{"role": "user", "content": brief}], "no conversation history reaches the role")
+        self.assertEqual(role["context"], {})
+        self.assertIn("independent source verifier", role["system"]); self.assertIn("never the conversation that asked", role["system"])
+        self.assertIn("claims", role["tools"]); self.assertFalse(role["tools"] & {"verdict", "approve", "decide", "waive", "delegate", "answer", "start", "teach"})
+        run = api.call("run_get", self.rec, run=sent["run"])
+        self.assertEqual(run["state"], "completed", run.get("detail"))
+        self.assertEqual(run["output"], "The verifier reports support.", "the role's report is the parent's to use, not shown as its own words")
+        self.assertEqual({s["tool"] if "tool" in s else s["tool_name"] for s in run["steps"]}, {"delegate", "verifier:claims"})
+
+    def test_roles_are_for_working_sessions_only_and_audits_are_not_among_them(self):
+        self.assertNotIn("delegate", modes.grant("chat"))
+        for name in ("learn", "research", "defend"): self.assertIn("delegate", modes.grant(name))
+        for name in modes.ROLE_NAMES:
+            spec = modes.dispatch(name, "A brief.")
+            self.assertTrue(set(spec["tools"]) <= set(api.TOOLS), name)
+            self.assertFalse(set(spec["tools"]) & {"verdict", "approve", "decide", "waive", "delegate"}, name)
+            self.assertTrue((modes.REPO / "agents" / (name + ".md")).is_file(), name)
+        for bad in ("auditor", "nobody"):
+            with self.assertRaises(ValueError): api.call("delegate", self.rec, role=bad, brief="x")
+        with self.assertRaisesRegex(ValueError, "brief"): api.call("delegate", self.rec, role="scout", brief="  ")
+
     def test_the_skill_tool_serves_the_shipped_text_and_refuses_unknown_names(self):
         self.assertIn("You are the tutor", api.call("skill", self.rec, skill="learn")["text"])
         with self.assertRaises(KeyError): api.call("skill", self.rec, skill="../AGENTS")
