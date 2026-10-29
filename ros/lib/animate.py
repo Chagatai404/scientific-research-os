@@ -73,11 +73,12 @@ class LayoutProblems(AnimationError):
 
 # ---------------------------------------------------------------- running things
 
-def run_command(args: list[str], cwd: Path | None = None, timeout: int = DEFAULT_TIMEOUT) -> dict:
+def run_command(args: list[str], cwd: Path | None = None, timeout: int = DEFAULT_TIMEOUT, extra_env: dict | None = None) -> dict:
     """Run a program without a shell. The one place this module starts a process, so tests replace it."""
     started = time.monotonic()
     try:
-        done = subprocess.run(args, cwd=cwd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout)
+        done = subprocess.run(args, cwd=cwd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout,
+                              **({'env': {**os.environ, **extra_env}} if extra_env else {}))
     except FileNotFoundError:
         return {'code': 127, 'stdout': '', 'stderr': f'{args[0]}: not found', 'seconds': 0.0}
     except subprocess.TimeoutExpired:
@@ -94,8 +95,34 @@ def _executable(directory: Path, name: str) -> Path | None:
     return None
 
 
-def _version(command: Path | str, flag: str = '--version') -> str | None:
-    result = run_command([str(command), flag], timeout=60)
+def _pack_entry() -> dict | None:
+    """The ManimGX that ships inside the desktop app (``<voice pack>/animation``: its own CPython 3.13+ and the packages), or None. Its
+    scripts are not relocatable, so it is run as ``python -m manimgx`` with its packages on the path."""
+    from . import voice
+    pack = voice.voice_pack()
+    animation = pack / 'animation' if pack else None
+    python = animation / 'python' / 'python.exe' if animation else None
+    packages = animation / 'manimgx' / 'site-packages' if animation else None
+    if not (python and python.is_file() and packages and (packages / 'manimgx').is_dir()):
+        return None
+    entry = {'backend': 'manimgx', 'command': str(python), 'argv': [str(python), '-m', 'manimgx'], 'env': str(animation),
+             'extra_env': {'PYTHONPATH': str(packages), 'PYTHONNOUSERSITE': '1'}, 'bundled': True}
+    entry['version'] = _version(python, '--version', entry)
+    return entry
+
+
+def _launch(entry: dict, *args) -> tuple[list[str], dict]:
+    """The argv and the extra keyword arguments for ``run_command`` that run a backend: its command, or a bundled interpreter running the module."""
+    return [*(entry.get('argv') or [entry['command']]), *map(str, args)], ({'extra_env': entry['extra_env']} if entry.get('extra_env') else {})
+
+
+def _backend_name(entry: dict) -> str:
+    return 'manimgx' if entry.get('argv') else Path(entry['command']).name
+
+
+def _version(command: Path | str, flag: str = '--version', entry: dict | None = None) -> str | None:
+    argv, extra = _launch(entry, flag) if entry else ([str(command), flag], {})
+    result = run_command(argv, timeout=60, **extra)
     if result['code'] != 0:
         return None
     match = re.search(r'\d+(?:\.\d+)+', (result['stdout'] or result['stderr']))
@@ -121,7 +148,11 @@ def environments(envs: list[str] | None = None) -> list[Path | None]:
 def capabilities(envs: list[str] | None = None) -> dict:
     """What can render here. Reports only; nothing is installed. ``backends`` lists each usable renderer with its location and version."""
     found, notes = [], []
+    pack, packed = _pack_entry(), False
     for env in environments(envs):
+        if env is None and pack and not packed:
+            found.append(pack)  # after the environments the person named, before whatever is on the PATH
+            packed = True
         for name in BACKENDS:
             location = _executable(env, name) if env else (Path(shutil.which(name)) if shutil.which(name) else None)
             if location is None:
@@ -370,8 +401,9 @@ def render_with(entry: dict, spec: dict, scene: Path, work: Path, allow_layout_p
     cls, command, commands, layout = spec['scene_class'], entry['command'], [], {'checked': False, 'problems': [], 'text': ''}
     out = work / f'{_slug(spec["id"])}.mp4'
     if entry['backend'] == 'manimgx':
-        inspect = run_command([command, 'inspect', str(scene), cls], cwd=work, timeout=timeout)
-        commands.append({'argv': [Path(command).name, 'inspect', scene.name, cls], 'code': inspect['code'], 'seconds': inspect['seconds']})
+        argv, extra = _launch(entry, 'inspect', scene, cls)
+        inspect = run_command(argv, cwd=work, timeout=timeout, **extra)
+        commands.append({'argv': [_backend_name(entry), 'inspect', scene.name, cls], 'code': inspect['code'], 'seconds': inspect['seconds']})
         report = inspect['stdout'] + inspect['stderr']
         line = next((l for l in report.splitlines() if l.strip().lower().startswith('layout:')), '')
         layout = {'checked': bool(line) and 'not checked' not in line, 'problems': [l.strip() for l in report.splitlines() if re.match(r'\s*\[\d+\]', l)],
@@ -380,8 +412,9 @@ def render_with(entry: dict, spec: dict, scene: Path, work: Path, allow_layout_p
             raise AnimationError('inspect failed: ' + _tail(report))
         if inspect['code'] == 1 and not allow_layout_problems:
             raise LayoutProblems(layout)
-        done = run_command([command, 'render', str(scene), cls, '-o', str(out), '-r', f'{width}x{height}', '--fps', fps], cwd=work, timeout=timeout)
-        commands.append({'argv': [Path(command).name, 'render', scene.name, cls, '-o', out.name, '-r', f'{width}x{height}', '--fps', fps],
+        argv, extra = _launch(entry, 'render', scene, cls, '-o', out, '-r', f'{width}x{height}', '--fps', fps)
+        done = run_command(argv, cwd=work, timeout=timeout, **extra)
+        commands.append({'argv': [_backend_name(entry), 'render', scene.name, cls, '-o', out.name, '-r', f'{width}x{height}', '--fps', fps],
                          'code': done['code'], 'seconds': done['seconds']})
     else:
         media = work / 'media'
@@ -417,7 +450,7 @@ def render_with(entry: dict, spec: dict, scene: Path, work: Path, allow_layout_p
             else:
                 result['slides_note'] = 'manim-slides convert failed: ' + _tail(conv['stderr'] or conv['stdout'], 4)
     elif spec.get('slides'):
-        result['slides_note'] = f'ManimGX presents sections as slides: run `{Path(command).name} present <scene> {cls}`; no deck file is made'
+        result['slides_note'] = f'ManimGX presents sections as slides: run `{_backend_name(entry)} present <scene> {cls}`; no deck file is made'
     return result
 
 
@@ -512,7 +545,7 @@ def present_command(spec: dict, entry: dict) -> list[str]:
     """The command that presents a scene as slides. Returned, never run: it opens a window and waits for a person."""
     cls = spec['scene_class']
     if entry['backend'] == 'manimgx':
-        return [Path(entry['command']).name, 'present', spec['scene'], cls]
+        return [_backend_name(entry), 'present', spec['scene'], cls]
     return ['manim-slides', 'present', cls]
 
 

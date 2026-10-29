@@ -72,10 +72,12 @@ and `ROS_WHISPER_ENV`.
 |---|---|
 | The app (Electron) and its Python backend, no Python install needed | Windows 10 or 11, 64-bit |
 | Kokoro and faster-whisper with their Python, packages and models | A model sign-in for agents: the Codex or Claude CLI (or a local Ollama), which you log into yourself |
-| PDF reading, handout PDF printing (through the app's own Chromium) and computation workers | |
-| The update client | An Obsidian vault, only if you want your notes there |
+| ManimGX for lesson animations, with its own Python 3.13+ and software rendering (it renders a 1080p scene without a GPU) | An Obsidian vault, only if you want your notes there |
+| PDF reading, handout PDF printing (through the app's own Chromium) and computation workers | ffmpeg, for the poster frame and key-frame strip of each animation |
+| The update client | |
 
-Also not bundled: Manim for animations, and LaTeX (handouts print without it). Nothing here needs a GPU.
+Also not bundled: ffmpeg and LaTeX (handouts print without it). ManimGX's native wheel carries GPL components; it runs as its
+own process from `resources/voice/animation`, and `LICENSES.txt` in the pack lists what it contains. Nothing here needs a GPU.
 
 ### Requirements and tested hardware
 
