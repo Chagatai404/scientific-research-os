@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.6.0 (in progress): sessions run the skills
+## 1.6.0: sessions run the skills, agents work by themselves, ManimGX is bundled
 
 - Bring back the guided workflow in desktop sessions. Since 1.5.0 the composer sent no mode, so every session was a read-only chat with a generic prompt and none of the teaching loop. A session now has a type, **Ask**, **Learn**, **Research** or **Defend**, chosen in the composer and kept by the conversation (a follow-up inherits it and is never downgraded). `ros/modes.py` is the one table: each type's skill (put into the system prompt, or read with the new `skill` tool when it does not fit the model's context), its tool grant, and the director kind that sets a record up for it.
 - Grant sessions the whole loop: `start`, `next`, `answer`, `ask`, `hint`, `close` for Learn and Defend; retention (`today`, `due`, `review_scope`, `frontier`, `capabilities`, `map`, `progress`) and finding earlier work (`find`, `records`, `library`, `vault_find`, `evidence`, `log`) in every type; `link` in Learn and Research. `verdict`, `approve`, `decide` and `waive` are never granted.
