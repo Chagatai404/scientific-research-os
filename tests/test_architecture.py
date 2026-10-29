@@ -18,7 +18,7 @@ PURE = {"store", "learn.fsrs", "home", "install"}
 DOMAIN = {"tasks", "graph", "learn.evidence", "learn.schedule", "learn.probe", "learn.tutor", "learn.policy",
           "prepare", "research", "importers", "export", "learn.fsrs", "context", "roadmap", "vault", "handouts", "automation", "director", "atlas", "workspace", "conversation"}
 TOOLS_LAYER = {"api", "registry"} | {f"tools.{p.stem}" for p in (ROOT / "ros" / "tools").glob("*.py") if p.stem != "__init__"}
-DOMAIN |= {"sources", "runs", "execution", "learn.pedagogy", "organization", "library", "modes"}
+DOMAIN |= {"sources", "runs", "execution", "learn.pedagogy", "organization", "library", "modes", "dispatch"}
 INTERFACES = {"cli", "mcp", "serve", "__main__", "runner", "desktop", "runtime"}
 LIB_USERS = {"importers", "prepare", "handouts", "runtime", "desktop"}
 

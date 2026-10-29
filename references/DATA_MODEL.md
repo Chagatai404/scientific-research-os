@@ -116,6 +116,7 @@ addresses, decides, relates.
 | `ask`, `answer` | lesson / ask id | text or mode / text |
 | `policy` | lesson | action, reason, item, capability, mode |
 | `task.open`, `task.claim`, `task.done`, `task.cancel` | task | kind, ref, brief, … / by / result / reason |
+| `dispatch.start`, `dispatch.end` | task | task, role, model / task, record, outcome (`done`, `unfinished`, `refused`, `failed`), detail. The ledger of unattended agent runs: it bounds how many an hour and leaves a task alone after two failures |
 | `bundle.ready` | bundle | manifest digest |
 | `verdict` | claim | step, verdict, notes, checklist, evidence |
 | `approval`, `decision`, `waiver` | subject | decision / outcome, rationale / reason |

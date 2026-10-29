@@ -19,6 +19,7 @@ document and that test in the same commit.
                organization (display names and membership, independent of scientific edges)
                library (material added by the person: listed at once, read in the background)
                modes (what a desktop session is in each mode: its skill, its tool grant, the person's own words)
+               dispatch (which agent tasks the desktop takes unattended, the limits and the ledger of what it did)
      │
  core          store (the record) · home (where records live)
  engines       lib/ (speech, voice, Manim, papers, scouting, evidence atoms, manifests, walkthrough, old readers)
@@ -169,7 +170,12 @@ tool's choices come from that registry **(checked)**. Use deterministic event id
 ### A task kind (work for an agent)
 
 Add it to `tasks.KINDS`, open it with `tasks.open_task(..., key=...)` (the key makes it idempotent), and describe in
-the relevant skill which agent takes it and which tool finishes it.
+the relevant skill which agent takes it and which tool finishes it. Then decide whether the desktop may take it without
+anyone asking: either list it in `dispatch.AUTO` with its tool grant (`GRANTS`) and step budget (`STEPS`), or in
+`dispatch.NEVER` with the reason a person or a client with a shell must do it (`tests/test_ros_dispatch.py` fails until
+every kind is one or the other). Never grant `verdict`, a human-only tool, or a tool that holds the registry lock for
+minutes; long work stays a `job` task for the runner. `runtime.Dispatcher` runs one agent at a time in a fresh context,
+the agent finishes only its own task, and `agents_configure` (Settings) pauses it or limits it per hour.
 
 ### An automation (something the system does so that nobody has to ask)
 

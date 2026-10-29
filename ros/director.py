@@ -412,14 +412,15 @@ def format_brief(b: dict) -> str:
 
 
 # ---- work ----------------------------------------------------------------------------------------------------------
-def work(rec: Record, by: str, kinds: list[str] | None = None) -> dict:
-    """The next task for an agent across every record, claimed, with how to do it and the tool that finishes it."""
+def work(rec: Record, by: str, kinds: list[str] | None = None, skip: list[str] | None = None) -> dict:
+    """The next task for an agent across every record, claimed, with how to do it and the tool that finishes it.
+    ``skip`` names tasks not to hand out (dispatch leaves a task that has failed twice)."""
     if not (by or "").strip():
         raise ValueError("work names who is working (by)")
     for bad in kinds or []:
         if bad not in tasks.KINDS or bad == "job":
             raise ValueError(f"kinds are task kinds an agent takes: {', '.join(sorted(tasks.KINDS - {'job'}))}")
-    skipped: set[str] = set()
+    skipped: set[str] = set(skip or [])
     with linked(rec) as recs:
         for _ in range(8):
             best = None

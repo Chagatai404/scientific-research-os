@@ -129,12 +129,19 @@ def dispatch(name: str, brief: str) -> dict:
     r, brief = role(name), (brief or "").strip()
     if not brief or len(brief) > 8000:
         raise ValueError("the brief is between 1 and 8000 characters: give the role everything it needs, it sees nothing else")
-    agent = (REPO / "agents" / f"{name}.md").read_text(encoding="utf-8")
     system = ("You are running as an independent role inside a Research OS session. You see only the brief below, never the "
               "conversation that asked. Use only your granted tools; you cannot approve, decide, waive or give an audit verdict. "
               "Never present a guess as a finding. Your final message is your report, " + r.returns + "; the session that asked "
-              "decides what is recorded.\n\n" + _FRONTMATTER.sub("", agent, count=1).strip())
+              "decides what is recorded.\n\n" + agent_text(name))
     return {"role": name, "system": system, "brief": brief, "tools": sorted(r.tools)}
+
+
+def agent_text(name: str) -> str:
+    """An agent's own instructions (agents/<name>.md), without its frontmatter."""
+    path = REPO / "agents" / f"{name}.md"
+    if not path.is_file():
+        raise KeyError(f"no agent {name!r}")
+    return _FRONTMATTER.sub("", path.read_text(encoding="utf-8"), count=1).strip()
 
 
 def prompt(name: str, context: str, room: int) -> str:

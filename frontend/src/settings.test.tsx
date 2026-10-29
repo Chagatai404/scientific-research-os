@@ -38,6 +38,9 @@ test('Claude Sonnet and Opus offer the effort slider; Haiku and local models do 
   assert.deepEqual(['claude:haiku', 'ollama:qwen3', 'compatible:x'].map(takesEffort), [false, false, false]);
 });
 
+const agentStatus = {enabled: true, ok: true, reason: '', model: 'codex:gpt-6.1-sol', configured_model: '', left_this_hour: 5, per_hour: 6,
+  waiting: {automatic: {outline: 3}, left_for_you: {audit: {count: 2, why: 'an independent audit is asked for by a person'}}}, failed_twice: [], recent: []};
+
 test('Settings connects real records, checks services only on clicks and shares saved model preferences', async () => {
   const dom = new JSDOM('<div id="root"></div>', {url: 'http://localhost/#settings'});
   const previous = new Map<string, PropertyDescriptor | undefined>();
@@ -48,7 +51,7 @@ test('Settings connects real records, checks services only on clicks and shares 
   const oldFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string, options?: RequestInit) => {
     requests.push({url: String(url), body: options?.body ? JSON.parse(String(options.body)) : undefined});
-    const result = String(url).startsWith('/services/catalog') ? {models: [sol, {id: 'claude:sonnet', label: 'Claude Sonnet', provider: 'claude', reasoning_efforts: []}], voice: {kokoro: false, whisper: false, label: 'Unavailable'}} : String(url).startsWith('/api/workspace_connections') ? {record: {name: 'ams-ecal-qml', title: 'ams-ecal-qml', role: 'project', root: 'C:/records/qml', node_counts: {source: 12}}, vault: {configured: true, path: 'C:/Users/you/Obsidian/Knowledge', root: 'Research OS', folder: 'C:/Users/you/Obsidian/Knowledge/Research OS'}, backend: {operation_count: 42}} : {ok: true, model: DEFAULT_MODEL, text: 'READY'};
+    const result = String(url).startsWith('/api/agents_status') ? agentStatus : String(url).startsWith('/services/catalog') ? {models: [sol, {id: 'claude:sonnet', label: 'Claude Sonnet', provider: 'claude', reasoning_efforts: []}], voice: {kokoro: false, whisper: false, label: 'Unavailable'}} : String(url).startsWith('/api/workspace_connections') ? {record: {name: 'ams-ecal-qml', title: 'ams-ecal-qml', role: 'project', root: 'C:/records/qml', node_counts: {source: 12}}, vault: {configured: true, path: 'C:/Users/you/Obsidian/Knowledge', root: 'Research OS', folder: 'C:/Users/you/Obsidian/Knowledge/Research OS'}, backend: {operation_count: 42}} : {ok: true, model: DEFAULT_MODEL, text: 'READY'};
     return {ok: true, json: async () => ({result})} as Response;
   }) as typeof fetch;
   dom.window.localStorage.setItem('ros.workspace.model', 'codex:default');
@@ -62,9 +65,14 @@ test('Settings connects real records, checks services only on clicks and shares 
     assert.match(doc.body.textContent!, /12/);
     assert.equal((doc.querySelector('#vault-path') as HTMLInputElement).value, 'C:/Users/you/Obsidian/Knowledge');
     assert.equal(dom.window.localStorage.getItem('ros.workspace.model'), DEFAULT_MODEL);
-    assert.equal(doc.querySelectorAll('input').length, 3);
+    assert.equal(doc.querySelectorAll('input').length, 4);
     assert.doesNotMatch(doc.body.textContent!, /Original portal|Another model|provider:model|API key/i);
-    assert.equal(requests.length, 2, 'initial render reads only catalog and connections');
+    assert.equal(requests.length, 3, 'initial render reads only the catalog, the connections and the agents status: no model is invoked');
+    assert.match(doc.body.textContent!, /Let agents work on waiting tasks by themselves/);
+    assert.match(doc.body.textContent!, /3 outline/); assert.match(doc.body.textContent!, /2 audit: an independent audit is asked for by a person/);
+    await act(async () => {(doc.querySelector('#settings-agents ~ label input, #settings-agents + p + label input') as HTMLInputElement).click();});
+    assert.deepEqual(requests.at(-2), {url: '/api/agents_configure', body: {record: 'qml', auto: false}}, 'the switch saves through agents_configure');
+    requests.length = 3;
     const click = async (text: string) => {await act(async () => {Array.from(doc.querySelectorAll('button')).find(button => button.textContent === text)!.click();});};
     await click('Check Model Connection');
     assert.deepEqual(requests.at(-1), {url: '/services/model-check', body: {record:'qml', model: DEFAULT_MODEL, effort: 'medium'}});

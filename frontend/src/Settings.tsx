@@ -1,6 +1,7 @@
 import {EffortSlider} from './controls';
 import {ConnectionSettings} from './ConnectionSettings';
 import {VaultActions} from './VaultActions';
+import {AgentSettings} from './AgentSettings';
 import {useEffect, useState, type FormEvent} from 'react';
 import {call, href, service} from './api';
 import {useResource} from './hooks';
@@ -47,6 +48,7 @@ export function Settings({record}: {record: string}) {
       {catalog.data?.ollama && <p>{catalog.data.ollama.available ? `${catalog.data.ollama.models} Ollama Models Available Locally.` : catalog.data.ollama.hint}</p>}
       {check && <p role="status">{check}</p>}{catalog.error && <p role="alert">{catalog.error}</p>}
     </section>
+    <AgentSettings record={record} models={catalog.data?.models} />
     <section aria-labelledby="settings-record"><h2 id="settings-record">Knowledge & Current Record</h2>{connection ? <><dl><dt>Record</dt><dd>{workspaceLabel(connection.record.title || connection.record.name)}</dd><dt>Role</dt><dd>{workspaceLabel(connection.record.role)}</dd><dt>Record location</dt><dd>{connection.record.root}</dd><dt>Backend operations</dt><dd>{connection.backend.operation_count}</dd></dl><ul className="record-counts">{Object.entries(connection.record.node_counts).map(([kind, count]) => <li key={kind}><span>{workspaceLabel(kind)}</span><strong>{count}</strong></li>)}</ul></> : <p role="status">{connections.error || 'Loading workspace connections…'}</p>}</section>
     <section id="vault-connection" aria-labelledby="settings-vault"><h2 id="settings-vault">Obsidian Vault</h2>{connection && <p>{connection.vault.configured ? 'Connected' : 'Not connected'}{connection.vault.folder ? ': ' + connection.vault.folder : ''}</p>}<p>Choose the vault used by Research OS. Connecting saves the location; notes are synchronized only through an explicit sync action.</p>
       <form onSubmit={connect}><label htmlFor="vault-path">Vault path</label><input id="vault-path" value={path} onChange={event => setPath(event.target.value)} required placeholder="C:/Users/you/Obsidian/Knowledge" /><label htmlFor="vault-folder">Research OS folder inside the vault</label><input id="vault-folder" value={folder} onChange={event => setFolder(event.target.value)} required /><div className="settings-actions"><button disabled={!!busy || !path.trim() || !folder.trim()}>{busy === 'connect' ? 'Connecting…' : 'Connect Vault'}</button><button type="button" onClick={inspectVault} disabled={!!busy || !connection?.vault.configured}>{busy === 'status' ? 'Checking Vault…' : 'Check Vault Status'}</button></div></form>

@@ -230,11 +230,7 @@ def execute(rec, result, request, legacy_engine=None):
         its tool calls appear among this run's committed steps as <role>:<tool>."""
         if private_scope: raise ValueError('Local-only material cannot be sent to a delegated role.')
         if not request['model'].startswith(('ollama:', 'compatible:')): api.call('workspace_cloud_guard', rec)
-        role, grant, chunks, used = spec['role'], set(spec['tools']), [], [0]
-        def role_emit(text):
-            if entry['cancel'].is_set(): raise providers.ProviderError('cancelled')
-            chunks.append(text)
-            if sum(map(len, chunks)) > min(60000, limits['output'] * 6): raise providers.ProviderError('Output budget reached.')
+        role, grant, used = spec['role'], set(spec['tools']), [0]
         def role_call(name, args, step):
             if name not in grant or api.TOOLS[name].human: raise ValueError('operation is not granted to this role')
             if not isinstance(args, dict): raise ValueError('tool arguments must be an object')
@@ -249,20 +245,8 @@ def execute(rec, result, request, legacy_engine=None):
             if len(json.dumps(value)) > 80000: value = {'error': 'result exceeds context budget'}
             api.call('run_step', rec, run=run, operation=identifier, tool_name=role + ':' + name, result=value)
             return value
-        profile = request.get('vision_profile') or next((p for p in api.call('provider_profiles', rec) if p['id'] == request['model']), None)
-        packet = dict(request, images=[], context={}, messages=[{'role': 'user', 'content': spec['brief']}], system=spec['system'],
-                      deadline=limits['deadline'], steps=min(limits['tool_steps'], 8), output_limit=limits['output'], provider_calls=limits['provider_calls'],
-                      tools=[{'name': n, 'description': api.TOOLS[n].help, 'parameters': api.TOOLS[n].schema()} for n in sorted(grant)])
-        packet.pop('_vision_permissions', None); packet.pop('bridge', None)
-        if profile: packet.update(endpoint=profile['endpoint'], tool_support=profile['tools'])
-        provider = packet['model'].split(':', 1)[0]
-        if provider == 'claude':
-            with ToolBridge(role_call, packet['tools']) as bridge:
-                packet['bridge'] = bridge
-                providers.ADAPTERS[provider](packet, role_emit, role_call, entry['cancel'], entry['owned'].append)
-        else:
-            providers.ADAPTERS[provider](packet, role_emit, role_call, entry['cancel'], entry['owned'].append)
-        report = ''.join(chunks).strip()
+        report = run_agent(rec, request['model'], spec['system'], spec['brief'], grant, min(limits['tool_steps'], 8), role_call, entry, limits,
+                           profile=request.get('vision_profile'))
         if not report: raise ValueError('The role returned no report; nothing was inferred.')
         return {'role': role, 'report': report[:20000]}
     try:
@@ -324,6 +308,104 @@ def execute(rec, result, request, legacy_engine=None):
     finally:
         for record in opened.values(): record.close()
         with LOCK: ACTIVE.pop(key, None)
+
+def run_agent(rec, model, system, brief, grant, steps, call, entry, limits, profile=None, effort='medium'):
+    """One provider run in a fresh context: ``system`` and ``brief`` and nothing else, the tools in ``grant`` through ``call``, a step
+    budget, the output and time limits of the workspace. Returns what the agent said. Shared by a session's delegated roles and by
+    unattended dispatch; ``entry`` is the run's cancel event and the child processes to stop on shutdown."""
+    chunks = []
+    def emit(text):
+        if entry['cancel'].is_set(): raise providers.ProviderError('cancelled')
+        chunks.append(text)
+        if sum(map(len, chunks)) > min(60000, limits['output'] * 6): raise providers.ProviderError('Output budget reached.')
+    profile = profile or next((p for p in api.call('provider_profiles', rec) if p['id'] == model), None)
+    packet = {'model': model, 'effort': effort, 'images': [], 'context': {}, 'messages': [{'role': 'user', 'content': brief}], 'system': system,
+              'deadline': limits['deadline'], 'steps': steps, 'output_limit': limits['output'], 'provider_calls': limits['provider_calls'],
+              'tools': [{'name': n, 'description': api.TOOLS[n].help, 'parameters': api.TOOLS[n].schema()} for n in sorted(grant)]}
+    if profile: packet.update(endpoint=profile['endpoint'], tool_support=profile['tools'])
+    provider = model.split(':', 1)[0]
+    if provider == 'claude':
+        with ToolBridge(call, packet['tools']) as bridge:
+            packet['bridge'] = bridge
+            providers.ADAPTERS[provider](packet, emit, call, entry['cancel'], entry['owned'].append)
+    else:
+        providers.ADAPTERS[provider](packet, emit, call, entry['cancel'], entry['owned'].append)
+    return ''.join(chunks).strip()
+
+AGENTS = threading.Semaphore(1)  # one unattended agent at a time, beside the foreground session
+
+def dispatch_once(rec):
+    """Take one waiting agent task that the person's settings allow and run it as an agent in a fresh context. ros/dispatch.py decides
+    what, with which model and how often; the agent finishes its task itself, through `finish`, and how the run ended is recorded either
+    way. Returns what happened, for the activity board and the tests."""
+    if not AGENTS.acquire(blocking=False): return {'idle': 'An agent is already working.'}
+    key, opened = None, {}
+    try:
+        with api.LOCK: got = api.call('dispatch_claim', rec)
+        if got.get('idle'): return got
+        task, model, by = got['task'], got['model'], got['by']
+        key = (str(rec.root), 'dispatch:' + task['id'])
+        entry = {'cancel': threading.Event(), 'owned': []}
+        with LOCK: ACTIVE[key] = entry
+        grant, used, finished = set(got['tools']), [0], [False]
+        def end(outcome, detail=''):
+            api.call('dispatch_end', rec, task=task['id'], record=got['record'], outcome=outcome, detail=detail)
+            return {'task': task['id'], 'kind': got['kind'], 'outcome': outcome, 'detail': detail, 'model': model}
+        target = rec
+        if got['record'] != rec.root.name:
+            if got['record'] not in home.projects(): return end('failed', 'the record of this task is not available')
+            opened[got['record']] = target = Record(home.resolve(got['record']))
+        api.call('dispatch_begin', rec, task=task['id'], role=got['role'], model=model)
+        limits = dict(api.call('execution_limits', rec), deadline=got['deadline'])
+        def call(name, args, step):
+            if name not in grant or api.TOOLS[name].human: raise ValueError('operation is not granted to this agent')
+            if not isinstance(args, dict): raise ValueError('tool arguments must be an object')
+            if name == 'item' and args.get('reveal') and not got['reveal']: raise ValueError('only grading reads hidden rubrics')
+            if name == 'finish': args = dict(args, task=task['id'], by=by)  # it finishes its own task, as the one who claimed it
+            if entry['cancel'].is_set(): raise ValueError('run cancelled')
+            used[0] += 1
+            if used[0] > got['steps']: raise ValueError('tool step budget reached')
+            with api.LOCK:
+                if not model.startswith(('ollama:', 'compatible:')):
+                    api.call('workspace_cloud_guard', rec)
+                    if target is not rec: api.call('workspace_cloud_guard', target)
+                value = api.call(name, target, **args)
+            if isinstance(value, dict) and value.get('_operation'): value = execute_operation(target, value['_operation'])
+            if name == 'finish': finished[0] = True
+            return value if len(json.dumps(value)) <= 80000 else {'error': 'result exceeds context budget'}
+        try:
+            if not model.startswith(('ollama:', 'compatible:')): api.call('workspace_cloud_guard', rec)
+            run_agent(rec, model, got['system'], got['brief'], grant, got['steps'], call, entry, limits)
+        except ValueError as exc:
+            return end('refused' if 'local-only' in str(exc) else 'failed', str(exc))
+        except providers.ProviderError as exc:
+            return end('failed', str(exc))
+        return end('done') if finished[0] else end('unfinished', 'the agent stopped without finishing the task; it is taken again later')
+    finally:
+        for record in opened.values(): record.close()
+        if key:
+            with LOCK: ACTIVE.pop(key, None)
+        AGENTS.release()
+
+class Dispatcher:
+    """The desktop's background dispatcher: every `interval` seconds it looks for a task an agent may take, one at a time."""
+    def __init__(self, rec, interval=60, first=30):
+        self.rec, self.interval, self.first = rec, interval, first
+        self.stop_event, self.errors, self.last = threading.Event(), [], None
+        self.thread = threading.Thread(target=self.loop, daemon=True, name='ros-dispatcher')
+    def start(self):
+        self.thread.start(); return self
+    def stop(self):
+        self.stop_event.set()
+    def loop(self):
+        wait = self.first
+        while not self.stop_event.wait(wait):
+            wait = self.interval
+            try:
+                self.last = dispatch_once(self.rec)
+                if self.last.get('kind'): wait = 5  # something was done: look again soon; the hourly limit keeps it bounded
+            except Exception as exc:  # a failed look never stops the dispatcher
+                self.errors = (self.errors + [type(exc).__name__ + ': ' + str(exc)[:200]])[-10:]
 
 class ToolBridge:
     """A run-specific MCP HTTP endpoint. Its token grants only the already filtered tool callback."""

@@ -98,7 +98,7 @@ def init(name: str, at: Path | None = None) -> Path:
 # ---- the person's settings ---------------------------------------------------------------------------------------
 SETTINGS = "settings.json"
 DEFAULTS = {"vault": None, "vault_root": "Research OS", "director_name": None, "pdf_engine": "auto",
-            "portal_port": 8737}
+            "portal_port": 8737, "agents_auto": True, "agents_model": "", "agents_per_hour": 6}
 
 
 def settings() -> dict:
@@ -116,6 +116,13 @@ def set_settings(**fields) -> dict:
         raise ValueError(f"unknown setting(s) {sorted(unknown)}; settings are {sorted(DEFAULTS)}")
     if fields.get("pdf_engine") not in (None, "auto", "latex", "chromium"):
         raise ValueError("pdf_engine is auto, latex or chromium")
+    if fields.get("agents_auto") is not None and not isinstance(fields["agents_auto"], bool):
+        raise ValueError("agents_auto is true or false")
+    if fields.get("agents_per_hour") is not None and (isinstance(fields["agents_per_hour"], bool) or not isinstance(fields["agents_per_hour"], int)
+                                                       or not 1 <= fields["agents_per_hour"] <= 60):
+        raise ValueError("agents_per_hour is a whole number from 1 to 60")
+    if fields.get("agents_model") not in (None, "") and not re.fullmatch(r"(codex|claude|ollama|compatible):[A-Za-z0-9_.:/-]{1,100}", str(fields["agents_model"])):
+        raise ValueError("agents_model is a provider and model such as claude:sonnet, or empty to use the model you last wrote to")
     root = fields.get("vault_root")
     if root is not None and (not root.strip() or Path(root).is_absolute() or ".." in Path(root).parts):
         raise ValueError("vault_root is a folder name inside the vault, e.g. 'Research OS'")

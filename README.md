@@ -51,15 +51,21 @@ check the public release feed and download newer stable versions; a pop-up at la
 - **Graph** is the central map. Hover anything to see its name while the rest fades; choose Knowledge, Research or
   Goals to focus. Plain lines are filing, never scientific relations.
 - **Activity** shows what the agents have finished, are doing and will do next.
+- **Settings → Agents** controls the agents that work by themselves. The desktop takes the tasks the record opens (grade a
+  written answer, answer a question, outline a course, ingest a file, scout sources, write items, narration, a lesson
+  bundle or a handout, review), one at a time, with the model you last wrote to or the one you choose, at most 6 an hour
+  unless you change it, each in a fresh context with only the tools its task needs. You can pause it. It never takes
+  audits, verdicts, experiment runs, or work that needs rendering or the web, and Settings lists what it leaves for you and why.
 
-Codex and Claude use their existing CLI logins; local models use explicit loopback profiles. Connections never scan,
-sync or execute on their own. Approvals, decisions and waivers are always your acts. Cloud image/PDF vision needs the
+Codex and Claude use their existing CLI logins; local models use explicit loopback profiles. Connections never scan or
+sync on their own, and nothing runs an experiment on its own. Approvals, decisions and waivers are always your acts. Cloud image/PDF vision needs the
 model's capability configured and each attachment allowed for one turn; Local Only media stays on the computer.
 
 ### Voice
 
 Read-aloud (Kokoro) and dictation (faster-whisper, the multilingual "small" model) ship inside the installer: a private
-Python 3.12, both engines with their packages, and both models, about 1.2 GB. They run on the CPU, offline, in a separate
+Python 3.12, both engines with their packages, and both models, plus ManimGX with its own Python for lesson animations,
+about 1.45 GB together. They run on the CPU, offline, in a separate
 process; nothing is downloaded and nothing is sent to a speech service. The composer shows what is ready. Their
 licences (Apache-2.0 and MIT models; GPL phonemizer and espeak-ng used by Kokoro) are in `resources/voice/LICENSES.txt`
 inside the install. Developers: `python desktop/build-voice.py` assembles the pack from the engines on the build machine
