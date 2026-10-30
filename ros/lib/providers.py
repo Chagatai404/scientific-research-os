@@ -251,7 +251,9 @@ def local(request, emit, tool_call, cancel, own):
                         choice = (event.get('choices') or [{}])[0]; delta = choice.get('delta', {}); finish = bool(choice.get('finish_reason')) or finish; usage = event.get('usage', usage)
                     text = delta.get('content') or ''; content += text; emit(text)
                     for index, call in enumerate(delta.get('tool_calls', [])):
-                        number = call.get('index', index); row = calls.setdefault(number, {'id': call.get('id', 'local-' + str(step) + '-' + str(number)), 'function': {'name': '', 'arguments': ''}, 'type': 'function'})
+                        # OpenAI-style streams send one call in pieces tied by a top-level index; Ollama sends each call whole (its
+                        # index sits under `function`), so every Ollama call gets its own row.
+                        number = len(calls) if provider == 'ollama' else call.get('index', index); row = calls.setdefault(number, {'id': call.get('id', 'local-' + str(step) + '-' + str(number)), 'function': {'name': '', 'arguments': ''}, 'type': 'function'})
                         fn = call.get('function', {})
                         row['function']['name'] += fn.get('name', '')
                         args = fn.get('arguments', '')
