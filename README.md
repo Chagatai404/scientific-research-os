@@ -126,7 +126,7 @@ npm --prefix desktop start
 
 `python desktop/verify.py` runs the full isolated gate (Python, frontend, browser journeys, packaged lifecycle). It makes
 no paid inference calls and never touches your vault. Acceptance notes:
-[1.7](docs/desktop-rebuild/ACCEPTANCE-1.7.0.md), [1.6.1](docs/desktop-rebuild/ACCEPTANCE-1.6.1.md), [1.6](docs/desktop-rebuild/ACCEPTANCE-1.6.0.md), [1.5.2](docs/desktop-rebuild/ACCEPTANCE-1.5.2.md), [1.5.1](docs/desktop-rebuild/ACCEPTANCE-1.5.1.md), [1.5](docs/desktop-rebuild/ACCEPTANCE-1.5.0.md), [1.4](docs/desktop-rebuild/ACCEPTANCE-1.4.0.md),
+[1.7.1](docs/desktop-rebuild/ACCEPTANCE-1.7.1.md), [1.7](docs/desktop-rebuild/ACCEPTANCE-1.7.0.md), [1.6.1](docs/desktop-rebuild/ACCEPTANCE-1.6.1.md), [1.6](docs/desktop-rebuild/ACCEPTANCE-1.6.0.md), [1.5.2](docs/desktop-rebuild/ACCEPTANCE-1.5.2.md), [1.5.1](docs/desktop-rebuild/ACCEPTANCE-1.5.1.md), [1.5](docs/desktop-rebuild/ACCEPTANCE-1.5.0.md), [1.4](docs/desktop-rebuild/ACCEPTANCE-1.4.0.md),
 [architecture](docs/desktop-rebuild/ARCHITECTURE.md), [backup and rollback](docs/desktop-rebuild/MIGRATION_AND_ROLLBACK.md).
 
 ## Use it from a terminal or an agent

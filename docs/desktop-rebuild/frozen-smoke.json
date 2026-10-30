@@ -1,5 +1,5 @@
 {
-  "cli_tools": 177,
+  "cli_tools": 181,
   "python_on_path": false,
   "pdf_page_scope": [
     {
@@ -13,6 +13,6 @@
   "compute_ok": true,
   "bundled_python": true,
   "artifact_count": 2,
-  "backend_sha256": "238bdbedc8ba116f88b7c8083ee827bf43f753aaf2e6afe0a7730d77b97b9c5d",
-  "tested_at": "2026-10-30T13:23:58.444362+00:00"
+  "backend_sha256": "e9cb553a35d0b581c5f6db39bdd20a6a5a49e1bd866a50bde831ef605442ad83",
+  "tested_at": "2026-10-30T15:14:57.062654+00:00"
 }
