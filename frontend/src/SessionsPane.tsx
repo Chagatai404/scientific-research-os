@@ -152,7 +152,7 @@ export function SessionsPane({record, records, active}: {record: string; records
             <ul>{loose.map(renderSession)}{!loose.length && <li className="hint">Sessions you have not filed.</li>}</ul></li>}</ul>}
     </nav>
     {data && roots.length > 0 && <p className="hint">Drag a session onto a course or project, or use ⋯ › Move to…</p>}
-    {!!data?.archived?.length && <details className="recently-deleted"><summary>Recently deleted ({data.archived.length})</summary><ul>{data.archived.map(a => <li key={a.id}><span className="label">{a.title}</span><button onClick={async () => {try {await human('organization_archive', {subject: a.id, archived: false}, record); changed();} catch { /* the item reports why on the next refresh */ }}}>Restore</button></li>)}</ul></details>}
+    {!!data?.archived?.length && <details className="recently-deleted"><summary>Recently deleted ({data.archived.length})</summary><ul>{data.archived.map(a => <li key={(a.record || '') + a.id}><span className="label" title={a.workspace ? a.title + ' · ' + a.workspace : a.title}>{a.title}</span>{a.workspace && <small className="workspace-tag">{a.workspace}</small>}<button onClick={async () => {try {await human('organization_archive', {subject: a.id, archived: false}, a.record || record); changed();} catch { /* the item reports why on the next refresh */ }}}>Restore</button></li>)}</ul></details>}
     <Dialogs record={record} folders={folders}/>
   </aside>;
 }

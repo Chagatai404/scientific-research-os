@@ -56,5 +56,27 @@ class LiveMap(unittest.TestCase):
         self.assertFalse(any(made["name"] in f for f in api.call("workspace_watched", self.me)), "a deleted workspace is not watched")
 
 
+    def test_after_deleting_a_linked_workspace_knowledge_can_restore_its_sessions_and_never_falls_back_to_another_record(self):
+        from ros import home, serve
+        self.rec.put_node("conversation:asked", "conversation", title="Asked in the project")
+        api.call("organization_archive", self.rec, subject="conversation:asked")
+        gone = api.call("workspace_organization", self.me)["archived"]
+        self.assertEqual([(a["id"], a["record"]) for a in gone], [("conversation:asked", "demo")], "Knowledge lists it, with its owner")
+        api.call("organization_archive", self.rec, subject="conversation:asked", archived=False)
+        repo = Path(self.tmp.name) / "code"; repo.mkdir()
+        home.set_config(self.rec.root, repo=str(repo))
+        self.me.put_node("project:demo", "project", title="Calorimeter study")
+        pool = serve.Pool(self.me); self.addCleanup(pool.close)
+        pool.get("demo")
+        api.call("workspace_delete", self.me, workspace="demo")
+        self.assertNotIn("project:demo", [f["id"] for f in api.call("workspace_organization", self.me)["folders"]])
+        self.assertNotIn("project:demo", self.nodes(self.me), "a deleted workspace's hub leaves Knowledge's map")
+        self.assertEqual([r.root.name for r in pool.all()], ["me"], "background workers skip a deleted workspace")
+        with self.assertRaisesRegex(ValueError, "is deleted"):
+            home.resolve("demo")
+        with self.assertRaisesRegex(ValueError, "is deleted"):
+            home.resolve(cwd=repo)
+
+
 if __name__ == "__main__":
     unittest.main()

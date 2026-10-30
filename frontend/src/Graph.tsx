@@ -51,7 +51,7 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
     if (!map || !size.width || !size.height) return;
     const previous = viewport.current;
     viewport.current = {key: cameraKey, ...size};
-    if (initialized.current !== cameraKey) {initialized.current = cameraKey; setCamera(safeCamera(preference(cameraKey, '')) || fitted());}
+    if (initialized.current !== cameraKey) {initialized.current = cameraKey; seenCount.current = points.length; steered.current = false; setCamera(safeCamera(preference(cameraKey, '')) || fitted());}
     else if (previous.key === cameraKey && (previous.width !== size.width || previous.height !== size.height)) setCamera(c => ({...c, x: c.x + (size.width - previous.width) / 2, y: c.y + (size.height - previous.height) / 2}));
   }, [map, cameraKey, size.width, size.height]);
   useEffect(() => {if (initialized.current === cameraKey) savePreference(cameraKey, JSON.stringify(camera));}, [camera, cameraKey]);

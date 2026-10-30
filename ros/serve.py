@@ -103,8 +103,17 @@ class Pool:
         return roots
 
     def all(self) -> list[Record]:
+        """The open records the background workers serve: never a deleted workspace."""
+        gone = set(home.projects(deleted=True))
         with self._lock:
-            return list(self._records.values())
+            return [r for k, r in self._records.items() if r is self.default or k not in gone]
+
+    def forget(self, name: str) -> None:
+        """Close a record that is no longer listed (a deleted workspace); the record the app runs on stays."""
+        with self._lock:
+            r = self._records.get(name)
+            if r is not None and r is not self.default:
+                self._records.pop(name).close()
 
     def close(self) -> None:
         with self._lock:
@@ -269,7 +278,11 @@ def make_handler(rec: "Record | Pool"):
                             return self._send(200, {'result': {'approval': token, 'subject': subject, 'operation': name}})
                         saved = approvals.pop(args.get('approval'), None)
                         if not saved or saved[:3] != (str(target.root), name, fingerprint) or time.monotonic() - saved[3] > 600: raise ValueError('approval expired or subject changed; review the current version')
-                        return self._send(200, {'result': runtime.launch_operation(target,api.call(name, target, **params))})
+                        if name == 'workspace_delete' and params.get('workspace') in (pool.default.root.name, target.root.name):
+                            raise ValueError('Open another workspace first: this one is open here, or it is the one the app started with.')
+                        done = runtime.launch_operation(target,api.call(name, target, **params))
+                        if name == 'workspace_delete': pool.forget(params['workspace'])
+                        return self._send(200, {'result': done})
                     except (ValueError, KeyError) as exc: return self._send(400, {'error': str(exc)})
                 if path == '/services/run-cancel':
                     if not self._human(): return self._send(403, {'error': 'human session required'})
@@ -457,22 +470,37 @@ def make_handler(rec: "Record | Pool"):
             own = [target.events_path, target.nodes_path, target.edges_path]
             # The map spans the records joined to this one (Knowledge and its projects), so what an agent or a decision writes
             # there changes this view too. Links change rarely: they are looked up again every ten seconds.
-            def watched():
-                with api.LOCK:
-                    linked = api.call('workspace_watched', target)
-                return own + [Path(f) for f in linked]
-            files, looked = watched(), time.monotonic()
+            def watched(previous):
+                try:
+                    with api.LOCK:
+                        linked = api.call('workspace_watched', target)
+                    return own + [Path(f) for f in linked]
+                except Exception:  # a failed lookup keeps the files already watched
+                    return previous
+            def size(f):
+                try:
+                    return f.stat().st_size
+                except OSError:  # missing, or being replaced: read again on the next tick
+                    return 0
+            files, looked = watched(own), time.monotonic()
             last = None
             cursor = None
+            linked_at = 0.0  # a linked record (a project agent's output) refreshes this view at most every two seconds
             try:
                 deadline = time.monotonic() + 600  # the page reconnects; no connection lives forever
                 while time.monotonic() < deadline and not getattr(self.server, 'closing', False):
                     if time.monotonic() - looked > 10:
-                        files, looked = watched(), time.monotonic()
-                    sizes = tuple(f.stat().st_size if f.exists() else 0 for f in files)
-                    if last is not None and sizes[:len(own)] == last[:len(own)] and sizes != last:
-                        # Only a linked record changed: the map and the lists that span records refresh.
-                        self.wfile.write(f"event: change\ndata: {sum(sizes)}\n\n".encode()); self.wfile.flush(); last = sizes
+                        files, looked = watched(files), time.monotonic()
+                    sizes = tuple(size(f) for f in files)
+                    mine_same = last is not None and sizes[:len(own)] == last[:len(own)]
+                    linked_moved = last is None or len(sizes) != len(last) or sizes[len(own):] != last[len(own):]
+                    if mine_same and sizes != last:
+                        # Only a linked record changed: the map and the lists that span records refresh, at most every 2 s.
+                        if time.monotonic() - linked_at >= 2:
+                            self.wfile.write(f"event: change\ndata: {sum(sizes)}\n\n".encode()); self.wfile.flush()
+                            last, linked_at = sizes, time.monotonic()
+                        else:
+                            self.wfile.write(b": keep-alive\n\n"); self.wfile.flush()
                     elif sizes != last:
                         with api.LOCK, target.reading():
                             if getattr(self.server, 'closing', False): break
@@ -482,6 +510,8 @@ def make_handler(rec: "Record | Pool"):
                         if run_only:
                             packet = json.dumps({'record': target.root.name, 'cursor': cursor['events'], 'runs': list({e['subject'] for e in delta['events']})})
                             self.wfile.write(f"id: {cursor['events']}\nevent: run\ndata: {packet}\n\n".encode())
+                            if linked_moved and last is not None:  # a linked change in the same tick is not lost
+                                self.wfile.write(f"event: change\ndata: {sum(sizes)}\n\n".encode()); linked_at = time.monotonic()
                         else: self.wfile.write(f"event: change\ndata: {sum(sizes)}\n\n".encode())
                         self.wfile.flush()
                         last = sizes

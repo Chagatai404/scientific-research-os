@@ -341,18 +341,33 @@ def sessions_listing(rec: Record) -> dict:
     out = organization.snapshot(rec)
     if home.config(rec.root).get("role") != "user":
         return out
-    rows, hubs = [], set()
+    rows, hubs, gone = [], set(), []
     with context.linked(rec) as records:
         for other in records[1:]:
             if home.config(other.root).get("project"):
                 hubs.add(home.config(other.root)["project"])
             name = organization.title(other)
-            rows += [dict(s, parent="", record=other.root.name, workspace=name) for s in organization.snapshot(other)["sessions"]]
+            theirs = organization.snapshot(other)
+            rows += [dict(s, parent="", record=other.root.name, workspace=name) for s in theirs["sessions"]]
+            gone += [dict(a, record=other.root.name, workspace=name) for a in theirs["archived"]]
+    removed = deleted_hubs(rec)
+    hubs |= removed
+    out["archived"] = out["archived"] + gone
     mine = {s["id"] for s in out["sessions"]}
     out["sessions"] = out["sessions"] + [r for r in rows if r["id"] not in mine]
     # A linked project's hub stays listed while something here is filed in it: its sessions, folders or library material.
     used = {x["parent"] for x in out["folders"] + out["sessions"] + out["library"]}
-    out["folders"] = [f for f in out["folders"] if f["id"] not in hubs or f["id"] in used]
+    out["folders"] = [f for f in out["folders"] if f["id"] not in hubs or (f["id"] in used and f["id"] not in removed)]
+    return out
+
+
+def deleted_hubs(rec: Record) -> set:
+    """The projects of the workspaces linked to this record that the person deleted: their hubs leave its lists and map."""
+    out = set()
+    for name in home.projects(deleted=True):
+        cfg = home.config(home.home() / "projects" / name)
+        if cfg.get("user") == rec.root.name and cfg.get("project"):
+            out.add(cfg["project"])
     return out
 
 
@@ -365,6 +380,9 @@ def overview_map(rec: Record, expand: str = "") -> dict:
             nodes.update(part["nodes"])
             edges += part["edges"]
             needs += [dict(n, record=owner.root.name) for n in part["needs"]]
+    removed = deleted_hubs(rec)
+    nodes = {k: v for k, v in nodes.items() if k not in removed and v["parent"] not in removed}
+    edges = [e for e in edges if e["src"] in nodes and e["dst"] in nodes]
     centre = "workspace:" + rec.root.name
     used = {n["category"] for n in nodes.values()}
     for cat in [c for c in CATEGORIES if c in used]:
