@@ -9,3 +9,4 @@ body{background:var(--paper)}.workspace{--rail:232px;grid-template-rows:64px 1fr
 @media(max-width:767px){.workspace .topbar{grid-template-columns:auto minmax(0,1fr) auto}.topbar .context-toggle{grid-column:3;grid-row:1;max-width:76px;min-height:44px;font-size:.6rem;padding:6px}.topbar .record-tabs{grid-column:2;grid-row:1}.topbar form{grid-row:2}.topbar{position:relative;z-index:4}}
 .graph-chrome .segmented{flex-shrink:0}.graph-chrome .segmented button{white-space:nowrap}
 .drawer-close{width:100%;margin-bottom:16px;min-height:44px}
+.graph-decision{border-left:3px solid;padding-left:8px;font-size:.8rem}

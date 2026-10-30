@@ -1,5 +1,5 @@
 """Tools for the standalone workspace: readable documents and canonical entity references."""
-from .. import conversation as chat, modes, workspace as ws, organization as org
+from .. import context, conversation as chat, modes, workspace as ws, organization as org
 from ..registry import P, TOOLS, tool
 
 
@@ -52,6 +52,11 @@ def overview_map(rec, expand=""):
       answered=P("string", "the attempt the learner just recorded on the lesson card; the tutor may not record another for this message"))
 def chat_send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None, answered=None):
     return chat.send(rec, text, model, conversation, effort, key, mode, scope, answered)
+
+@tool('workspace_watched', 'The files of the records joined to this one (Knowledge and its projects) that a live view of this workspace watches, since its map spans them.')
+def watched(rec):
+    own = [rec.events_path, rec.nodes_path, rec.edges_path]
+    return [str(root / f.relative_to(rec.root)) for root in context.linked_roots(rec) for f in own]
 
 @tool('workspace_sessions', 'List canonical conversations with pagination independent of browser preferences.', offset=P('integer', 'page offset'), limit=P('integer', 'page size'))
 def sessions(rec, offset=0, limit=30):

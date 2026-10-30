@@ -107,6 +107,57 @@ class OrganizationTests(unittest.TestCase):
         self.assertEqual([s['id'] for s in own], ['conversation:one'])
         self.assertNotIn('record', own[0])
 
+    def shelve(self, rec, ident, title):
+        rec.append('library.added', ident, {'title': title, 'source': 'source:papers', 'path': title + '.pdf', 'format': 'pdf'}, actor='person')
+
+    def test_papers_added_to_a_project_workspace_are_filed_under_its_project_and_knowledge_shows_that_folder(self):
+        me = Record(Path(self.tmp.name) / 'projects' / 'me')
+        try:
+            api.call('link', me, user_wide=True)
+            api.call('link', self.rec, project='project:demo')
+            self.shelve(self.rec, 'material:a', 'Calorimeter paper')
+            self.shelve(self.rec, 'material:b', 'Unrelated paper')
+            api.call('organization_move', self.rec, subject='material:b', parent='')  # the person filed it in the Inbox
+            shelf = {m['id']: m['parent'] for m in api.call('workspace_organization', self.rec)['library']}
+            self.assertEqual(shelf, {'material:a': 'project:demo', 'material:b': ''})
+            self.assertEqual(organization.placement(self.rec)['material:a'], 'project:demo')
+            # Knowledge's own material filed under the linked project keeps that project listed as a folder.
+            self.shelve(me, 'material:k', 'Kept in Knowledge')
+            api.call('organization_move', me, subject='material:k', parent='project:demo')
+            knowledge = api.call('workspace_organization', me)
+        finally:
+            api.release(); me.close()
+        self.assertIn('project:demo', [f['id'] for f in knowledge['folders']])
+        self.assertEqual(next(m for m in knowledge['library'] if m['id'] == 'material:k')['parent'], 'project:demo')
+
+    def test_a_deleted_session_or_folder_can_be_restored_and_a_deleted_workspace_leaves_every_list(self):
+        self.rec.put_node('conversation:gone', 'conversation', title='Old chat')
+        folder = api.call('organization_create', self.rec, kind='course', title='Old course')
+        self.rec.put_node('conversation:inside', 'conversation', title='Filed in the course')
+        api.call('organization_move', self.rec, subject='conversation:inside', parent=folder['id'])
+        for subject in ('conversation:gone', folder['id']):
+            api.call('organization_archive', self.rec, subject=subject)
+        snap = api.call('workspace_organization', self.rec)
+        self.assertEqual([s['id'] for s in snap['sessions']], [], 'a deleted folder takes what is filed in it')
+        self.assertEqual({(a['id'], a['title']) for a in snap['archived']}, {('conversation:gone', 'Old chat'), (folder['id'], 'Old course')})
+        api.call('organization_archive', self.rec, subject=folder['id'], archived=False)
+        self.assertEqual([s['id'] for s in api.call('workspace_organization', self.rec)['sessions']], ['conversation:inside'])
+        self.assertTrue(self.rec.node('conversation:gone'), 'nothing is erased from the record')
+        made = api.call('workspace_create', self.rec, title='Scratch')
+        api.call('workspace_delete', self.rec, workspace=made['name'])
+        self.assertNotIn(made['name'], home.projects())
+        self.assertEqual([w['name'] for w in api.call('workspace_deleted', self.rec)], [made['name']])
+        self.assertTrue((Path(self.tmp.name) / 'projects' / made['name']).is_dir(), 'kept on disk')
+        api.call('workspace_restore', self.rec, workspace=made['name'])
+        self.assertIn(made['name'], home.projects())
+        me = Record(Path(self.tmp.name) / 'projects' / 'me')
+        try:
+            api.call('link', me, user_wide=True)
+            with self.assertRaisesRegex(ValueError, 'cannot be deleted'):
+                api.call('workspace_delete', self.rec, workspace='me')
+        finally:
+            api.release(); me.close()
+
     def test_snapshot_cache_avoids_rescanning_nodes_on_event_only_updates(self):
         api.call('workspace_organization', self.rec)
         self.rec.append('test.observation', 'x', {})

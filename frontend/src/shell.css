@@ -192,3 +192,5 @@
 .mode-badge{max-width:736px;margin:0 auto 4px;font-size:.76rem}
 @media(max-width:560px){.composer-caption.idle{display:none}.mode-picker{gap:4px;margin-bottom:4px}.mode-picker button{flex:1 1 0;min-height:44px;padding:0 6px;font-size:.78rem}.mode-picker small{display:none}}
 @media(max-height:760px){.mode-picker small{display:none}}
+.menu-list .danger,button.danger:not(.primary){color:#b4372f}.primary.danger{background:#b4372f;border-color:#b4372f}.primary.danger:hover{background:#94291f}
+.recently-deleted{font-size:.78rem;border-top:1px solid var(--line);padding-top:4px}.recently-deleted ul{list-style:none;padding:0;margin:0;max-height:160px;overflow:auto}.recently-deleted li{display:flex;align-items:center;gap:8px;margin:2px 0}.recently-deleted .label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.recently-deleted button{min-height:32px;padding:4px 10px;font-size:.72rem}

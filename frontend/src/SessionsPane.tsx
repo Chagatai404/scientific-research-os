@@ -35,9 +35,36 @@ function Dialogs({record, folders}: {record: string; folders: Folder[]}) {
       const {id = '', title = ''} = (data || {}) as {id?: string; title?: string};
       return <MoveForm id={id} title={title} record={record} close={close} options={folders.filter(f => !descendants(id).has(f.id))}/>;
     }}</Modal>
+    <Modal id="delete" title="Delete">{(close, data) => {
+      const {id = '', title = '', owner = '', folder = false} = (data || {}) as {id?: string; title?: string; owner?: string; folder?: boolean};
+      return <Confirm close={close} label="Delete" text={`“${title}”${folder ? ' and everything filed in it' : ''} will be removed from your lists. Its history and evidence stay in the record, and you can restore it from Recently deleted.`}
+        action={async () => {await human('organization_archive', {subject: id}, owner || record); changed();}}/>;
+    }}</Modal>
+    <Modal id="delete-workspace" title="Delete workspace">{(close, data) => {
+      const {name = '', title = '', home = ''} = (data || {}) as {name?: string; title?: string; home?: string};
+      return <Confirm close={close} label="Delete workspace" text={`“${title}” and everything in it will leave every list, link and search. Nothing is erased from your computer, and you can restore it from the workspace menu.`}
+        action={async () => {await human('workspace_delete', {workspace: name}, home || record); changed(); location.hash = href('overview', '', home);}}/>;
+    }}</Modal>
+    <Modal id="restore-workspace" title="Restore a workspace">{close => <RestoreWorkspaces record={record} close={close}/>}</Modal>
     <Modal id="new-workspace" title="New workspace">{close => <><p className="muted">A workspace keeps its own projects, courses and sessions. You can rename it later.</p>
       <NameForm label="Workspace name" onDone={close} action={async title => {const made = await human<{name: string}>('workspace_create', {title}, record); changed(); location.hash = href('overview', '', made.name);}}/></>}</Modal>
   </>;
+}
+
+function Confirm({text, label, action, close}: {text: string; label: string; action: () => Promise<unknown>; close: () => void}) {
+  const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  async function go() {setBusy(true); setError(''); try {await action(); close();} catch (e) {setError((e as Error).message);} finally {setBusy(false);}}
+  return <><p>{text}</p>{error && <p className="notice error" role="alert">{error}</p>}
+    <div className="modal-actions"><button type="button" onClick={close}>Cancel</button><button className="primary danger" disabled={busy} onClick={go}>{busy ? 'Deleting…' : label}</button></div></>;
+}
+
+function RestoreWorkspaces({record, close}: {record: string; close: () => void}) {
+  const gone = useResource('deleted-workspaces:' + record, signal => call<{name: string; title: string; deleted: string}[]>('workspace_deleted', {}, record, false, signal), record);
+  const [error, setError] = useState('');
+  async function restore(name: string) {try {await human('workspace_restore', {workspace: name}, record); changed(); close(); location.hash = href('overview', '', name);} catch (e) {setError((e as Error).message);}}
+  return <>{!gone.data ? <p className="hint">Loading…</p> : !gone.data.length ? <p className="muted">No deleted workspaces.</p> :
+    <ul className="entry-list">{gone.data.map(w => <li key={w.name}><div className="lesson-entry"><div><strong>{w.title}</strong><small>Deleted {new Date(w.deleted).toLocaleString()}</small></div><button onClick={() => restore(w.name)}>Restore</button></div></li>)}</ul>}
+    {error && <p className="notice error" role="alert">{error}</p>}<div className="modal-actions"><button type="button" onClick={close}>Close</button></div></>;
 }
 
 function MoveForm({id, title, record, close, options}: {id: string; title: string; record: string; close: () => void; options: Folder[]}) {
@@ -60,6 +87,7 @@ function RowMenu({subject, record, folder = false, owner = ''}: {subject: {id: s
     {!owner && <button role="menuitem" onClick={() => overlay.show('modal', 'move', {id: subject.id, title: subject.title})}>Move to…</button>}
     {folder && <button role="menuitem" onClick={() => overlay.show('modal', 'create', {kind: 'collection', parent: subject.id})}>New collection inside…</button>}
     {!folder && <a role="menuitem" className="button" href={href('library', '', record)}>Open Library</a>}
+    <button role="menuitem" className="danger" onClick={() => overlay.show('modal', 'delete', {id: subject.id, title: subject.title, owner, folder})}>Delete…</button>
   </div>}</Menu>;
 }
 
@@ -109,7 +137,9 @@ export function SessionsPane({record, records, active}: {record: string; records
     <div className="pane-head"><Menu kind="workspace" label="Workspaces" buttonLabel={`Workspace: ${title}`} buttonClassName="ws-button" button={<><span className="ws-name">{title}</span><span aria-hidden="true">▾</span></>}>{close => <div className="menu-list" role="menu">
       {records.map(r => <a key={r.name} role="menuitem" href={href('overview', '', r.name)} onClick={close} aria-current={(record === r.name || (!record && r.current)) ? 'page' : undefined}>{r.title || workspaceLabel(r.name)}<small>{r.role === 'user' ? 'Knowledge' : 'Workspace'}</small></a>)}
       <hr/><button role="menuitem" onClick={() => overlay.show('modal', 'new-workspace')}>New workspace…</button>
-      <button role="menuitem" onClick={() => overlay.show('modal', 'rename', {id: 'workspace', title})}>Rename this workspace…</button></div>}</Menu></div>
+      <button role="menuitem" onClick={() => overlay.show('modal', 'rename', {id: 'workspace', title})}>Rename this workspace…</button>
+      {current && current.role !== 'user' && <button role="menuitem" className="danger" onClick={() => overlay.show('modal', 'delete-workspace', {name: current.name, title, home: records.find(r => r.role === 'user')?.name || ''})}>Delete this workspace…</button>}
+      <button role="menuitem" onClick={() => overlay.show('modal', 'restore-workspace')}>Restore a deleted workspace…</button></div>}</Menu></div>
     <div className="pane-actions"><a className="button primary" href={href('overview', '', record)} onClick={() => window.dispatchEvent(new Event('ros:new-session'))}>＋ New session</a>
       <Menu kind="item" id="new" label="Create" buttonLabel="New course or project" buttonClassName="icon-button" button={<span aria-hidden="true">▣</span>} align="right">{() => <div className="menu-list" role="menu">
         <button role="menuitem" onClick={() => overlay.show('modal', 'create', {kind: 'course'})}>New course…</button>
@@ -122,6 +152,7 @@ export function SessionsPane({record, records, active}: {record: string; records
             <ul>{loose.map(renderSession)}{!loose.length && <li className="hint">Sessions you have not filed.</li>}</ul></li>}</ul>}
     </nav>
     {data && roots.length > 0 && <p className="hint">Drag a session onto a course or project, or use ⋯ › Move to…</p>}
+    {!!data?.archived?.length && <details className="recently-deleted"><summary>Recently deleted ({data.archived.length})</summary><ul>{data.archived.map(a => <li key={(a.record || '') + a.id}><span className="label" title={a.workspace ? a.title + ' · ' + a.workspace : a.title}>{a.title}</span>{a.workspace && <small className="workspace-tag">{a.workspace}</small>}<button onClick={async () => {try {await human('organization_archive', {subject: a.id, archived: false}, a.record || record); changed();} catch { /* the item reports why on the next refresh */ }}}>Restore</button></li>)}</ul></details>}
     <Dialogs record={record} folders={folders}/>
   </aside>;
 }

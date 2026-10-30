@@ -196,7 +196,7 @@ class DocsContractTests(unittest.TestCase):
                             self.assertIn(arg.replace("-", "_"), known, f"{tool} --{arg}")
 
     def test_human_acts_are_marked(self):
-        self.assertEqual({n for n, t in api.TOOLS.items() if t.human}, {"approve", "decide", "waive", "source_register", "source_change", "source_location", "source_engine_root", "source_use_vault", "source_relocate", "provider_configure", "notebook_request", "execution_configure", "compute_request", "transcription_accept", "vision_permission", "organization_create", "organization_rename", "organization_move", "workspace_create", "workspace_rename", "library_add", "library_retry", "library_forget", "organization_archive", "record_repo"})
+        self.assertEqual({n for n, t in api.TOOLS.items() if t.human}, {"approve", "decide", "waive", "source_register", "source_change", "source_location", "source_engine_root", "source_use_vault", "source_relocate", "provider_configure", "notebook_request", "execution_configure", "compute_request", "transcription_accept", "vision_permission", "organization_create", "organization_rename", "organization_move", "workspace_create", "workspace_rename", "library_add", "library_retry", "library_forget", "organization_archive", "record_repo", "workspace_delete", "workspace_restore"})
 
 
 if __name__ == "__main__":

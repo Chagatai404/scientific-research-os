@@ -25,7 +25,10 @@ wrote and what it saw: path, size, mtime, hash). Both are rebuildable or re-aska
 ### Human organization preferences
 
 `workspace.renamed` (subject `workspace`, data `title`) records a readable workspace name while the backing record
-name remains stable. `organization.created` records an automatically assigned folder identity, `kind` (`course`,
+name remains stable. `workspace.deleted` and `workspace.restored` (subject and data `name`) record that the person deleted or brought back
+another workspace; the deleted one keeps its folder and gets `deleted` (a UTC time) in its `record.json`, which leaves it out of
+`home.projects()` and so out of every list and link. Library material never filed by the person sits in the workspace's own project
+(`project` in `record.json`) when that is one of its folders, else in the Inbox. `organization.created` records an automatically assigned folder identity, `kind` (`course`,
 `project`, `collection`), `title`, and optional `parent`. Course/project folders have ordinary canonical nodes;
 collections need no scientific node. `organization.renamed` stores `title` for an existing item, and
 `organization.moved` stores its `parent` (empty means Inbox). These append-only preferences override display names

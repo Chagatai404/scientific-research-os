@@ -213,7 +213,10 @@ def resolve(rec: Record, target: str) -> dict:
 _HUB_RANK = {"course": 0, "subject": 1, "domain": 2, "project": 3, "goal": 4}
 _HUB_CATEGORY = {"course": "knowledge", "subject": "knowledge", "domain": "knowledge", "project": "research", "goal": "goals"}
 _TOPIC_CATEGORY = {"capability": "knowledge", "concept": "knowledge", "block": "knowledge", "question": "research",
-                   "hypothesis": "research", "claim": "research", "experiment": "research", "decision": "research"}
+                   "hypothesis": "research", "claim": "research", "experiment": "research", "decision": "research",
+                   "change": "research"}
+# What the person decided about a claim or a plan is an event on it, not a node; the map shows the latest on the node.
+_DECIDED = {"claim", "experiment", "hypothesis", "question"}
 _MATERIAL = {"source", "paper", "handout", "visual"}
 CATEGORIES = {"knowledge": ("Knowledge", "What you know and are learning: subjects, courses and the skills in them"),
               "research": ("Research", "The research you are conducting: projects and what they ask, test and claim"),
@@ -222,7 +225,7 @@ _MEANING = {"capability": "A skill or idea you can learn", "concept": "An idea",
             "question": "An open question", "hypothesis": "A proposed explanation", "experiment": "A planned or finished test",
             "decision": "A recorded decision", "goal": "Something you are working toward", "course": "A course you study",
             "subject": "A field you are learning", "domain": "A field of study", "project": "A research or software project",
-            "block": "A block of a course"}
+            "block": "A block of a course", "change": "A change an agent made to the project's code"}
 
 
 def _map_label(rec, node) -> str:
@@ -289,10 +292,14 @@ def _map_record(owner: Record, expand: str) -> dict:
             needs.append({"id": n["id"], "kind": n["type"], "reason": "Not connected to a course, project or goal yet."})
             continue
         parent = want[0] if want else ""
+        tip = str(n.get("summary") or n.get("text") or _MEANING.get(n["type"], n["type"]))
+        decided = owner.events(type="decision", subject=n["id"])[-1:] if n["type"] in _DECIDED else []
+        if decided:
+            tip = f"Decided: {decided[0]['data'].get('outcome')}. " + tip
         out[n["id"]] = {"id": n["id"], "label": label, "kind": n["type"], "role": "topic", "category": cat,
-                        "tip": str(n.get("summary") or n.get("text") or _MEANING.get(n["type"], n["type"]))[:220],
-                        "parent": parent, "cluster": parent or "category:" + cat, "weight": 0, "record": owner.root.name,
-                        "canonical": True, "material": 0}
+                        "tip": tip[:220], "parent": parent, "cluster": parent or "category:" + cat, "weight": 0,
+                        "record": owner.root.name, "canonical": True, "material": 0,
+                        **({"decision": decided[0]["data"].get("outcome")} if decided else {})}
     if expand in out and out[expand]["role"] == "hub":
         shown = 0
         for h in group[expand]:
@@ -334,17 +341,33 @@ def sessions_listing(rec: Record) -> dict:
     out = organization.snapshot(rec)
     if home.config(rec.root).get("role") != "user":
         return out
-    rows, hubs = [], set()
+    rows, hubs, gone = [], set(), []
     with context.linked(rec) as records:
         for other in records[1:]:
             if home.config(other.root).get("project"):
                 hubs.add(home.config(other.root)["project"])
             name = organization.title(other)
-            rows += [dict(s, parent="", record=other.root.name, workspace=name) for s in organization.snapshot(other)["sessions"]]
+            theirs = organization.snapshot(other)
+            rows += [dict(s, parent="", record=other.root.name, workspace=name) for s in theirs["sessions"]]
+            gone += [dict(a, record=other.root.name, workspace=name) for a in theirs["archived"]]
+    removed = deleted_hubs(rec)
+    hubs |= removed
+    out["archived"] = out["archived"] + gone
     mine = {s["id"] for s in out["sessions"]}
     out["sessions"] = out["sessions"] + [r for r in rows if r["id"] not in mine]
-    used = {x["parent"] for x in out["folders"] + out["sessions"]}
-    out["folders"] = [f for f in out["folders"] if f["id"] not in hubs or f["id"] in used]
+    # A linked project's hub stays listed while something here is filed in it: its sessions, folders or library material.
+    used = {x["parent"] for x in out["folders"] + out["sessions"] + out["library"]}
+    out["folders"] = [f for f in out["folders"] if f["id"] not in hubs or (f["id"] in used and f["id"] not in removed)]
+    return out
+
+
+def deleted_hubs(rec: Record) -> set:
+    """The projects of the workspaces linked to this record that the person deleted: their hubs leave its lists and map."""
+    out = set()
+    for name in home.projects(deleted=True):
+        cfg = home.config(home.home() / "projects" / name)
+        if cfg.get("user") == rec.root.name and cfg.get("project"):
+            out.add(cfg["project"])
     return out
 
 
@@ -357,6 +380,9 @@ def overview_map(rec: Record, expand: str = "") -> dict:
             nodes.update(part["nodes"])
             edges += part["edges"]
             needs += [dict(n, record=owner.root.name) for n in part["needs"]]
+    removed = deleted_hubs(rec)
+    nodes = {k: v for k, v in nodes.items() if k not in removed and v["parent"] not in removed}
+    edges = [e for e in edges if e["src"] in nodes and e["dst"] in nodes]
     centre = "workspace:" + rec.root.name
     used = {n["category"] for n in nodes.values()}
     for cat in [c for c in CATEGORIES if c in used]:

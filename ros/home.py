@@ -17,9 +17,12 @@ def home() -> Path:
     return Path(os.environ.get("ROS_HOME") or Path.home() / "ResearchOS").expanduser()
 
 
-def projects() -> list[str]:
+def projects(deleted: bool = False) -> list[str]:
+    """The workspaces under the home. A workspace the person deleted is kept on disk (and can be restored) but left out,
+    unless ``deleted`` asks for exactly those."""
     base = home() / "projects"
-    return sorted(p.name for p in base.iterdir() if p.is_dir()) if base.is_dir() else []
+    names = sorted(p.name for p in base.iterdir() if p.is_dir()) if base.is_dir() else []
+    return [n for n in names if bool(config(base / n).get("deleted")) == deleted]
 
 
 def resolve(project: str | None = None, cwd: Path | None = None) -> Path:
@@ -34,6 +37,8 @@ def resolve(project: str | None = None, cwd: Path | None = None) -> Path:
             raise ValueError(f"not a project name or record folder: {project}")
         else:
             root = home() / "projects" / project
+        if root.is_dir() and config(root).get("deleted"):
+            raise ValueError(f"the workspace {project!r} is deleted: restore it in the app (workspace menu) to use it again")
         if not root.is_dir():  # a typo must not quietly start a second, empty record
             found = projects()
             close = suggest(project, found)
@@ -45,6 +50,10 @@ def resolve(project: str | None = None, cwd: Path | None = None) -> Path:
     for d in (here, *here.parents):
         if (d / ".ros").is_dir():
             return d / ".ros"
+    for name in projects(deleted=True):  # never fall back to another record for a deleted workspace's repository
+        repo = config(home() / "projects" / name).get("repo")
+        if repo and (Path(repo).resolve() == here or Path(repo).resolve() in here.parents):
+            raise ValueError(f"the workspace {name!r} that studies this folder is deleted: restore it in the app to use it again")
     found = projects()
     for name in found:  # a record that names the repository it studies is the one for any folder inside it
         repo = config(home() / "projects" / name).get("repo")
@@ -78,7 +87,9 @@ def config(root: Path) -> dict:
 
 
 def set_config(root: Path, **fields) -> dict:
-    data = {**config(root), **{k: v for k, v in fields.items() if v is not None}}
+    """Merge ``fields`` into a record's ``record.json``; a field given as None is removed."""
+    data = {**config(root), **fields}
+    data = {k: v for k, v in data.items() if v is not None}
     path = Path(root) / CONFIG
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")

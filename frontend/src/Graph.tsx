@@ -7,6 +7,8 @@ import {Notice} from './ui';
 import {CATEGORY_COLOR, mapLayout, safeCamera, zoomAt, type Camera, type MapPoint} from './graphLayout';
 
 const CATEGORIES: [string, string][] = [['knowledge', 'Knowledge'], ['research', 'Research'], ['goals', 'Goals']];
+// A decided claim or plan carries a ring in the colour of what was decided.
+const DECISION_COLOR: Record<string, string> = {accepted: '#5cc28a', revise: '#e3b341', rejected: '#e0645c', retracted: '#e0645c'};
 const clip = (text: string, n: number) => text.length > n ? text.slice(0, n - 1) + '…' : text;
 const rgba = (hex: string, alpha: number) => `rgba(${parseInt(hex.slice(1, 3), 16)},${parseInt(hex.slice(3, 5), 16)},${parseInt(hex.slice(5, 7), 16)},${alpha})`;
 
@@ -15,6 +17,8 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
   const [camera, setCamera] = useState<Camera>({x: 0, y: 0, zoom: 1}), [size, setSize] = useState({width: 0, height: 0});
   const canvas = useRef<HTMLCanvasElement>(null), frame = useRef<HTMLDivElement>(null), initialized = useRef(''), selectionPanel = useRef<HTMLElement>(null), listPanel = useRef<HTMLElement>(null);
   const viewport = useRef({key: '', width: 0, height: 0}), drag = useRef<{x: number; y: number; ox: number; oy: number; moved: boolean} | null>(null);
+  // Whether the person has moved the view since it was last fitted: a graph that grows is refitted only when they have not.
+  const steered = useRef(false), seenCount = useRef(0);
   const result = useResource(`map:${record}:${expand}`, signal => call<OrganizationMap>('workspace_map', expand ? {expand} : {}, record, false, signal), record);
   const signature = JSON.stringify(result.data);
   const map = useMemo(() => result.data, [signature]);
@@ -47,10 +51,20 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
     if (!map || !size.width || !size.height) return;
     const previous = viewport.current;
     viewport.current = {key: cameraKey, ...size};
-    if (initialized.current !== cameraKey) {initialized.current = cameraKey; setCamera(safeCamera(preference(cameraKey, '')) || fitted());}
+    if (initialized.current !== cameraKey) {initialized.current = cameraKey; seenCount.current = points.length; steered.current = false; setCamera(safeCamera(preference(cameraKey, '')) || fitted());}
     else if (previous.key === cameraKey && (previous.width !== size.width || previous.height !== size.height)) setCamera(c => ({...c, x: c.x + (size.width - previous.width) / 2, y: c.y + (size.height - previous.height) / 2}));
   }, [map, cameraKey, size.width, size.height]);
   useEffect(() => {if (initialized.current === cameraKey) savePreference(cameraKey, JSON.stringify(camera));}, [camera, cameraKey]);
+  // Something added or removed (by you, an agent or a decision): refit when the view was not moved, and drop a selection that is gone.
+  useEffect(() => {
+    if (!map || !size.width) return;
+    const count = points.length, before = seenCount.current; seenCount.current = count;
+    if (before && count !== before && !steered.current) setCamera(fitted());
+    if (selected && !byId.has(selected)) setSelected('');
+    if (hover && !byId.has(hover)) setHover('');
+  }, [points]);
+  // A change made in this window (a delete, a move, a new course) redraws the map at once, without waiting for the live stream.
+  useEffect(() => {const again = () => result.retry(); window.addEventListener('ros:organization-changed', again); return () => window.removeEventListener('ros:organization-changed', again);}, [result.retry]);
   useEffect(() => {setSelected(''); setHover(''); setList(false);}, [record]);
   useEffect(() => {if (focus && byId.has(focus)) setSelected(focus);}, [focus, byId]);
   useEffect(() => {if (selected) selectionPanel.current?.querySelector('button')?.focus({preventScroll: true});}, [selected]);
@@ -99,6 +113,7 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
       else if (n.role === 'source') ctx.rect(n.px - radius * .85, n.py - radius * .85, radius * 1.7, radius * 1.7);
       else ctx.arc(n.px, n.py, radius, 0, Math.PI * 2);
       ctx.fill(); ctx.shadowBlur = 0; ctx.stroke();
+      if (n.decision && DECISION_COLOR[n.decision]) {ctx.strokeStyle = DECISION_COLOR[n.decision]; ctx.lineWidth = 2 / camera.zoom; ctx.beginPath(); ctx.arc(n.px, n.py, radius + 3 / camera.zoom, 0, Math.PI * 2); ctx.stroke();}
       if (named.has(n.id) && lit) {
         ctx.font = `${(n.role === 'center' ? 14 : n.role === 'category' ? 13 : 12) / camera.zoom}px system-ui`; ctx.fillStyle = '#f0f3f6'; ctx.textAlign = 'center';
         ctx.fillText(clip(n.label, 36), n.px, n.py + radius + 15 / camera.zoom); ctx.textAlign = 'start';
@@ -106,8 +121,8 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
     }
     ctx.globalAlpha = 1;
   }, [map, points, byId, active, related, only, camera, size]);
-  const zoom = (factor: number, x = size.width / 2, y = size.height / 2) => setCamera(c => zoomAt(c, factor, x, y));
-  const fit = () => setCamera(fitted());
+  const zoom = (factor: number, x = size.width / 2, y = size.height / 2) => {steered.current = true; setCamera(c => zoomAt(c, factor, x, y));};
+  const fit = () => {steered.current = false; setCamera(fitted());};
   function select(id: string) {setSelected(id); setList(false); const n = byId.get(id); if (n) setCamera(c => ({...c, x: size.width / 2 - n.px * c.zoom, y: size.height / 2 - n.py * c.zoom}));}
   function closeSelection() {setSelected(''); canvas.current?.focus();}
   function nearest(x: number, y: number, slack = 6) {
@@ -134,10 +149,10 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
             <li>Choose a colour above to look at one branch. Files and notes are in the Library; select a place to show them here.</li></ul></div>}</Menu></div>
     </div>
     <div className={'graph-stage ' + (chosen || list ? 'graph-context-open' : '')}><div className="graph-frame" ref={frame}><canvas ref={canvas} tabIndex={0} aria-label="Interactive graph. Drag or use arrow keys to pan; plus and minus zoom, zero fits. Use Node list to select and open evidence."
-      onKeyDown={e => {if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '+', '=', '-', '0', 'Escape'].includes(e.key)) {e.preventDefault(); if (e.key === '0') fit(); else if (e.key === '+' || e.key === '=') zoom(1.25); else if (e.key === '-') zoom(.8); else if (e.key === 'Escape') closeSelection(); else setCamera(c => ({...c, x: c.x + (e.key === 'ArrowLeft' ? 30 : e.key === 'ArrowRight' ? -30 : 0), y: c.y + (e.key === 'ArrowUp' ? 30 : e.key === 'ArrowDown' ? -30 : 0)}));}}}
+      onKeyDown={e => {if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', '+', '=', '-', '0', 'Escape'].includes(e.key)) {e.preventDefault(); if (e.key === '0') fit(); else if (e.key === '+' || e.key === '=') zoom(1.25); else if (e.key === '-') zoom(.8); else if (e.key === 'Escape') closeSelection(); else {steered.current = true; setCamera(c => ({...c, x: c.x + (e.key === 'ArrowLeft' ? 30 : e.key === 'ArrowRight' ? -30 : 0), y: c.y + (e.key === 'ArrowUp' ? 30 : e.key === 'ArrowDown' ? -30 : 0)}));}}}}
       onWheel={e => {const rect = e.currentTarget.getBoundingClientRect(); zoom(Math.exp(-Math.max(-100, Math.min(100, e.deltaY)) * .003), e.clientX - rect.left, e.clientY - rect.top);}}
       onPointerDown={e => {e.currentTarget.setPointerCapture(e.pointerId); drag.current = {x: e.clientX, y: e.clientY, ox: camera.x, oy: camera.y, moved: false};}}
-      onPointerMove={e => {const d = drag.current; if (!d) {const rect = e.currentTarget.getBoundingClientRect(), next = nearest(e.clientX - rect.left, e.clientY - rect.top)?.id || ''; if (next !== hover) setHover(next); return;} if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) d.moved = true; if (d.moved) setCamera(c => ({...c, x: d.ox + e.clientX - d.x, y: d.oy + e.clientY - d.y}));}}
+      onPointerMove={e => {const d = drag.current; if (!d) {const rect = e.currentTarget.getBoundingClientRect(), next = nearest(e.clientX - rect.left, e.clientY - rect.top)?.id || ''; if (next !== hover) setHover(next); return;} if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) d.moved = true; if (d.moved) {steered.current = true; setCamera(c => ({...c, x: d.ox + e.clientX - d.x, y: d.oy + e.clientY - d.y}));}}}
       onPointerLeave={() => setHover('')}
       onPointerCancel={() => {drag.current = null;}} onLostPointerCapture={() => {drag.current = null;}}
       onPointerUp={e => {const d = drag.current; drag.current = null; if (!d || d.moved) return; const rect = e.currentTarget.getBoundingClientRect(), hit = nearest(e.clientX - rect.left, e.clientY - rect.top, 8); if (hit) select(hit.id); else setSelected('');}} />
@@ -146,7 +161,7 @@ export function Graph({focus, record, embedded = false}: {focus: string; record:
       {empty && <div className="graph-state"><h2>Start with a course or a project</h2><p className="muted">Create one in the sidebar, then add its material in the Library. Your map grows from what you build.</p><a className="button" href={href('library', '', record)}>Open Library</a></div>}
       {map && <span className="graph-count">{map.counts.hubs} places · {points.length} items</span>}
     </div>{chosen && <aside ref={selectionPanel} className="graph-selection" aria-label="Selected node" onKeyDown={e => {if (e.key === 'Escape') closeSelection();}}><button className="graph-close" aria-label="Close node details" onClick={closeSelection}>×</button><small>{chosen.role === 'center' ? 'Workspace' : chosen.role === 'category' ? 'Branch' : chosen.kind}</small><h2>{chosen.label}</h2>
-      {chosen.tip && <p>{chosen.tip}</p>}{filedUnder && chosen.role !== 'category' && <p className="muted">In <strong>{filedUnder.label}</strong>.</p>}
+      {chosen.decision && <p className="graph-decision" style={{borderColor: DECISION_COLOR[chosen.decision]}}>Your decision: <strong>{chosen.decision}</strong></p>}{chosen.tip && <p>{chosen.tip}</p>}{filedUnder && chosen.role !== 'category' && <p className="muted">In <strong>{filedUnder.label}</strong>.</p>}
       {chosen.canonical && <a className="button primary" href={entityHref(chosen.id, chosen.record || record)}>Open evidence</a>}
       {chosen.material > 0 && chosen.role === 'hub' && <><a className="button" href={href('library', '', record)}>{chosen.material} {chosen.material === 1 ? 'file' : 'files'} in the Library</a><button onClick={() => {setExpand(expand === chosen.id ? '' : chosen.id); setSelected('');}}>{expand === chosen.id ? 'Hide its files here' : 'Show its files here'}</button></>}
       <h3>Recorded connections</h3><ul className="relation-list">{relations.map((e, i) => <li key={i}><span>{e.src === chosen.id ? '→' : '←'} {e.type}</span><a href={entityHref(e.src === chosen.id ? e.dst : e.src, byId.get(e.src === chosen.id ? e.dst : e.src)?.record || record)}>{edgeLabel(e.src === chosen.id ? e.dst : e.src)}</a><small>{e.provenance || 'Provenance not recorded'}{e.verified == null ? '' : e.verified ? ' · verified' : ' · unverified'}</small></li>)}</ul>{!relations.length && <p className="muted">No recorded connections to other items yet.</p>}</aside>}

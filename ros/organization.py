@@ -6,6 +6,7 @@ Moving a session never transfers its evidence to another record or moves source 
 from __future__ import annotations
 
 from collections import OrderedDict
+from datetime import datetime, timezone
 import uuid
 
 from . import home, library, sources
@@ -103,16 +104,24 @@ def snapshot(rec):
     materials.extend(row(n) for n in sources.connections(rec))
     # What is archived, or filed inside something archived, is kept but not shown.
     parent_of = {r['id']: r['parent'] for r in folder_rows + sessions + materials}
-    parent_of.update({m['id']: st['parents'].get(m['id'], '') for m in library.state(rec).values()})
+    # Material added to a project's own workspace belongs to that project until the person files it elsewhere.
+    hub = _hub(rec, folders)
+    parent_of.update({m['id']: _shelved(st, m['id'], hub) for m in library.state(rec).values()})
     hidden = hidden_set(rec, parent_of)
     folder_rows = [r for r in folder_rows if not hidden(r['id'])]
     sessions = [r for r in sessions if not hidden(r['id'])]
     materials = [r for r in materials if not hidden(r['id'])]
     shelf = [{'id': m['id'], 'title': display_name(rec, m['id'], m.get('title') or 'Untitled material'),
-              'kind': m.get('format') or 'file', 'parent': st['parents'].get(m['id'], ''), 'state': m['state'],
+              'kind': m.get('format') or 'file', 'parent': _shelved(st, m['id'], hub), 'state': m['state'],
               'detail': m['detail'], 'source': m['source'], 'path': m['path'], 'indexed': bool(m.get('indexed')),
               'added': m['added']} for m in library.state(rec).values() if not hidden(m['id'])]
-    return {'workspace': {'name': rec.root.name, 'title': title(rec)},
+    # What the person deleted (hid) themselves, so it can be restored; things inside it come back with it.
+    titles = {r['id']: r['title'] for r in folder_rows + sessions + materials}
+    titles.update({f['id']: f['title'] for f in folders.values()})
+    shelved = library.state(rec)
+    removed = [{'id': i, 'title': display_name(rec, i, titles.get(i) or (rec.node(i) or {}).get('title') or (shelved.get(i) or {}).get('title') or i),
+                'kind': i.split(':', 1)[0]} for i in sorted(st['archived'])]
+    return {'workspace': {'name': rec.root.name, 'title': title(rec)}, 'archived': removed,
             'folders': sorted(folder_rows, key=lambda n: (n['kind'], n['title'].casefold(), n['id'])),
             'sessions': sessions[::-1], 'materials': materials, 'library': sorted(shelf, key=lambda m: (m['added'], m['id']), reverse=True),
             'names': dict(st['names']), 'parents': dict(st['parents'])}
@@ -130,9 +139,22 @@ def placement(rec):
             found = sorted(p for p in members.get(n['id'], []) if p in folder_ids)
             parent = found[0] if found else ''
         out[n['id']] = parent
+    hub = _hub(rec, folder_ids)
     for ident in library.state(rec):
-        out[ident] = st['parents'].get(ident, '')
+        out[ident] = _shelved(st, ident, hub)
     return out
+
+
+def _hub(rec, folders):
+    """The project a project workspace studies, when it is one of its folders; '' in Knowledge and unlinked workspaces."""
+    project = home.config(rec.root).get('project') or ''
+    return project if project in folders else ''
+
+
+def _shelved(st, ident, hub):
+    """Where library material sits: where the person filed it (the Inbox included), else the workspace's project."""
+    chosen = st['parents'].get(ident)
+    return hub if chosen is None else chosen
 
 
 def _subject(rec, subject):
@@ -213,6 +235,44 @@ def workspace_create(rec, name):
     finally:
         made.close()
     return {'name': key, 'title': name}
+
+
+def workspace_delete(rec, name):
+    """Delete a workspace: it leaves every list, link and search, and stays on disk so it can be restored. Knowledge, the
+    person's user-wide record, is never deleted."""
+    root = _workspace(name, deleted=False)
+    if home.config(root).get('role') == 'user':
+        raise ValueError('Knowledge holds everything you learned and links every workspace; it cannot be deleted.')
+    titled = _workspace_title(root)
+    home.set_config(root, deleted=datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))
+    rec.append('workspace.deleted', name, {'name': name, 'title': titled}, actor='person')
+    return {'name': name, 'title': titled, 'deleted': True}
+
+
+def workspace_restore(rec, name):
+    root = _workspace(name, deleted=True)
+    home.set_config(root, deleted=None)
+    rec.append('workspace.restored', name, {'name': name}, actor='person')
+    return {'name': name, 'title': _workspace_title(root), 'deleted': False}
+
+
+def deleted_workspaces():
+    base = home.home() / 'projects'
+    return [{'name': n, 'title': _workspace_title(base / n), 'deleted': home.config(base / n)['deleted']} for n in home.projects(deleted=True)]
+
+
+def _workspace(name, deleted):
+    if name not in home.projects(deleted=deleted):
+        raise KeyError('No such workspace' + (' among the deleted ones.' if deleted else '.'))
+    return home.home() / 'projects' / name
+
+
+def _workspace_title(root):
+    made = Record(root)
+    try:
+        return title(made)
+    finally:
+        made.close()
 
 
 def workspace_rename(rec, name):

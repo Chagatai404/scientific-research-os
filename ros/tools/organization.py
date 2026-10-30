@@ -45,6 +45,23 @@ def workspace_rename(rec, title):
     return org.workspace_rename(rec, title)
 
 
+@tool('workspace_delete', 'Delete a workspace: it leaves every list, link and search and stays on disk, so it can be restored. Knowledge cannot be deleted.',
+      human=True, workspace=P('string', 'the workspace (record) name', True))
+def workspace_delete(rec, workspace):
+    return org.workspace_delete(rec, workspace)
+
+
+@tool('workspace_restore', 'Bring a deleted workspace back, with everything in it.', human=True,
+      workspace=P('string', 'the deleted workspace (record) name', True))
+def workspace_restore(rec, workspace):
+    return org.workspace_restore(rec, workspace)
+
+
+@tool('workspace_deleted', 'The workspaces the person deleted, which can be restored.')
+def workspace_deleted(rec):
+    return org.deleted_workspaces()
+
+
 @tool('organization_archive', 'Hide a course, project, session or material you no longer work on, with everything filed in it. Nothing is deleted and it can be restored.', human=True,
       subject=P('string', 'selected item', True), archived=P('boolean', 'true to hide (default), false to restore'))
 def archive(rec, subject, archived=True):

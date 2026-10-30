@@ -274,6 +274,19 @@ class SelectedRecordEventsTests(unittest.TestCase):
                 return
         self.fail("record change did not arrive")
 
+    def test_a_stream_also_reports_changes_in_the_records_its_map_spans(self):
+        # Knowledge (default) links the project (other): an agent writing in the project changes Knowledge's map.
+        from ros import api
+        self.addCleanup(api.release)  # linking keeps Knowledge open in the cache; release it before the folder goes
+        api.call("link", self.rec, user_wide=True)
+        api.call("link", self.other, project="project:other")
+        default = self.stream("/events")
+        self.assertTrue(self.frame(default).startswith(b"event: change\n"))
+        self.other.put_node("claim:new", "claim", title="Written by an agent in the project")
+        self.change(default)
+        self.other.append("decision", "claim:new", {"outcome": "revise", "rationale": "r"}, actor="person")
+        self.change(default)
+
     def test_default_and_selected_streams_watch_only_their_own_record(self):
         default = self.stream("/events")
         selected = self.stream("/events?record=%22other%22")
