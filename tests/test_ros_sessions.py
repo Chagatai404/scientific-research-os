@@ -84,6 +84,8 @@ class Sessions(unittest.TestCase):
         def second(request, emit, tool, cancel, own):
             # The model tries to write the answer itself and to claim "I don't know" for the learner.
             results["answer"] = tool("answer", {"lesson": started["lesson"], "item": started["next"]["item"], "response": "999", "dont_know": True}, "op-answer")
+            with self.assertRaisesRegex(ValueError, "current step"):
+                tool("answer", {"lesson": started["lesson"], "item": "not-the-current-item", "response": "8"}, "op-answer-other")
             with self.assertRaisesRegex(ValueError, "one answer per message"):
                 tool("answer", {"lesson": started["lesson"], "item": started["next"]["item"], "response": "8"}, "op-answer-2")
             emit("Correct."); return {}

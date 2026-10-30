@@ -29,6 +29,7 @@ def workbench_snapshot(rec):
 
 @tool("workbench_record", "Record what a Code run changed in the repository as a change node in the graph.", writes=True,
       conversation=P("string", "the conversation that asked", True), run=P("string", "the run", True),
-      before=P("object", "workbench_snapshot from before the run", True), summary=P("string", "what the agent said it did"))
-def workbench_record(rec, conversation, run, before, summary=""):
-    return workbench.record(rec, conversation, run, before, summary)
+      before=P("object", "workbench_snapshot from before the run", True), summary=P("string", "what the agent said it did"),
+      partial=P("boolean", "the run failed, was stopped or ran out of time"))
+def workbench_record(rec, conversation, run, before, summary="", partial=False):
+    return workbench.record(rec, conversation, run, before, summary, partial)

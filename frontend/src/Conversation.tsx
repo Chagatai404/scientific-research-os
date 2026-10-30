@@ -124,13 +124,18 @@ export function Conversation({id, record}: {id: string; record: string}) {
     } catch (e) {if (mounted.current) setError((e as Error).message);} finally {if (mounted.current) setSending(false); submitting.current = false;}
   }
   // An answer on the lesson card is already recorded as the learner's; this message only hands the turn to the tutor.
+  // A card answer given while the tutor is still replying waits for that reply to end, then goes; it is never dropped.
+  const waitingAnswer = useRef<{attempt: string; said: string} | null>(null);
   async function notify(attempt: string, said: string) {
-    if (!id || pending || !models.selected) return;
+    if (!id) return;
+    if (pending || !models.selected) {waitingAnswer.current = {attempt, said}; if (!models.selected) setError('Your answer is saved. Choose a model so your tutor can respond to it.'); return;}
+    waitingAnswer.current = null;
     try {
-      await call('workspace_chat_send', {text: 'On the lesson card I answered: ' + said, model: currentModel, conversation: id, answered: attempt, key: crypto.randomUUID(), ...(models.selectedEffort ? {effort: models.selectedEffort} : {})}, record, true);
+      await call('workspace_chat_send', {text: ('On the lesson card I answered: ' + said).slice(0, 11000), model: currentModel, conversation: id, answered: attempt, key: crypto.randomUUID(), ...(models.selectedEffort ? {effort: models.selectedEffort} : {})}, record, true);
       runs.retry(); setChat(previous => previous && {...previous});
-    } catch (e) {setError((e as Error).message);}
+    } catch (e) {setError('Your answer is saved, but your tutor was not told: ' + (e as Error).message);}
   }
+  useEffect(() => {const queued = waitingAnswer.current; if (queued && !pending && models.selected) void notify(queued.attempt, queued.said);}, [pending, models.selected]);
   async function speak(messageId: string, value: string) {
     if (speaking) return;
     setSpeaking(messageId); setError('');

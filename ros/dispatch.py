@@ -10,7 +10,8 @@ What is never dispatched, and why:
 - ``audit`` and ``verify`` end in a verdict, and an independent audit needs an agent that did not do the work; a person asks for one.
 - ``run`` executes an approved experiment: compute, files and a person's approval.
 - ``visual`` and ``animation`` need a shell to render the picture and look at it. They are taken only when agents run on Claude Code
-  or Codex, which then work with their own file and shell tools in the lesson's bundle folder (``NATIVE``); with any other model they
+  or Codex, which then work with their own file and shell tools in the lesson's bundle folder (``NATIVE``; unattended, only Codex,
+  whose sandbox holds it to that folder); with any other model they
   wait for a client that can (the gate keeps the lesson unready until they are done). ``video`` needs the web and a transcript.
 - ``job`` belongs to the runner.
 
@@ -143,8 +144,10 @@ def shell(model_id: str | None) -> bool:
 
 
 def kinds(rec: Record) -> tuple[str, ...]:
-    """The task kinds the dispatcher takes with the model agents use now."""
-    return AUTO + (NATIVE if shell(model(rec)) else ())
+    """The task kinds the dispatcher takes with the model agents use now. Unattended work with a shell goes only to Codex, whose
+    sandbox holds it to the folder; Claude Code's command rules are a deny-list a model can step around, which is acceptable
+    only with the person watching (a Code session)."""
+    return AUTO + (NATIVE if (model(rec) or "").startswith("codex:") else ())
 
 
 def waiting(rec: Record) -> dict:
@@ -176,10 +179,14 @@ def claim(rec: Record, now: datetime | None = None) -> dict:
     workdir = None
     if kind in NATIVE:
         # The agent renders and looks at the picture with its own tools, in the lesson's bundle folder and nowhere else.
-        with director.linked(rec) as records:
-            owner = next((r for r in records if r.root.name == got["record"]), rec)
-            folder = prepare.bundle_dir(owner, str(task.get("bundle") or ""))
-        folder.mkdir(parents=True, exist_ok=True)
+        try:
+            with director.linked(rec) as records:
+                owner = next((r for r in records if r.root.name == got["record"]), rec)
+                folder = prepare.bundle_dir(owner, str(task.get("bundle") or ""))
+            folder.mkdir(parents=True, exist_ok=True)
+        except (ValueError, OSError) as exc:
+            end(rec, task["id"], got["record"], "failed", f"no bundle folder for this task: {exc}")  # counts toward MAX_FAILURES
+            return {"idle": "A figure task names no usable bundle; it was set aside."}
         workdir = str(folder)
     return {"native": kind in NATIVE, "workdir": workdir, "by": by, "model": allowed["model"], "record": got["record"], "task": task, "kind": kind, "role": got["role"],
             "finish_with": got["finish_with"], "tools": sorted(GRANTS[kind] | {"finish"}), "steps": STEPS[kind], "deadline": DEADLINE,

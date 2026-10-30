@@ -86,8 +86,11 @@ def run_job(rec,identifier):
         try:
             with ENGINE_WORKER:
                 if entry['cancel'].is_set():return
-                result=runner.Runner._run(job,entry['owned'].append)
-                if not entry['cancel'].is_set():api.call('job_done',rec,task=identifier,result=result,by=owner)
+                try:result=runner.Runner._run(job,entry['owned'].append)
+                except Exception as exc:result={'ok':False,'code':None,'output':type(exc).__name__+': '+str(exc)[:500],'seconds':0}
+                if not entry['cancel'].is_set():
+                    try:api.call('job_done',rec,task=identifier,result=result,by=owner)
+                    except (ValueError,KeyError):pass
         finally:
             for process in entry['owned']:providers.terminate(process)
             with LOCK:ACTIVE.pop((str(rec.root),identifier),None)
@@ -178,7 +181,13 @@ def execute(rec, result, request, legacy_engine=None):
     private_scope = any(s.get('localOnly') for s in api.call('source_list',rec) if s['id'] in {ref.get('sourceId') for ref in row.get('scope',[])})
     allowed = set(api.call('session_grant', rec, mode=row['mode']))
     native = bool(api.call('session_native', rec, mode=row['mode']))
-    seen_native, before = [0], {'git': False}
+    seen_native, before, recorded = [0], {'git': False}, [False]
+    def record_change(partial=False):
+        """What a Code run changed in the repository, recorded once, also when it failed, was stopped or ran out of time."""
+        if not native or recorded[0] or not before.get('git'): return {}
+        recorded[0] = True
+        try: return api.call('workbench_record', rec, conversation=result['conversation'], run=run, before=before, summary=output[:4000], partial=partial)
+        except (ValueError, KeyError): return {}
     def observe(name, detail):
         """A Code session's own file and shell actions, committed as run steps as they happen so the person sees them."""
         seen_native[0] += 1
@@ -210,6 +219,8 @@ def execute(rec, result, request, legacy_engine=None):
             if request.get('answered'): raise ValueError('the learner already answered this step on the lesson card and it is recorded; call `next` and continue')
             if not said.strip(): raise ValueError('the learner has not written an answer yet')
             if budget.get('answers'): raise ValueError('one answer per message: show the next step and wait for the learner')
+            current = api.call('next', selected[0], lesson=args.get('lesson'))
+            if current.get('item') != args.get('item'): raise ValueError("answer only the lesson's current step (call `next`): the learner's message answers that question and no other")
             budget['answers'] = 1
         args = api.call('session_bind', rec, tool=name, args=args, said=said)
         budget['steps'] += 1
@@ -293,7 +304,7 @@ def execute(rec, result, request, legacy_engine=None):
                 if native:
                     status = api.call('workbench_status', rec)
                     if not status.get('repo'): raise ValueError("Choose this record's code folder first.")
-                    before = api.call('workbench_snapshot', rec)
+                    before.clear(); before.update(api.call('workbench_snapshot', rec))
                     packet.update(native=True, workdir=status['repo'], observe=observe, deadline=max(limits['deadline'], 1800))
                 # Character bound is explicit; original messages remain in the record.
                 total, messages = 0, []
@@ -313,10 +324,11 @@ def execute(rec, result, request, legacy_engine=None):
                     reported=providers.ADAPTERS[provider](packet, emit, tool_call, entry['cancel'], entry['owned'].append)
                 if reported and (reported.get('usage') is not None or reported.get('cost') is not None):api.call('run_usage',rec,run=run,usage=reported.get('usage'),cost=reported.get('cost'))
             flush()
-            if entry['cancel'].is_set(): return
+            if entry['cancel'].is_set():
+                record_change(partial=True); return
             if not output.strip(): raise providers.ProviderError('The provider returned no text; no completion was inferred.')
             if native:
-                change = api.call('workbench_record', rec, conversation=result['conversation'], run=run, before=before, summary=output[:4000])
+                change = record_change()
                 if change.get('change'): emit(f"\n\nRecorded in the graph as {change['change']}: {len(change['files'])} files changed" + (f", {len(change['commits'])} commits" if change['commits'] else '') + '.')
                 flush()
             api.call('workspace_chat_complete', rec, conversation=result['conversation'], request=result['request'], text=output, model=request['model'])
@@ -324,6 +336,7 @@ def execute(rec, result, request, legacy_engine=None):
         finally: FOREGROUND.release()
     except Exception as exc:
         flush()
+        record_change(partial=True)
         current = api.call('run_get', rec, run=run)
         if current['state'] not in ('cancelled', 'interrupted', 'completed', 'failed'):
             detail = str(exc) if isinstance(exc, (ValueError, KeyError)) else 'The provider stopped unexpectedly. Partial output is retained.'

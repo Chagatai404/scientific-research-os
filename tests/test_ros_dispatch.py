@@ -98,17 +98,19 @@ class Dispatch(unittest.TestCase):
         self.assertEqual(self.state(background), "open", "past the limit only the focused work goes")
         self.assertIn("limit of 1", self.run_with(agent)["idle"])
 
-    def test_on_claude_code_or_codex_a_visual_is_made_in_the_bundle_folder_with_the_agents_own_tools(self):
+    def test_on_codex_a_visual_is_made_in_the_bundle_folder_with_its_own_sandboxed_tools(self):
         visual = tasks.open_task(self.rec, "visual", "bundle:variance", "Draw the variance picture.", data={"bundle": "variance"}, key="v")
         audit = self.open("audit", "a")
         api.call("agents_configure", self.rec, model="claude:sonnet")
+        self.assertNotIn("visual", api.call("agents_status", self.rec)["waiting"]["automatic"], "unattended shell work only in Codex's sandbox")
+        api.call("agents_configure", self.rec, model="codex:gpt-6.1-sol")
         self.assertIn("visual", api.call("agents_status", self.rec)["waiting"]["automatic"])
         seen = {}
-        def claude(request, emit, tool, cancel, own):
+        def codex(request, emit, tool, cancel, own):
             seen.update(native=request.get("native"), workdir=request.get("workdir"), system=request["system"])
             (Path(request["workdir"]) / "variance.svg").write_text("<svg/>", encoding="utf-8")
             tool("finish", {"result": "variance.svg, looked at"}, "s"); emit("Done."); return {}
-        with patch.dict(providers.ADAPTERS, {"claude": claude}):
+        with patch.dict(providers.ADAPTERS, {"codex": codex}):
             outcome = runtime.dispatch_once(self.rec)
         self.assertEqual((outcome["kind"], outcome["outcome"]), ("visual", "done"))
         self.assertTrue(seen["native"]); self.assertEqual(Path(seen["workdir"]), self.rec.root / "bundles" / "variance")
@@ -204,3 +206,17 @@ class Jobs(unittest.TestCase):
                 time.sleep(.1)
         with api.LOCK: self.assertEqual(tasks.get(self.rec, job)["state"], "done")
         self.assertEqual(ran, [job]); self.assertIsNone(worker.once(), "a finished job is not run again")
+
+    def test_a_job_whose_engine_crashes_is_finished_as_failed_not_left_claimed(self):
+        import sys
+        job = tasks.open_task(self.rec, "job", "bundle:y", "Speak y", key="crash",
+                              data={"argv": [sys.executable, "-m", "ros", "-p", str(self.rec.root), "bundle_voice", "--bundle", "y"],
+                                    "cwd": str(self.rec.root), "timeout": 60})
+        def boom(job, own=None): raise RuntimeError("engine exploded")
+        with patch.object(runtime.runner.Runner, "_run", staticmethod(boom)):
+            runtime.JobWorker(lambda: [self.rec]).once()
+            for _ in range(50):
+                with api.LOCK:
+                    if tasks.get(self.rec, job)["state"] == "done": break
+                time.sleep(.1)
+        with api.LOCK: self.assertEqual(tasks.get(self.rec, job)["state"], "done")

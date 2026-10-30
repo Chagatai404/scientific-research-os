@@ -94,7 +94,16 @@ export function Player({id, record, embedded = false, refresh = 0, onAnswered}: 
   const currentRef = useRef(step);
   const busyRef = useRef(busy);
   currentRef.current = step; busyRef.current = busy;
-  useEffect(() => {if (initial.data) setStep(initial.data);}, [initial.data]);
+  // A new step from the tutor (a refresh in a conversation) replaces the card's step; a verdict on screen stays until Continue,
+  // and a different step never inherits the previous answer draft or teaching segment.
+  useEffect(() => {
+    const next = initial.data, shown = currentRef.current;
+    if (!next || busyRef.current) return;
+    if (!shown) setStep(next);
+    else if (result) return;
+    else if (shown.item !== next.item || shown.action !== next.action) advance(next);
+    else setStep(next);
+  }, [initial.data]);
   useEffect(() => {
     const controller = new AbortController();
     const signal = controller.signal;

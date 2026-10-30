@@ -44,7 +44,8 @@ check the public release feed and download newer stable versions; a pop-up at la
   says what it read and what it did not, and "continue" carries on with a fresh budget.
 - **Code** sessions run Claude Code or Codex with their own file and shell tools in the folder you chose for the record
   (`record_repo`): change code, run tests, run an experiment. Every edit and command shows in the conversation as it
-  happens; the agent never pushes or rewrites history, and when it finishes the files and commits it changed are recorded
+  happens; the agent is told never to push or rewrite history (Codex's sandbox holds it to the folder; for Claude Code the
+  refused commands are a deny-list, so watch its steps), and when it finishes the files and commits it changed are recorded
   as a `change:` node in the graph, linked to the conversation and the project. It is a streamed agent run, not an
   interactive terminal.
 - In a **Learn** session the lesson appears as a card under the tutor's message: the question with an answer box, a

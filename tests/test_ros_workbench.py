@@ -77,5 +77,48 @@ class Workbench(unittest.TestCase):
         self.assertIn("acceptEdits", native[0]); self.assertIn("Bash(git push:*)", native[0]); self.assertIn("Bash(git reset:*)", native[0])
 
 
+    def test_a_folder_that_holds_a_record_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "holds a Research OS record"):
+            api.call("record_repo", self.rec, folder=str(Path(self.tmp.name)))
+        with self.assertRaisesRegex(ValueError, "holds a Research OS record"):
+            api.call("record_repo", self.rec, folder=str(self.rec.root.parent))
+
+    def run_code(self, provider, text="Work on the fit"):
+        api.call("record_repo", self.rec, folder=str(self.repo))
+        sent = self.send(text)
+        with patch.dict(providers.ADAPTERS, {"claude": provider}):
+            runtime.execute(self.rec, sent, sent["_engine"])
+        return sent
+
+    def test_a_turn_that_changes_nothing_records_nothing_and_a_failed_run_still_records_its_change(self):
+        def talk(request, emit, tool, cancel, own): emit("The fit uses least squares."); return {}
+        self.run_code(talk, "How does the fit work?")
+        self.assertEqual(self.rec.nodes(type="change"), [], "a question is not a change")
+        (self.repo / "fit.py").write_text("print('dirty before the run')\n", encoding="utf-8")  # already changed before the run
+        def crash(request, emit, tool, cancel, own):
+            (Path(request["workdir"]) / "fit.py").write_text("print('changed again')\n", encoding="utf-8")
+            (Path(request["workdir"]) / "new file.py").write_text("x = 1\n", encoding="utf-8")
+            emit("Halfway"); raise providers.ProviderError("Provider deadline exceeded; partial output is saved.")
+        sent = self.run_code(crash)
+        self.assertEqual(api.call("run_get", self.rec, run=sent["run"])["state"], "failed")
+        [change] = self.rec.nodes(type="change")
+        self.assertTrue(change["partial"]); self.assertEqual(change["files"], ["fit.py", "new file.py"], "a file dirty before the run and changed again counts")
+
+    def test_recording_a_change_takes_only_a_code_runs_own_snapshot(self):
+        api.call("record_repo", self.rec, folder=str(self.repo))
+        sent = self.send("Work")
+        with self.assertRaisesRegex(ValueError, "valid head"):
+            api.call("workbench_record", self.rec, conversation=sent["conversation"], run=sent["run"], before={"git": True, "head": "--output=" + str(self.repo / "x")})
+        self.assertFalse((self.repo / "x").exists())
+        other = api.call("workspace_chat_send", self.rec, text="Hi", model="ollama:fixture", mode="chat")
+        with self.assertRaisesRegex(ValueError, "Code session's own run"):
+            api.call("workbench_record", self.rec, conversation=other["conversation"], run=other["run"], before={"git": False})
+
+    def test_what_a_command_printed_and_credentials_are_never_kept(self):
+        shown = providers.brief_action({"command": 'export API_KEY=abc && curl -H "Authorization: Bearer xyz" u; GITHUB_TOKEN="ghp_1" gh pr list'})
+        for secret in ("abc", "xyz", "ghp_1"): self.assertNotIn(secret, shown)
+        self.assertNotIn("SECRET=1", providers.brief_action({"file_path": "a.py", "new_string": "SECRET=1"}))
+
+
 if __name__ == "__main__":
     unittest.main()

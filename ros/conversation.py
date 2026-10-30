@@ -60,6 +60,7 @@ def send(rec, text, model, conversation=None, effort="medium", key=None, mode=No
         # A Code session's agent edits files and runs commands, so it needs a CLI that has those tools and a folder the person chose.
         if not model.startswith(('claude:', 'codex:')): raise ValueError('A Code session runs on Claude Code or Codex: choose one of their models.')
         if not workbench.repo(rec): raise ValueError("Choose this record's code folder first: a Code session works only in the repository you chose.")
+        if workbench.local_only(rec): raise ValueError('This code folder is in a local-only source and cannot be given to a cloud provider.')
     if not model.startswith(('ollama:', 'compatible:')): cloud_guard(rec)
     setup = None
     if answered is not None:

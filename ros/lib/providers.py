@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess
 import tempfile
@@ -80,12 +81,19 @@ NEVER_RUN = ('Bash(git push:*)', 'Bash(git reset:*)', 'Bash(git clean:*)', 'Bash
 NATIVE_TOOLS = 'Bash,Read,Edit,Write,MultiEdit,Glob,Grep,NotebookEdit,TodoWrite'
 
 
+# A step is kept in the record for good, so what a command printed and what an edit wrote are never kept, and anything that looks
+# like a credential in a command is masked.
+SECRETS = re.compile(r'(?i)(\b(?:\w*api[_-]?key|\w*token|\w*secret|password|passwd)\w*\s*[=:]\s*["\']?|\bauthorization\s*:\s*(?:bearer\s+|basic\s+)?|\bbearer\s+)[^\s"\']+|-----BEGIN [A-Z ]*PRIVATE KEY-----')
+
+
 def brief_action(value, limit=600):
-    """A short, readable form of a native tool's input or output for the run's visible steps."""
+    """A short, readable form of a native tool's input for the run's visible steps: the command, the file or the pattern."""
+    def mask(text):
+        return SECRETS.sub(lambda m: (m.group(1) or '') + '[hidden]', str(text))
     if isinstance(value, dict):
-        keep = {k: value[k] for k in ('command', 'file_path', 'path', 'pattern', 'description', 'old_string', 'new_string') if k in value}
-        value = keep or value
-    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+        keep = {k: mask(value[k]) for k in ('command', 'file_path', 'path', 'pattern', 'description') if k in value}
+        value = keep or {k: '...' for k in value}
+    text = mask(value) if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
     return text if len(text) <= limit else text[:limit] + '...'
 
 
@@ -139,7 +147,7 @@ def codex(request, emit, tool_call, cancel, own):
                 elif native and method == 'item/completed' and params.get('item', {}).get('type') in ('commandExecution', 'fileChange'):
                     item = params['item']
                     if item['type'] == 'commandExecution':
-                        observe('command', {'command': brief_action(item.get('command', '')), 'exit': item.get('exitCode'), 'output': brief_action(item.get('aggregatedOutput') or '', 1500)})
+                        observe('command', {'command': brief_action(item.get('command', '')), 'exit': item.get('exitCode')})
                     else:
                         observe('edit', {'files': [c.get('path') for c in item.get('changes', [])][:50], 'status': item.get('status')})
                 elif method == 'item/tool/call':
