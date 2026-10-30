@@ -4,6 +4,7 @@
 
 - Security: a web page could make `ros serve` run write tools. A refused request left its body unread on the kept-alive connection, where it was read as a second request that passed every check (it carried the custom header and no Origin). Every refused request and every write now ends its connection, and a chunked body is refused. The desktop app was not affected (it requires its session secret). Reported privately by Matt Abate.
 - Security: in `ros serve`, any local program could act as you. The page's session call handed out the cookie that approvals, decisions and waivers need. Now `ros serve` prints a pairing link where it starts, opening it once pairs your browser, and the session call never sets that cookie. If an approval says the browser is not paired, open that link. The desktop app is unchanged. Reported privately by Matt Abate.
+- Security: Claude Code's refused commands in a Code session now also cover the forms that put an option first (`git -C . push`, `git -c ... push`, `rm -fr`, `rm -r`) and `git config`, network tools (`curl`, `wget`, `Invoke-WebRequest`, `ssh`) and `gh api`/`gh release`. A deny-list can still be stepped around, so unattended shell work stays with Codex's sandbox, and the code folder picker says to watch a Claude Code session. The app's own git reads of the repository switch off options a planted `.git/config` could use to run commands (fsmonitor, external diff, pager). Reported in part by Matt Abate.
 
 ## 1.7.1: delete, a tidy library and a live graph
 

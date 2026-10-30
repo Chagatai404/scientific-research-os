@@ -76,8 +76,17 @@ def lines(process, cancel, timeout=180):
 
 # A Code session's agent works in the person's repository with its own tools. These are the commands it is never allowed to run
 # there: publishing, rewriting or discarding history is the person's.
-NEVER_RUN = ('Bash(git push:*)', 'Bash(git reset:*)', 'Bash(git clean:*)', 'Bash(git rebase:*)', 'Bash(git checkout -- :*)',
-             'Bash(git restore:*)', 'Bash(git branch -D:*)', 'Bash(rm -rf:*)', 'Bash(gh pr merge:*)', 'Bash(gh repo delete:*)')
+# Claude Code matches these as command prefixes, so each also names the forms that put an option first (`git -C . push`, `rm -fr`);
+# a deny-list can still be stepped around (a script that runs git), which is why unattended shell work goes only to Codex,
+# whose sandbox holds it to the folder, and why the app tells the person to watch a Claude Code session's steps.
+_GIT_DENIED = ('push', 'reset', 'clean', 'rebase', 'restore', 'filter-branch', 'filter-repo', 'update-ref', 'reflog expire', 'gc --prune',
+               'branch -D', 'branch --delete --force', 'checkout -- ', 'checkout -f', 'stash drop', 'stash clear', 'remote set-url', 'config')
+NEVER_RUN = (*(f'Bash({prefix}{verb}:*)' for verb in _GIT_DENIED for prefix in ('git ', 'git -C . ', 'git -C .. ', 'git -c ')),
+             'Bash(git -C:*)', 'Bash(git -c:*)', 'Bash(git --git-dir:*)', 'Bash(git --work-tree:*)',
+             'Bash(rm -rf:*)', 'Bash(rm -fr:*)', 'Bash(rm -r:*)', 'Bash(rm -R:*)', 'Bash(rm --recursive:*)', 'Bash(rmdir /s:*)',
+             'Bash(Remove-Item -Recurse:*)', 'Bash(del /s:*)', 'Bash(rd /s:*)', 'Bash(format:*)',
+             'Bash(gh pr merge:*)', 'Bash(gh repo delete:*)', 'Bash(gh release:*)', 'Bash(gh api:*)', 'Bash(gh auth:*)',
+             'Bash(curl:*)', 'Bash(wget:*)', 'Bash(Invoke-WebRequest:*)', 'Bash(iwr:*)', 'Bash(ssh:*)', 'Bash(scp:*)')
 NATIVE_TOOLS = 'Bash,Read,Edit,Write,MultiEdit,Glob,Grep,NotebookEdit,TodoWrite'
 
 

@@ -66,7 +66,11 @@ def local_only(rec: Record) -> bool:
 
 def _git(path: Path, *args: str, stdin: str | None = None) -> str | None:
     try:
-        done = subprocess.run(["git", "-C", str(path), *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
+        # An agent may have written the repository's .git/config: options that run commands (an fsmonitor hook, an external
+        # diff, a pager) are switched off for these reads.
+        safe = ["-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "diff.external=", "-c", "core.pager=cat",
+                "--no-pager"]
+        done = subprocess.run(["git", *safe, "-C", str(path), *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
                               input=stdin, timeout=GIT_TIMEOUT,
                               **({"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if os.name == "nt" else {}))
     except (OSError, subprocess.TimeoutExpired):
