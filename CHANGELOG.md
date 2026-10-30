@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.7.0: structured study sessions, Code sessions and lessons prepared when you ask
 
 - Every session's prompt now names the other skills and when to read them (handwritten notes to LaTeX, preparing lessons, learning, research, defending), and dispatched figure tasks get the visual-maker's own instructions. A test fails if a shipped skill or agent is reachable from nowhere; the auditor (an audit needs an agent that did not do the work) and the video scout (it needs the web) stay outside the desktop by design.
 - Lesson figures and animations are made without you: when agents run on Codex, the dispatcher gives `visual` and `animation` tasks to it (unattended shell work goes only to Codex, whose sandbox holds it to the lesson's folder), and it renders the picture in the lesson's bundle folder with their own tools, look at it and write its note. With other models these tasks still wait, and the plan card says why.

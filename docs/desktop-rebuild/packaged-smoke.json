@@ -1,14 +1,14 @@
 {
   "exit": 0,
-  "seconds": 8.61,
-  "screenshot": "C:\\Users\\ASUS\\.agent-hub\\worktrees\\research-os-guided-sessions\\.desktop-fixtures\\native-packaged-nvd10t8x\\desktop-smoke.png",
-  "executable_sha256": "2909a5c1af44c65f10c8af31d04eb6ed285807229fff14dcd628bc2cb4cfe2d9",
-  "tested_at": "2026-10-29T22:01:47.071131+00:00",
+  "seconds": 8.84,
+  "screenshot": "C:\\Users\\ASUS\\.agent-hub\\worktrees\\research-os-guided-sessions\\.desktop-fixtures\\native-packaged-_sp6e6c0\\desktop-smoke.png",
+  "executable_sha256": "07ec7f2f5e2cdf0d757656cc923e045b5780c254a2859f1474d85e85eef5d4b2",
+  "tested_at": "2026-10-30T13:24:08.684426+00:00",
   "page": {
     "title": "Home \u00b7 Research OS",
-    "text": "Skip to content\n\u25c8\nResearch OS\nA connected workspace\nHome\nLearn\nResearch\nLibrary\nGraph\nActivity\nSettings\nStored on this computer\nWorkspace\n\u25be\n\uff0b New session\n\u25a3\n\nYour sessions appear here. Create a course or project to keep them organized.\n\nWorkspace\n\u203a\nHome\nSearch connected records\nCtrl+K\nYour knowledge graph\nKnowledge\nResearch\nGoals\n+\n\u2212\nFit graph\nNode list\n?\nStart with a course or a project\n\nCreate one in the sidebar, then add its material in the Library. Your map grows from what you build.\n\nOpen Library\n0 places \u00b7 1 items\nAsk\nLearn\nResearch\nDefend\nYour message\n\uff0b\nGPT-6.1 Sol\n\u2304\n\u25c9 Voice\n\u266b Voice unavailable\nSend \u2191\n\nEnter to send \u00b7 Shift Enter for a new line",
+    "text": "Skip to content\n\u25c8\nResearch OS\nA connected workspace\nHome\nLearn\nResearch\nLibrary\nGraph\nActivity\nSettings\nStored on this computer\nWorkspace\n\u25be\n\uff0b New session\n\u25a3\n\nYour sessions appear here. Create a course or project to keep them organized.\n\nWorkspace\n\u203a\nHome\nSearch connected records\nCtrl+K\nYour knowledge graph\nKnowledge\nResearch\nGoals\n+\n\u2212\nFit graph\nNode list\n?\nStart with a course or a project\n\nCreate one in the sidebar, then add its material in the Library. Your map grows from what you build.\n\nOpen Library\n0 places \u00b7 1 items\nAsk\nLearn\nResearch\nDefend\nCode\nYour message\n\uff0b\nGPT-6.1 Sol\n\u2304\n\u25c9 Voice\n\u266b Voice unavailable\nSend \u2191\n\nEnter to send \u00b7 Shift Enter for a new line",
     "overflow": false,
     "protocol": "ros.desktop.v1",
-    "version": "1.6.1"
+    "version": "1.7.0"
   }
 }
