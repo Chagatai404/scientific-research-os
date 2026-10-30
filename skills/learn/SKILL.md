@@ -43,7 +43,7 @@ Call `next` (or read `next` from the last `answer`). Do exactly what it says:
 
 | action | what you do |
 |---|---|
-| `probe`, `practice`, `review`, `retry`, `recall` | Show `question.prompt` (and options) as given. Send the learner's words with `answer`. Never hint at the key. If they say they do not know, send `dont_know=true`. |
+| `probe`, `practice`, `review`, `retry`, `recall` | Show `question.prompt` (and options) as given. Send the learner's words with `answer`, and their `confidence` (1 guessing to 5 certain) when they gave one before seeing feedback. Never hint at the key. If they say they do not know, send `dont_know=true`. In a desktop Learn conversation the lesson card shows the question, the answer box and the confidence scale and records the answer itself: do not repeat the question in your message, and do not call `answer` for a turn the card already answered. |
 | `teach` | Play the prepared `content` segments in order (text, visual, animation, audio). With `content.live`, explain it yourself: motivate (why now), establish (let them discover it when they plausibly can, otherwise show how one could have discovered it), connect (to what they hold), then continue. Record it with `teach` (`mode` as given). |
 | `wait` | A written answer needs a grade. Grade it now if you are the tutor (`grade`), then `next`. |
 | `close` | `close` with a one-line summary. The log is written; tell the learner where. |

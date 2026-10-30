@@ -405,3 +405,29 @@ class CommandLine(unittest.TestCase):
             self.assertEqual(done.returncode, 2)
             self.assertIn('Nothing is installed for you', done.stderr)
             self.assertEqual(list(Path(tmp).iterdir()), [])
+
+
+class SpeakableTests(unittest.TestCase):
+    def test_chat_reply(self):
+        message = ("We’ll separate **what your experiments show**, **what remains hypothetical**, and **what you can defend from memory**.\n\n"
+                   "**The density is 3 from 0 to 1/3 and 0 elsewhere. Is it a valid density, and what probability does it assign to $0 < X < 1/6$? "
+                   "Explain using area, not just the height.**")
+        spoken = vc.speakable(message)
+        for mark in "*$#`|":
+            self.assertNotIn(mark, spoken)
+        self.assertIn("less than", spoken)
+        self.assertIn("0 less than X less than 1 over 6", spoken)
+        self.assertIn("1/3", spoken)
+        self.assertIn("what your experiments show", spoken)
+
+    def test_table_link_code_heading_list(self):
+        self.assertEqual(vc.speakable("| a | b |\n|---|---|\n| 1 | 2 |"), "a, b. 1, 2.")
+        self.assertEqual(vc.speakable("See [the docs](https://x.org/a) and https://y.org now"), "See the docs and now.")
+        self.assertEqual(vc.speakable("Before\n```py\nx = 1\n```\nAfter"), "Before. (code omitted). After.")
+        spoken = vc.speakable("## Plan\n- first `step`\n2. second one.\n> [!info]\n> note [[Page|alias]]")
+        self.assertEqual(spoken, "Plan. first step. second one. note alias.")
+
+    def test_latex(self):
+        self.assertEqual(vc.speakable(r"$\frac{1}{6}$"), "1 over 6.")
+        self.assertEqual(vc.speakable("Take $x^2$ and $y^{n}$"), "Take x squared and y to the power n.")
+        self.assertIn("less than or equal to", vc.speakable(r"\(a \le \pi\)"))

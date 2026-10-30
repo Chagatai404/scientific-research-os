@@ -48,9 +48,10 @@ def overview_map(rec, expand=""):
       writes=True, text=P("string", "the person's message", True), model=P("string", "provider:model", True),
       conversation=P("string", "existing conversation id; omit to start and frame a goal"),
       effort=P("string", "Codex reasoning effort; default medium", enum=("low", "medium", "high", "xhigh", "max")),
-      key=P("string", "turn idempotency key"), mode=P("string", "chat, learn, research or defend", enum=modes.NAMES), scope=P("array", "explicit versioned source passages"))
-def chat_send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None):
-    return chat.send(rec, text, model, conversation, effort, key, mode, scope)
+      key=P("string", "turn idempotency key"), mode=P("string", "chat, learn, research, defend or build (Code)", enum=modes.NAMES), scope=P("array", "explicit versioned source passages"),
+      answered=P("string", "the attempt the learner just recorded on the lesson card; the tutor may not record another for this message"))
+def chat_send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None, answered=None):
+    return chat.send(rec, text, model, conversation, effort, key, mode, scope, answered)
 
 @tool('workspace_sessions', 'List canonical conversations with pagination independent of browser preferences.', offset=P('integer', 'page offset'), limit=P('integer', 'page size'))
 def sessions(rec, offset=0, limit=30):

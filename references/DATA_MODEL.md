@@ -91,7 +91,9 @@ with a `deadline` the verdict is `feasible` (at most 85% of the capacity), `tigh
 ## Node types
 
 domain, subject, concept, capability, course, goal, project, block, paper, question, hypothesis, claim, experiment,
-decision, code-symbol, source, lesson, handout, visual, conversation.
+decision, code-symbol, source, lesson, handout, visual, conversation, change.
+
+`change:<run>` nodes are what a Code session changed in the record's repository: files, commits, branch and the agent's own summary, `relates` to its conversation and `part-of` the project. They say what was done, never that it is right.
 
 `conversation` nodes are standalone portal discussions, separate from assessed lessons. Their canonical id is
 `conversation:<key>`. `conversation.message`, `conversation.response` and `conversation.error` events name that
@@ -110,6 +112,7 @@ addresses, decides, relates.
 | `retrieval` | capability | day, period, timing, method, outcome, assistance, evidence, review (imported learning history) |
 | `lesson.start`, `lesson.close` | lesson | title, scope / summary |
 | `attempt` | item | lesson, response (or `dont_know`) |
+| `confidence` | item | lesson, attempt, level (1 guessing to 5 certain), given before feedback: a self-report for calibration, never learning evidence |
 | `grade` | item | lesson, attempt, verdict, feedback, criteria_met |
 | `hint`, `reveal` | item | lesson, index |
 | `teach` | capability | lesson, mode, content |
@@ -117,6 +120,9 @@ addresses, decides, relates.
 | `policy` | lesson | action, reason, item, capability, mode |
 | `task.open`, `task.claim`, `task.done`, `task.cancel` | task | kind, ref, brief, … / by / result / reason |
 | `dispatch.start`, `dispatch.end` | task | task, role, model / task, record, outcome (`done`, `unfinished`, `refused`, `failed`), detail. The ledger of unattended agent runs: it bounds how many an hour and leaves a task alone after two failures |
+| `dispatch.focus` | hub | hub, conversation. A person asked for this in a session: for six hours its tasks (and those of the capabilities part of it and their bundles) are dispatched first, and up to eight an hour beyond the hourly limit |
+| `workbench.repo` | record | repo. The person chose the folder a Code session's agent works in (`record_repo`) |
+| `code.change` | change | conversation, run, files, commits: a Code session's change, recorded when its run completes |
 | `bundle.ready` | bundle | manifest digest |
 | `verdict` | claim | step, verdict, notes, checklist, evidence |
 | `approval`, `decision`, `waiver` | subject | decision / outcome, rationale / reason |

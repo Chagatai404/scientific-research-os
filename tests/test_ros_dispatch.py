@@ -81,6 +81,42 @@ class Dispatch(unittest.TestCase):
         self.assertEqual(self.run_with(agent)["outcome"], "done")
         self.assertEqual({self.state(a), self.state(b)}, {"done"})
 
+    def test_what_the_person_just_asked_for_goes_first_and_past_the_hourly_limit_but_background_work_does_not(self):
+        background = self.open("outline", "old", "Background outline.")
+        asked = tasks.open_task(self.rec, "scout", "subject:ams", "Scout AMS sources.", data={"hub": "subject:ams"}, key="asked")
+        self.rec.put_node("capability:ams.calibration", "capability", title="Calibration")
+        self.rec.put_edge("capability:ams.calibration", "part-of", "subject:ams")
+        bundle = tasks.open_task(self.rec, "item", "bundle:ams.calibration", "Write items.", data={"bundle": "ams.calibration"}, key="items")
+        api.call("agents_configure", self.rec, per_hour=1)
+        dispatch.focus(self.rec, "subject:ams", "conversation:x")
+        taken = []
+        def agent(request, emit, tool, cancel, own):
+            taken.append(request["messages"][0]["content"]); tool("finish", {"result": "ok"}, "s"); emit("."); return {}
+        for _ in range(3): self.run_with(agent)
+        self.assertEqual(self.state(asked), "done"); self.assertEqual(self.state(bundle), "done", "a bundle of a capability in the hub is part of it")
+        self.assertTrue(all("Background" not in t for t in taken), "the person's request goes before older background work")
+        self.assertEqual(self.state(background), "open", "past the limit only the focused work goes")
+        self.assertIn("limit of 1", self.run_with(agent)["idle"])
+
+    def test_on_codex_a_visual_is_made_in_the_bundle_folder_with_its_own_sandboxed_tools(self):
+        visual = tasks.open_task(self.rec, "visual", "bundle:variance", "Draw the variance picture.", data={"bundle": "variance"}, key="v")
+        audit = self.open("audit", "a")
+        api.call("agents_configure", self.rec, model="claude:sonnet")
+        self.assertNotIn("visual", api.call("agents_status", self.rec)["waiting"]["automatic"], "unattended shell work only in Codex's sandbox")
+        api.call("agents_configure", self.rec, model="codex:gpt-6.1-sol")
+        self.assertIn("visual", api.call("agents_status", self.rec)["waiting"]["automatic"])
+        seen = {}
+        def codex(request, emit, tool, cancel, own):
+            seen.update(native=request.get("native"), workdir=request.get("workdir"), system=request["system"])
+            (Path(request["workdir"]) / "variance.svg").write_text("<svg/>", encoding="utf-8")
+            tool("finish", {"result": "variance.svg, looked at"}, "s"); emit("Done."); return {}
+        with patch.dict(providers.ADAPTERS, {"codex": codex}):
+            outcome = runtime.dispatch_once(self.rec)
+        self.assertEqual((outcome["kind"], outcome["outcome"]), ("visual", "done"))
+        self.assertTrue(seen["native"]); self.assertEqual(Path(seen["workdir"]), self.rec.root / "bundles" / "variance")
+        self.assertTrue((self.rec.root / "bundles" / "variance" / "variance.svg").is_file())
+        self.assertIn("bundle folder", seen["system"]); self.assertEqual(self.state(audit), "open", "audits are never dispatched")
+
     def test_a_run_that_does_not_finish_is_recorded_and_a_task_failing_twice_is_left_alone(self):
         tid = self.open("outline", "o1")
         def lazy(request, emit, tool, cancel, own): emit("I thought about it."); return {}
@@ -143,3 +179,44 @@ class Dispatch(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Jobs(unittest.TestCase):
+    """The desktop runs the render jobs its records queue (lesson narration, animation, PDFs) without anyone starting them."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        env = patch.dict(os.environ, {"ROS_HOME": str(root), "ROS_NO_VAULT": "1"}); env.start(); self.addCleanup(env.stop)
+        self.rec = Record(root / "projects" / "test"); self.addCleanup(self.rec.close); self.addCleanup(api.release)
+
+    def test_a_queued_narration_job_is_run_once_in_the_background_and_finished(self):
+        import sys
+        job = tasks.open_task(self.rec, "job", "bundle:x", "Speak the narration of bundle x", key="voice",
+                              data={"argv": [sys.executable, "-m", "ros", "-p", str(self.rec.root), "bundle_voice", "--bundle", "x"],
+                                    "cwd": str(self.rec.root), "timeout": 60})
+        ran = []
+        def fake(job, own=None): ran.append(job["id"]); time.sleep(.2); return {"ok": True, "code": 0, "output": "spoken", "seconds": .2}
+        with patch.object(runtime.runner.Runner, "_run", staticmethod(fake)):
+            worker = runtime.JobWorker(lambda: [self.rec])
+            self.assertEqual(worker.once()["job"], job)
+            self.assertIsNone(worker.once(), "one engine at a time")
+            for _ in range(50):
+                with api.LOCK:
+                    if tasks.get(self.rec, job)["state"] == "done": break
+                time.sleep(.1)
+        with api.LOCK: self.assertEqual(tasks.get(self.rec, job)["state"], "done")
+        self.assertEqual(ran, [job]); self.assertIsNone(worker.once(), "a finished job is not run again")
+
+    def test_a_job_whose_engine_crashes_is_finished_as_failed_not_left_claimed(self):
+        import sys
+        job = tasks.open_task(self.rec, "job", "bundle:y", "Speak y", key="crash",
+                              data={"argv": [sys.executable, "-m", "ros", "-p", str(self.rec.root), "bundle_voice", "--bundle", "y"],
+                                    "cwd": str(self.rec.root), "timeout": 60})
+        def boom(job, own=None): raise RuntimeError("engine exploded")
+        with patch.object(runtime.runner.Runner, "_run", staticmethod(boom)):
+            runtime.JobWorker(lambda: [self.rec]).once()
+            for _ in range(50):
+                with api.LOCK:
+                    if tasks.get(self.rec, job)["state"] == "done": break
+                time.sleep(.1)
+        with api.LOCK: self.assertEqual(tasks.get(self.rec, job)["state"], "done")

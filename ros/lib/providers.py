@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import shutil
 import subprocess
 import tempfile
@@ -73,11 +74,37 @@ def lines(process, cancel, timeout=180):
         except ValueError: raise ProviderError('Provider returned a malformed stream event.')
     else: raise ProviderError('Provider deadline exceeded; partial output is saved.')
 
+# A Code session's agent works in the person's repository with its own tools. These are the commands it is never allowed to run
+# there: publishing, rewriting or discarding history is the person's.
+NEVER_RUN = ('Bash(git push:*)', 'Bash(git reset:*)', 'Bash(git clean:*)', 'Bash(git rebase:*)', 'Bash(git checkout -- :*)',
+             'Bash(git restore:*)', 'Bash(git branch -D:*)', 'Bash(rm -rf:*)', 'Bash(gh pr merge:*)', 'Bash(gh repo delete:*)')
+NATIVE_TOOLS = 'Bash,Read,Edit,Write,MultiEdit,Glob,Grep,NotebookEdit,TodoWrite'
+
+
+# A step is kept in the record for good, so what a command printed and what an edit wrote are never kept, and anything that looks
+# like a credential in a command is masked.
+SECRETS = re.compile(r'(?i)(\b(?:\w*api[_-]?key|\w*token|\w*secret|password|passwd)\w*\s*[=:]\s*["\']?|\bauthorization\s*:\s*(?:bearer\s+|basic\s+)?|\bbearer\s+)[^\s"\']+|-----BEGIN [A-Z ]*PRIVATE KEY-----')
+
+
+def brief_action(value, limit=600):
+    """A short, readable form of a native tool's input for the run's visible steps: the command, the file or the pattern."""
+    def mask(text):
+        return SECRETS.sub(lambda m: (m.group(1) or '') + '[hidden]', str(text))
+    if isinstance(value, dict):
+        keep = {k: mask(value[k]) for k in ('command', 'file_path', 'path', 'pattern', 'description') if k in value}
+        value = keep or {k: '...' for k in value}
+    text = mask(value) if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    return text if len(text) <= limit else text[:limit] + '...'
+
+
 def codex(request, emit, tool_call, cancel, own):
     executable = codex_executable()
     if not executable: raise ProviderError('Codex is not installed. Sign in through its CLI after installation.')
-    with tempfile.TemporaryDirectory(prefix='ros-codex-context-') as directory:
-        overrides=['-c','features.shell_tool=false','-c','features.apply_patch=false']
+    native, observe = request.get('native'), request.get('observe') or (lambda name, detail: None)
+    with tempfile.TemporaryDirectory(prefix='ros-codex-context-') as scratch:
+        # A Code session works in the person's repository with Codex's own shell and patch tools, sandboxed to that folder.
+        directory = request['workdir'] if native else scratch
+        overrides=[] if native else ['-c','features.shell_tool=false','-c','features.apply_patch=false']
         # Disable inherited connectors/plugins one by one. Never also override `mcp_servers={}`: Codex applies overrides in
         # order, so the empty table wipes each server's transport and the later `.enabled=false` leaves it invalid
         # ("invalid transport"), which makes Codex exit before any turn.
@@ -106,9 +133,9 @@ def codex(request, emit, tool_call, cancel, own):
                 if 'error' in event: raise ProviderError('Codex protocol/model/login error. Verify the selected model and CLI login; your turn is saved.')
                 if event.get('id') == init and 'result' in event:
                     process.stdin.write('{"method":"initialized"}\n'); process.stdin.flush()
-                    start_id = send('thread/start', {'model': request['model'].split(':', 1)[1], 'cwd': directory, 'sandbox': 'read-only', 'approvalPolicy': 'never', 'ephemeral': True,
+                    start_id = send('thread/start', {'model': request['model'].split(':', 1)[1], 'cwd': directory, 'sandbox': 'workspace-write' if native else 'read-only', 'approvalPolicy': 'never', 'ephemeral': True,
                                                    'baseInstructions': request['system'], 'dynamicTools': [{'type': 'function', 'name': t['name'], 'description': t['description'], 'inputSchema': t['parameters']} for t in request.get('tools', [])],
-                                                   'config': {'features.shell_tool': False, 'features.apply_patch': False, 'mcp_servers': {}}})
+                                                   'config': {'mcp_servers': {}} if native else {'features.shell_tool': False, 'features.apply_patch': False, 'mcp_servers': {}}})
                 elif start_id and event.get('id') == start_id and 'result' in event:
                     thread = event['result']['thread']['id']
                     inputs = [{'type': 'text', 'text': json.dumps(request['messages'], ensure_ascii=False), 'text_elements': []}]
@@ -117,6 +144,12 @@ def codex(request, emit, tool_call, cancel, own):
                 method, params = event.get('method'), event.get('params', {})
                 if method=='thread/tokenUsage/updated':usage=params.get('tokenUsage')
                 if method == 'item/agentMessage/delta': emit(params.get('delta', ''))
+                elif native and method == 'item/completed' and params.get('item', {}).get('type') in ('commandExecution', 'fileChange'):
+                    item = params['item']
+                    if item['type'] == 'commandExecution':
+                        observe('command', {'command': brief_action(item.get('command', '')), 'exit': item.get('exitCode')})
+                    else:
+                        observe('edit', {'files': [c.get('path') for c in item.get('changes', [])][:50], 'status': item.get('status')})
                 elif method == 'item/tool/call':
                     try: result = tool_call(params['tool'], params.get('arguments', {}), params['callId']); success = True
                     except (ValueError, KeyError) as exc: result = {'error': str(exc)}; success = False
@@ -134,12 +167,17 @@ def codex(request, emit, tool_call, cancel, own):
 def claude(request, emit, tool_call, cancel, own):
     executable = shutil.which('claude') or shutil.which('claude.cmd')
     if not executable: raise ProviderError('Claude Code is not installed. Use its CLI login after installation.')
-    with tempfile.TemporaryDirectory(prefix='ros-claude-context-') as directory:
+    native, observe = request.get('native'), request.get('observe') or (lambda name, detail: None)
+    with tempfile.TemporaryDirectory(prefix='ros-claude-context-') as scratch:
+        directory = request['workdir'] if native else scratch
         bridge = request.get('bridge')
         config = {'mcpServers': {'research_os': {'type': 'http', 'url': bridge['url'], 'headers': {'Authorization': 'Bearer ' + bridge['token']}}}} if bridge else {'mcpServers': {}}
-        argv = [executable, '--print', '--verbose', '--output-format', 'stream-json', '--include-partial-messages', '--model', request['model'].split(':', 1)[1], '--tools', '', '--strict-mcp-config', '--mcp-config', json.dumps(config), '--no-session-persistence', '--setting-sources', '', '--system-prompt', request['system']]
+        argv = [executable, '--print', '--verbose', '--output-format', 'stream-json', '--include-partial-messages', '--model', request['model'].split(':', 1)[1], *([] if native else ['--tools', '']), '--strict-mcp-config', '--mcp-config', json.dumps(config), '--no-session-persistence', '--setting-sources', '', '--system-prompt', request['system']]
         if request.get('effort') and takes_effort(request['model']): argv += ['--effort', request['effort']]
-        if bridge: argv += ['--allowedTools', 'mcp__research_os__*']
+        # A Code session keeps Claude Code's own file and shell tools, in the repository only, edits accepted and
+        # history-changing commands refused; every other session has no built-in tools at all.
+        if native: argv += ['--permission-mode', 'acceptEdits', '--disallowedTools', *NEVER_RUN]
+        if bridge or native: argv += ['--allowedTools', ','.join(([NATIVE_TOOLS] if native else []) + (['mcp__research_os__*'] if bridge else []))]
         if request.get('images'): argv += ['--input-format', 'stream-json']
         process = launch(argv, directory); own(process)
         content = json.dumps(request['messages'], ensure_ascii=False)
@@ -153,6 +191,10 @@ def claude(request, emit, tool_call, cancel, own):
                 if event.get('type') == 'stream_event':
                     delta = event.get('event', {}).get('delta', {})
                     if delta.get('type') == 'text_delta': emit(delta.get('text', '')); partial = True
+                elif native and event.get('type') == 'assistant':
+                    for block in event.get('message', {}).get('content', []) or []:
+                        if block.get('type') == 'tool_use' and not str(block.get('name', '')).startswith('mcp__'):
+                            observe(block.get('name', 'tool'), brief_action(block.get('input', {})))
                 elif event.get('type') == 'result':
                     if event.get('is_error'): raise ProviderError('Claude request failed. Check CLI login, model availability or usage limit.')
                     if not partial: emit(event.get('result', ''))

@@ -20,6 +20,7 @@ document and that test in the same commit.
                library (material added by the person: listed at once, read in the background)
                modes (what a desktop session is in each mode: its skill, its tool grant, the person's own words)
                dispatch (which agent tasks the desktop takes unattended, the limits and the ledger of what it did)
+               workbench (the repository a record studies, and what a Code session changed in it)
      │
  core          store (the record) · home (where records live)
  engines       lib/ (speech, voice, Manim, papers, scouting, evidence atoms, manifests, walkthrough, old readers)
@@ -148,7 +149,10 @@ tool), what the session adds to it, the tools it may read and write, and the dir
 import. Grant a tool to a mode only if a person could not mistake a model's call of it for their own act: tools that
 record what the learner wrote (`answer`, `ask`) are bound to the person's own words by `modes.bind`, `verdict`, `approve`,
 `decide` and `waive` are never granted, and work that takes minutes (voice, animation) stays a `job` task for the runner.
-Add the mode to `tests/test_ros_sessions.py`, which checks every grant against the registry.
+Add the mode to `tests/test_ros_sessions.py`, which checks every grant against the registry. A mode with `native=True` (Code) also gives
+the provider its own file and shell tools, only in the repository the person chose (`record_repo`, a human tool), with
+history-changing commands refused (`providers.NEVER_RUN`); the runtime commits each native action as a `native:<tool>` run
+step while it happens and records the result with `workbench_record` (a `change:` node) when the run completes.
 
 A **role** is the same idea for an independent agent (`agents/<name>.md`): one `Role(...)` row in `ros/modes.py` with the
 tools it may use and what its final message is. A working session hands it one piece of work with the `delegate` tool;
@@ -172,7 +176,7 @@ tool's choices come from that registry **(checked)**. Use deterministic event id
 Add it to `tasks.KINDS`, open it with `tasks.open_task(..., key=...)` (the key makes it idempotent), and describe in
 the relevant skill which agent takes it and which tool finishes it. Then decide whether the desktop may take it without
 anyone asking: either list it in `dispatch.AUTO` with its tool grant (`GRANTS`) and step budget (`STEPS`), or in
-`dispatch.NEVER` with the reason a person or a client with a shell must do it (`tests/test_ros_dispatch.py` fails until
+`dispatch.NEVER` with the reason a person or a client with a shell must do it (a kind that only needs a shell, like `visual` and `animation`, can also be in `dispatch.NATIVE`: taken when agents run on Claude Code or Codex, which then work with their own tools in the bundle folder) (`tests/test_ros_dispatch.py` fails until
 every kind is one or the other). Never grant `verdict`, a human-only tool, or a tool that holds the registry lock for
 minutes; long work stays a `job` task for the runner. `runtime.Dispatcher` runs one agent at a time in a fresh context,
 the agent finishes only its own task, and `agents_configure` (Settings) pauses it or limits it per hour.

@@ -86,8 +86,11 @@ def run_job(rec,identifier):
         try:
             with ENGINE_WORKER:
                 if entry['cancel'].is_set():return
-                result=runner.Runner._run(job,entry['owned'].append)
-                if not entry['cancel'].is_set():api.call('job_done',rec,task=identifier,result=result,by=owner)
+                try:result=runner.Runner._run(job,entry['owned'].append)
+                except Exception as exc:result={'ok':False,'code':None,'output':type(exc).__name__+': '+str(exc)[:500],'seconds':0}
+                if not entry['cancel'].is_set():
+                    try:api.call('job_done',rec,task=identifier,result=result,by=owner)
+                    except (ValueError,KeyError):pass
         finally:
             for process in entry['owned']:providers.terminate(process)
             with LOCK:ACTIVE.pop((str(rec.root),identifier),None)
@@ -177,6 +180,19 @@ def execute(rec, result, request, legacy_engine=None):
     row = api.call('run_get', rec, run=run)
     private_scope = any(s.get('localOnly') for s in api.call('source_list',rec) if s['id'] in {ref.get('sourceId') for ref in row.get('scope',[])})
     allowed = set(api.call('session_grant', rec, mode=row['mode']))
+    native = bool(api.call('session_native', rec, mode=row['mode']))
+    seen_native, before, recorded = [0], {'git': False}, [False]
+    def record_change(partial=False):
+        """What a Code run changed in the repository, recorded once, also when it failed, was stopped or ran out of time."""
+        if not native or recorded[0] or not before.get('git'): return {}
+        recorded[0] = True
+        try: return api.call('workbench_record', rec, conversation=result['conversation'], run=run, before=before, summary=output[:4000], partial=partial)
+        except (ValueError, KeyError): return {}
+    def observe(name, detail):
+        """A Code session's own file and shell actions, committed as run steps as they happen so the person sees them."""
+        seen_native[0] += 1
+        flush()
+        api.call('run_step', rec, run=run, operation=f'native/{seen_native[0]}', tool_name='native:' + str(name)[:60], result=detail)
     # The person's own latest words: what `answer` and `ask` record, whatever the model writes (see ros/modes.py).
     said = next((m['content'] for m in reversed(request.get('messages', [])) if m['role'] == 'user'), '')
     # A model's self-labelled reviewer cannot constitute independent audit. Audit verdicts are never offered.
@@ -200,8 +216,11 @@ def execute(rec, result, request, legacy_engine=None):
             api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
             return value
         if name == 'answer':
+            if request.get('answered'): raise ValueError('the learner already answered this step on the lesson card and it is recorded; call `next` and continue')
             if not said.strip(): raise ValueError('the learner has not written an answer yet')
             if budget.get('answers'): raise ValueError('one answer per message: show the next step and wait for the learner')
+            current = api.call('next', selected[0], lesson=args.get('lesson'))
+            if current.get('item') != args.get('item'): raise ValueError("answer only the lesson's current step (call `next`): the learner's message answers that question and no other")
             budget['answers'] = 1
         args = api.call('session_bind', rec, tool=name, args=args, said=said)
         budget['steps'] += 1
@@ -226,6 +245,8 @@ def execute(rec, result, request, legacy_engine=None):
                     raise ValueError('The claimed task record is unavailable; inspect the task before continuing.')
         if isinstance(value,dict) and value.get('_operation'):
             value=execute_operation(target,value['_operation'])
+        # The conversation's lesson card opens the lesson where it lives (see conversation.lesson).
+        if name == 'start' and isinstance(value, dict) and 'lesson' in value: value = dict(value, record=target.root.name)
         if len(json.dumps(value)) > 80000: value = {'error': 'result exceeds context budget; inspect the operation in Research'}
         api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
         return value
@@ -280,6 +301,11 @@ def execute(rec, result, request, legacy_engine=None):
                               system=api.call('session_prompt', rec, mode=row['mode'], context=context, room=context_limit // 3, steps=limits['tool_steps']),
                               tools=[{'name': name, 'description': api.TOOLS[name].help, 'parameters': api.TOOLS[name].schema()} for name in sorted(allowed)])
                 packet.pop('_vision_permissions',None)
+                if native:
+                    status = api.call('workbench_status', rec)
+                    if not status.get('repo'): raise ValueError("Choose this record's code folder first.")
+                    before.clear(); before.update(api.call('workbench_snapshot', rec))
+                    packet.update(native=True, workdir=status['repo'], observe=observe, deadline=max(limits['deadline'], 1800))
                 # Character bound is explicit; original messages remain in the record.
                 total, messages = 0, []
                 for message in reversed(packet['messages']):
@@ -298,13 +324,19 @@ def execute(rec, result, request, legacy_engine=None):
                     reported=providers.ADAPTERS[provider](packet, emit, tool_call, entry['cancel'], entry['owned'].append)
                 if reported and (reported.get('usage') is not None or reported.get('cost') is not None):api.call('run_usage',rec,run=run,usage=reported.get('usage'),cost=reported.get('cost'))
             flush()
-            if entry['cancel'].is_set(): return
+            if entry['cancel'].is_set():
+                record_change(partial=True); return
             if not output.strip(): raise providers.ProviderError('The provider returned no text; no completion was inferred.')
+            if native:
+                change = record_change()
+                if change.get('change'): emit(f"\n\nRecorded in the graph as {change['change']}: {len(change['files'])} files changed" + (f", {len(change['commits'])} commits" if change['commits'] else '') + '.')
+                flush()
             api.call('workspace_chat_complete', rec, conversation=result['conversation'], request=result['request'], text=output, model=request['model'])
             api.call('run_transition', rec, run=run, state='completed')
         finally: FOREGROUND.release()
     except Exception as exc:
         flush()
+        record_change(partial=True)
         current = api.call('run_get', rec, run=run)
         if current['state'] not in ('cancelled', 'interrupted', 'completed', 'failed'):
             detail = str(exc) if isinstance(exc, (ValueError, KeyError)) else 'The provider stopped unexpectedly. Partial output is retained.'
@@ -314,7 +346,7 @@ def execute(rec, result, request, legacy_engine=None):
         for record in opened.values(): record.close()
         with LOCK: ACTIVE.pop(key, None)
 
-def run_agent(rec, model, system, brief, grant, steps, call, entry, limits, profile=None, effort='medium'):
+def run_agent(rec, model, system, brief, grant, steps, call, entry, limits, profile=None, effort='medium', workdir=None):
     """One provider run in a fresh context: ``system`` and ``brief`` and nothing else, the tools in ``grant`` through ``call``, a step
     budget, the output and time limits of the workspace. Returns what the agent said. Shared by a session's delegated roles and by
     unattended dispatch; ``entry`` is the run's cancel event and the child processes to stop on shutdown."""
@@ -328,6 +360,7 @@ def run_agent(rec, model, system, brief, grant, steps, call, entry, limits, prof
               'deadline': limits['deadline'], 'steps': steps, 'output_limit': limits['output'], 'provider_calls': limits['provider_calls'],
               'tools': [{'name': n, 'description': api.TOOLS[n].help, 'parameters': api.TOOLS[n].schema()} for n in sorted(grant)]}
     if profile: packet.update(endpoint=profile['endpoint'], tool_support=profile['tools'])
+    if workdir: packet.update(native=True, workdir=workdir)  # the CLI's own file and shell tools, in this folder
     provider = model.split(':', 1)[0]
     if provider == 'claude':
         with ToolBridge(call, packet['tools']) as bridge:
@@ -380,7 +413,7 @@ def dispatch_once(rec):
             return value if len(json.dumps(value)) <= 80000 else {'error': 'result exceeds context budget'}
         try:
             if not model.startswith(('ollama:', 'compatible:')): api.call('workspace_cloud_guard', rec)
-            run_agent(rec, model, got['system'], got['brief'], grant, got['steps'], call, entry, limits)
+            run_agent(rec, model, got['system'], got['brief'], grant, got['steps'], call, entry, limits, workdir=got.get('workdir') if got.get('native') else None)
         except ValueError as exc:
             return end('refused' if 'local-only' in str(exc) else 'failed', str(exc))
         except providers.ProviderError as exc:
@@ -411,6 +444,35 @@ class Dispatcher:
                 if self.last.get('kind'): wait = 5  # something was done: look again soon; the hourly limit keeps it bounded
             except Exception as exc:  # a failed look never stops the dispatcher
                 self.errors = (self.errors + [type(exc).__name__ + ': ' + str(exc)[:200]])[-10:]
+
+class JobWorker:
+    """The desktop's local engine worker: the render jobs the record queued for itself (lesson narration with Kokoro, animation
+    renders, handout PDFs) run one at a time, in the background, without anyone having to start them. `jobs` lists only commands
+    this program built (`automation.valid_job`); `run_job` claims each one and runs it outside the registry lock."""
+    def __init__(self, records, interval=30, first=20):
+        self.records, self.interval, self.first = records, interval, first
+        self.stop_event, self.errors, self.last = threading.Event(), [], None
+        self.thread = threading.Thread(target=self.loop, daemon=True, name='ros-jobs')
+    def start(self):
+        self.thread.start(); return self
+    def stop(self):
+        self.stop_event.set()
+    def busy(self):
+        with LOCK: return any(isinstance(key[1], str) and key[1].startswith('task:') for key in ACTIVE)
+    def once(self):
+        if self.busy(): return None  # one engine at a time: a narration render already uses the machine
+        for rec in self.records():
+            with api.LOCK: waiting = api.call('jobs', rec)
+            if waiting:
+                with api.LOCK: self.last = run_job(rec, waiting[0]['id'])
+                return self.last
+        return None
+    def loop(self):
+        wait = self.first
+        while not self.stop_event.wait(wait):
+            try: wait = 5 if self.once() else self.interval
+            except Exception as exc:  # a failed look never stops the worker
+                self.errors = (self.errors + [type(exc).__name__ + ': ' + str(exc)[:200]])[-10:]; wait = self.interval
 
 class ToolBridge:
     """A run-specific MCP HTTP endpoint. Its token grants only the already filtered tool callback."""

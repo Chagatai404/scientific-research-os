@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import re
 import uuid
 
-from . import director, modes, tasks, runs, sources, execution
+from . import director, dispatch, modes, tasks, runs, sources, execution, workbench
 
 
 def takes_effort(model):
@@ -13,7 +13,7 @@ def takes_effort(model):
     return provider == "codex" or provider == "claude" and any(family in name for family in ("sonnet", "opus"))
 
 
-def send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None):
+def send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None, answered=None):
     # A conversation keeps the mode it was started in; a follow-up that names another mode is refused, never downgraded.
     kept = (rec.node(conversation) or {}).get("mode", "chat") if conversation else None
     if mode and kept and mode != kept: raise ValueError(f'this conversation is in {kept} mode; start a new conversation for {mode}')
@@ -56,8 +56,20 @@ def send(rec, text, model, conversation=None, effort="medium", key=None, mode=No
         first, last = locator.get('startLine', 1), locator.get('endLine', 80)
         if not isinstance(first, int) or not isinstance(last, int) or first < 1 or last < first or last - first > 300: raise ValueError('invalid passage locator')
         attachments.append({**ref, 'text': '\n'.join(passage['text'].splitlines()[first-1:last])[:12000]})
+    if modes.mode(mode).native:
+        # A Code session's agent edits files and runs commands, so it needs a CLI that has those tools and a folder the person chose.
+        if not model.startswith(('claude:', 'codex:')): raise ValueError('A Code session runs on Claude Code or Codex: choose one of their models.')
+        if not workbench.repo(rec): raise ValueError("Choose this record's code folder first: a Code session works only in the repository you chose.")
+        if workbench.local_only(rec): raise ValueError('This code folder is in a local-only source and cannot be given to a cloud provider.')
     if not model.startswith(('ollama:', 'compatible:')): cloud_guard(rec)
     setup = None
+    if answered is not None:
+        # The learner answered on the lesson card, which recorded the attempt as theirs. This message only tells the tutor,
+        # so the run may not record a second answer for it (see runtime.execute).
+        # The lesson may live in another (linked) record, so the attempt is checked here only when it is in this one.
+        attempt = rec.event(answered) if isinstance(answered, str) and 0 < len(answered) <= 200 else False
+        if not conversation or mode not in ("learn", "defend") or attempt is False or attempt and (attempt["type"] != "attempt" or attempt["actor"] != "learner"):
+            raise ValueError("answered names the learner's attempt in a lesson of this learn or defend conversation")
     if conversation:
         if (rec.node(conversation) or {}).get("type") != "conversation": raise KeyError("no such conversation")
         if history(rec, conversation)["pending"]: raise ValueError("a response is still running in this conversation")
@@ -65,13 +77,17 @@ def send(rec, text, model, conversation=None, effort="medium", key=None, mode=No
             raise ValueError('This conversation includes local-only content and derived responses. Start a separate conversation for a cloud provider.')
     else:
         conversation = "conversation:" + uuid.uuid4().hex[:12]
-        if modes.mode(mode).engages: setup = director.engage(rec, text, kind=modes.mode(mode).engages)
-        rec.put_node(conversation, "conversation", title=text[:100], model=model, mode=mode)
+        if modes.mode(mode).engages:
+            setup = director.engage(rec, text, kind=modes.mode(mode).engages)
+            # The person is waiting for this lesson or investigation: its preparation goes before background work.
+            if setup.get("hub"): dispatch.focus(rec, setup["hub"], conversation)
+        where = {"hub": setup["hub"], "hub_record": setup.get("user_record") or setup.get("record")} if setup and setup.get("hub") else {}
+        rec.put_node(conversation, "conversation", title=text[:100], model=model, mode=mode, **where)
     request = "message:" + uuid.uuid4().hex
     for permission in permissions:execution.consume_vision_permission(rec,permission,request)
     scope=[{k:v for k,v in ref.items() if k!='visionPermission'} for ref in scope or []]
     sensitive = any(sources.get(rec, ref['sourceId'])['localOnly'] for ref in (scope or []))
-    rec.append("conversation.message", conversation, {"request": request, "text": text, "model": model, "effort": selected_effort, 'mode': mode, 'scope': scope or [], 'local_only': sensitive}, actor="person")
+    rec.append("conversation.message", conversation, {"request": request, "text": text, "model": model, "effort": selected_effort, 'mode': mode, 'scope': scope or [], 'local_only': sensitive, **({'answered': answered} if answered else {})}, actor="person")
     state = history(rec, conversation)
     context = {"record": rec.root.name, "goal": (rec.node(conversation) or {}).get("title"),
                "setup": {k: v for k, v in (setup or {}).items() if k in ("kind", "record", "hub", "for_you")},
@@ -79,8 +95,9 @@ def send(rec, text, model, conversation=None, effort="medium", key=None, mode=No
                "authority": "Human-only approval, decisions and waivers remain unchanged."}
     run = runs.enqueue(rec, key or request, conversation, request, model, mode, scope)
     context['attachments'] = attachments
+    if answered: context['answered'] = {"attempt": answered, "note": "The learner answered on the lesson card; the attempt is recorded. Do not call `answer`: call `next` and continue."}
     return {"conversation": conversation, "request": request, "run": run['id'], "state": "queued", "setup": context["setup"],
-            "_engine": {"action": "reply", "model": model, "effort": effort, "messages": [{"role": m["role"], "content": m["text"]}
+            "_engine": {"action": "reply", **({"answered": answered} if answered else {}), "model": model, "effort": effort, "messages": [{"role": m["role"], "content": m["text"]}
              for m in state["messages"] if m["role"] in ("user", "assistant")][-30:], "context": context,'images':images,'vision_profile':destination,'_vision_permissions':permissions}}
 
 
@@ -99,9 +116,23 @@ def history(rec, conversation):
             pending.pop(data["request"], None)
             messages.append({"id": event["id"], "role": "assistant" if event["type"].endswith("response") else "error",
                              "text": data["text"], "model": data.get("model"), "effort": data.get("effort"), "ts": event["ts"], 'scope':scopes.get(data['request'],[])})
-    saved_runs = {r['request']: r for r in runs.listing(rec, 500) if r['conversation'] == conversation}
+    listed = [r for r in runs.listing(rec, 500) if r['conversation'] == conversation]
+    saved_runs = {r['request']: r for r in listed}
     active = [request for request in pending if saved_runs.get(request, {}).get('state') in ('queued', 'running', 'waiting_for_input', 'waiting_for_approval')]
-    return {"conversation": conversation, "title": node["title"], "mode": node.get("mode", "chat"), "messages": messages[-100:], "pending": active, "interrupted": len(pending) - len(active)}
+    return {"conversation": conversation, "title": node["title"], "mode": node.get("mode", "chat"), "messages": messages[-100:], "pending": active,
+            "interrupted": len(pending) - len(active), "lesson": lesson(listed),
+            "plan": {"hub": node["hub"], "record": node.get("hub_record")} if node.get("hub") else None}
+
+
+def lesson(listed):
+    """The lesson a conversation's tutor last started, and the record it lives in: the lesson card follows it. Runs are
+    newest first; their committed `start` steps carry both."""
+    for run in listed:
+        for step in reversed(run.get('steps', [])):
+            result = step.get('result')
+            if step.get('tool') == 'start' and isinstance(result, dict) and str(result.get('lesson', '')).startswith('lesson:'):
+                return {"lesson": result['lesson'], "record": result.get('record')}
+    return None
 
 
 def complete(rec, conversation, request, text, model, error=False):

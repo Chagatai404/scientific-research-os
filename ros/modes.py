@@ -40,6 +40,7 @@ class Mode:
     reads: frozenset
     writes: frozenset
     engages: str | None  # the director kind that sets a record up for this mode, or None
+    native: bool = False  # the provider also gets its own file and shell tools, in the record's repository (Code)
 
 
 _READS = BASE_READS | RETAIN | FIND
@@ -51,9 +52,17 @@ MODES = {m.name: m for m in (
     Mode("learn", "learn",
          "The person's message is the learner's reply. Begin with `brief`, then `today`; start or continue a lesson with "
          "`start`; do exactly what `next` returns and then stop and wait for the learner: one question or one teaching block "
-         "per turn, and the learner's next message answers it. Call `answer` with `lesson` and `item` only; the system passes "
-         "the learner's own words, so never paraphrase or invent an answer. Teach live from the record's items and say so "
-         "until a prepared lesson exists. When a task from `work` names a skill, read it with `skill` first.",
+         "per turn. The app shows the lesson's current step on a lesson card under your message: the question with an "
+         "answer box, a confidence scale and \"I don't know\", or the prepared teaching (text, figures, narration, animation) "
+         "and the pedagogy actions. So never restate the question, its options or a key in your message and never ask the "
+         "learner to type the answer in chat: say in a sentence or two why this question comes now and point to the card. "
+         "When the learner answers on the card the attempt is already recorded (the context says `answered`): do not call "
+         "`answer`; call `next` and continue. When they answer in chat instead, call `answer` with `lesson` and `item` "
+         "only; the system passes their own words, never paraphrase or invent one. A `teach` step without prepared content "
+         "is yours to teach live, and say so: motivate, explain with LaTeX, test a limiting case, connect to what they hold, "
+         "and say which figure or animation would help (its preparation task is queued). Grade waiting free answers "
+         "(`item --reveal`, then `grade`) and answer open pedagogy requests (`pedagogy_history`, then `pedagogy_reply`) "
+         "before the next step. When a task from `work` names a skill, read it with `skill` first.",
          _READS, BASE_WRITES | LOOP | {"link", "delegate"}, "topic"),
     Mode("research", "research",
          "Work on the record's question, claims and evidence. You may add nodes, claims and items and request audits; you "
@@ -64,6 +73,17 @@ MODES = {m.name: m for m in (
          "Help the person own a claim: write defence items with `add_item`, practise them with `start --scope claim:<id>` "
          "and report ownership with `claim_status`. Recall is graded against the item's rubric; never suggest a waiver.",
          _READS, BASE_WRITES | LOOP | {"delegate"}, None),
+    Mode("build", "research",
+         "This is a Code session: you run as Claude Code or Codex with your own file and shell tools, in the repository this "
+         "record studies (`workbench_status` says which, its branch and what is already changed), and with the record's tools. "
+         "Do what the person asks there: read the code, change it, run the tests, run the experiment. Keep each change small "
+         "and say what you changed and how you checked it. Never push, never rewrite or reset history, never delete what you "
+         "did not create and never touch files outside the repository; commit only when the person asks. The app records the "
+         "files you changed as a change node in the graph when you finish. Record what a result means as you go: an "
+         "experiment or a finding as a node (`add_node`) linked to the question, hypothesis or claim it bears on (`add_edge`, "
+         "`link`), a claim with `add_claim` and the files of its numbers, and request its audits. You may not approve, decide, "
+         "waive or give a verdict. Find the person's earlier plans and runs first (`find`, `records`, `research`, `code`).",
+         _READS | {"workbench_status"}, BASE_WRITES | {"link", "delegate"}, None, native=True),
 )}
 NAMES = tuple(MODES)
 
@@ -91,6 +111,17 @@ ROLE_NAMES = tuple(ROLES)
 
 _FRONTMATTER = re.compile(r"\A---\n.*?\n---\n", re.S)
 DONT_KNOW = re.compile(r"^\s*(?:i\s+)?(?:do\s*n['’]?t|dont)\s+know\b|^\s*idk\b|^\s*no\s+idea\b|^\s*not\s+sure\b", re.I)
+
+
+# The other shipped skills and when a session reads one with the `skill` tool. A mode's own skill is in its prompt; `audit`
+# never runs in a session (an audit needs an agent that did not do the work).
+SKILL_USES = {
+    "notes-to-latex": "the person attaches an image or scan of handwritten notes, or asks to typeset them",
+    "prepare": "a lesson, handout, narration, item or visual is to be prepared, or a task from `work` names it",
+    "learn": "the person wants to learn, review or be quizzed on something in another kind of session",
+    "research": "the work turns into a question, a hypothesis, an experiment or a claim",
+    "defend": "the person wants to own a claim: practise defending it or walk through the code behind a number",
+}
 
 
 def mode(name: str) -> Mode:
@@ -164,6 +195,8 @@ def prompt(name: str, context: str, room: int, steps: int | None = None) -> str:
                      "in a fresh context and sees only the brief you write, so put the claim, the sources and the regime in "
                      "it; it returns a report and records nothing. Do not do that work yourself and call it independent. "
                      "Audits are never run in a session.")
+    others = [f"`{k}` when {v}" for k, v in SKILL_USES.items() if k != m.skill]
+    parts.append("Skills you read with the `skill` tool when they fit: " + "; ".join(others) + ".")
     if m.skill:
         text = skill(m.skill)["text"]
         parts.append(f"--- Skill: {m.skill} ---\n{text}\n--- End of skill ---" if len(text) <= room

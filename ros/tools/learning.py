@@ -126,11 +126,12 @@ def next_step(rec, lesson, scope=None, as_of=None):
       "dont_know=true instead of a response says \"I don't know\" (a miss, never a guess).",
       writes=True, lesson=P("string", "lesson id", True), item=P("string", "item hash", True),
       response=P("any", "the answer: option index or text, a number, or free text"),
-      dont_know=P("boolean", "the learner does not know"))
-def answer(rec, lesson, item, response=None, dont_know=False):
+      dont_know=P("boolean", "the learner does not know"),
+      confidence=P("integer", "how sure the learner is, given before feedback: 1 guessing ... 5 certain (a self-report, not evidence)"))
+def answer(rec, lesson, item, response=None, dont_know=False, confidence=None):
     if response is None and not dont_know:
         raise ValueError("answer needs a response or dont_know=true")
-    out = tutor.answer(rec, lesson, item, tutor.DONT_KNOW if dont_know else response)
+    out = tutor.answer(rec, lesson, item, tutor.DONT_KNOW if dont_know else response, confidence=confidence)
     out["next"] = next_step(rec, lesson)
     return out
 

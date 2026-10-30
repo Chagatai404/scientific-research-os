@@ -42,6 +42,16 @@ check the public release feed and download newer stable versions; a pop-up at la
   independent agent (literature scout, source verifier, adversary, librarian) that runs in a fresh context and reports
   back. A reply may make up to 40 tool calls in 10 minutes (Settings → Tool Steps and Deadline); when they run out the agent
   says what it read and what it did not, and "continue" carries on with a fresh budget.
+- **Code** sessions run Claude Code or Codex with their own file and shell tools in the folder you chose for the record
+  (`record_repo`): change code, run tests, run an experiment. Every edit and command shows in the conversation as it
+  happens; the agent is told never to push or rewrite history (Codex's sandbox holds it to the folder; for Claude Code the
+  refused commands are a deny-list, so watch its steps), and when it finishes the files and commits it changed are recorded
+  as a `change:` node in the graph, linked to the conversation and the project. It is a streamed agent run, not an
+  interactive terminal.
+- In a **Learn** session the lesson appears as a card under the tutor's message: the question with an answer box, a
+  confidence scale and "I don't know", or the prepared teaching (text, figures, narration, animation) with the pedagogy
+  actions, the phase and the study plan. What you ask for is prepared first, and the plan being built is shown until the
+  lesson starts.
 - **Sessions** (left column) lists your courses and projects. Create, rename and drag sessions into them; click the
   workspace name at the top to rename it. Archive what you no longer want visible: it is hidden, never deleted.
 - **Library** lists written material (notes, text, PDFs, Word and PowerPoint). Add a file, folder or Obsidian vault once;

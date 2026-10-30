@@ -59,12 +59,15 @@ def main():
     server.desktop_credential = secrets.token_hex(32)
     runtime.recover(rec)
     dispatcher = None if os.environ.get('ROS_NO_DISPATCH') else runtime.Dispatcher(rec).start()  # agents take waiting tasks (Settings pauses it)
+    # Lesson narration, animation renders and handout PDFs the records queued for themselves run here, one at a time.
+    jobs = None if os.environ.get('ROS_NO_JOBS') else runtime.JobWorker(server.pool.all).start()
     version = (Path(__file__).resolve().parents[1] / 'VERSION').read_text().strip()
     print(json.dumps({'protocol': PROTOCOL, 'version': version, 'port': server.server_address[1], 'credential': server.desktop_credential}), flush=True)
     def commands():
         for line in sys.stdin:
             if line.strip() == 'shutdown': break
         if dispatcher: dispatcher.stop()
+        if jobs: jobs.stop()
         runtime.shutdown()
         server.shutdown()
     threading.Thread(target=commands, daemon=True).start()
