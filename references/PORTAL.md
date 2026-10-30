@@ -74,7 +74,8 @@ handouts about it. Every note in the vault carries a link back to that page in i
 
 `GET /api/<tool>?record=<name>&...` for reads and `POST /api/<tool>` (JSON, `X-ROS: 1`) for writes: every tool, on any
 record of the home. `GET /media/...`, `GET /vault/...` (byte ranges), `GET /events` (server-sent `change`).
-`GET /events?record=<name>` watches only that record; omitting `record` watches the server's default record.
+`GET /events?record=<name>` watches that record and the records its map spans (`workspace_watched`: Knowledge and its
+linked projects), so agent work and decisions written there refresh the view; omitting `record` watches the server's default record.
 Record names accept plain or JSON-quoted strings, as API queries do. Unknown or invalid names return HTTP 400
 before the stream starts. Each stream sends an initial `change`, then polls only the selected record's event,
 node and edge file sizes; changes in another record do not trigger it. Idle polls send keep-alive comments.

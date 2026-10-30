@@ -454,14 +454,26 @@ def make_handler(rec: "Record | Pool"):
             self.send_header("Cache-Control", "no-cache")
             self.send_header("Connection", "close")
             self.end_headers()
-            files = [target.events_path, target.nodes_path, target.edges_path]
+            own = [target.events_path, target.nodes_path, target.edges_path]
+            # The map spans the records joined to this one (Knowledge and its projects), so what an agent or a decision writes
+            # there changes this view too. Links change rarely: they are looked up again every ten seconds.
+            def watched():
+                with api.LOCK:
+                    linked = api.call('workspace_watched', target)
+                return own + [Path(f) for f in linked]
+            files, looked = watched(), time.monotonic()
             last = None
             cursor = None
             try:
                 deadline = time.monotonic() + 600  # the page reconnects; no connection lives forever
                 while time.monotonic() < deadline and not getattr(self.server, 'closing', False):
+                    if time.monotonic() - looked > 10:
+                        files, looked = watched(), time.monotonic()
                     sizes = tuple(f.stat().st_size if f.exists() else 0 for f in files)
-                    if sizes != last:
+                    if last is not None and sizes[:len(own)] == last[:len(own)] and sizes != last:
+                        # Only a linked record changed: the map and the lists that span records refresh.
+                        self.wfile.write(f"event: change\ndata: {sum(sizes)}\n\n".encode()); self.wfile.flush(); last = sizes
+                    elif sizes != last:
                         with api.LOCK, target.reading():
                             if getattr(self.server, 'closing', False): break
                             delta = target.since(cursor, types=('run.queued', 'run.state', 'run.output', 'run.step','run.usage', 'conversation.message', 'conversation.response', 'conversation.error'))

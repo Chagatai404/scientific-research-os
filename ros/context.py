@@ -177,6 +177,21 @@ def _projects(rec: Record, as_of: date) -> list[dict]:
     return out
 
 
+def linked_roots(rec: Record) -> list:
+    """The folders of the records joined to this one (as ``linked`` opens them), without opening any: what a live view of a
+    map that spans them watches for changes."""
+    cfg, roots = home.config(rec.root), []
+    if cfg.get("role") == "user":
+        for name in home.projects():
+            root = home.home() / "projects" / name
+            c = home.config(root)
+            if c.get("role") == "project" and c.get("user") == rec.root.name and root.resolve() != rec.root.resolve():
+                roots.append(root)
+    elif cfg.get("user") and (home.home() / "projects" / cfg["user"]).is_dir():
+        roots.append(home.home() / "projects" / cfg["user"])
+    return roots
+
+
 @contextmanager
 def linked(rec: Record):
     """The record and the ones it is joined to: a user-wide record with every project and course linked to it, a project

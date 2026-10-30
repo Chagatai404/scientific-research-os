@@ -213,7 +213,10 @@ def resolve(rec: Record, target: str) -> dict:
 _HUB_RANK = {"course": 0, "subject": 1, "domain": 2, "project": 3, "goal": 4}
 _HUB_CATEGORY = {"course": "knowledge", "subject": "knowledge", "domain": "knowledge", "project": "research", "goal": "goals"}
 _TOPIC_CATEGORY = {"capability": "knowledge", "concept": "knowledge", "block": "knowledge", "question": "research",
-                   "hypothesis": "research", "claim": "research", "experiment": "research", "decision": "research"}
+                   "hypothesis": "research", "claim": "research", "experiment": "research", "decision": "research",
+                   "change": "research"}
+# What the person decided about a claim or a plan is an event on it, not a node; the map shows the latest on the node.
+_DECIDED = {"claim", "experiment", "hypothesis", "question"}
 _MATERIAL = {"source", "paper", "handout", "visual"}
 CATEGORIES = {"knowledge": ("Knowledge", "What you know and are learning: subjects, courses and the skills in them"),
               "research": ("Research", "The research you are conducting: projects and what they ask, test and claim"),
@@ -222,7 +225,7 @@ _MEANING = {"capability": "A skill or idea you can learn", "concept": "An idea",
             "question": "An open question", "hypothesis": "A proposed explanation", "experiment": "A planned or finished test",
             "decision": "A recorded decision", "goal": "Something you are working toward", "course": "A course you study",
             "subject": "A field you are learning", "domain": "A field of study", "project": "A research or software project",
-            "block": "A block of a course"}
+            "block": "A block of a course", "change": "A change an agent made to the project's code"}
 
 
 def _map_label(rec, node) -> str:
@@ -289,10 +292,14 @@ def _map_record(owner: Record, expand: str) -> dict:
             needs.append({"id": n["id"], "kind": n["type"], "reason": "Not connected to a course, project or goal yet."})
             continue
         parent = want[0] if want else ""
+        tip = str(n.get("summary") or n.get("text") or _MEANING.get(n["type"], n["type"]))
+        decided = owner.events(type="decision", subject=n["id"])[-1:] if n["type"] in _DECIDED else []
+        if decided:
+            tip = f"Decided: {decided[0]['data'].get('outcome')}. " + tip
         out[n["id"]] = {"id": n["id"], "label": label, "kind": n["type"], "role": "topic", "category": cat,
-                        "tip": str(n.get("summary") or n.get("text") or _MEANING.get(n["type"], n["type"]))[:220],
-                        "parent": parent, "cluster": parent or "category:" + cat, "weight": 0, "record": owner.root.name,
-                        "canonical": True, "material": 0}
+                        "tip": tip[:220], "parent": parent, "cluster": parent or "category:" + cat, "weight": 0,
+                        "record": owner.root.name, "canonical": True, "material": 0,
+                        **({"decision": decided[0]["data"].get("outcome")} if decided else {})}
     if expand in out and out[expand]["role"] == "hub":
         shown = 0
         for h in group[expand]:
