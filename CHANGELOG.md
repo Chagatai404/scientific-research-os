@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.7.1 (in progress): delete, tidy library, a live graph
+## 1.7.1: delete, a tidy library and a live graph
 
 - The graph follows your work. A view now also watches the records its map spans, so an outline, claim or code change an agent writes in Knowledge or a linked project, and a decision you record there, redraw it within a second. Deleting, moving or creating something in the window redraws it at once. Code changes (`change:`) appear under their project; a decided claim or plan carries a ring in the colour of the decision and says what was decided. When the graph grows it refits the view unless you have panned or zoomed, and a selected item that was removed is cleared.
 - Delete sessions, courses, projects and workspaces from the app. ⋯ › Delete hides a session, course or project with everything filed in it, and Recently deleted at the foot of the Sessions list restores it; the workspace menu deletes and restores whole workspaces (Knowledge cannot be deleted). Nothing is erased from the record or from your computer.
