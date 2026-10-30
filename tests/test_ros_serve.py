@@ -51,6 +51,33 @@ class ServeTests(unittest.TestCase):
         self.assertEqual((status, headers["Cache-Control"]), (200, "max-age=31536000, immutable"))
         self.assertEqual(self.req("GET", "/static/../serve.py")[0], 404)
 
+    def test_a_refused_request_cannot_smuggle_a_second_one_in_its_body(self):
+        # A web page sends a POST the server refuses (no X-ROS header) whose body is a complete second request that would pass
+        # every check. On a kept-alive connection that body must never be read as a request.
+        import socket
+        before = len(self.rec.nodes(type="concept"))
+        forged = json.dumps({"id": "concept:smuggled", "type": "concept", "data": {"title": "Smuggled"}}).encode()
+        inner = (f"POST /api/add_node HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\nX-ROS: 1\r\nContent-Type: application/json\r\n"
+                 f"Content-Length: {len(forged)}\r\n\r\n").encode() + forged
+        outer = (f"POST /api/add_node HTTP/1.1\r\nHost: 127.0.0.1:{self.port}\r\nContent-Type: text/plain\r\n"
+                 f"Origin: http://evil.example\r\nContent-Length: {len(inner)}\r\n\r\n").encode() + inner
+        with socket.create_connection(("127.0.0.1", self.port), timeout=3) as raw:
+            raw.sendall(outer)
+            received = b""
+            while True:
+                try:
+                    chunk = raw.recv(65536)
+                except TimeoutError:  # the connection was kept open: the body may have been taken as a request
+                    break
+                if not chunk:
+                    break
+                received += chunk
+        self.assertEqual(received.count(b"HTTP/1.1 "), 1, "one response, then the connection is closed")
+        self.assertIn(b"403", received.split(b"\r\n", 1)[0])
+        self.assertIsNone(self.rec.node("concept:smuggled")); self.assertEqual(len(self.rec.nodes(type="concept")), before)
+        # A chunked body (not parsed here) is refused rather than left on the connection.
+        self.assertEqual(self.req("POST", "/api/add_node", headers={"X-ROS": "1", "Transfer-Encoding": "chunked"})[0], 400)
+
     def test_foreign_host_is_refused(self):
         status, _, _ = self.req("GET", "/api/status", headers={"Host": "evil.example:80"})
         self.assertEqual(status, 403)

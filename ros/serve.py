@@ -170,6 +170,11 @@ def make_handler(rec: "Record | Pool"):
                              "media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src https://www.youtube-nocookie.com")
             for k, v in (extra or {}).items():
                 self.send_header(k, v)
+            # A refused request may leave its body unread on the connection, where it would be parsed as a second request
+            # (one a web page could shape to pass every check). So an error, and every write, ends the connection.
+            if status >= 400 or self.command == "POST":
+                self.send_header("Connection", "close")
+                self.close_connection = True
             self.end_headers()
             if self.command != "HEAD":
                 self.wfile.write(data)
@@ -246,6 +251,8 @@ def make_handler(rec: "Record | Pool"):
         def do_POST(self):
             if not self._allowed():
                 return
+            if self.headers.get("Transfer-Encoding"):  # only a declared Content-Length is read; anything else is refused
+                return self._send(HTTPStatus.BAD_REQUEST, {"error": "send the body with a Content-Length"})
             if self.headers.get("X-ROS") != "1":
                 return self._send(HTTPStatus.FORBIDDEN, {"error": "writes need the X-ROS header"})
             credential = getattr(self.server, 'desktop_credential', None)

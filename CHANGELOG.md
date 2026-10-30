@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.2 (in progress): security fixes
+
+- Security: a web page could make `ros serve` run write tools. A refused request left its body unread on the kept-alive connection, where it was read as a second request that passed every check (it carried the custom header and no Origin). Every refused request and every write now ends its connection, and a chunked body is refused. The desktop app was not affected (it requires its session secret). Reported privately by Matt Abate.
+
 ## 1.7.1: delete, a tidy library and a live graph
 
 - The graph follows your work. A view now also watches the records its map spans, so an outline, claim or code change an agent writes in Knowledge or a linked project, and a decision you record there, redraw it within a second. Deleting, moving or creating something in the window redraws it at once. Code changes (`change:`) appear under their project; a decided claim or plan carries a ring in the colour of the decision and says what was decided. When the graph grows it refits the view unless you have panned or zoomed, and a selected item that was removed is cleared.
