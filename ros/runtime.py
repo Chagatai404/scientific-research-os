@@ -431,6 +431,35 @@ class Dispatcher:
             except Exception as exc:  # a failed look never stops the dispatcher
                 self.errors = (self.errors + [type(exc).__name__ + ': ' + str(exc)[:200]])[-10:]
 
+class JobWorker:
+    """The desktop's local engine worker: the render jobs the record queued for itself (lesson narration with Kokoro, animation
+    renders, handout PDFs) run one at a time, in the background, without anyone having to start them. `jobs` lists only commands
+    this program built (`automation.valid_job`); `run_job` claims each one and runs it outside the registry lock."""
+    def __init__(self, records, interval=30, first=20):
+        self.records, self.interval, self.first = records, interval, first
+        self.stop_event, self.errors, self.last = threading.Event(), [], None
+        self.thread = threading.Thread(target=self.loop, daemon=True, name='ros-jobs')
+    def start(self):
+        self.thread.start(); return self
+    def stop(self):
+        self.stop_event.set()
+    def busy(self):
+        with LOCK: return any(isinstance(key[1], str) and key[1].startswith('task:') for key in ACTIVE)
+    def once(self):
+        if self.busy(): return None  # one engine at a time: a narration render already uses the machine
+        for rec in self.records():
+            with api.LOCK: waiting = api.call('jobs', rec)
+            if waiting:
+                with api.LOCK: self.last = run_job(rec, waiting[0]['id'])
+                return self.last
+        return None
+    def loop(self):
+        wait = self.first
+        while not self.stop_event.wait(wait):
+            try: wait = 5 if self.once() else self.interval
+            except Exception as exc:  # a failed look never stops the worker
+                self.errors = (self.errors + [type(exc).__name__ + ': ' + str(exc)[:200]])[-10:]; wait = self.interval
+
 class ToolBridge:
     """A run-specific MCP HTTP endpoint. Its token grants only the already filtered tool callback."""
     def __init__(self, call, tools):

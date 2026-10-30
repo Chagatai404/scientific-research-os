@@ -160,3 +160,30 @@ class Dispatch(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Jobs(unittest.TestCase):
+    """The desktop runs the render jobs its records queue (lesson narration, animation, PDFs) without anyone starting them."""
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        env = patch.dict(os.environ, {"ROS_HOME": str(root), "ROS_NO_VAULT": "1"}); env.start(); self.addCleanup(env.stop)
+        self.rec = Record(root / "projects" / "test"); self.addCleanup(self.rec.close); self.addCleanup(api.release)
+
+    def test_a_queued_narration_job_is_run_once_in_the_background_and_finished(self):
+        import sys
+        job = tasks.open_task(self.rec, "job", "bundle:x", "Speak the narration of bundle x", key="voice",
+                              data={"argv": [sys.executable, "-m", "ros", "-p", str(self.rec.root), "bundle_voice", "--bundle", "x"],
+                                    "cwd": str(self.rec.root), "timeout": 60})
+        ran = []
+        def fake(job, own=None): ran.append(job["id"]); time.sleep(.2); return {"ok": True, "code": 0, "output": "spoken", "seconds": .2}
+        with patch.object(runtime.runner.Runner, "_run", staticmethod(fake)):
+            worker = runtime.JobWorker(lambda: [self.rec])
+            self.assertEqual(worker.once()["job"], job)
+            self.assertIsNone(worker.once(), "one engine at a time")
+            for _ in range(50):
+                with api.LOCK:
+                    if tasks.get(self.rec, job)["state"] == "done": break
+                time.sleep(.1)
+        with api.LOCK: self.assertEqual(tasks.get(self.rec, job)["state"], "done")
+        self.assertEqual(ran, [job]); self.assertIsNone(worker.once(), "a finished job is not run again")
