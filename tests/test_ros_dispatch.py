@@ -98,6 +98,23 @@ class Dispatch(unittest.TestCase):
         self.assertEqual(self.state(background), "open", "past the limit only the focused work goes")
         self.assertIn("limit of 1", self.run_with(agent)["idle"])
 
+    def test_on_claude_code_or_codex_a_visual_is_made_in_the_bundle_folder_with_the_agents_own_tools(self):
+        visual = tasks.open_task(self.rec, "visual", "bundle:variance", "Draw the variance picture.", data={"bundle": "variance"}, key="v")
+        audit = self.open("audit", "a")
+        api.call("agents_configure", self.rec, model="claude:sonnet")
+        self.assertIn("visual", api.call("agents_status", self.rec)["waiting"]["automatic"])
+        seen = {}
+        def claude(request, emit, tool, cancel, own):
+            seen.update(native=request.get("native"), workdir=request.get("workdir"), system=request["system"])
+            (Path(request["workdir"]) / "variance.svg").write_text("<svg/>", encoding="utf-8")
+            tool("finish", {"result": "variance.svg, looked at"}, "s"); emit("Done."); return {}
+        with patch.dict(providers.ADAPTERS, {"claude": claude}):
+            outcome = runtime.dispatch_once(self.rec)
+        self.assertEqual((outcome["kind"], outcome["outcome"]), ("visual", "done"))
+        self.assertTrue(seen["native"]); self.assertEqual(Path(seen["workdir"]), self.rec.root / "bundles" / "variance")
+        self.assertTrue((self.rec.root / "bundles" / "variance" / "variance.svg").is_file())
+        self.assertIn("bundle folder", seen["system"]); self.assertEqual(self.state(audit), "open", "audits are never dispatched")
+
     def test_a_run_that_does_not_finish_is_recorded_and_a_task_failing_twice_is_left_alone(self):
         tid = self.open("outline", "o1")
         def lazy(request, emit, tool, cancel, own): emit("I thought about it."); return {}

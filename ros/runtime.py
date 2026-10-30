@@ -333,7 +333,7 @@ def execute(rec, result, request, legacy_engine=None):
         for record in opened.values(): record.close()
         with LOCK: ACTIVE.pop(key, None)
 
-def run_agent(rec, model, system, brief, grant, steps, call, entry, limits, profile=None, effort='medium'):
+def run_agent(rec, model, system, brief, grant, steps, call, entry, limits, profile=None, effort='medium', workdir=None):
     """One provider run in a fresh context: ``system`` and ``brief`` and nothing else, the tools in ``grant`` through ``call``, a step
     budget, the output and time limits of the workspace. Returns what the agent said. Shared by a session's delegated roles and by
     unattended dispatch; ``entry`` is the run's cancel event and the child processes to stop on shutdown."""
@@ -347,6 +347,7 @@ def run_agent(rec, model, system, brief, grant, steps, call, entry, limits, prof
               'deadline': limits['deadline'], 'steps': steps, 'output_limit': limits['output'], 'provider_calls': limits['provider_calls'],
               'tools': [{'name': n, 'description': api.TOOLS[n].help, 'parameters': api.TOOLS[n].schema()} for n in sorted(grant)]}
     if profile: packet.update(endpoint=profile['endpoint'], tool_support=profile['tools'])
+    if workdir: packet.update(native=True, workdir=workdir)  # the CLI's own file and shell tools, in this folder
     provider = model.split(':', 1)[0]
     if provider == 'claude':
         with ToolBridge(call, packet['tools']) as bridge:
@@ -399,7 +400,7 @@ def dispatch_once(rec):
             return value if len(json.dumps(value)) <= 80000 else {'error': 'result exceeds context budget'}
         try:
             if not model.startswith(('ollama:', 'compatible:')): api.call('workspace_cloud_guard', rec)
-            run_agent(rec, model, got['system'], got['brief'], grant, got['steps'], call, entry, limits)
+            run_agent(rec, model, got['system'], got['brief'], grant, got['steps'], call, entry, limits, workdir=got.get('workdir') if got.get('native') else None)
         except ValueError as exc:
             return end('refused' if 'local-only' in str(exc) else 'failed', str(exc))
         except providers.ProviderError as exc:

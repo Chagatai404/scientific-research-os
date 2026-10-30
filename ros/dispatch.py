@@ -9,8 +9,9 @@ never does: it keeps the choice, the limits and the ledger; the runtime runs the
 What is never dispatched, and why:
 - ``audit`` and ``verify`` end in a verdict, and an independent audit needs an agent that did not do the work; a person asks for one.
 - ``run`` executes an approved experiment: compute, files and a person's approval.
-- ``visual``, ``animation`` and ``video`` need a shell to render and look at the result, or the web; an agent with only record tools
-  cannot do them honestly, so they wait for a client that can (the gate keeps the lesson unready until they are done).
+- ``visual`` and ``animation`` need a shell to render the picture and look at it. They are taken only when agents run on Claude Code
+  or Codex, which then work with their own file and shell tools in the lesson's bundle folder (``NATIVE``); with any other model they
+  wait for a client that can (the gate keeps the lesson unready until they are done). ``video`` needs the web and a transcript.
 - ``job`` belongs to the runner.
 
 Standard library only; the runtime applies the grant, this module never calls a tool.
@@ -19,10 +20,12 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from . import director, home, modes, tasks
+from . import director, home, modes, prepare, tasks
 from .store import Record
 
 AUTO = ("grade", "answer", "outline", "ingest", "scout", "item", "narration", "bundle", "handout", "review")
+# Taken only by an agent with its own shell (Claude Code or Codex), working in the bundle's folder.
+NATIVE = ("visual", "animation")
 NEVER = {"audit": "an independent audit is asked for by a person, from a fresh agent",
          "verify": "it ends in a verdict, which an unattended agent does not give",
          "run": "it runs an experiment a person approved",
@@ -47,8 +50,10 @@ GRANTS = {
     "bundle": _READ | {"bundle_create", "bundle_plan", "bundle_file", "bundle_check", "bundle_tasks", "add_item"},
     "handout": _READ | {"handout_create", "handout_write", "handout_file", "handout_check"},
     "review": _READ | {"literature_search"},
+    "visual": _READ | {"bundle_plan", "bundle_file", "bundle_check"},
+    "animation": _READ | {"bundle_plan", "bundle_file", "bundle_check"},
 }
-STEPS = {"grade": 6, "answer": 6, "outline": 24, "ingest": 12, "scout": 10, "item": 16, "narration": 24, "bundle": 32, "handout": 24, "review": 12}
+STEPS = {"grade": 6, "answer": 6, "outline": 24, "ingest": 12, "scout": 10, "item": 16, "narration": 24, "bundle": 32, "handout": 24, "review": 12, "visual": 16, "animation": 16}
 DEADLINE = 900  # seconds one task may take
 ROLE_FILES = ("scout", "verifier", "librarian")
 
@@ -132,13 +137,24 @@ def skipped(rec: Record) -> list[str]:
     return sorted(t for t, n in _ledger(rec)["failures"].items() if n >= MAX_FAILURES)
 
 
+def shell(model_id: str | None) -> bool:
+    """Whether agents on this model have their own file and shell tools (the Claude Code and Codex CLIs)."""
+    return bool(model_id) and model_id.startswith(("claude:", "codex:"))
+
+
+def kinds(rec: Record) -> tuple[str, ...]:
+    """The task kinds the dispatcher takes with the model agents use now."""
+    return AUTO + (NATIVE if shell(model(rec)) else ())
+
+
 def waiting(rec: Record) -> dict:
     """What waits for an agent, split into what is dispatched here and what is left for a person or another client (with why)."""
     counts: dict[str, int] = {}
     for t in tasks.tasks(rec):
         counts[t["kind"]] = counts.get(t["kind"], 0) + 1
-    return {"automatic": {k: n for k, n in counts.items() if k in AUTO},
-            "left_for_you": {k: {"count": n, "why": NEVER[k]} for k, n in counts.items() if k in NEVER}}
+    taken = kinds(rec)
+    return {"automatic": {k: n for k, n in counts.items() if k in taken},
+            "left_for_you": {k: {"count": n, "why": NEVER[k]} for k, n in counts.items() if k in NEVER and k not in taken}}
 
 
 def claim(rec: Record, now: datetime | None = None) -> dict:
@@ -151,13 +167,21 @@ def claim(rec: Record, now: datetime | None = None) -> dict:
             return {"idle": allowed["reason"]}
         beyond = True
     by = f"agent:{allowed['model']}"
-    got = director.work(rec, by, list(AUTO), skip=skipped(rec), prefer=prefer, only_preferred=beyond)
+    got = director.work(rec, by, list(kinds(rec)), skip=skipped(rec), prefer=prefer, only_preferred=beyond)
     if beyond and not got.get("task"):
         return {"idle": allowed["reason"]}
     if not got.get("task"):
         return {"idle": got.get("message") or "Nothing waits for an agent."}
     task, kind = got["task"], got["task"]["kind"]
-    return {"by": by, "model": allowed["model"], "record": got["record"], "task": task, "kind": kind, "role": got["role"],
+    workdir = None
+    if kind in NATIVE:
+        # The agent renders and looks at the picture with its own tools, in the lesson's bundle folder and nowhere else.
+        with director.linked(rec) as records:
+            owner = next((r for r in records if r.root.name == got["record"]), rec)
+            folder = prepare.bundle_dir(owner, str(task.get("bundle") or ""))
+        folder.mkdir(parents=True, exist_ok=True)
+        workdir = str(folder)
+    return {"native": kind in NATIVE, "workdir": workdir, "by": by, "model": allowed["model"], "record": got["record"], "task": task, "kind": kind, "role": got["role"],
             "finish_with": got["finish_with"], "tools": sorted(GRANTS[kind] | {"finish"}), "steps": STEPS[kind], "deadline": DEADLINE,
             "reveal": kind == "grade", "system": system(got), "brief": brief(task, got)}
 
@@ -173,6 +197,11 @@ def system(got: dict) -> str:
         parts.append(f"--- Skill: {got['skill']} ---\n{modes.skill(got['skill'])['text']}\n--- End of skill ---")
     if got["role"] in ROLE_FILES:
         parts.append(modes.agent_text(got["role"]))
+    if got["task"]["kind"] in NATIVE:
+        parts.append("You have your own file and shell tools, and your working folder is this lesson's bundle folder: render "
+                     "the picture or the animation there (matplotlib, Mermaid, SVG or Manim, with what is installed), open the "
+                     "result and look at it, fix it, and write its RESULT note beside it. Work only in this folder; never touch "
+                     "anything outside it, never install system software. Then finish the task.")
     return "\n\n".join(parts)
 
 

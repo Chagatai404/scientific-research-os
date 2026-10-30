@@ -176,7 +176,7 @@ tool's choices come from that registry **(checked)**. Use deterministic event id
 Add it to `tasks.KINDS`, open it with `tasks.open_task(..., key=...)` (the key makes it idempotent), and describe in
 the relevant skill which agent takes it and which tool finishes it. Then decide whether the desktop may take it without
 anyone asking: either list it in `dispatch.AUTO` with its tool grant (`GRANTS`) and step budget (`STEPS`), or in
-`dispatch.NEVER` with the reason a person or a client with a shell must do it (`tests/test_ros_dispatch.py` fails until
+`dispatch.NEVER` with the reason a person or a client with a shell must do it (a kind that only needs a shell, like `visual` and `animation`, can also be in `dispatch.NATIVE`: taken when agents run on Claude Code or Codex, which then work with their own tools in the bundle folder) (`tests/test_ros_dispatch.py` fails until
 every kind is one or the other). Never grant `verdict`, a human-only tool, or a tool that holds the registry lock for
 minutes; long work stays a `job` task for the runner. `runtime.Dispatcher` runs one agent at a time in a fresh context,
 the agent finishes only its own task, and `agents_configure` (Settings) pauses it or limits it per hour.
