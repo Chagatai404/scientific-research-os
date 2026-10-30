@@ -40,6 +40,7 @@ class Mode:
     reads: frozenset
     writes: frozenset
     engages: str | None  # the director kind that sets a record up for this mode, or None
+    native: bool = False  # the provider also gets its own file and shell tools, in the record's repository (Code)
 
 
 _READS = BASE_READS | RETAIN | FIND
@@ -72,6 +73,17 @@ MODES = {m.name: m for m in (
          "Help the person own a claim: write defence items with `add_item`, practise them with `start --scope claim:<id>` "
          "and report ownership with `claim_status`. Recall is graded against the item's rubric; never suggest a waiver.",
          _READS, BASE_WRITES | LOOP | {"delegate"}, None),
+    Mode("build", "research",
+         "This is a Code session: you run as Claude Code or Codex with your own file and shell tools, in the repository this "
+         "record studies (`workbench_status` says which, its branch and what is already changed), and with the record's tools. "
+         "Do what the person asks there: read the code, change it, run the tests, run the experiment. Keep each change small "
+         "and say what you changed and how you checked it. Never push, never rewrite or reset history, never delete what you "
+         "did not create and never touch files outside the repository; commit only when the person asks. The app records the "
+         "files you changed as a change node in the graph when you finish. Record what a result means as you go: an "
+         "experiment or a finding as a node (`add_node`) linked to the question, hypothesis or claim it bears on (`add_edge`, "
+         "`link`), a claim with `add_claim` and the files of its numbers, and request its audits. You may not approve, decide, "
+         "waive or give a verdict. Find the person's earlier plans and runs first (`find`, `records`, `research`, `code`).",
+         _READS | {"workbench_status"}, BASE_WRITES | {"link", "delegate"}, None, native=True),
 )}
 NAMES = tuple(MODES)
 

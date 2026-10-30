@@ -48,7 +48,7 @@ def overview_map(rec, expand=""):
       writes=True, text=P("string", "the person's message", True), model=P("string", "provider:model", True),
       conversation=P("string", "existing conversation id; omit to start and frame a goal"),
       effort=P("string", "Codex reasoning effort; default medium", enum=("low", "medium", "high", "xhigh", "max")),
-      key=P("string", "turn idempotency key"), mode=P("string", "chat, learn, research or defend", enum=modes.NAMES), scope=P("array", "explicit versioned source passages"),
+      key=P("string", "turn idempotency key"), mode=P("string", "chat, learn, research, defend or build (Code)", enum=modes.NAMES), scope=P("array", "explicit versioned source passages"),
       answered=P("string", "the attempt the learner just recorded on the lesson card; the tutor may not record another for this message"))
 def chat_send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None, answered=None):
     return chat.send(rec, text, model, conversation, effort, key, mode, scope, answered)

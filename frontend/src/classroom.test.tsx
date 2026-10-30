@@ -44,3 +44,12 @@ test('a running turn shows its steps, with each delegated role grouped as indepe
   assert.deepEqual(rows, ['brief', 'Literature scout independent, fresh contextskill → literature search → report', 'Adversary independent, fresh contextclaims']);
   assert.match(doc.querySelector('summary')!.textContent!, /5 steps so far/);
 });
+
+test('a Code session shows each file edit and command the agent made in the repository', async () => {
+  const {RunSteps} = await import('./RunSteps');
+  const steps = [{tool: 'workbench_status', operation: 'a', result: {}}, {tool: 'native:Edit', operation: 'native/1', result: '{"file_path": "fit.py"}'},
+    {tool: 'native:command', operation: 'native/2', result: {command: 'pytest -q', exit: 1, output: '1 failed'}}];
+  const doc = new JSDOM(renderToStaticMarkup(<RunSteps steps={steps} />)).window.document;
+  assert.match(doc.querySelector('.role-step strong')!.textContent!, /In your repository/);
+  assert.deepEqual([...doc.querySelectorAll('.native-steps code')].map(c => c.textContent), ['Edit: {"file_path": "fit.py"}', 'command: $ pytest -q (exit 1)']);
+});

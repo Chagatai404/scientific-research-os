@@ -177,6 +177,13 @@ def execute(rec, result, request, legacy_engine=None):
     row = api.call('run_get', rec, run=run)
     private_scope = any(s.get('localOnly') for s in api.call('source_list',rec) if s['id'] in {ref.get('sourceId') for ref in row.get('scope',[])})
     allowed = set(api.call('session_grant', rec, mode=row['mode']))
+    native = bool(api.call('session_native', rec, mode=row['mode']))
+    seen_native, before = [0], {'git': False}
+    def observe(name, detail):
+        """A Code session's own file and shell actions, committed as run steps as they happen so the person sees them."""
+        seen_native[0] += 1
+        flush()
+        api.call('run_step', rec, run=run, operation=f'native/{seen_native[0]}', tool_name='native:' + str(name)[:60], result=detail)
     # The person's own latest words: what `answer` and `ask` record, whatever the model writes (see ros/modes.py).
     said = next((m['content'] for m in reversed(request.get('messages', [])) if m['role'] == 'user'), '')
     # A model's self-labelled reviewer cannot constitute independent audit. Audit verdicts are never offered.
@@ -283,6 +290,11 @@ def execute(rec, result, request, legacy_engine=None):
                               system=api.call('session_prompt', rec, mode=row['mode'], context=context, room=context_limit // 3, steps=limits['tool_steps']),
                               tools=[{'name': name, 'description': api.TOOLS[name].help, 'parameters': api.TOOLS[name].schema()} for name in sorted(allowed)])
                 packet.pop('_vision_permissions',None)
+                if native:
+                    status = api.call('workbench_status', rec)
+                    if not status.get('repo'): raise ValueError("Choose this record's code folder first.")
+                    before = api.call('workbench_snapshot', rec)
+                    packet.update(native=True, workdir=status['repo'], observe=observe, deadline=max(limits['deadline'], 1800))
                 # Character bound is explicit; original messages remain in the record.
                 total, messages = 0, []
                 for message in reversed(packet['messages']):
@@ -303,6 +315,10 @@ def execute(rec, result, request, legacy_engine=None):
             flush()
             if entry['cancel'].is_set(): return
             if not output.strip(): raise providers.ProviderError('The provider returned no text; no completion was inferred.')
+            if native:
+                change = api.call('workbench_record', rec, conversation=result['conversation'], run=run, before=before, summary=output[:4000])
+                if change.get('change'): emit(f"\n\nRecorded in the graph as {change['change']}: {len(change['files'])} files changed" + (f", {len(change['commits'])} commits" if change['commits'] else '') + '.')
+                flush()
             api.call('workspace_chat_complete', rec, conversation=result['conversation'], request=result['request'], text=output, model=request['model'])
             api.call('run_transition', rec, run=run, state='completed')
         finally: FOREGROUND.release()
