@@ -343,7 +343,8 @@ def sessions_listing(rec: Record) -> dict:
             rows += [dict(s, parent="", record=other.root.name, workspace=name) for s in organization.snapshot(other)["sessions"]]
     mine = {s["id"] for s in out["sessions"]}
     out["sessions"] = out["sessions"] + [r for r in rows if r["id"] not in mine]
-    used = {x["parent"] for x in out["folders"] + out["sessions"]}
+    # A linked project's hub stays listed while something here is filed in it: its sessions, folders or library material.
+    used = {x["parent"] for x in out["folders"] + out["sessions"] + out["library"]}
     out["folders"] = [f for f in out["folders"] if f["id"] not in hubs or f["id"] in used]
     return out
 

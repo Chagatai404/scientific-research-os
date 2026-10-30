@@ -53,7 +53,9 @@ check the public release feed and download newer stable versions; a pop-up at la
   actions, the phase and the study plan. What you ask for is prepared first, and the plan being built is shown until the
   lesson starts.
 - **Sessions** (left column) lists your courses and projects. Create, rename and drag sessions into them; click the
-  workspace name at the top to rename it. Archive what you no longer want visible: it is hidden, never deleted.
+  workspace name at the top to rename it. ⋯ › Delete removes a session, course or project (with what is filed in it) from your
+  lists, and Recently deleted brings it back; nothing is erased from the record. The workspace menu deletes and restores whole
+  workspaces the same way (Knowledge cannot be deleted). Papers added to a project's workspace are filed under that project.
 - **Library** lists written material (notes, text, PDFs, Word and PowerPoint). Add a file, folder or Obsidian vault once;
   it is shown at once and read in the background. Images, empty files and generated notes are left out.
 - **Learn** recommends a next step, plans your study from your own words or a piece of material, and runs probed lessons

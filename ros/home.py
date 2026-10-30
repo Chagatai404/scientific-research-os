@@ -17,9 +17,12 @@ def home() -> Path:
     return Path(os.environ.get("ROS_HOME") or Path.home() / "ResearchOS").expanduser()
 
 
-def projects() -> list[str]:
+def projects(deleted: bool = False) -> list[str]:
+    """The workspaces under the home. A workspace the person deleted is kept on disk (and can be restored) but left out,
+    unless ``deleted`` asks for exactly those."""
     base = home() / "projects"
-    return sorted(p.name for p in base.iterdir() if p.is_dir()) if base.is_dir() else []
+    names = sorted(p.name for p in base.iterdir() if p.is_dir()) if base.is_dir() else []
+    return [n for n in names if bool(config(base / n).get("deleted")) == deleted]
 
 
 def resolve(project: str | None = None, cwd: Path | None = None) -> Path:
@@ -78,7 +81,9 @@ def config(root: Path) -> dict:
 
 
 def set_config(root: Path, **fields) -> dict:
-    data = {**config(root), **{k: v for k, v in fields.items() if v is not None}}
+    """Merge ``fields`` into a record's ``record.json``; a field given as None is removed."""
+    data = {**config(root), **fields}
+    data = {k: v for k, v in data.items() if v is not None}
     path = Path(root) / CONFIG
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")

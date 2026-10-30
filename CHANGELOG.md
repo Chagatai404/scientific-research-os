@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.1 (in progress): delete, tidy library, a live graph
+
+- Delete sessions, courses, projects and workspaces from the app. ⋯ › Delete hides a session, course or project with everything filed in it, and Recently deleted at the foot of the Sessions list restores it; the workspace menu deletes and restores whole workspaces (Knowledge cannot be deleted). Nothing is erased from the record or from your computer.
+- Fixed: papers were not filed under their project. In a project's workspace all material sat in the Inbox (137 papers in AMS ECAL QML); material you have not filed yourself now sits in the workspace's project. In Knowledge, material filed under a linked project (161 AMS papers and notes) showed as Inbox because that project's folder was hidden; it is listed while anything is filed in it.
+
 ## 1.7.0: structured study sessions, Code sessions and lessons prepared when you ask
 
 - Every session's prompt now names the other skills and when to read them (handwritten notes to LaTeX, preparing lessons, learning, research, defending), and dispatched figure tasks get the visual-maker's own instructions. A test fails if a shipped skill or agent is reachable from nowhere; the auditor (an audit needs an agent that did not do the work) and the video scout (it needs the web) stay outside the desktop by design.
