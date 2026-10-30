@@ -9,13 +9,16 @@ import {useResource} from './hooks';
 import type {SourceRef} from './desktop';
 import type {Run} from './Workbench';
 import {modelLabel, useModelPreferences, type ModelCatalog} from './modelPreferences';
+import {Player} from './Learn';
+import {RunSteps} from './RunSteps';
+import './classroom.css';
 
 const SESSION_MODES = [{id: 'chat', label: 'Ask', hint: 'Look things up and talk it through. Nothing is started or changed.'},
   {id: 'learn', label: 'Learn', hint: 'A guided lesson: probe what you know, teach, then ask again, with reviews kept for later.'},
   {id: 'research', label: 'Research', hint: 'Work on a question: find your earlier plans and sources, then build claims and evidence.'},
   {id: 'defend', label: 'Defend', hint: 'Practise defending a claim until you own it.'}];
 
-interface Chat {conversation: string; title: string; mode?: string; messages: {id: string; role: string; text: string; model?: string;scope?:SourceRef[]}[]; pending: string[]; interrupted: number}
+interface Chat {conversation: string; title: string; mode?: string; messages: {id: string; role: string; text: string; model?: string;scope?:SourceRef[]}[]; pending: string[]; interrupted: number; lesson?: {lesson: string; record?: string | null} | null}
 
 export function Conversation({id, record}: {id: string; record: string}) {
   const capabilities = useResource('conversation-capabilities:' + record, () => service<ModelCatalog>('catalog?record=' + encodeURIComponent(record)));
@@ -117,6 +120,14 @@ export function Conversation({id, record}: {id: string; record: string}) {
       }
     } catch (e) {if (mounted.current) setError((e as Error).message);} finally {if (mounted.current) setSending(false); submitting.current = false;}
   }
+  // An answer on the lesson card is already recorded as the learner's; this message only hands the turn to the tutor.
+  async function notify(attempt: string, said: string) {
+    if (!id || pending || !models.selected) return;
+    try {
+      await call('workspace_chat_send', {text: 'On the lesson card I answered: ' + said, model: currentModel, conversation: id, answered: attempt, key: crypto.randomUUID(), ...(models.selectedEffort ? {effort: models.selectedEffort} : {})}, record, true);
+      runs.retry(); setChat(previous => previous && {...previous});
+    } catch (e) {setError((e as Error).message);}
+  }
   async function speak(messageId: string, value: string) {
     if (speaking) return;
     setSpeaking(messageId); setError('');
@@ -160,7 +171,8 @@ export function Conversation({id, record}: {id: string; record: string}) {
     {!id && <Graph record={record} focus="" embedded />}
     {id && <div className="conversation-heading"><div><div className="eyebrow">An ongoing conversation</div><h1>{chat?.title || 'Let’s work through it'}</h1></div><a className="button" href={href('overview', '', record)}>New conversation</a></div>}
     {chat && <div className="messages" aria-label="Conversation messages">{chat.messages.map(message => <article className={'message ' + message.role} key={message.id}><div className="message-meta">{message.role === 'user' ? 'You' : message.role === 'error' ? 'Could not complete' : message.model?.split(':')[0] || 'Research OS'}</div><RichText text={message.text} prefix={message.id} record={record} />{message.role==='assistant'&&message.scope?.some(ref=>ref.kind==='media')&&<button onClick={async()=>{const ref=message.scope!.find(ref=>ref.kind==='media')!;try{await call('transcription_draft',{source:ref.sourceId,path:ref.relativePath,revision:ref.revision,text:message.text,by:message.model||'tutor'},record,true);setError('Transcription draft saved. Review it beside the original in Sources.');}catch(e){setError((e as Error).message);}}}>Save Transcription Draft</button>}{message.role === 'assistant' && capabilities.data?.voice.kokoro && <button className="read-message" disabled={!!speaking} onClick={() => speak(message.id, message.text)}>{speaking === message.id ? 'Preparing Kokoro audio…' : 'Listen · Kokoro'}</button>}</article>)}
-      {pending && activeRun?.output && <div className="stream-output" aria-label="Partial response"><RichText text={activeRun.output} record={record}/></div>}{pending && <div className="thinking" role="status"><span className="pulse-dot" /> {activeRun?.state === 'queued' ? 'Queued for the foreground worker…' : 'Working on your question…'} <small>Your message is saved.</small></div>}{chat.interrupted > 0 && <p className="notice">A previous response was interrupted. You can send a follow-up to continue.</p>}<div ref={end} /></div>}
+      {pending && activeRun && activeRun.steps.length > 0 && <RunSteps steps={activeRun.steps} />}{pending && activeRun?.output && <div className="stream-output" aria-label="Partial response"><RichText text={activeRun.output} record={record}/></div>}{pending && <div className="thinking" role="status"><span className="pulse-dot" /> {activeRun?.state === 'queued' ? 'Queued for the foreground worker…' : 'Working on your question…'} <small>Your message is saved.</small></div>}{chat.interrupted > 0 && <p className="notice">A previous response was interrupted. You can send a follow-up to continue.</p>}<div ref={end} /></div>}
+    {id && chat?.lesson && <Player key={chat.lesson.lesson} id={chat.lesson.lesson} record={chat.lesson.record || record} embedded refresh={chat.messages.length} onAnswered={notify} />}
     <div className="session-dock">{!id && <div className="mode-picker" role="group" aria-label="Session type">{SESSION_MODES.map(m => <button type="button" key={m.id} aria-pressed={mode === m.id} title={m.hint} onClick={() => setMode(m.id)}>{m.label}</button>)}<small className="muted">{SESSION_MODES.find(m => m.id === mode)?.hint}</small></div>}{id && chat && chat.mode && chat.mode !== 'chat' && <p className="mode-badge muted">{SESSION_MODES.find(m => m.id === chat.mode)?.label ?? chat.mode} session</p>}{!id && <nav className="home-actions" aria-label="Quick starts">{preference('last', '') && <a href={preference('last', '')}>Continue where you were</a>}<a href={href('library', '', record)}>Add material</a><a href={href('learn', '', record)}>Learn something</a><a href={href('research', '', record)}>Investigate a question</a></nav>}{newOutput &&<button type="button" onClick={()=>{follow.current=true;setNewOutput(false);end.current?.scrollIntoView({block:"nearest"});}}>New Output ↓</button>}{attachments.length > 0 && <ul className="attachment-chips" aria-label="Attached to this message">{attachments.map((attachment, index) => <li className="attachment-chip" key={attachment.sourceId + attachment.relativePath + attachment.revision}><span className="chip-name" title={attachment.relativePath}>{chipName(attachment)}</span><small>{chipKind(attachment)} · {attachment.localOnly ? 'Stays on this computer' : 'May be sent to the chosen model'}</small>
       {attachment.kind === 'media' && !currentModel.startsWith('ollama:') && (attachment.localOnly ? <small className="chip-warning">This file stays on this computer. Choose a local model to let it read this file.</small> : <><small>Sending to {modelLabel(currentModel, capabilities.data?.models)}. Your permission covers this version of the file for one message within 10 minutes.</small><button type="button" onClick={() => permitAttachment(index)}>{attachment.visionPermission && attachment.permissionModel === currentModel ? 'Renew permission' : 'Allow this file to be sent'}</button></>)}
       <button type="button" className="chip-remove" aria-label={`Remove ${chipName(attachment)}`} onClick={() => setAttachments(attachments.filter((_, i) => i !== index))}>×</button></li>)}</ul>}<form className="goal-composer chat-composer" onSubmit={send}><label className="sr-only" htmlFor="chat-input">Your message</label><textarea id="chat-input" rows={2} value={text} onChange={e => {setText(e.target.value); savePreference(draftKey, e.target.value);}} placeholder={id ? 'Follow your thinking…' : 'What would you like to understand or investigate?'} required maxLength={12000} onKeyDown={e => {if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {e.preventDefault(); e.currentTarget.form?.requestSubmit();}}} />
@@ -178,3 +190,4 @@ export function Conversation({id, record}: {id: string; record: string}) {
     {id && <p className="quiet-note"><a href={href('research', '', record)}>See preparation, evidence & next actions →</a></p>}
   </div>;
 }
+

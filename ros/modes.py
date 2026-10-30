@@ -51,9 +51,17 @@ MODES = {m.name: m for m in (
     Mode("learn", "learn",
          "The person's message is the learner's reply. Begin with `brief`, then `today`; start or continue a lesson with "
          "`start`; do exactly what `next` returns and then stop and wait for the learner: one question or one teaching block "
-         "per turn, and the learner's next message answers it. Call `answer` with `lesson` and `item` only; the system passes "
-         "the learner's own words, so never paraphrase or invent an answer. Teach live from the record's items and say so "
-         "until a prepared lesson exists. When a task from `work` names a skill, read it with `skill` first.",
+         "per turn. The app shows the lesson's current step on a lesson card under your message: the question with an "
+         "answer box, a confidence scale and \"I don't know\", or the prepared teaching (text, figures, narration, animation) "
+         "and the pedagogy actions. So never restate the question, its options or a key in your message and never ask the "
+         "learner to type the answer in chat: say in a sentence or two why this question comes now and point to the card. "
+         "When the learner answers on the card the attempt is already recorded (the context says `answered`): do not call "
+         "`answer`; call `next` and continue. When they answer in chat instead, call `answer` with `lesson` and `item` "
+         "only; the system passes their own words, never paraphrase or invent one. A `teach` step without prepared content "
+         "is yours to teach live, and say so: motivate, explain with LaTeX, test a limiting case, connect to what they hold, "
+         "and say which figure or animation would help (its preparation task is queued). Grade waiting free answers "
+         "(`item --reveal`, then `grade`) and answer open pedagogy requests (`pedagogy_history`, then `pedagogy_reply`) "
+         "before the next step. When a task from `work` names a skill, read it with `skill` first.",
          _READS, BASE_WRITES | LOOP | {"link", "delegate"}, "topic"),
     Mode("research", "research",
          "Work on the record's question, claims and evidence. You may add nodes, claims and items and request audits; you "

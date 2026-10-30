@@ -45,20 +45,38 @@ def close(rec: Record, lesson: str, summary: str = "", actor: str = "tutor") -> 
     return {"lesson": lesson, "closed": True}
 
 
-def answer(rec: Record, lesson: str, item_id: str, response, actor: str = "learner") -> dict:
-    """Record an answer. Returns the verdict when the item has a key, with the feedback for the chosen option or the
-    numeric hint, and the explanation; otherwise ``pending`` and the id of the grading task."""
+CONFIDENCE = {1: "guessing", 2: "unsure", 3: "fairly sure", 4: "sure", 5: "certain"}
+
+
+def _confidence(rec: Record, lesson: str, item_id: str, attempt: dict, level, actor: str) -> None:
+    """How sure the learner said they were, given before any feedback and bound to the attempt. It is a self-report for
+    calibration, never learning evidence: the learner model and the schedule read grades only."""
+    if level is None:
+        return
+    if isinstance(level, bool) or not isinstance(level, int) or level not in CONFIDENCE:
+        raise ValueError("confidence is 1 (guessing) to 5 (certain)")
+    rec.append("confidence", item_id, {"lesson": lesson, "attempt": attempt["id"], "level": level}, actor=actor)
+
+
+def answer(rec: Record, lesson: str, item_id: str, response, actor: str = "learner", confidence: int | None = None) -> dict:
+    """Record an answer, and the learner's confidence when given. Returns the verdict when the item has a key, with the
+    feedback for the chosen option or the numeric hint, and the explanation; otherwise ``pending`` and the id of the
+    grading task."""
     item = rec.item(item_id)
     if item is None:
         raise KeyError(f"no item {item_id}")
+    if confidence is not None and (isinstance(confidence, bool) or not isinstance(confidence, int) or confidence not in CONFIDENCE):
+        raise ValueError("confidence is 1 (guessing) to 5 (certain)")
     if response is DONT_KNOW:
         # Saying so is better than guessing: it counts as a miss, needs no grader, and shows the explanation.
         attempt = rec.append("attempt", item_id, {"lesson": lesson, "response": None, "dont_know": True}, actor=actor)
+        _confidence(rec, lesson, item_id, attempt, confidence, actor)
         rec.append("grade", item_id, {"lesson": lesson, "attempt": attempt["id"], "verdict": "incorrect"},
                    actor="checker")
         return {"attempt": attempt["id"], "item": item_id, "verdict": "incorrect", "dont_know": True,
                 "explanation": item.get("explanation")}
     attempt = rec.append("attempt", item_id, {"lesson": lesson, "response": response}, actor=actor)
+    _confidence(rec, lesson, item_id, attempt, confidence, actor)
     verdict = check(item, response)
     out = {"attempt": attempt["id"], "item": item_id, "verdict": verdict or "pending"}
     if verdict is None:

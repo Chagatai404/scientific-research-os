@@ -200,6 +200,7 @@ def execute(rec, result, request, legacy_engine=None):
             api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
             return value
         if name == 'answer':
+            if request.get('answered'): raise ValueError('the learner already answered this step on the lesson card and it is recorded; call `next` and continue')
             if not said.strip(): raise ValueError('the learner has not written an answer yet')
             if budget.get('answers'): raise ValueError('one answer per message: show the next step and wait for the learner')
             budget['answers'] = 1
@@ -226,6 +227,8 @@ def execute(rec, result, request, legacy_engine=None):
                     raise ValueError('The claimed task record is unavailable; inspect the task before continuing.')
         if isinstance(value,dict) and value.get('_operation'):
             value=execute_operation(target,value['_operation'])
+        # The conversation's lesson card opens the lesson where it lives (see conversation.lesson).
+        if name == 'start' and isinstance(value, dict) and 'lesson' in value: value = dict(value, record=target.root.name)
         if len(json.dumps(value)) > 80000: value = {'error': 'result exceeds context budget; inspect the operation in Research'}
         api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
         return value

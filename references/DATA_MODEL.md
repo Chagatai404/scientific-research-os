@@ -110,6 +110,7 @@ addresses, decides, relates.
 | `retrieval` | capability | day, period, timing, method, outcome, assistance, evidence, review (imported learning history) |
 | `lesson.start`, `lesson.close` | lesson | title, scope / summary |
 | `attempt` | item | lesson, response (or `dont_know`) |
+| `confidence` | item | lesson, attempt, level (1 guessing to 5 certain), given before feedback: a self-report for calibration, never learning evidence |
 | `grade` | item | lesson, attempt, verdict, feedback, criteria_met |
 | `hint`, `reveal` | item | lesson, index |
 | `teach` | capability | lesson, mode, content |

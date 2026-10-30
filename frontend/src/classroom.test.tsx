@@ -34,3 +34,13 @@ test('classroom keeps one active learner step, optional history and compact cont
   assert.match(doc.querySelector('.classroom-history')!.textContent!, /Session historyYou asked: Why\?/);
   assert.doesNotMatch(html, /confidence|answer_key|rubric/);
 });
+
+test('a running turn shows its steps, with each delegated role grouped as independent work', async () => {
+  const {RunSteps} = await import('./RunSteps');
+  const steps = [{tool: 'brief', operation: 'a', result: {}}, {tool: 'scout:skill', operation: 'b/1', result: {}}, {tool: 'scout:literature_search', operation: 'b/2', result: {}},
+    {tool: 'delegate', operation: 'b', result: {role: 'scout', report: '{}'}}, {tool: 'adversary:claims', operation: 'c/1', result: {}}];
+  const doc = new JSDOM(renderToStaticMarkup(<RunSteps steps={steps} />)).window.document;
+  const rows = [...doc.querySelectorAll('li')].map(li => li.textContent);
+  assert.deepEqual(rows, ['brief', 'Literature scout independent, fresh contextskill → literature search → report', 'Adversary independent, fresh contextclaims']);
+  assert.match(doc.querySelector('summary')!.textContent!, /5 steps so far/);
+});

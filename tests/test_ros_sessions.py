@@ -82,6 +82,34 @@ class Sessions(unittest.TestCase):
         self.assertEqual(attempts[0]["data"]["response"], "8"); self.assertFalse(attempts[0]["data"].get("dont_know"))
         self.assertEqual(results["answer"]["verdict"], "correct")
 
+    def test_an_answer_on_the_lesson_card_is_one_attempt_with_its_confidence_and_the_tutor_cannot_add_another(self):
+        started = {}
+        def first(request, emit, tool, cancel, own):
+            started.update(tool("start", {"scope": CAP}, "op-start")); emit("Here is your first probe."); return {}
+        turn = self.run_turn("Teach me variance", first)
+        lesson = api.call("workspace_chat", self.rec, conversation=turn["conversation"])["lesson"]
+        self.assertEqual(lesson, {"lesson": started["lesson"], "record": self.rec.root.name}, "the card follows the started lesson")
+        # The card records the learner's own answer and confidence, then tells the tutor.
+        out = api.call("answer", self.rec, lesson=started["lesson"], item=started["next"]["item"], response="8", confidence=2)
+        with self.assertRaisesRegex(ValueError, "1 \\(guessing\\) to 5"):
+            api.call("answer", self.rec, lesson=started["lesson"], item=started["next"]["item"], response="8", confidence=9)
+        seen = {}
+        def second(request, emit, tool, cancel, own):
+            seen["context"] = request["context"].get("answered")
+            with self.assertRaisesRegex(ValueError, "already answered this step on the lesson card"):
+                tool("answer", {"lesson": started["lesson"], "item": started["next"]["item"], "response": "999"}, "op-answer")
+            tool("next", {"lesson": started["lesson"]}, "op-next"); emit("Good: now the teaching block."); return {}
+        sent = api.call("workspace_chat_send", self.rec, text="On the lesson card I answered: 8 (confidence: unsure)", model="ollama:fixture",
+                        conversation=turn["conversation"], answered=out["attempt"])
+        with patch.dict(providers.ADAPTERS, {"ollama": second}):
+            runtime.execute(self.rec, sent, sent["_engine"])
+        self.assertEqual(seen["context"]["attempt"], out["attempt"])
+        self.assertEqual([e["data"]["response"] for e in self.rec.events(type="attempt")], ["8"])
+        confidence = self.rec.events(type="confidence")
+        self.assertEqual([(e["data"]["attempt"], e["data"]["level"]) for e in confidence], [(out["attempt"], 2)])
+        with self.assertRaisesRegex(ValueError, "learn or defend"):
+            api.call("workspace_chat_send", self.rec, text="x", model="ollama:fixture", conversation=turn["conversation"], answered="not-an-attempt-" + "x" * 300)
+
     def test_an_answer_needs_the_learner_to_have_written_one_and_dont_know_is_theirs_to_say(self):
         started = {}
         def first(request, emit, tool, cancel, own):
