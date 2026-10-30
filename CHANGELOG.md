@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Every session's prompt now names the other skills and when to read them (handwritten notes to LaTeX, preparing lessons, learning, research, defending), and dispatched figure tasks get the visual-maker's own instructions. A test fails if a shipped skill or agent is reachable from nowhere; the auditor (an audit needs an agent that did not do the work) and the video scout (it needs the web) stay outside the desktop by design.
 - Lesson figures and animations are made without you: when agents run on Claude Code or Codex, the dispatcher gives `visual` and `animation` tasks to them, and they render the picture in the lesson's bundle folder with their own tools, look at it and write its note. With other models these tasks still wait, and the plan card says why.
 - Fixed: the desktop app never ran the render jobs its records queue for themselves, so lesson narration (Kokoro audio) and animation renders waited forever. They now run in the background, one at a time (`ROS_NO_JOBS=1` turns this off).
 - Code sessions: a fifth session type runs Claude Code or Codex in the repository you chose for the record, with their own file and shell tools (Codex sandboxed to the folder; Claude Code with edits accepted and push, reset, clean, rebase and similar refused). Each edit and command appears in the conversation as it happens, and when the run finishes the changed files and commits are recorded as a `change:` node in the graph, linked to the conversation and the project. It is a streamed agent run, not an interactive terminal.

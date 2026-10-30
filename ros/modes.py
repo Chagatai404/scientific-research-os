@@ -113,6 +113,17 @@ _FRONTMATTER = re.compile(r"\A---\n.*?\n---\n", re.S)
 DONT_KNOW = re.compile(r"^\s*(?:i\s+)?(?:do\s*n['’]?t|dont)\s+know\b|^\s*idk\b|^\s*no\s+idea\b|^\s*not\s+sure\b", re.I)
 
 
+# The other shipped skills and when a session reads one with the `skill` tool. A mode's own skill is in its prompt; `audit`
+# never runs in a session (an audit needs an agent that did not do the work).
+SKILL_USES = {
+    "notes-to-latex": "the person attaches an image or scan of handwritten notes, or asks to typeset them",
+    "prepare": "a lesson, handout, narration, item or visual is to be prepared, or a task from `work` names it",
+    "learn": "the person wants to learn, review or be quizzed on something in another kind of session",
+    "research": "the work turns into a question, a hypothesis, an experiment or a claim",
+    "defend": "the person wants to own a claim: practise defending it or walk through the code behind a number",
+}
+
+
 def mode(name: str) -> Mode:
     if name not in MODES:
         raise ValueError("choose " + ", ".join(NAMES[:-1]) + " or " + NAMES[-1])
@@ -184,6 +195,8 @@ def prompt(name: str, context: str, room: int, steps: int | None = None) -> str:
                      "in a fresh context and sees only the brief you write, so put the claim, the sources and the regime in "
                      "it; it returns a report and records nothing. Do not do that work yourself and call it independent. "
                      "Audits are never run in a session.")
+    others = [f"`{k}` when {v}" for k, v in SKILL_USES.items() if k != m.skill]
+    parts.append("Skills you read with the `skill` tool when they fit: " + "; ".join(others) + ".")
     if m.skill:
         text = skill(m.skill)["text"]
         parts.append(f"--- Skill: {m.skill} ---\n{text}\n--- End of skill ---" if len(text) <= room

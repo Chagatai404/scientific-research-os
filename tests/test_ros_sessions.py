@@ -45,6 +45,17 @@ class Sessions(unittest.TestCase):
         self.assertEqual({t for t in modes.grant("chat") if api.TOOLS[t].writes}, {"brief", "bundle_plan"}, "a conversation writes nothing else")
         with self.assertRaises(ValueError): modes.mode("wander")
 
+    def test_every_shipped_skill_and_agent_has_a_place_where_it_is_used(self):
+        from ros import dispatch, tasks
+        used = {m.skill for m in modes.MODES.values() if m.skill} | set(modes.SKILL_USES) | {g["skill"] for g in tasks.GUIDE.values() if g.get("skill")}
+        self.assertEqual(set(modes.skills()) - used, set(), "a skill no session, task or prompt ever reaches")
+        self.assertIn("notes-to-latex", modes.prompt("learn", "{}", 100)); self.assertIn("notes-to-latex", modes.prompt("chat", "{}", 100))
+        agents = {p.stem for p in (modes.REPO / "agents").glob("*.md")}
+        # An audit needs an agent that did not do the work, and a video needs the web: both are asked for outside the desktop.
+        outside = {"auditor", "video-scout"}
+        self.assertEqual(agents - set(modes.ROLES) - set(dispatch.ROLE_FILES) - outside, set(), "an agent nothing hands work to")
+        self.assertNotIn("auditor", modes.ROLES, "audits never run in a session")
+
     def test_a_learn_session_carries_the_skill_and_the_whole_teaching_loop(self):
         seen = {}
         def provider(request, emit, tool, cancel, own):

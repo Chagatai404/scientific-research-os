@@ -55,7 +55,7 @@ GRANTS = {
 }
 STEPS = {"grade": 6, "answer": 6, "outline": 24, "ingest": 12, "scout": 10, "item": 16, "narration": 24, "bundle": 32, "handout": 24, "review": 12, "visual": 16, "animation": 16}
 DEADLINE = 900  # seconds one task may take
-ROLE_FILES = ("scout", "verifier", "librarian")
+ROLE_FILES = ("scout", "verifier", "librarian", "visual-maker")
 
 
 def config(rec: Record) -> dict:
