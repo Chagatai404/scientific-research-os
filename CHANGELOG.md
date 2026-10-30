@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.7.2 (in progress): security fixes
+## 1.7.2: security fixes
 
 - Fixed: a message longer than half the model's context was dropped, and the model was sent no messages at all. The newest message is now always sent, and the budget trims only older ones (#21).
 - Fixed: a source's `.gitignore` lines anchored at the root (`/data/`) were not honoured, and a folder line (`build_output/`) did not hide that folder deeper down for a direct path. Both now hide what git hides, in listings and when opening a path (#22).
