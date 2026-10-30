@@ -981,6 +981,8 @@ def migrate_check(rec: Record, vault: Path | str | None = None) -> dict:
     """Read-only: is everything in the vault accounted for, and has anything been added or changed since the last migration?
     Re-reads the vault's files (not its notes) against the manifest the migration kept."""
     chosen = vault or home.config(rec.root).get("legacy_vault")
+    if chosen and str(chosen).replace("/", chr(92)).startswith(chr(92) * 2):
+        raise ValueError("a vault on a network share is not checked: copy it to this computer first")
     if not chosen or not Path(chosen).is_dir():
         raise ValueError("no vault to check: pass vault=, or migrate one first")
     vault = Path(chosen).resolve()

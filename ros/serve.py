@@ -193,6 +193,10 @@ def make_handler(rec: "Record | Pool"):
                 return
             url = urlparse(self.path)
             path = unquote(url.path)
+            # Another site may open the portal's pages (a link) but may not read, fetch, embed or trigger anything else here:
+            # an <img> pointed at a tool would otherwise start processes or reach the person's files.
+            if self.headers.get("Sec-Fetch-Site") in ("cross-site", "same-site") and path not in PAGES:
+                return self._send(HTTPStatus.FORBIDDEN, {"error": "the portal serves its own pages only"})
             credential = getattr(self.server, 'desktop_credential', None)
             if credential and not secrets.compare_digest(self.headers.get('X-ROS-Session', ''), credential):
                 return self._send(HTTPStatus.FORBIDDEN, {'error': 'desktop session required'})
@@ -207,13 +211,14 @@ def make_handler(rec: "Record | Pool"):
             if path == '/services/owned-work':
                 return self._send(200,{'result':{'active':len(runtime.ACTIVE),'indexing':sum(j['state'] in ('queued','indexing') for j in runtime.INDEX_JOBS.values())}})
             if path == '/source-media':
+                if not self._human(): return self._send(HTTPStatus.FORBIDDEN, {'error': HUMAN_ONLY})
                 args = {k: _arg(v[-1]) for k, v in parse_qs(url.query).items()}
                 try:
                     target = pool.get(args.get('record'))
                     result = api.call('source_location', target, source=args['source'], path=args.get('path', ''))
                     file = Path(result['path'])
                     if file.suffix.lower() not in {'.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.wav', '.mp3', '.mp4', '.webm'}: raise ValueError('unsupported media type')
-                    return self._file(file, cache=False, base=file.parent)
+                    return self._file(file, cache=False, base=file.parent, untrusted=True)
                 except (OSError, KeyError, ValueError): return self._send(404, {'error': 'source media unavailable'})
             if path == "/services/catalog":
                 result = _engine({'action': 'catalog'}, timeout=15)
@@ -235,8 +240,12 @@ def make_handler(rec: "Record | Pool"):
             if path in ("/workspace", "/workspace/"):
                 return self._file(STATIC / "workspace" / "index.html", cache=False)
             if path.startswith("/workspace/"):
+                if not _plain(path[len("/workspace/"):]):
+                    return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 return self._file(STATIC / path.lstrip("/"), cache=True, base=STATIC / "workspace")
             if path.startswith("/static/"):
+                if not _plain(path[len("/static/"):]):
+                    return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 return self._file(STATIC / path[len("/static/"):], cache=True)
             if path.startswith("/api/"):
                 args = {k: _arg(v[-1]) for k, v in parse_qs(url.query).items()}
@@ -246,13 +255,13 @@ def make_handler(rec: "Record | Pool"):
                 parts = rel.split("/")
                 handout_figure = (len(parts) >= 4 and parts[0] == "handouts" and parts[2] == "figures"
                                   and Path(rel).suffix.lower() in {".png", ".jpg", ".jpeg", ".svg", ".webp", ".pdf", ".excalidraw"})
-                if (parts[0] not in MEDIA_DIRS and not handout_figure) or any(p in ("", ".", "..") for p in parts) or "\\" in rel:
+                if (parts[0] not in MEDIA_DIRS and not handout_figure) or not _plain(rel):
                     return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 try:
                     mine = pool.get(parse_qs(url.query).get("record", [None])[-1])
                 except ValueError:
                     return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
-                return self._file(mine.root / rel, cache=False, base=mine.root / parts[0])
+                return self._file(mine.root / rel, cache=False, base=mine.root / parts[0], untrusted=True)
             if path.startswith("/vault/"):
                 return self._vault(path[len("/vault/"):])
             if path == "/events":
@@ -412,7 +421,7 @@ def make_handler(rec: "Record | Pool"):
             base = Path(root)
             # the page asks for paths as they appear in the vault ("Research OS/Courses/..."): drop the folder itself
             sub = "/".join(parts[1:]) if parts[0] == base.name else rel
-            return self._file(base / sub, cache=False, base=base)
+            return self._file(base / sub, cache=False, base=base, untrusted=True)
 
         def _tool(self, name, args, write):
             t = api.TOOLS.get(name)
@@ -452,7 +461,11 @@ def make_handler(rec: "Record | Pool"):
             if engine and not result.get('duplicate'):
                 threading.Thread(target=_chat_response, args=(target, result, engine), daemon=True).start()
 
-        def _file(self, path: Path, cache: bool, base: Path | None = None):
+        def _file(self, path: Path, cache: bool, base: Path | None = None, untrusted: bool = False):
+            # Decide on the path as written before resolving it: on Windows, resolving a UNC path opens it, which connects
+            # to that server and sends the person's NTLM credentials.
+            if _network(path) or _network(base or STATIC):
+                return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
             base = (base or STATIC).resolve()
             try:
                 target = path.resolve()
@@ -467,6 +480,12 @@ def make_handler(rec: "Record | Pool"):
             if target.suffix.lower() == ".excalidraw":
                 ctype = "application/octet-stream"
                 extra["Content-Disposition"] = 'attachment; filename="drawing.excalidraw"'
+            if untrusted:
+                # Material an agent or a document wrote (bundles, handouts, the vault, sources) is shown, never run: opened on
+                # its own it is a sandboxed page with no scripts, and a script or page file is served as plain text.
+                extra["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'"
+                if target.suffix.lower() in ACTIVE:
+                    ctype = "text/plain; charset=utf-8"
             rng = self.headers.get("Range")
             if rng and rng.startswith("bytes="):
                 start_s, _, end_s = rng[6:].split(",")[0].partition("-")
@@ -562,6 +581,25 @@ def _arg(text: str):
 RUNNING = weakref.WeakValueDictionary()
 HUMAN_ONLY = ("This is yours alone to do, and this browser is not paired. Open the link printed where Research OS was started "
               "(ros serve shows it); it pairs this browser until the portal restarts.")
+
+
+# The portal's own pages: the only paths another site may open (a link), never fetch or embed.
+PAGES = {"/", "/index.html", "/workspace", "/workspace/"}
+# File types a browser runs or renders as a document; from untrusted folders they are served as plain text.
+ACTIVE = {".html", ".htm", ".xhtml", ".xml", ".js", ".mjs", ".cjs"}
+_BS = chr(92)
+
+
+def _plain(rel: str) -> bool:
+    """A relative URL path with no tricks: no empty, current or parent parts, no backslash, drive or stream (':'), no NUL."""
+    parts = rel.split("/")
+    return bool(rel) and not any(p in ("", ".", "..") for p in parts) and not any(c in rel for c in (_BS, ":", chr(0)))
+
+
+def _network(path) -> bool:
+    """A UNC or other network path: two leading separators, or the long UNC form."""
+    text = str(path).replace("/", _BS)
+    return (text.startswith(_BS * 2) and not text.startswith(_BS * 2 + "?" + _BS)) or text.upper().startswith(_BS * 2 + "?" + _BS + "UNC" + _BS)
 
 
 class PortalServer(ThreadingHTTPServer):

@@ -80,7 +80,8 @@ class Runner:
     @staticmethod
     def _run(job: dict, own=None) -> dict:
         env = dict(os.environ)  # a job runs this program's own modules, so they must be importable from anywhere
-        root = job.get("pythonpath") or str(Path(__file__).resolve().parents[1])
+        # Always this program's own modules: a job's recorded pythonpath could name any folder (an external record's).
+        root = str(Path(__file__).resolve().parents[1])
         env["PYTHONPATH"] = root + os.pathsep + env.get("PYTHONPATH", "")
         started = time.monotonic()
         try:

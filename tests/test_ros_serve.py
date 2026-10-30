@@ -97,6 +97,30 @@ class ServeTests(unittest.TestCase):
         status, _, body = self.req("POST", "/services/human-prepare", packet, {**unpaired, "Cookie": cookie})
         self.assertEqual(status, 200, body)
 
+    def test_a_page_or_script_an_agent_writes_into_a_bundle_never_runs_as_the_portal(self):
+        folder = Path(self.rec.root) / "bundles" / self.bundle
+        (folder / "planted.html").write_text("<script src='planted.js'></script>", encoding="utf-8")
+        (folder / "planted.js").write_text("fetch('/services/human-commit')", encoding="utf-8")
+        for name in ("planted.html", "planted.js"):
+            status, headers, _ = self.req("GET", f"/media/bundles/{self.bundle}/{name}")
+            self.assertEqual(status, 200)
+            self.assertTrue(headers["Content-Type"].startswith("text/plain"), name)
+            self.assertIn("sandbox", headers.get("Content-Security-Policy", ""))
+
+    def test_no_request_makes_the_server_open_a_network_share(self):
+        for path in ("/static///evil.example/s/x.css", "/static/%5c%5cevil.example%5cs%5cx", "/workspace///evil/s/a.js",
+                     "/static/C:/Windows/win.ini", "/media/bundles%5c..%5cevents.jsonl"):
+            self.assertEqual(self.req("GET", path)[0], 404, path)
+        status, _, body = self.req("GET", "/api/migrate_check?vault=%5C%5Cevil%5Cs")
+        self.assertEqual(status, 400); self.assertIn(b"network share", body)
+
+    def test_another_site_may_link_to_the_portal_but_not_fetch_from_it(self):
+        cross = {"Sec-Fetch-Site": "cross-site"}
+        self.assertEqual(self.req("GET", "/", headers=cross)[0], 200, "a link from elsewhere opens the page")
+        for path in ("/api/status", "/services/catalog", "/events", f"/media/bundles/{self.bundle}/plan.json", "/services/session"):
+            self.assertEqual(self.req("GET", path, headers=cross)[0], 403, path)
+        self.assertEqual(self.req("GET", "/source-media?source=%22x%22")[0], 403, "the person's own source media")
+
     def test_foreign_host_is_refused(self):
         status, _, _ = self.req("GET", "/api/status", headers={"Host": "evil.example:80"})
         self.assertEqual(status, 403)

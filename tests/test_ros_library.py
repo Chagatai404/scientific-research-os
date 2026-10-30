@@ -136,6 +136,20 @@ class LibraryTests(unittest.TestCase):
         self.assertEqual(automation.reconcile(self.rec, 'tick')['ran'].get('library_queue'), None)
 
 
+class OfficeLimitTests(unittest.TestCase):
+    def test_a_word_file_that_inflates_past_the_limit_is_not_read_into_memory(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as folder:
+            small, bomb = Path(folder) / "real.docx", Path(folder) / "bomb.docx"
+            with zipfile.ZipFile(small, "w", zipfile.ZIP_DEFLATED) as z:
+                z.writestr("word/document.xml", "<w:p>Calorimeter energy resolution</w:p>")
+            with zipfile.ZipFile(bomb, "w", zipfile.ZIP_DEFLATED) as z:
+                z.writestr("word/document.xml", "0" * (library.OFFICE_PART_LIMIT + 1))  # compresses to a few KB
+            self.assertIn("Calorimeter", library._office_text(small))
+            self.assertLess(bomb.stat().st_size, 1 << 20)
+            self.assertIsNone(library._office_text(bomb))
+
+
 class MapTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
