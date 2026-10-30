@@ -29,6 +29,9 @@ NEVER = {"audit": "an independent audit is asked for by a person, from a fresh a
          "visual": "it needs a shell to render and look at the picture", "animation": "it needs a shell to render and look at the animation",
          "video": "it needs the web and a transcript"}
 MAX_FAILURES = 2  # a task that fails twice is left for a person or another client
+# What a person just asked for in a session is prepared first, and may go beyond the hourly limit by this many tasks an hour, for
+# this long after they asked: they are waiting for it, unlike the background preparation the limit paces.
+FOCUS_PER_HOUR, FOCUS_HOURS = 8, 6
 FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 _READ = {"skill", "context", "find", "records", "vault_find", "library", "research", "claims", "items", "tasks", "history", "status",
@@ -36,9 +39,9 @@ _READ = {"skill", "context", "find", "records", "vault_find", "library", "resear
 GRANTS = {
     "grade": {"item", "grade", "history", "tasks", "skill"},
     "answer": {"reply", "items", "item", "history", "context", "find", "skill", "workspace_document"},
-    "outline": _READ | {"add_node", "add_edge"},
+    "outline": _READ | {"code", "add_node", "add_edge"},
     "ingest": _READ | {"add_node", "add_edge", "link"},
-    "scout": {"literature_search", "research", "context", "skill", "find"},
+    "scout": {"literature_search", "research", "context", "skill", "find", "library", "vault_find"},
     "item": _READ | {"add_item", "capabilities"},
     "narration": _READ | {"bundle_plan", "bundle_file", "bundle_check", "bundle_tasks"},
     "bundle": _READ | {"bundle_create", "bundle_plan", "bundle_file", "bundle_check", "bundle_tasks", "add_item"},
@@ -71,6 +74,11 @@ def model(rec: Record) -> str | None:
     return newest[1]
 
 
+def _used(rec: Record, now: datetime | None = None) -> int:
+    since = ((now or datetime.now(timezone.utc)) - timedelta(hours=1)).strftime(FORMAT)
+    return sum(1 for ts in _ledger(rec)["starts"] if ts >= since)
+
+
 def _ledger(rec: Record) -> dict:
     def step(out, e):
         if e["type"] == "dispatch.start":
@@ -78,6 +86,33 @@ def _ledger(rec: Record) -> dict:
         elif e["data"].get("outcome") in ("failed", "refused", "unfinished"):
             out["failures"][e["data"]["task"]] = out["failures"].get(e["data"]["task"], 0) + 1
     return rec.fold("dispatch", ("dispatch.start", "dispatch.end"), lambda: {"starts": [], "failures": {}}, step)
+
+
+def focus(rec: Record, hub: str, conversation: str | None = None) -> dict:
+    """The person asked for this in a session: prepare what serves it before anything else."""
+    if not (hub or "").strip():
+        raise ValueError("focus names what the person asked for (a hub)")
+    rec.append("dispatch.focus", hub, {"hub": hub, **({"conversation": conversation} if conversation else {})}, actor="person")
+    return {"focus": hub}
+
+
+def focused(rec: Record, now: datetime | None = None):
+    """A test of a task: does it serve something a person asked for in the last FOCUS_HOURS? A hub covers its own tasks,
+    the capabilities that are part of it and their bundles. None when nothing is focused."""
+    since = ((now or datetime.now(timezone.utc)) - timedelta(hours=FOCUS_HOURS)).strftime(FORMAT)
+    wanted: set[str] = set()
+    with director.linked(rec) as records:
+        hubs = {e["subject"] for r in records for e in r.events(type="dispatch.focus", since=since)}
+        for r in records:
+            for hub in hubs:
+                wanted.add(hub)
+                for edge in r.edges(type="part-of", dst=hub):
+                    wanted.add(edge["src"])
+                    if edge["src"].startswith("capability:"):
+                        wanted.add("bundle:" + edge["src"].split(":", 1)[1])
+    if not wanted:
+        return None
+    return lambda t: bool({t.get("hub"), t.get("ref"), t.get("node"), "bundle:" + str(t.get("bundle"))} & wanted)
 
 
 def allowance(rec: Record, now: datetime | None = None) -> dict:
@@ -88,9 +123,7 @@ def allowance(rec: Record, now: datetime | None = None) -> dict:
     chosen = model(rec)
     if not chosen:
         return {"ok": False, "reason": "No model is chosen yet: write to one in a session, or choose one in Settings.", **cfg}
-    since = (now - timedelta(hours=1)).strftime(FORMAT)
-    used = sum(1 for ts in _ledger(rec)["starts"] if ts >= since)
-    left = max(0, cfg["per_hour"] - used)
+    left = max(0, cfg["per_hour"] - _used(rec, now))
     return {"ok": left > 0, "reason": "" if left else f"The limit of {cfg['per_hour']} tasks an hour is reached.", "model": chosen,
             "left_this_hour": left, "per_hour": cfg["per_hour"], "auto": True}
 
@@ -110,11 +143,17 @@ def waiting(rec: Record) -> dict:
 
 def claim(rec: Record, now: datetime | None = None) -> dict:
     """Take the most urgent task an unattended agent may do, if the limits allow, and say how to do it. ``{"idle": reason}`` otherwise."""
-    allowed = allowance(rec, now)
+    allowed, prefer = allowance(rec, now), focused(rec, now)
+    beyond = False
     if not allowed["ok"]:
-        return {"idle": allowed["reason"]}
+        # Past the hourly limit only what the person is waiting for goes, within its own allowance.
+        if not (prefer and allowed.get("model") and allowed.get("auto") and _used(rec, now) < allowed["per_hour"] + FOCUS_PER_HOUR):
+            return {"idle": allowed["reason"]}
+        beyond = True
     by = f"agent:{allowed['model']}"
-    got = director.work(rec, by, list(AUTO), skip=skipped(rec))
+    got = director.work(rec, by, list(AUTO), skip=skipped(rec), prefer=prefer, only_preferred=beyond)
+    if beyond and not got.get("task"):
+        return {"idle": allowed["reason"]}
     if not got.get("task"):
         return {"idle": got.get("message") or "Nothing waits for an agent."}
     task, kind = got["task"], got["task"]["kind"]

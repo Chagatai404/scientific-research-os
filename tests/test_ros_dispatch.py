@@ -81,6 +81,23 @@ class Dispatch(unittest.TestCase):
         self.assertEqual(self.run_with(agent)["outcome"], "done")
         self.assertEqual({self.state(a), self.state(b)}, {"done"})
 
+    def test_what_the_person_just_asked_for_goes_first_and_past_the_hourly_limit_but_background_work_does_not(self):
+        background = self.open("outline", "old", "Background outline.")
+        asked = tasks.open_task(self.rec, "scout", "subject:ams", "Scout AMS sources.", data={"hub": "subject:ams"}, key="asked")
+        self.rec.put_node("capability:ams.calibration", "capability", title="Calibration")
+        self.rec.put_edge("capability:ams.calibration", "part-of", "subject:ams")
+        bundle = tasks.open_task(self.rec, "item", "bundle:ams.calibration", "Write items.", data={"bundle": "ams.calibration"}, key="items")
+        api.call("agents_configure", self.rec, per_hour=1)
+        dispatch.focus(self.rec, "subject:ams", "conversation:x")
+        taken = []
+        def agent(request, emit, tool, cancel, own):
+            taken.append(request["messages"][0]["content"]); tool("finish", {"result": "ok"}, "s"); emit("."); return {}
+        for _ in range(3): self.run_with(agent)
+        self.assertEqual(self.state(asked), "done"); self.assertEqual(self.state(bundle), "done", "a bundle of a capability in the hub is part of it")
+        self.assertTrue(all("Background" not in t for t in taken), "the person's request goes before older background work")
+        self.assertEqual(self.state(background), "open", "past the limit only the focused work goes")
+        self.assertIn("limit of 1", self.run_with(agent)["idle"])
+
     def test_a_run_that_does_not_finish_is_recorded_and_a_task_failing_twice_is_left_alone(self):
         tid = self.open("outline", "o1")
         def lazy(request, emit, tool, cancel, own): emit("I thought about it."); return {}

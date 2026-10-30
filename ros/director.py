@@ -202,10 +202,14 @@ def _topic(user: Record, text, target, title, deadline, pace, materials):
     _hub(user, hub, "subject", title or key)
     roadmap.set_goal(user, f"goal:{key}", title, [hub], deadline, pace)
     scout = tasks.open_task(user, "scout", hub, f"Map the authoritative sources to learn {title or key!r} from, with locators; "
-                            "do not decide what to teach.", data={"hub": hub}, key="sources")
+                            "start from the papers already in the library and the person's notes (`library`, `vault_find`), "
+                            "then fill the gaps; do not decide what to teach.", data={"hub": hub}, key="sources")
     outline = tasks.open_task(
         user, "outline", hub, f"Outline {title or key!r} for someone learning it: the capabilities as capability:<key> "
         f"nodes each part-of {hub}, with `requires` edges, in the order to learn them (add_node, add_edge)."
+        " Build on what the person already has before adding anything: their notes (`vault_find`), the papers in the library "
+        "(`library`, `find`) and the linked projects' records, claims, experiments and code (`records`, `research`, `code`); "
+        "put what each capability rests on in its node data as `sources`, and say what you could not find."
         + (f" Materials: {materials}." if materials else ""), data={"hub": hub, "materials": materials}, key="outline")
     _sync_vault(user)
     automation.reconcile(user, "tick")
@@ -412,9 +416,11 @@ def format_brief(b: dict) -> str:
 
 
 # ---- work ----------------------------------------------------------------------------------------------------------
-def work(rec: Record, by: str, kinds: list[str] | None = None, skip: list[str] | None = None) -> dict:
+def work(rec: Record, by: str, kinds: list[str] | None = None, skip: list[str] | None = None,
+         prefer=None, only_preferred: bool = False) -> dict:
     """The next task for an agent across every record, claimed, with how to do it and the tool that finishes it.
-    ``skip`` names tasks not to hand out (dispatch leaves a task that has failed twice)."""
+    ``skip`` names tasks not to hand out (dispatch leaves a task that has failed twice). ``prefer`` is a test of a task: the
+    tasks it accepts go first (dispatch prefers what the person just asked for), and with ``only_preferred`` only they go."""
     if not (by or "").strip():
         raise ValueError("work names who is working (by)")
     for bad in kinds or []:
@@ -428,12 +434,15 @@ def work(rec: Record, by: str, kinds: list[str] | None = None, skip: list[str] |
                 for t in tasks.tasks(r):
                     if t["kind"] == "job" or t["id"] in skipped or (kinds and t["kind"] not in kinds):
                         continue
-                    if best is None or tasks.urgency(t) < tasks.urgency(best[1]):
-                        best = (r, t)
+                    first = bool(prefer and prefer(t))
+                    if only_preferred and not first:
+                        continue
+                    if best is None or (not first, tasks.urgency(t)) < (not best[2], tasks.urgency(best[1])):
+                        best = (r, t, first)
             if best is None:
                 return {"task": None, "message": "Nothing waits for an agent.", "needs_you": len(
                     [i for r in recs for i in research.queue(r)]), "portal": portal_url("director", rec.root.name)}
-            r, t = best
+            r, t, _ = best
             try:
                 claimed = tasks.claim(r, t["id"], by.strip())
             except ValueError:

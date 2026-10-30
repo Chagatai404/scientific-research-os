@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import re
 import uuid
 
-from . import director, modes, tasks, runs, sources, execution
+from . import director, dispatch, modes, tasks, runs, sources, execution
 
 
 def takes_effort(model):
@@ -72,8 +72,12 @@ def send(rec, text, model, conversation=None, effort="medium", key=None, mode=No
             raise ValueError('This conversation includes local-only content and derived responses. Start a separate conversation for a cloud provider.')
     else:
         conversation = "conversation:" + uuid.uuid4().hex[:12]
-        if modes.mode(mode).engages: setup = director.engage(rec, text, kind=modes.mode(mode).engages)
-        rec.put_node(conversation, "conversation", title=text[:100], model=model, mode=mode)
+        if modes.mode(mode).engages:
+            setup = director.engage(rec, text, kind=modes.mode(mode).engages)
+            # The person is waiting for this lesson or investigation: its preparation goes before background work.
+            if setup.get("hub"): dispatch.focus(rec, setup["hub"], conversation)
+        where = {"hub": setup["hub"], "hub_record": setup.get("user_record") or setup.get("record")} if setup and setup.get("hub") else {}
+        rec.put_node(conversation, "conversation", title=text[:100], model=model, mode=mode, **where)
     request = "message:" + uuid.uuid4().hex
     for permission in permissions:execution.consume_vision_permission(rec,permission,request)
     scope=[{k:v for k,v in ref.items() if k!='visionPermission'} for ref in scope or []]
@@ -111,7 +115,8 @@ def history(rec, conversation):
     saved_runs = {r['request']: r for r in listed}
     active = [request for request in pending if saved_runs.get(request, {}).get('state') in ('queued', 'running', 'waiting_for_input', 'waiting_for_approval')]
     return {"conversation": conversation, "title": node["title"], "mode": node.get("mode", "chat"), "messages": messages[-100:], "pending": active,
-            "interrupted": len(pending) - len(active), "lesson": lesson(listed)}
+            "interrupted": len(pending) - len(active), "lesson": lesson(listed),
+            "plan": {"hub": node["hub"], "record": node.get("hub_record")} if node.get("hub") else None}
 
 
 def lesson(listed):

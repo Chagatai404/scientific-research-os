@@ -118,6 +118,7 @@ addresses, decides, relates.
 | `policy` | lesson | action, reason, item, capability, mode |
 | `task.open`, `task.claim`, `task.done`, `task.cancel` | task | kind, ref, brief, … / by / result / reason |
 | `dispatch.start`, `dispatch.end` | task | task, role, model / task, record, outcome (`done`, `unfinished`, `refused`, `failed`), detail. The ledger of unattended agent runs: it bounds how many an hour and leaves a task alone after two failures |
+| `dispatch.focus` | hub | hub, conversation. A person asked for this in a session: for six hours its tasks (and those of the capabilities part of it and their bundles) are dispatched first, and up to eight an hour beyond the hourly limit |
 | `bundle.ready` | bundle | manifest digest |
 | `verdict` | claim | step, verdict, notes, checklist, evidence |
 | `approval`, `decision`, `waiver` | subject | decision / outcome, rationale / reason |

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- What you ask for in a Learn or Research session is prepared first: its outline, sources, items and narration go before older background work, and up to eight an hour beyond the hourly agent limit, for six hours. Until the lesson starts, the conversation shows the study plan being built and what is still being prepared. The outline and the source map now start from your vault notes, your paper library and your linked projects' records and code.
 - A Learn conversation shows its lesson on a card under the tutor's message, as the old structured sessions did: the question with an answer box, a confidence scale (guessing to certain, asked before feedback) and "I don't know"; prepared teaching with its figures, narration and animation; the pedagogy actions; the phase (probe, teach, practise, close) and the study plan. An answer on the card is recorded as the learner's own and the tutor may not record a second one for it. Confidence is a new `confidence` event bound to the attempt; it is never learning evidence.
 - While a turn runs, the conversation lists what it is doing step by step, and the work of each delegated role (literature scout, source verifier, adversary, librarian) appears as it happens, grouped as independent work.
 - Kokoro reads replies as plain speech: Markdown marks, links, tables and LaTeX are turned into words instead of being read out.

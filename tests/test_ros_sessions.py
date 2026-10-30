@@ -89,6 +89,9 @@ class Sessions(unittest.TestCase):
         turn = self.run_turn("Teach me variance", first)
         lesson = api.call("workspace_chat", self.rec, conversation=turn["conversation"])["lesson"]
         self.assertEqual(lesson, {"lesson": started["lesson"], "record": self.rec.root.name}, "the card follows the started lesson")
+        plan = api.call("workspace_chat", self.rec, conversation=turn["conversation"])["plan"]
+        self.assertTrue(plan["hub"].startswith("subject:"), "the session remembers the goal it set up")
+        self.assertEqual([e["subject"] for e in self.rec.events(type="dispatch.focus")], [plan["hub"]], "and its preparation goes first")
         # The card records the learner's own answer and confidence, then tells the tutor.
         out = api.call("answer", self.rec, lesson=started["lesson"], item=started["next"]["item"], response="8", confidence=2)
         with self.assertRaisesRegex(ValueError, "1 \\(guessing\\) to 5"):
