@@ -23,8 +23,8 @@ function startServer(record, rosHome) {
     let out = '';
     p.stdout.on('data', (d) => {
       out += d;
-      const m = out.match(/http:\/\/127\.0\.0\.1:(\d+)\//);
-      if (m) resolve({proc: p, url: m[0]});
+      const m = out.match(/http:\/\/127\.0\.0\.1:(\d+)\//), pair = out.match(/open once: (http:\/\/127\.0\.0\.1:\d+\/\?pair=[\w-]+)/);
+      if (m && pair) resolve({proc: p, url: m[0], pair: pair[1]});
     });
     p.stderr.on('data', (d) => process.stderr.write(d));
     p.on('exit', (code) => reject(new Error(`server exited ${code}: ${out}`)));
@@ -79,6 +79,7 @@ async function main() {
     page.on('request', (r) => { if (!r.url().startsWith(server.url)) foreign.push(r.url()); });
     page.on('response', (r) => { if (r.status() >= 400) errors.push(`HTTP ${r.status()} ${r.url().replace(server.url, '/')}`); });
 
+    await page.goto(server.pair, {waitUntil: 'domcontentloaded'});  // pairs this browser, as the printed link does
     await page.goto(server.url, {waitUntil: 'domcontentloaded'});
     await page.getByRole('heading', {name: 'Director'}).waitFor();
     // the small Context window: closed by default, a 44 px summary line, opens to say how the record is linked

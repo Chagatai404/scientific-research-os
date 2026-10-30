@@ -78,6 +78,25 @@ class ServeTests(unittest.TestCase):
         # A chunked body (not parsed here) is refused rather than left on the connection.
         self.assertEqual(self.req("POST", "/api/add_node", headers={"X-ROS": "1", "Transfer-Encoding": "chunked"})[0], 400)
 
+    def test_acts_that_are_the_persons_alone_need_a_browser_paired_by_the_printed_link(self):
+        # The session call gives the page its CSRF token but never the cookie: a local program cannot pair itself by asking.
+        status, headers, body = self.req("GET", "/services/session")
+        self.assertEqual(status, 200); self.assertNotIn("Set-Cookie", headers); self.assertFalse(json.loads(body)["result"]["paired"])
+        csrf = json.loads(body)["result"]["csrf"]
+        packet = {"name": "approve", "args": {"subject": "experiment:none", "decision": "approved", "by": "Me"}}
+        unpaired = {"X-ROS": "1", "X-ROS-CSRF": csrf, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json"}
+        status, _, body = self.req("POST", "/services/human-prepare", packet, unpaired)
+        self.assertEqual(status, 403); self.assertIn(b"not paired", body)
+        self.assertEqual(self.req("GET", "/?pair=wrong-token")[0], 403)
+        status, headers, _ = self.req("GET", "/?pair=" + self.server.pairing)
+        self.assertEqual((status, headers["Location"]), (303, "/"))
+        cookie = headers["Set-Cookie"].split(";", 1)[0]
+        self.assertIn("HttpOnly", headers["Set-Cookie"]); self.assertIn("SameSite=Strict", headers["Set-Cookie"])
+        status, _, body = self.req("GET", "/services/session", headers={"Cookie": cookie})
+        self.assertTrue(json.loads(body)["result"]["paired"])
+        status, _, body = self.req("POST", "/services/human-prepare", packet, {**unpaired, "Cookie": cookie})
+        self.assertEqual(status, 200, body)
+
     def test_foreign_host_is_refused(self):
         status, _, _ = self.req("GET", "/api/status", headers={"Host": "evil.example:80"})
         self.assertEqual(status, 403)

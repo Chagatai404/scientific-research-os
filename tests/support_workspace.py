@@ -126,7 +126,7 @@ if __name__ == "__main__":
     test_vault = root / "test-vault"
     test_vault.mkdir(exist_ok=True)
     server = serve._bind(rec, int(sys.argv[2]) if len(sys.argv) > 2 else 0)
-    print(json.dumps({"url": f"http://127.0.0.1:{server.server_address[1]}/", "document": document, "lesson": lesson, "vault": str(test_vault)}), flush=True)
+    print(json.dumps({"url": f"http://127.0.0.1:{server.server_address[1]}/", "pairing": server.pairing, "document": document, "lesson": lesson, "vault": str(test_vault)}), flush=True)
     try:
         server.serve_forever()
     finally:

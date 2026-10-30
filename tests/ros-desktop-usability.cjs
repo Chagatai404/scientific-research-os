@@ -74,6 +74,7 @@ async function main() {
     browser = await chromium.launch({headless: true, ...(process.env.ROS_BROWSER ? {executablePath: process.env.ROS_BROWSER} : {})});
     const context = await browser.newContext({viewport: {width: 1440, height: 900}, reducedMotion: 'reduce'});
     const page = await context.newPage();
+    if (server.pairing) await page.goto(server.url + '?pair=' + server.pairing);  // pair once, as the printed link does
     page.on('pageerror', e => errors.push(e.message));
     page.on('console', m => {if (m.type() === 'error') errors.push(m.text());});
     page.on('request', r => {if (r.url().endsWith('/api/workspace_chat_send')) sent.push(r.postDataJSON());});
@@ -274,6 +275,7 @@ async function main() {
         };
       }, picks);
       const desktop = await desktopContext.newPage(); desktop.on('pageerror', e => errors.push(e.message));
+      if (server.pairing) await desktop.goto(server.url + '?pair=' + server.pairing);
       await desktop.goto(base + '#library?r=demo'); await desktop.getByRole('heading', {name: 'Library', exact: true}).waitFor();
       // A found update is offered at launch; Later lasts until the next launch; Restart & install reaches the host.
       await desktop.getByRole('dialog', {name: 'An update is ready'}).waitFor();

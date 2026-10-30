@@ -25,6 +25,7 @@ from pathlib import Path
 import re
 import secrets
 import hashlib
+import weakref
 import socket
 import subprocess
 import sys
@@ -127,6 +128,10 @@ def make_handler(rec: "Record | Pool"):
     pool = rec if isinstance(rec, Pool) else Pool(rec)
     rec = pool.default
     browser_session, csrf = secrets.token_hex(32), secrets.token_hex(32)
+    # Acts that are the person's alone (approve, decide, waive, choose a code folder, delete a workspace) need a browser
+    # paired with the link this server prints where it was started. The page's own session call never hands out the
+    # cookie, so a local program or agent cannot obtain it by asking. The desktop app proves itself with its credential.
+    pairing = secrets.token_urlsafe(24)
     approvals = {}
 
     class Handler(BaseHTTPRequestHandler):
@@ -149,6 +154,9 @@ def make_handler(rec: "Record | Pool"):
                 self._send(HTTPStatus.FORBIDDEN, {"error": "the portal serves this computer only"})
                 return False
             return True
+
+        def _paired(self) -> bool:
+            return ('ros_session=' + browser_session) in self.headers.get('Cookie', '').split('; ')
 
         def _human(self):
             credential = getattr(self.server, 'desktop_credential', None)
@@ -190,7 +198,10 @@ def make_handler(rec: "Record | Pool"):
                 return self._send(HTTPStatus.FORBIDDEN, {'error': 'desktop session required'})
             if path == '/services/session':
                 if self.headers.get('Sec-Fetch-Site') not in ('same-origin', 'none', None): return self._send(403, {'error': 'same-origin session required'})
-                return self._send(200, {'result': {'csrf': csrf}}, extra={'Set-Cookie': 'ros_session=' + browser_session + '; HttpOnly; SameSite=Strict; Path=/', 'Cache-Control': 'no-store'})
+                # The cookie for human acts comes only from the pairing link (or the desktop credential), never from here.
+                paired = bool(credential) or self._paired()
+                return self._send(200, {'result': {'csrf': csrf, 'paired': paired}}, extra={'Cache-Control': 'no-store',
+                                  **({'Set-Cookie': 'ros_session=' + browser_session + '; HttpOnly; SameSite=Strict; Path=/'} if credential else {})})
             if path == '/services/tools':
                 return self._send(200, {'result': [{'name': name, 'help': t.help, 'schema': t.schema(), 'writes': t.writes, 'human': t.human} for name, t in api.TOOLS.items()]})
             if path == '/services/owned-work':
@@ -213,6 +224,12 @@ def make_handler(rec: "Record | Pool"):
                         result['models'].append({'id': profile['id'], 'label': profile['model'], 'provider': profile['provider'], 'reasoning_efforts': [], 'tools': profile['tools'], 'vision': profile['vision'], 'context_limit': profile['context_limit']})
                 except ValueError: pass
                 return self._send(HTTPStatus.OK, {'result': result})
+            offered = parse_qs(url.query).get("pair", [""])[-1]
+            if offered and path in ("/", "/index.html", "/workspace", "/workspace/"):
+                if not secrets.compare_digest(offered, pairing):
+                    return self._send(HTTPStatus.FORBIDDEN, {"error": "This pairing link is not valid. Use the link printed where Research OS was started; it changes every time it starts."})
+                return self._send(HTTPStatus.SEE_OTHER, b"", "text/plain", extra={"Location": path, "Cache-Control": "no-store",
+                                  "Set-Cookie": "ros_session=" + browser_session + "; HttpOnly; SameSite=Strict; Path=/"})
             if path in ("/", "/index.html"):
                 return self._file(STATIC / "index.html", cache=False)
             if path in ("/workspace", "/workspace/"):
@@ -273,7 +290,7 @@ def make_handler(rec: "Record | Pool"):
                 return self._send(HTTPStatus.BAD_REQUEST, {"error": "the body is a JSON object of arguments"})
             if not path.startswith("/api/"):
                 if path in ('/services/human-prepare', '/services/human-commit'):
-                    if not self._human(): return self._send(403, {'error': 'human session required'})
+                    if not self._human(): return self._send(403, {'error': HUMAN_ONLY})
                     try:
                         target = pool.get(args.get('record'))
                         name, params = args['name'], args['args']
@@ -530,6 +547,7 @@ def make_handler(rec: "Record | Pool"):
                 pass
             self.close_connection = True
 
+    Handler.pairing = pairing
     return Handler
 
 
@@ -538,6 +556,12 @@ def _arg(text: str):
         return json.loads(text)
     except ValueError:
         return text
+
+
+# The portals this process serves, by port: what a test or ``ros mcp --portal`` reads the pairing link from.
+RUNNING = weakref.WeakValueDictionary()
+HUMAN_ONLY = ("This is yours alone to do, and this browser is not paired. Open the link printed where Research OS was started "
+              "(ros serve shows it); it pairs this browser until the portal restarts.")
 
 
 class PortalServer(ThreadingHTTPServer):
@@ -584,8 +608,11 @@ def _ours(port: int) -> bool:
 def _bind(rec: "Record | Pool", port: int) -> PortalServer:
     try:
         pool = rec if isinstance(rec, Pool) else Pool(rec)
-        server = PortalServer(("127.0.0.1", port), make_handler(pool))
+        handler = make_handler(pool)
+        server = PortalServer(("127.0.0.1", port), handler)
         server.pool = pool
+        server.pairing = handler.pairing
+        RUNNING[server.server_address[1]] = server
         return server
     except OSError as exc:
         if port and _ours(port):
@@ -613,8 +640,9 @@ def run(rec: Record, port: int = 8737, open_browser: bool = False) -> int:
         return 0
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"Research OS portal for {rec.root.name}: {url}  (Ctrl+C to stop)", flush=True)
+    print(f"To approve, decide or delete in this browser, open once: {url}?pair={server.pairing}", flush=True)
     if open_browser:
-        webbrowser.open(url)
+        webbrowser.open(f"{url}?pair={server.pairing}")
     timer = runner.Runner(pool.all).start()  # the portal keeps every record it has open in step on its own
     try:
         server.serve_forever()

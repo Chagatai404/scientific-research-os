@@ -3,6 +3,7 @@
 ## 1.7.2 (in progress): security fixes
 
 - Security: a web page could make `ros serve` run write tools. A refused request left its body unread on the kept-alive connection, where it was read as a second request that passed every check (it carried the custom header and no Origin). Every refused request and every write now ends its connection, and a chunked body is refused. The desktop app was not affected (it requires its session secret). Reported privately by Matt Abate.
+- Security: in `ros serve`, any local program could act as you. The page's session call handed out the cookie that approvals, decisions and waivers need. Now `ros serve` prints a pairing link where it starts, opening it once pairs your browser, and the session call never sets that cookie. If an approval says the browser is not paired, open that link. The desktop app is unchanged. Reported privately by Matt Abate.
 
 ## 1.7.1: delete, a tidy library and a live graph
 
