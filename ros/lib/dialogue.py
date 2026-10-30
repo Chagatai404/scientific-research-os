@@ -199,7 +199,8 @@ def speech(request):
     from . import voice
     kokoro, weights, _ = voice_paths()
     root = Path(request["root"]).resolve()
-    text = str(request["text"])[:12000]
+    text = voice.speakable(str(request["text"])[:12000])
+    if not text: raise ValueError("there is nothing to read aloud in this message")
     result = voice.speak(root, text, "en", "kokoro", [str(kokoro)], {"model_dir": str(weights)}, directory="audio")
     return {"audio": result["audio"], "seconds": result["seconds"]}
 

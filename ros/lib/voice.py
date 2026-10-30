@@ -57,6 +57,74 @@ class VoiceError(ValueError):
 
 # ---------------------------------------------------------------- running the adapter
 
+_MATH_WORDS = {
+    "le": "less than or equal to", "leq": "less than or equal to", "ge": "greater than or equal to", "geq": "greater than or equal to",
+    "ne": "not equal to", "neq": "not equal to", "approx": "approximately", "infty": "infinity", "pi": "pi", "sigma": "sigma", "mu": "mu",
+    "lambda": "lambda", "theta": "theta", "alpha": "alpha", "beta": "beta", "sum": "the sum of", "int": "the integral of", "sqrt": "square root of",
+    "cdot": "times", "times": "times", "pm": "plus or minus", "to": "to", "rightarrow": "to", "in": "in",
+}
+_BRACED = r"\{([^{}]*)\}"
+
+
+def _math_words(expr: str) -> str:
+    """Spoken form of one LaTeX expression."""
+    s = expr
+    for _ in range(4):
+        s = re.sub(r"\\[dt]?frac\s*" + _BRACED + r"\s*" + _BRACED, r" \1 over \2 ", s)
+        s = re.sub(r"\\sqrt\s*" + _BRACED, r" square root of \1 ", s)
+        s = re.sub(r"\\(?:text|mathrm|mathbf|operatorname)\s*" + _BRACED, r" \1 ", s)
+    s = re.sub(r"\\(?:left|right)(?![A-Za-z])", " ", s)
+    s = re.sub(r"\^\s*\{?\s*2\s*\}?", " squared ", s)
+    s = re.sub(r"\^\s*\{?\s*3\s*\}?", " cubed ", s)
+    s = re.sub(r"\^\s*\{([^{}]*)\}", r" to the power \1 ", s)
+    s = re.sub(r"\^\s*(\w)", r" to the power \1 ", s)
+    s = re.sub(r"_\s*\{([^{}]*)\}", r" sub \1 ", s)
+    s = re.sub(r"_\s*(\w)", r" sub \1 ", s)
+    s = re.sub(r"\\([A-Za-z]+)", lambda m: " " + _MATH_WORDS.get(m.group(1), m.group(1)) + " ", s)
+    for sym, word in (("<=", "less than or equal to"), (">=", "greater than or equal to"), ("!=", "not equal to"),
+                      ("<", "less than"), (">", "greater than"), ("=", "equals"), ("/", "over")):
+        s = s.replace(sym, f" {word} ")
+    s = re.sub(r"[{}\\]", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def speakable(text: str) -> str:
+    """Plain spoken text from Markdown and inline LaTeX, so a speech engine does not read out the marks."""
+    t = str(text).replace("\r\n", "\n").replace("\r", "\n")
+    t = re.sub(r"(```|~~~).*?(\1|\Z)", "\n(code omitted).\n", t, flags=re.S)
+    t = re.sub(r"\$\$(.+?)\$\$", lambda m: " " + _math_words(m.group(1)) + " ", t, flags=re.S)
+    t = re.sub(r"\\\[(.+?)\\\]", lambda m: " " + _math_words(m.group(1)) + " ", t, flags=re.S)
+    t = re.sub(r"\\\((.+?)\\\)", lambda m: " " + _math_words(m.group(1)) + " ", t, flags=re.S)
+    t = re.sub(r"(?<![\\\w$])\$(?=\S)([^$\n]+?)(?<=\S)\$(?![\w$])", lambda m: " " + _math_words(m.group(1)) + " ", t)
+    t = re.sub(r"!\[\[([^\]]*)\]\]", "", t)
+    t = re.sub(r"\[\[([^\]]*)\]\]", lambda m: m.group(1).split("|")[-1].split("#")[0] or m.group(1), t)
+    t = re.sub(r"!\[([^\]]*)\]\([^)]*\)", r"\1", t)
+    t = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", t)
+    t = re.sub(r"(?:https?://|www\.)\S+", "", t)
+    t = re.sub(r"<[^>\n]+>", "", t)
+    t = re.sub(r"`+([^`]*)`+", r"\1", t)
+    out = []
+    for line in t.split("\n"):
+        s = line.strip()
+        if not s or re.fullmatch(r"([-*_])(\s*\1){2,}", s) or (re.fullmatch(r"[|:\-\s+]+", s) and "-" in s):
+            out.append("")
+            continue
+        s = re.sub(r"^(>\s*)+", "", s)
+        s = re.sub(r"^\[![^\]]*\][+-]?\s*", "", s)
+        s = re.sub(r"^#{1,6}\s*", "", s)
+        s = re.sub(r"^([-*+]|\d+[.)])\s+(\[[ xX]\]\s+)?", "", s)
+        if s.startswith("|") or s.count("|") >= 2:
+            s = ", ".join(c.strip() for c in s.strip("|").split("|") if c.strip())
+        s = re.sub(r"(\*\*|__|\*|~~)", "", s)
+        s = re.sub(r"(?<!\w)_|_(?!\w)", "", s)
+        s = s.replace("|", ", ").replace("#", "").replace("`", "").replace("*", "").replace("$", "")
+        s = re.sub(r"\s+", " ", s).strip()
+        if s and s[-1] not in ".!?:;…" and not s.endswith(('."', ".”")):
+            s += "."
+        out.append(s)
+    return re.sub(r"\s+", " ", " ".join(x for x in out if x)).strip()
+
+
 def run_command(args: list, timeout: int = DEFAULT_TIMEOUT, extra_env: dict | None = None) -> dict:
     """Run a program without a shell. The one place this module starts a process, so tests replace it."""
     started = time.monotonic()
