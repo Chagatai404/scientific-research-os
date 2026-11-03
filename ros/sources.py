@@ -45,7 +45,7 @@ def connections(rec):
 
 def register(rec, root, kind='file', label='', local_only=True):
     if kind not in ('file', 'folder', 'vault', 'codebase'): raise ValueError('unsupported source kind')
-    path = Path(root).expanduser().resolve(strict=True)
+    path = home.local_path(root).expanduser().resolve(strict=True)
     if (kind == 'file') != path.is_file(): raise ValueError('choose a file or directory matching its source kind')
     if path.name in EXCLUDED or SECRET.search(path.name): raise ValueError('secret or internal paths cannot be connected')
     if path == Path(path.anchor): raise ValueError('connect a specific folder, not an entire drive')
@@ -89,14 +89,38 @@ def resolve(rec, source, path=''):
         if not target.is_relative_to(root): raise ValueError('a source link leaves its registered root')
         # A link into an excluded directory inside the grant is excluded too.
         if excluded(target.relative_to(root).parts): raise ValueError('excluded source path')
-        ignore = root / '.gitignore'
-        if ignore.is_file() and ignore.stat().st_size < 65536:
-            rel = target.relative_to(root).as_posix()
-            for line in ignore.read_text(encoding='utf-8', errors='replace').splitlines():
-                pattern = line.strip().rstrip('/')
-                if pattern and not pattern.startswith(('#', '!')) and (fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(target.name, pattern) or rel.startswith(pattern + '/')):
-                    raise ValueError('source path is excluded by .gitignore')
+        if ignored(target.relative_to(root).as_posix(), ignore_patterns(root)):
+            raise ValueError('source path is excluded by .gitignore')
     return target
+
+
+def ignore_patterns(root):
+    """The lines of a source's root .gitignore that hide something ('!' re-inclusion is not honoured: hiding more is safe)."""
+    ignore = Path(root) / '.gitignore'
+    if not (ignore.is_file() and ignore.stat().st_size < 65536):
+        return []
+    lines = (line.strip() for line in ignore.read_text(encoding='utf-8', errors='replace').splitlines())
+    return [line for line in lines if line and not line.startswith(('#', '!'))]
+
+
+def ignored(rel, patterns):
+    """Whether git would ignore this path (relative to the root, '/'-separated) under these patterns. A leading '/' anchors a
+    pattern at the root; a pattern without a '/' in it matches a file or folder of that name at any depth; one with a '/'
+    matches from the root. A folder that matches hides everything inside it, so every ancestor is tested."""
+    parts = [p for p in rel.split('/') if p]
+    for raw in patterns:
+        pattern = raw.rstrip('/')
+        anchored = pattern.startswith('/') or '/' in pattern
+        pattern = pattern.lstrip('/')
+        if not pattern:
+            continue
+        for depth in range(1, len(parts) + 1):
+            prefix = '/'.join(parts[:depth])
+            if anchored and (fnmatch.fnmatchcase(prefix, pattern) or (pattern.startswith('**/') and fnmatch.fnmatchcase(prefix, pattern[3:]))):
+                return True
+            if not anchored and fnmatch.fnmatchcase(parts[depth - 1], pattern):
+                return True
+    return False
 
 
 def children(rec, source, path='', offset=0, limit=100):
@@ -106,13 +130,13 @@ def children(rec, source, path='', offset=0, limit=100):
     key=(str(target),target.stat().st_mtime_ns,ignore.stat().st_mtime_ns if ignore.is_file() else 0)
     names=_DIRECTORIES.get(key)
     if names is None:
-        patterns=[line.strip().rstrip('/') for line in ignore.read_text(encoding='utf-8',errors='replace').splitlines() if line.strip() and not line.startswith(('#','!'))] if ignore.is_file() and ignore.stat().st_size<65536 else []
+        patterns=ignore_patterns(root)
         names=[]
         with os.scandir(target) as entries:
             for entry in entries:
                 if excluded((entry.name,)):continue
                 rel='/'.join(filter(None,(path,entry.name)))
-                if any(fnmatch.fnmatch(rel,p) or fnmatch.fnmatch(entry.name,p) or rel.startswith(p+'/') for p in patterns):continue
+                if ignored(rel,patterns):continue
                 reparse=entry.is_symlink() or (os.name=='nt' and bool(getattr(entry.stat(follow_symlinks=False),'st_file_attributes',0)&0x400))
                 if reparse:
                     try:resolve(rec,source,rel)

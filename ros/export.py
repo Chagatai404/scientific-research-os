@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
+from . import home
 from .store import Record
 
 VERDICT_MARK = {"correct": "✓ correct", "partially-correct": "◐ partly correct", "incorrect": "✗ not yet",
@@ -123,7 +124,7 @@ def static(rec: Record, out: Path | str, as_of=None) -> Path:
             "content=\"default-src 'none'; style-src 'unsafe-inline'\"><title>" + escape(rec.root.name)
             + " (read-only)</title><style>" + css + "body{display:block}</style></head><body><main>"
             + "".join(parts) + "</main></body></html>\n")
-    out = Path(out)
+    out = home.local_path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(html, encoding="utf-8", newline="\n")
     return out

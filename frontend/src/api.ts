@@ -1,9 +1,17 @@
 import {validateDocument, type DocumentData} from './contracts';
 let session: Promise<{csrf: string}> | undefined;
+// The link `ros serve` prints pairs this browser for acts that are the person's alone: its token sits in the URL fragment
+// (never sent to a server), is kept in this origin's storage (no other port can read it) and goes with every write.
+const PAIR = 'ros.pair';
+try {
+  const found = /(?:^#|[&?#])pair=([\w-]+)/.exec(location.hash);
+  if (found) {localStorage.setItem(PAIR, found[1]); history.replaceState(null, '', location.pathname + location.search + '#overview');}
+} catch { /* storage unavailable: the person can still work, but not approve */ }
+export function pairing() {try {return localStorage.getItem(PAIR) || '';} catch {return '';}}
 export async function mutationHeaders() {
   session ??= fetch('/services/session').then(response => response.json()).then(body => body.result);
-  const value = await session;
-  return {'Content-Type': 'application/json', 'X-ROS': '1', 'X-ROS-CSRF': value.csrf};
+  const value = await session, pair = pairing();
+  return {'Content-Type': 'application/json', 'X-ROS': '1', 'X-ROS-CSRF': value.csrf, ...(pair ? {'X-ROS-Pair': pair} : {})};
 }
 export async function human<T>(name: string, args: Record<string, unknown>, record = ''): Promise<T> {
   const prepared = await service<{approval: string}>('human-prepare', {name, args, record});

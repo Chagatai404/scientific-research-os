@@ -13,6 +13,6 @@
   "compute_ok": true,
   "bundled_python": true,
   "artifact_count": 2,
-  "backend_sha256": "e9cb553a35d0b581c5f6db39bdd20a6a5a49e1bd866a50bde831ef605442ad83",
-  "tested_at": "2026-10-30T15:14:57.062654+00:00"
+  "backend_sha256": "df195525004cb48cb32c3d6253f2e526ec67d0e1d18441fa51645ab9ad26d00a",
+  "tested_at": "2026-11-03T15:18:20.119786+00:00"
 }

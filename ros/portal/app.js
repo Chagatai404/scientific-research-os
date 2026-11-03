@@ -10,11 +10,18 @@
   try { state.name = localStorage.getItem("ros.name") || ""; } catch (e) {}
 
   // ---- data ----------------------------------------------------------------------------------------------------
+  // The pairing token from the link `ros serve` prints (kept by either page in this origin's storage) goes with every write.
+  let pair = "";
+  try {
+    const found = /(?:^#|[&?#])pair=([\w-]+)/.exec(location.hash);
+    if (found) { localStorage.setItem("ros.pair", found[1]); history.replaceState(null, "", location.pathname + "#director"); }
+    pair = localStorage.getItem("ros.pair") || "";
+  } catch (e) {}
   async function api(name, args = {}, write = false) {
     const session = write ? await fetch('/services/session').then(r => r.json()).then(b => b.result) : null;
     args = { ...(state.record ? { record: state.record } : {}), ...args };
     const opts = write
-      ? { method: "POST", headers: { "Content-Type": "application/json", "X-ROS": "1", "X-ROS-CSRF": session.csrf }, body: JSON.stringify(args) }
+      ? { method: "POST", headers: { "Content-Type": "application/json", "X-ROS": "1", "X-ROS-CSRF": session.csrf, ...(pair ? { "X-ROS-Pair": pair } : {}) }, body: JSON.stringify(args) }
       : {};
     const q = write ? "" : "?" + new URLSearchParams(Object.entries(args).filter(([, v]) => v != null)
       .map(([k, v]) => [k, JSON.stringify(v)]));

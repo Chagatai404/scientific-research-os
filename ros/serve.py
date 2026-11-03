@@ -25,6 +25,7 @@ from pathlib import Path
 import re
 import secrets
 import hashlib
+import weakref
 import socket
 import subprocess
 import sys
@@ -126,7 +127,13 @@ class Pool:
 def make_handler(rec: "Record | Pool"):
     pool = rec if isinstance(rec, Pool) else Pool(rec)
     rec = pool.default
-    browser_session, csrf = secrets.token_hex(32), secrets.token_hex(32)
+    csrf = secrets.token_hex(32)
+    # Acts that are the person's alone (approve, decide, waive, choose a code folder, delete a workspace) need a browser
+    # paired with the link this server prints where it was started (/workspace/#pair=<token>). The token is in the URL's
+    # fragment, which is never sent to a server or in a Referer; the page keeps it in its own storage, which only this exact
+    # origin (port included) can read, and sends it as a header. A cookie would not do: browsers send cookies to every port
+    # of 127.0.0.1, so a program listening on another port would receive it. The desktop app proves itself with its credential.
+    pairing = secrets.token_urlsafe(24)
     approvals = {}
 
     class Handler(BaseHTTPRequestHandler):
@@ -150,14 +157,16 @@ def make_handler(rec: "Record | Pool"):
                 return False
             return True
 
+        def _paired(self) -> bool:
+            return _same(self.headers.get('X-ROS-Pair', ''), pairing)
+
         def _human(self):
             credential = getattr(self.server, 'desktop_credential', None)
-            if credential and secrets.compare_digest(self.headers.get('X-ROS-Session', ''), credential): return True
+            if credential and _same(self.headers.get('X-ROS-Session', ''), credential): return True
             origin = self.headers.get('Origin')
             expected = 'http://' + self.headers.get('Host', '')
             return (self.headers.get('Sec-Fetch-Site') == 'same-origin' and origin in (None, expected)
-                    and ('ros_session=' + browser_session) in self.headers.get('Cookie', '').split('; ')
-                    and secrets.compare_digest(self.headers.get('X-ROS-CSRF', ''), csrf))
+                    and self._paired() and _same(self.headers.get('X-ROS-CSRF', ''), csrf))
 
         def _send(self, status, body, ctype="application/json; charset=utf-8", extra=None):
             data = body if isinstance(body, bytes) else (
@@ -166,10 +175,17 @@ def make_handler(rec: "Record | Pool"):
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("X-Content-Type-Options", "nosniff")
+            # Another site may not frame the portal; its own pages may (a PDF preview is a same-origin <object>).
+            self.send_header("X-Frame-Options", "SAMEORIGIN")
             self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; "
-                             "media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src https://www.youtube-nocookie.com")
+                             "media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'self'")
             for k, v in (extra or {}).items():
                 self.send_header(k, v)
+            # A refused request may leave its body unread on the connection, where it would be parsed as a second request
+            # (one a web page could shape to pass every check). So an error, and every write, ends the connection.
+            if status >= 400 or self.command == "POST":
+                self.send_header("Connection", "close")
+                self.close_connection = True
             self.end_headers()
             if self.command != "HEAD":
                 self.wfile.write(data)
@@ -180,12 +196,18 @@ def make_handler(rec: "Record | Pool"):
                 return
             url = urlparse(self.path)
             path = unquote(url.path)
+            # Another site may open the portal's pages (a link) but may not read, fetch, embed or trigger anything else here:
+            # an <img> pointed at a tool would otherwise start processes or reach the person's files.
+            if self.headers.get("Sec-Fetch-Site") in ("cross-site", "same-site") and path not in PAGES:
+                return self._send(HTTPStatus.FORBIDDEN, {"error": "the portal serves its own pages only"})
             credential = getattr(self.server, 'desktop_credential', None)
-            if credential and not secrets.compare_digest(self.headers.get('X-ROS-Session', ''), credential):
+            if credential and not _same(self.headers.get('X-ROS-Session', ''), credential):
                 return self._send(HTTPStatus.FORBIDDEN, {'error': 'desktop session required'})
             if path == '/services/session':
                 if self.headers.get('Sec-Fetch-Site') not in ('same-origin', 'none', None): return self._send(403, {'error': 'same-origin session required'})
-                return self._send(200, {'result': {'csrf': csrf}}, extra={'Set-Cookie': 'ros_session=' + browser_session + '; HttpOnly; SameSite=Strict; Path=/', 'Cache-Control': 'no-store'})
+                # Pairing comes only from the printed link (or the desktop credential), never from here.
+                paired = bool(credential) or self._paired()
+                return self._send(200, {'result': {'csrf': csrf, 'paired': paired}}, extra={'Cache-Control': 'no-store'})
             if path == '/services/tools':
                 return self._send(200, {'result': [{'name': name, 'help': t.help, 'schema': t.schema(), 'writes': t.writes, 'human': t.human} for name, t in api.TOOLS.items()]})
             if path == '/services/owned-work':
@@ -197,7 +219,7 @@ def make_handler(rec: "Record | Pool"):
                     result = api.call('source_location', target, source=args['source'], path=args.get('path', ''))
                     file = Path(result['path'])
                     if file.suffix.lower() not in {'.pdf', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.wav', '.mp3', '.mp4', '.webm'}: raise ValueError('unsupported media type')
-                    return self._file(file, cache=False, base=file.parent)
+                    return self._file(file, cache=False, base=file.parent, untrusted=True)
                 except (OSError, KeyError, ValueError): return self._send(404, {'error': 'source media unavailable'})
             if path == "/services/catalog":
                 result = _engine({'action': 'catalog'}, timeout=15)
@@ -213,8 +235,12 @@ def make_handler(rec: "Record | Pool"):
             if path in ("/workspace", "/workspace/"):
                 return self._file(STATIC / "workspace" / "index.html", cache=False)
             if path.startswith("/workspace/"):
+                if not _plain(path[len("/workspace/"):]):
+                    return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 return self._file(STATIC / path.lstrip("/"), cache=True, base=STATIC / "workspace")
             if path.startswith("/static/"):
+                if not _plain(path[len("/static/"):]):
+                    return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 return self._file(STATIC / path[len("/static/"):], cache=True)
             if path.startswith("/api/"):
                 args = {k: _arg(v[-1]) for k, v in parse_qs(url.query).items()}
@@ -224,13 +250,13 @@ def make_handler(rec: "Record | Pool"):
                 parts = rel.split("/")
                 handout_figure = (len(parts) >= 4 and parts[0] == "handouts" and parts[2] == "figures"
                                   and Path(rel).suffix.lower() in {".png", ".jpg", ".jpeg", ".svg", ".webp", ".pdf", ".excalidraw"})
-                if (parts[0] not in MEDIA_DIRS and not handout_figure) or any(p in ("", ".", "..") for p in parts) or "\\" in rel:
+                if (parts[0] not in MEDIA_DIRS and not handout_figure) or not _plain(rel):
                     return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 try:
                     mine = pool.get(parse_qs(url.query).get("record", [None])[-1])
                 except ValueError:
                     return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
-                return self._file(mine.root / rel, cache=False, base=mine.root / parts[0])
+                return self._file(mine.root / rel, cache=False, base=mine.root / parts[0], untrusted=True)
             if path.startswith("/vault/"):
                 return self._vault(path[len("/vault/"):])
             if path == "/events":
@@ -246,10 +272,12 @@ def make_handler(rec: "Record | Pool"):
         def do_POST(self):
             if not self._allowed():
                 return
+            if self.headers.get("Transfer-Encoding"):  # only a declared Content-Length is read; anything else is refused
+                return self._send(HTTPStatus.BAD_REQUEST, {"error": "send the body with a Content-Length"})
             if self.headers.get("X-ROS") != "1":
                 return self._send(HTTPStatus.FORBIDDEN, {"error": "writes need the X-ROS header"})
             credential = getattr(self.server, 'desktop_credential', None)
-            if credential and not secrets.compare_digest(self.headers.get('X-ROS-Session', ''), credential): return self._send(403, {'error': 'desktop session required'})
+            if credential and not _same(self.headers.get('X-ROS-Session', ''), credential): return self._send(403, {'error': 'desktop session required'})
             if self.headers.get('Origin') not in (None, 'http://' + self.headers.get('Host', '')): return self._send(403, {'error': 'foreign origin'})
             path = urlparse(self.path).path
             try:
@@ -266,7 +294,7 @@ def make_handler(rec: "Record | Pool"):
                 return self._send(HTTPStatus.BAD_REQUEST, {"error": "the body is a JSON object of arguments"})
             if not path.startswith("/api/"):
                 if path in ('/services/human-prepare', '/services/human-commit'):
-                    if not self._human(): return self._send(403, {'error': 'human session required'})
+                    if not self._human(): return self._send(403, {'error': HUMAN_ONLY})
                     try:
                         target = pool.get(args.get('record'))
                         name, params = args['name'], args['args']
@@ -388,7 +416,7 @@ def make_handler(rec: "Record | Pool"):
             base = Path(root)
             # the page asks for paths as they appear in the vault ("Research OS/Courses/..."): drop the folder itself
             sub = "/".join(parts[1:]) if parts[0] == base.name else rel
-            return self._file(base / sub, cache=False, base=base)
+            return self._file(base / sub, cache=False, base=base, untrusted=True)
 
         def _tool(self, name, args, write):
             t = api.TOOLS.get(name)
@@ -428,7 +456,11 @@ def make_handler(rec: "Record | Pool"):
             if engine and not result.get('duplicate'):
                 threading.Thread(target=_chat_response, args=(target, result, engine), daemon=True).start()
 
-        def _file(self, path: Path, cache: bool, base: Path | None = None):
+        def _file(self, path: Path, cache: bool, base: Path | None = None, untrusted: bool = False):
+            # Decide on the path as written before resolving it: on Windows, resolving a UNC path opens it, which connects
+            # to that server and sends the person's NTLM credentials.
+            if _network(path) or _network(base or STATIC):
+                return self._send(HTTPStatus.NOT_FOUND, {"error": "not found"})
             base = (base or STATIC).resolve()
             try:
                 target = path.resolve()
@@ -443,6 +475,13 @@ def make_handler(rec: "Record | Pool"):
             if target.suffix.lower() == ".excalidraw":
                 ctype = "application/octet-stream"
                 extra["Content-Disposition"] = 'attachment; filename="drawing.excalidraw"'
+            if untrusted:
+                # Material an agent or a document wrote (bundles, handouts, the vault, sources) is shown, never run: opened on
+                # its own it is a sandboxed page with no scripts, and a script or page file is served as plain text.
+                if target.suffix.lower() != ".pdf":  # a sandboxed document cannot show the browser's own PDF viewer
+                    extra["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'"
+                if target.suffix.lower() in ACTIVE:
+                    ctype = "text/plain; charset=utf-8"
             rng = self.headers.get("Range")
             if rng and rng.startswith("bytes="):
                 start_s, _, end_s = rng[6:].split(",")[0].partition("-")
@@ -523,6 +562,7 @@ def make_handler(rec: "Record | Pool"):
                 pass
             self.close_connection = True
 
+    Handler.pairing = pairing
     return Handler
 
 
@@ -531,6 +571,33 @@ def _arg(text: str):
         return json.loads(text)
     except ValueError:
         return text
+
+
+# The portals this process serves, by port: what a test or ``ros mcp --portal`` reads the pairing link from.
+RUNNING = weakref.WeakValueDictionary()
+HUMAN_ONLY = ("This is yours alone to do, and this browser is not paired. Open the link printed where Research OS was started "
+              "(ros serve shows it); it pairs this browser until the portal restarts.")
+
+
+# The portal's own pages: the only paths another site may open (a link), never fetch or embed.
+PAGES = {"/", "/index.html", "/workspace", "/workspace/"}
+# File types a browser runs or renders as a document; from untrusted folders they are served as plain text.
+ACTIVE = {".html", ".htm", ".xhtml", ".xml", ".js", ".mjs", ".cjs"}
+_BS = chr(92)
+
+
+def _same(offered: str, secret: str) -> bool:
+    """A constant-time comparison that also refuses, rather than crashes on, text that is not ASCII."""
+    return secrets.compare_digest(str(offered).encode("utf-8", "replace"), str(secret).encode("utf-8"))
+
+
+def _plain(rel: str) -> bool:
+    """A relative URL path with no tricks: no empty, current or parent parts, no backslash, drive or stream (':'), no NUL."""
+    parts = rel.split("/")
+    return bool(rel) and not any(p in ("", ".", "..") for p in parts) and not any(c in rel for c in (_BS, ":", chr(0)))
+
+
+_network = home.network
 
 
 class PortalServer(ThreadingHTTPServer):
@@ -577,8 +644,11 @@ def _ours(port: int) -> bool:
 def _bind(rec: "Record | Pool", port: int) -> PortalServer:
     try:
         pool = rec if isinstance(rec, Pool) else Pool(rec)
-        server = PortalServer(("127.0.0.1", port), make_handler(pool))
+        handler = make_handler(pool)
+        server = PortalServer(("127.0.0.1", port), handler)
         server.pool = pool
+        server.pairing = handler.pairing
+        RUNNING[server.server_address[1]] = server
         return server
     except OSError as exc:
         if port and _ours(port):
@@ -606,8 +676,9 @@ def run(rec: Record, port: int = 8737, open_browser: bool = False) -> int:
         return 0
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"Research OS portal for {rec.root.name}: {url}  (Ctrl+C to stop)", flush=True)
+    print(f"To approve, decide or delete in this browser, open once: {url}workspace/#pair={server.pairing}", flush=True)
     if open_browser:
-        webbrowser.open(url)
+        webbrowser.open(f"{url}workspace/#pair={server.pairing}")
     timer = runner.Runner(pool.all).start()  # the portal keeps every record it has open in step on its own
     try:
         server.serve_forever()

@@ -930,7 +930,7 @@ def migrate(rec: Record, vault: Path | str, research_root: Path | str | None = N
     the record's history, and every file of the vault must be accounted for (read in, derived, retired with a reason). The
     report is also written to ``migration-report.json``; the per-file manifest to ``migration-files.json``. Importing again
     adds nothing."""
-    vault = Path(vault).resolve()
+    vault = home.local_path(vault).resolve()
     reports, claimed, refs = _import_steps(rec, vault, research_root, evidence, graphify)
     report = {"vault": str(vault), **{k: {x: y for x, y in v.items() if x not in ("files", "folders", "refs")}
                                       for k, v in reports.items()}}
@@ -981,6 +981,8 @@ def migrate_check(rec: Record, vault: Path | str | None = None) -> dict:
     """Read-only: is everything in the vault accounted for, and has anything been added or changed since the last migration?
     Re-reads the vault's files (not its notes) against the manifest the migration kept."""
     chosen = vault or home.config(rec.root).get("legacy_vault")
+    if chosen and home.network(chosen):
+        raise ValueError("a vault on a network share is not checked: copy it to this computer first")
     if not chosen or not Path(chosen).is_dir():
         raise ValueError("no vault to check: pass vault=, or migrate one first")
     vault = Path(chosen).resolve()

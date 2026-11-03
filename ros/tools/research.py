@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import graph, research as rsc
+from .. import graph, home, research as rsc
 from ..registry import P, iso_day, tool
 
 
@@ -50,7 +50,7 @@ def add_claim(rec, key, text, project, author, assurance="internal", numbers=Non
 @tool("precheck", "Check every number a claim cites against its result file, before any audit.", writes=True,
       claim=P("string", "claim id", True), root=P("string", "project root the file paths are relative to", True))
 def precheck(rec, claim, root):
-    return rsc.precheck_numbers(rec, claim, Path(root))
+    return rsc.precheck_numbers(rec, claim, home.local_path(root))
 
 
 @tool("request_audits", "Open audit tasks for each required step without a verdict (claim text and paths only).",

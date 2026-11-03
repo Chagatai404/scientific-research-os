@@ -254,7 +254,10 @@ executes. Source snapshots are immutable SHA-256 blobs referenced by `source.rev
 `sources-cache.sqlite` is a disposable lexical index. Index work uses bounded batches outside
 the interface's record lock. Canonical run output is batched, terminal states explicit, tool
 results tied to operation IDs. No provider receives human/session credentials. Browser human
-actions require a session/CSRF capability; scientific decisions additionally bind subject revision.
+actions require the desktop credential, or the pairing token from the link `ros serve` prints (sent as `X-ROS-Pair`, never
+a cookie), plus the CSRF token; scientific decisions additionally bind subject revision. Files written by agents or
+documents are served sandboxed (`serve._file(untrusted=True)`), and every path from a request or tool goes through
+`home.local_path`, which refuses network shares before anything touches them.
 
 To add a provider, implement its adapter in `ros/lib/providers.py`, advertise verified capabilities,
 register it in `ADAPTERS`, and exercise streaming, tool results, interruption and malformed input

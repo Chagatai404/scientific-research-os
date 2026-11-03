@@ -1,6 +1,6 @@
 # Scientific Research OS
 
-Version **1.7.1**. A Windows desktop app (and a Python toolkit) where you are the director: say what you want to learn
+Version **1.7.2**. A Windows desktop app (and a Python toolkit) where you are the director: say what you want to learn
 or find out, and agents prepare it, keep your Obsidian vault current and check the work. You learn, and you judge the
 findings. It works with Claude, Codex, Gemini or a local model.
 
@@ -126,7 +126,7 @@ npm --prefix desktop start
 
 `python desktop/verify.py` runs the full isolated gate (Python, frontend, browser journeys, packaged lifecycle). It makes
 no paid inference calls and never touches your vault. Acceptance notes:
-[1.7.1](docs/desktop-rebuild/ACCEPTANCE-1.7.1.md), [1.7](docs/desktop-rebuild/ACCEPTANCE-1.7.0.md), [1.6.1](docs/desktop-rebuild/ACCEPTANCE-1.6.1.md), [1.6](docs/desktop-rebuild/ACCEPTANCE-1.6.0.md), [1.5.2](docs/desktop-rebuild/ACCEPTANCE-1.5.2.md), [1.5.1](docs/desktop-rebuild/ACCEPTANCE-1.5.1.md), [1.5](docs/desktop-rebuild/ACCEPTANCE-1.5.0.md), [1.4](docs/desktop-rebuild/ACCEPTANCE-1.4.0.md),
+[1.7.2](docs/desktop-rebuild/ACCEPTANCE-1.7.2.md), [1.7.1](docs/desktop-rebuild/ACCEPTANCE-1.7.1.md), [1.7](docs/desktop-rebuild/ACCEPTANCE-1.7.0.md), [1.6.1](docs/desktop-rebuild/ACCEPTANCE-1.6.1.md), [1.6](docs/desktop-rebuild/ACCEPTANCE-1.6.0.md), [1.5.2](docs/desktop-rebuild/ACCEPTANCE-1.5.2.md), [1.5.1](docs/desktop-rebuild/ACCEPTANCE-1.5.1.md), [1.5](docs/desktop-rebuild/ACCEPTANCE-1.5.0.md), [1.4](docs/desktop-rebuild/ACCEPTANCE-1.4.0.md),
 [architecture](docs/desktop-rebuild/ARCHITECTURE.md), [backup and rollback](docs/desktop-rebuild/MIGRATION_AND_ROLLBACK.md).
 
 ## Use it from a terminal or an agent
@@ -140,6 +140,10 @@ ros                               # what needs you today (the first run sets up 
 ros go "teach me STAT303 by December"      # or just say it to your agent
 ros open                          # the portal in your browser
 ```
+
+Approving, deciding, waiving and deleting in the browser need a paired browser. `ros open` (or `ros serve --open`) opens
+the pairing link for you; `ros serve` also prints it (`http://127.0.0.1:8737/workspace/#pair=...`, new each start). If an
+approval says the browser is not paired, open that link once. The desktop app needs none of this.
 
 Your vault is found from Obsidian's own list (or `ros vault_set --path ~/Vault`); only the `Research OS/` folder in it is
 written by the sync. `ros doctor` says what is missing (a LaTeX install, a voice, a vault) and what it will do instead.

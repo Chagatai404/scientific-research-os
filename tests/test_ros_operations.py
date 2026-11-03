@@ -101,6 +101,17 @@ class Operations(unittest.TestCase):
             self.assertTrue(self.rec.append_once(event));self.assertFalse(other.append_once(event))
         self.assertEqual(len(other.events(type='fixture.claim')),1)
 
+    def test_gitignore_lines_anchored_at_the_root_and_folders_at_any_depth_hide_what_git_hides(self):
+        # Issue #22: '/data/' is anchored at the root; 'build_output/' hides that folder wherever it is, for a listing and a direct path.
+        root=Path(self.temp.name)/'repo';(root/'data').mkdir(parents=True);(root/'src'/'build_output').mkdir(parents=True);(root/'src'/'data').mkdir()
+        (root/'data'/'x.csv').write_text('secret');(root/'src'/'build_output'/'x').write_text('built');(root/'src'/'data'/'y.csv').write_text('kept')
+        (root/'.gitignore').write_text('/data/\nbuild_output/\n')
+        source=api.call('source_register',self.rec,root=str(root),kind='folder')['id']
+        self.assertNotIn('data',[r['name'] for r in api.call('source_children',self.rec,source=source)])
+        for hidden in ('data/x.csv','src/build_output/x'):
+            with self.assertRaises(ValueError, msg=hidden): api.call('source_preview',self.rec,source=source,path=hidden)
+        self.assertEqual(api.call('source_preview',self.rec,source=source,path='src/data/y.csv')['text'],'kept','only the root data/ is anchored')
+
     def test_source_directory_pages_refresh_names_and_ignore_rules(self):
         root=Path(self.temp.name)/'files';root.mkdir()
         for name in ('a.txt','b.txt','c.txt'):(root/name).write_text(name)

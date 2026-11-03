@@ -309,7 +309,8 @@ def execute(rec, result, request, legacy_engine=None):
                 # Character bound is explicit; original messages remain in the record.
                 total, messages = 0, []
                 for message in reversed(packet['messages']):
-                    if total + len(message['content']) > context_limit//2: break
+                    # The newest message is what the person just asked: it is always sent, however long; older ones fill the rest.
+                    if messages and total + len(message['content']) > context_limit//2: break
                     messages.insert(0, message); total += len(message['content'])
                 packet['messages'] = messages
                 provider = packet['model'].split(':', 1)[0]

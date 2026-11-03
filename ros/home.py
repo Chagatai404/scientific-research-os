@@ -13,6 +13,26 @@ import re
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
 
 
+_BS = chr(92)  # a backslash
+
+
+def network(path) -> bool:
+    """A UNC or other network path (two leading separators, the long UNC form, the NT object namespace). Touching one, even to
+    resolve it, connects to that server and on Windows sends the person's login hash, so it is refused before any file call."""
+    text = str(path).replace("/", _BS)
+    upper = text.upper()
+    return ((text.startswith(_BS * 2) and not text.startswith(_BS * 2 + "?" + _BS))
+            or upper.startswith(_BS * 2 + "?" + _BS + "UNC" + _BS) or upper.startswith(_BS + "??" + _BS)
+            or "GLOBALROOT" in upper or upper.startswith(_BS * 2 + "." + _BS))
+
+
+def local_path(path) -> Path:
+    """The path, if it is on this computer; a network path is refused before anything opens it."""
+    if network(path):
+        raise ValueError("a folder on a network share is not opened: copy it to this computer first")
+    return Path(path)
+
+
 def home() -> Path:
     return Path(os.environ.get("ROS_HOME") or Path.home() / "ResearchOS").expanduser()
 

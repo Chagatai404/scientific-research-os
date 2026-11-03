@@ -76,8 +76,17 @@ def lines(process, cancel, timeout=180):
 
 # A Code session's agent works in the person's repository with its own tools. These are the commands it is never allowed to run
 # there: publishing, rewriting or discarding history is the person's.
-NEVER_RUN = ('Bash(git push:*)', 'Bash(git reset:*)', 'Bash(git clean:*)', 'Bash(git rebase:*)', 'Bash(git checkout -- :*)',
-             'Bash(git restore:*)', 'Bash(git branch -D:*)', 'Bash(rm -rf:*)', 'Bash(gh pr merge:*)', 'Bash(gh repo delete:*)')
+# Claude Code matches these as command prefixes, so each also names the forms that put an option first (`git -C . push`, `rm -fr`);
+# a deny-list can still be stepped around (a script that runs git), which is why unattended shell work goes only to Codex,
+# whose sandbox holds it to the folder, and why the app tells the person to watch a Claude Code session's steps.
+_GIT_DENIED = ('push', 'reset', 'clean', 'rebase', 'restore', 'filter-branch', 'filter-repo', 'update-ref', 'reflog expire', 'gc --prune',
+               'branch -D', 'branch --delete --force', 'checkout -- ', 'checkout -f', 'stash drop', 'stash clear', 'remote set-url', 'config')
+NEVER_RUN = (*(f'Bash({prefix}{verb}:*)' for verb in _GIT_DENIED for prefix in ('git ', 'git -C . ', 'git -C .. ', 'git -c ')),
+             'Bash(git -C:*)', 'Bash(git -c:*)', 'Bash(git --git-dir:*)', 'Bash(git --work-tree:*)',
+             'Bash(rm -rf:*)', 'Bash(rm -fr:*)', 'Bash(rm -r:*)', 'Bash(rm -R:*)', 'Bash(rm --recursive:*)', 'Bash(rmdir /s:*)',
+             'Bash(Remove-Item -Recurse:*)', 'Bash(del /s:*)', 'Bash(rd /s:*)', 'Bash(format:*)',
+             'Bash(gh pr merge:*)', 'Bash(gh repo delete:*)', 'Bash(gh release:*)', 'Bash(gh api:*)', 'Bash(gh auth:*)',
+             'Bash(curl:*)', 'Bash(wget:*)', 'Bash(Invoke-WebRequest:*)', 'Bash(iwr:*)', 'Bash(ssh:*)', 'Bash(scp:*)')
 NATIVE_TOOLS = 'Bash,Read,Edit,Write,MultiEdit,Glob,Grep,NotebookEdit,TodoWrite'
 
 
@@ -126,7 +135,7 @@ def codex(request, emit, tool_call, cancel, own):
             if params is not None: message['params'] = params
             process.stdin.write(json.dumps(message) + '\n'); process.stdin.flush(); return sequence
         try:
-            init = send('initialize', {'clientInfo': {'name': 'research_os', 'title': 'Research OS', 'version': '1.7.1'}, 'capabilities': {'experimentalApi': True}})
+            init = send('initialize', {'clientInfo': {'name': 'research_os', 'title': 'Research OS', 'version': '1.7.2'}, 'capabilities': {'experimentalApi': True}})
             start_id = turn_id = None
             usage=None
             for event in lines(process, cancel, request.get('deadline', 180)):
@@ -242,7 +251,9 @@ def local(request, emit, tool_call, cancel, own):
                         choice = (event.get('choices') or [{}])[0]; delta = choice.get('delta', {}); finish = bool(choice.get('finish_reason')) or finish; usage = event.get('usage', usage)
                     text = delta.get('content') or ''; content += text; emit(text)
                     for index, call in enumerate(delta.get('tool_calls', [])):
-                        number = call.get('index', index); row = calls.setdefault(number, {'id': call.get('id', 'local-' + str(step) + '-' + str(number)), 'function': {'name': '', 'arguments': ''}, 'type': 'function'})
+                        # OpenAI-style streams send one call in pieces tied by a top-level index; Ollama sends each call whole (its
+                        # index sits under `function`), so every Ollama call gets its own row.
+                        number = len(calls) if provider == 'ollama' else call.get('index', index); row = calls.setdefault(number, {'id': call.get('id', 'local-' + str(step) + '-' + str(number)), 'function': {'name': '', 'arguments': ''}, 'type': 'function'})
                         fn = call.get('function', {})
                         row['function']['name'] += fn.get('name', '')
                         args = fn.get('arguments', '')

@@ -75,6 +75,9 @@ class Workbench(unittest.TestCase):
         self.assertIn("--tools", plain[0]); self.assertNotEqual(Path(plain[1]), self.repo)
         self.assertNotIn("--tools", native[0]); self.assertEqual(native[1], str(self.repo))
         self.assertIn("acceptEdits", native[0]); self.assertIn("Bash(git push:*)", native[0]); self.assertIn("Bash(git reset:*)", native[0])
+        # The forms that put an option first, which a prefix rule would otherwise miss (reported by Matt Abate).
+        for form in ("Bash(git -C:*)", "Bash(git -c:*)", "Bash(rm -fr:*)", "Bash(rm -r:*)", "Bash(git config:*)", "Bash(curl:*)"):
+            self.assertIn(form, native[0])
 
 
     def test_a_folder_that_holds_a_record_is_refused(self):

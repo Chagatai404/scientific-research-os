@@ -175,7 +175,8 @@ def serve(project: str | None = None, stdin=None, stdout=None, portal: int | Non
         if portal is not None:
             from . import serve as portal_server
             httpd = portal_server.start(server.record(None), portal)
-            sys.stderr.write(f"research-os portal: http://127.0.0.1:{portal}/\n")
+            sys.stderr.write(f"research-os portal: http://127.0.0.1:{portal}/  (to approve or decide in it, open once: "
+                             f"http://127.0.0.1:{portal}/workspace/#pair={httpd.pairing})\n")
         for line in stdin:
             line = line.strip()
             if not line:

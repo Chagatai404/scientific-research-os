@@ -42,6 +42,19 @@ included, and the committed step in the run keeps it.
 says so and opens it), in a browser or Obsidian's core Web Viewer. While it runs, the process is the single writer of
 every record it has open and keeps them in step on its own (`references/DIRECTOR.md`).
 
+Acts that are the person's alone (approve, decide, waive, choose a code folder, delete a workspace) need a paired browser.
+`ros serve` prints a pairing link (`http://127.0.0.1:8737/workspace/#pair=<token>`, new every start), and `ros serve --open`
+opens it. The token is in the URL's fragment, which a browser never sends to a server or in a Referer. The page keeps it in
+its own storage, which only this exact origin (port included) can read, and sends it as the `X-ROS-Pair` header with every
+write. A cookie would not do, because browsers send cookies to every port of 127.0.0.1. `GET /services/session` gives a page
+its CSRF token and says whether it is paired, but pairs nothing. `ros mcp --portal` writes the link to stderr. The desktop
+app proves itself with its own credential and shows no link.
+
+Pairing stops programs that reach the portal only over HTTP (another site, another local server, a tool calling the API).
+It is not a boundary against a program or agent that can run commands as you: such a program can start its own `ros serve`
+and read the link it prints, read the stderr log of `ros mcp --portal`, or see the link on the browser's command line after
+`--open`. Keep agents that can run shell commands sandboxed (Codex's sandbox does this for Code sessions).
+
 | Section | Contents |
 |---|---|
 | Director | The home. **What do you want to learn or find out?** (say it in your own words; the records, goal and work for your agent are set up), **Needs your judgement** (each item with a headline, the evidence a click away, and the approve or decide form with your name already filled in), what is happening (tasks waiting for an agent and for how long, local jobs, anything not set up), what you learned and what is next (reviews due, the next lesson, handouts to read), what is new in your vault, and a small closed **Context** window |
