@@ -121,7 +121,7 @@ class ServeTests(unittest.TestCase):
         for path in ("/api/status", "/services/catalog", "/events", f"/media/bundles/{self.bundle}/plan.json", "/services/session"):
             self.assertEqual(self.req("GET", path, headers=cross)[0], 403, path)
         self.assertEqual(self.req("GET", "/source-media?source=%22x%22", headers=cross)[0], 403, "the person's source media")
-        self.assertIn("frame-ancestors 'none'", self.req("GET", "/")[1].get("Content-Security-Policy", ""))
+        self.assertIn("frame-ancestors 'self'", self.req("GET", "/")[1].get("Content-Security-Policy", ""))
 
     def test_foreign_host_is_refused(self):
         status, _, _ = self.req("GET", "/api/status", headers={"Host": "evil.example:80"})

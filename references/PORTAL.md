@@ -50,6 +50,11 @@ write. A cookie would not do, because browsers send cookies to every port of 127
 its CSRF token and says whether it is paired, but pairs nothing. `ros mcp --portal` writes the link to stderr. The desktop
 app proves itself with its own credential and shows no link.
 
+Pairing stops programs that reach the portal only over HTTP (another site, another local server, a tool calling the API).
+It is not a boundary against a program or agent that can run commands as you: such a program can start its own `ros serve`
+and read the link it prints, read the stderr log of `ros mcp --portal`, or see the link on the browser's command line after
+`--open`. Keep agents that can run shell commands sandboxed (Codex's sandbox does this for Code sessions).
+
 | Section | Contents |
 |---|---|
 | Director | The home. **What do you want to learn or find out?** (say it in your own words; the records, goal and work for your agent are set up), **Needs your judgement** (each item with a headline, the evidence a click away, and the approve or decide form with your name already filled in), what is happening (tasks waiting for an agent and for how long, local jobs, anything not set up), what you learned and what is next (reviews due, the next lesson, handouts to read), what is new in your vault, and a small closed **Context** window |

@@ -175,9 +175,10 @@ def make_handler(rec: "Record | Pool"):
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("X-Frame-Options", "DENY")
+            # Another site may not frame the portal; its own pages may (a PDF preview is a same-origin <object>).
+            self.send_header("X-Frame-Options", "SAMEORIGIN")
             self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; "
-                             "media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'")
+                             "media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'self'")
             for k, v in (extra or {}).items():
                 self.send_header(k, v)
             # A refused request may leave its body unread on the connection, where it would be parsed as a second request

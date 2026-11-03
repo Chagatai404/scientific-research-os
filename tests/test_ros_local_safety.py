@@ -60,7 +60,7 @@ class NetworkPaths(unittest.TestCase):
                  ("migrate_check", {"vault": SHARE}), ("export", {"kind": "static", "path": SHARE + chr(92) + "x.html"})]
         with patch.object(Path, "resolve", resolve):
             for name, args in calls:
-                with self.assertRaises(ValueError, msg=name):
+                with self.assertRaisesRegex(ValueError, "network share", msg=name):
                     api.call(name, self.rec, **args)
         self.assertEqual(opened, [])
 
