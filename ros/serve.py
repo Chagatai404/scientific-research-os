@@ -127,10 +127,12 @@ class Pool:
 def make_handler(rec: "Record | Pool"):
     pool = rec if isinstance(rec, Pool) else Pool(rec)
     rec = pool.default
-    browser_session, csrf = secrets.token_hex(32), secrets.token_hex(32)
+    csrf = secrets.token_hex(32)
     # Acts that are the person's alone (approve, decide, waive, choose a code folder, delete a workspace) need a browser
-    # paired with the link this server prints where it was started. The page's own session call never hands out the
-    # cookie, so a local program or agent cannot obtain it by asking. The desktop app proves itself with its credential.
+    # paired with the link this server prints where it was started (/workspace/#pair=<token>). The token is in the URL's
+    # fragment, which is never sent to a server or in a Referer; the page keeps it in its own storage, which only this exact
+    # origin (port included) can read, and sends it as a header. A cookie would not do: browsers send cookies to every port
+    # of 127.0.0.1, so a program listening on another port would receive it. The desktop app proves itself with its credential.
     pairing = secrets.token_urlsafe(24)
     approvals = {}
 
@@ -156,16 +158,15 @@ def make_handler(rec: "Record | Pool"):
             return True
 
         def _paired(self) -> bool:
-            return ('ros_session=' + browser_session) in self.headers.get('Cookie', '').split('; ')
+            return _same(self.headers.get('X-ROS-Pair', ''), pairing)
 
         def _human(self):
             credential = getattr(self.server, 'desktop_credential', None)
-            if credential and secrets.compare_digest(self.headers.get('X-ROS-Session', ''), credential): return True
+            if credential and _same(self.headers.get('X-ROS-Session', ''), credential): return True
             origin = self.headers.get('Origin')
             expected = 'http://' + self.headers.get('Host', '')
             return (self.headers.get('Sec-Fetch-Site') == 'same-origin' and origin in (None, expected)
-                    and ('ros_session=' + browser_session) in self.headers.get('Cookie', '').split('; ')
-                    and secrets.compare_digest(self.headers.get('X-ROS-CSRF', ''), csrf))
+                    and self._paired() and _same(self.headers.get('X-ROS-CSRF', ''), csrf))
 
         def _send(self, status, body, ctype="application/json; charset=utf-8", extra=None):
             data = body if isinstance(body, bytes) else (
@@ -174,8 +175,9 @@ def make_handler(rec: "Record | Pool"):
             self.send_header("Content-Type", ctype)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
             self.send_header("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; "
-                             "media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src https://www.youtube-nocookie.com")
+                             "media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src https://www.youtube-nocookie.com; frame-ancestors 'none'")
             for k, v in (extra or {}).items():
                 self.send_header(k, v)
             # A refused request may leave its body unread on the connection, where it would be parsed as a second request
@@ -198,20 +200,18 @@ def make_handler(rec: "Record | Pool"):
             if self.headers.get("Sec-Fetch-Site") in ("cross-site", "same-site") and path not in PAGES:
                 return self._send(HTTPStatus.FORBIDDEN, {"error": "the portal serves its own pages only"})
             credential = getattr(self.server, 'desktop_credential', None)
-            if credential and not secrets.compare_digest(self.headers.get('X-ROS-Session', ''), credential):
+            if credential and not _same(self.headers.get('X-ROS-Session', ''), credential):
                 return self._send(HTTPStatus.FORBIDDEN, {'error': 'desktop session required'})
             if path == '/services/session':
                 if self.headers.get('Sec-Fetch-Site') not in ('same-origin', 'none', None): return self._send(403, {'error': 'same-origin session required'})
-                # The cookie for human acts comes only from the pairing link (or the desktop credential), never from here.
+                # Pairing comes only from the printed link (or the desktop credential), never from here.
                 paired = bool(credential) or self._paired()
-                return self._send(200, {'result': {'csrf': csrf, 'paired': paired}}, extra={'Cache-Control': 'no-store',
-                                  **({'Set-Cookie': 'ros_session=' + browser_session + '; HttpOnly; SameSite=Strict; Path=/'} if credential else {})})
+                return self._send(200, {'result': {'csrf': csrf, 'paired': paired}}, extra={'Cache-Control': 'no-store'})
             if path == '/services/tools':
                 return self._send(200, {'result': [{'name': name, 'help': t.help, 'schema': t.schema(), 'writes': t.writes, 'human': t.human} for name, t in api.TOOLS.items()]})
             if path == '/services/owned-work':
                 return self._send(200,{'result':{'active':len(runtime.ACTIVE),'indexing':sum(j['state'] in ('queued','indexing') for j in runtime.INDEX_JOBS.values())}})
             if path == '/source-media':
-                if not self._human(): return self._send(HTTPStatus.FORBIDDEN, {'error': HUMAN_ONLY})
                 args = {k: _arg(v[-1]) for k, v in parse_qs(url.query).items()}
                 try:
                     target = pool.get(args.get('record'))
@@ -229,12 +229,6 @@ def make_handler(rec: "Record | Pool"):
                         result['models'].append({'id': profile['id'], 'label': profile['model'], 'provider': profile['provider'], 'reasoning_efforts': [], 'tools': profile['tools'], 'vision': profile['vision'], 'context_limit': profile['context_limit']})
                 except ValueError: pass
                 return self._send(HTTPStatus.OK, {'result': result})
-            offered = parse_qs(url.query).get("pair", [""])[-1]
-            if offered and path in ("/", "/index.html", "/workspace", "/workspace/"):
-                if not secrets.compare_digest(offered, pairing):
-                    return self._send(HTTPStatus.FORBIDDEN, {"error": "This pairing link is not valid. Use the link printed where Research OS was started; it changes every time it starts."})
-                return self._send(HTTPStatus.SEE_OTHER, b"", "text/plain", extra={"Location": path, "Cache-Control": "no-store",
-                                  "Set-Cookie": "ros_session=" + browser_session + "; HttpOnly; SameSite=Strict; Path=/"})
             if path in ("/", "/index.html"):
                 return self._file(STATIC / "index.html", cache=False)
             if path in ("/workspace", "/workspace/"):
@@ -282,7 +276,7 @@ def make_handler(rec: "Record | Pool"):
             if self.headers.get("X-ROS") != "1":
                 return self._send(HTTPStatus.FORBIDDEN, {"error": "writes need the X-ROS header"})
             credential = getattr(self.server, 'desktop_credential', None)
-            if credential and not secrets.compare_digest(self.headers.get('X-ROS-Session', ''), credential): return self._send(403, {'error': 'desktop session required'})
+            if credential and not _same(self.headers.get('X-ROS-Session', ''), credential): return self._send(403, {'error': 'desktop session required'})
             if self.headers.get('Origin') not in (None, 'http://' + self.headers.get('Host', '')): return self._send(403, {'error': 'foreign origin'})
             path = urlparse(self.path).path
             try:
@@ -483,7 +477,8 @@ def make_handler(rec: "Record | Pool"):
             if untrusted:
                 # Material an agent or a document wrote (bundles, handouts, the vault, sources) is shown, never run: opened on
                 # its own it is a sandboxed page with no scripts, and a script or page file is served as plain text.
-                extra["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'"
+                if target.suffix.lower() != ".pdf":  # a sandboxed document cannot show the browser's own PDF viewer
+                    extra["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'"
                 if target.suffix.lower() in ACTIVE:
                     ctype = "text/plain; charset=utf-8"
             rng = self.headers.get("Range")
@@ -590,16 +585,18 @@ ACTIVE = {".html", ".htm", ".xhtml", ".xml", ".js", ".mjs", ".cjs"}
 _BS = chr(92)
 
 
+def _same(offered: str, secret: str) -> bool:
+    """A constant-time comparison that also refuses, rather than crashes on, text that is not ASCII."""
+    return secrets.compare_digest(str(offered).encode("utf-8", "replace"), str(secret).encode("utf-8"))
+
+
 def _plain(rel: str) -> bool:
     """A relative URL path with no tricks: no empty, current or parent parts, no backslash, drive or stream (':'), no NUL."""
     parts = rel.split("/")
     return bool(rel) and not any(p in ("", ".", "..") for p in parts) and not any(c in rel for c in (_BS, ":", chr(0)))
 
 
-def _network(path) -> bool:
-    """A UNC or other network path: two leading separators, or the long UNC form."""
-    text = str(path).replace("/", _BS)
-    return (text.startswith(_BS * 2) and not text.startswith(_BS * 2 + "?" + _BS)) or text.upper().startswith(_BS * 2 + "?" + _BS + "UNC" + _BS)
+_network = home.network
 
 
 class PortalServer(ThreadingHTTPServer):
@@ -678,9 +675,9 @@ def run(rec: Record, port: int = 8737, open_browser: bool = False) -> int:
         return 0
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"Research OS portal for {rec.root.name}: {url}  (Ctrl+C to stop)", flush=True)
-    print(f"To approve, decide or delete in this browser, open once: {url}?pair={server.pairing}", flush=True)
+    print(f"To approve, decide or delete in this browser, open once: {url}workspace/#pair={server.pairing}", flush=True)
     if open_browser:
-        webbrowser.open(f"{url}?pair={server.pairing}")
+        webbrowser.open(f"{url}workspace/#pair={server.pairing}")
     timer = runner.Runner(pool.all).start()  # the portal keeps every record it has open in step on its own
     try:
         server.serve_forever()

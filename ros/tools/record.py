@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import export, graph, importers, research, tasks, vault, organization as org
+from .. import export, graph, home, importers, research, tasks, vault, organization as org
 from ..learn import schedule
 from ..store import validate_item
 from ..registry import P, iso_day, present, tool
@@ -147,6 +147,8 @@ def add_edge(rec, src, type, dst, data=None):
       evidence=P("string", "EvidenceAtom folder for research"), repo=P("string", "repository root for graphify"),
       project=P("string", "documents: the project id, project:<key>, they are about"))
 def import_(rec, kind, path, evidence=None, repo=None, project=None):
+    for named in (path, evidence, repo):
+        if named: home.local_path(named)
     if not Path(path).expanduser().exists():
         raise ValueError(f"no such path: {path}")
     return importers.IMPORTERS[kind](rec, path, evidence=evidence, repo=repo, project=project)

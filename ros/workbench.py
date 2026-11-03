@@ -64,12 +64,25 @@ def local_only(rec: Record) -> bool:
     return False
 
 
+def _no_filters(path: Path) -> list[str]:
+    """Overrides that empty every clean/smudge/process filter the repository's config names (reading config runs nothing)."""
+    try:
+        done = subprocess.run(["git", "-C", str(path), "config", "--get-regexp", r"^filter\..*\.(clean|smudge|process)$"],
+                              capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=GIT_TIMEOUT,
+                              **({"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if os.name == "nt" else {}))
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    names = {line.split(" ", 1)[0].rsplit(".", 1)[0] for line in done.stdout.splitlines() if line.startswith("filter.")}
+    return [x for name in sorted(names) for key in ("clean", "smudge", "process") for x in ("-c", f"{name}.{key}=")] + \
+           [x for name in sorted(names) for x in ("-c", f"{name}.required=false")]
+
+
 def _git(path: Path, *args: str, stdin: str | None = None) -> str | None:
     try:
         # An agent may have written the repository's .git/config: options that run commands (an fsmonitor hook, an external
         # diff, a pager) are switched off for these reads.
         safe = ["-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "diff.external=", "-c", "core.pager=cat",
-                "--no-pager"]
+                "-c", "log.showSignature=false", *_no_filters(path), "--no-pager"]
         done = subprocess.run(["git", *safe, "-C", str(path), *args], capture_output=True, text=True, encoding="utf-8", errors="replace",
                               input=stdin, timeout=GIT_TIMEOUT,
                               **({"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if os.name == "nt" else {}))
@@ -103,7 +116,7 @@ def snapshot(path: Path | None) -> dict:
     if not SHA.fullmatch(head):
         return {"git": False}
     names = _changed(path)
-    hashes = (_git(path, "hash-object", "--stdin-paths", stdin="\n".join(n for n in names if (path / n).is_file())) or "").split()
+    hashes = (_git(path, "hash-object", "--no-filters", "--stdin-paths", stdin="\n".join(n for n in names if (path / n).is_file())) or "").split()
     files = [n for n in names if (path / n).is_file()]
     state = {n: (hashes[i] if i < len(hashes) else "") for i, n in enumerate(files)}
     state.update({n: "deleted" for n in names if n not in state})
@@ -124,7 +137,7 @@ def record(rec: Record, conversation: str, run: str, before: dict, summary: str 
         if not SHA.fullmatch(old):
             raise ValueError("the snapshot before the run has no valid head")
         if new != old:
-            log = _git(path, "log", "--format=%H %s", "--end-of-options", f"{old}..{new}") or ""
+            log = _git(path, "log", "--no-show-signature", "--format=%H %s", "--end-of-options", f"{old}..{new}") or ""
             commits = [{"sha": line[:40], "subject": line[41:200]} for line in log.splitlines()[:50] if SHA.fullmatch(line[:40])]
             files |= {n for n in (_git(path, "diff", "--name-only", "-z", "--end-of-options", old, new) or "").split("\0") if n}
         earlier = before.get("files") if isinstance(before.get("files"), dict) else {}

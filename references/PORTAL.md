@@ -43,10 +43,12 @@ says so and opens it), in a browser or Obsidian's core Web Viewer. While it runs
 every record it has open and keeps them in step on its own (`references/DIRECTOR.md`).
 
 Acts that are the person's alone (approve, decide, waive, choose a code folder, delete a workspace) need a paired browser.
-`ros serve` prints a pairing link (`http://127.0.0.1:8737/?pair=<token>`, new every start); opening it once sets an HttpOnly,
-SameSite=Strict cookie, and `ros serve --open` opens it for you. `GET /services/session` gives a page its CSRF token and says
-whether it is paired, but never sets that cookie, so a local program or agent cannot pair itself by asking. `ros mcp --portal`
-writes the link to stderr. The desktop app pairs through its own credential and shows no link.
+`ros serve` prints a pairing link (`http://127.0.0.1:8737/workspace/#pair=<token>`, new every start), and `ros serve --open`
+opens it. The token is in the URL's fragment, which a browser never sends to a server or in a Referer. The page keeps it in
+its own storage, which only this exact origin (port included) can read, and sends it as the `X-ROS-Pair` header with every
+write. A cookie would not do, because browsers send cookies to every port of 127.0.0.1. `GET /services/session` gives a page
+its CSRF token and says whether it is paired, but pairs nothing. `ros mcp --portal` writes the link to stderr. The desktop
+app proves itself with its own credential and shows no link.
 
 | Section | Contents |
 |---|---|

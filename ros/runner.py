@@ -82,7 +82,9 @@ class Runner:
         env = dict(os.environ)  # a job runs this program's own modules, so they must be importable from anywhere
         # Always this program's own modules: a job's recorded pythonpath could name any folder (an external record's).
         root = str(Path(__file__).resolve().parents[1])
-        env["PYTHONPATH"] = root + os.pathsep + env.get("PYTHONPATH", "")
+        # No empty entry: Python reads one as the current folder, which is the job's.
+        env["PYTHONPATH"] = os.pathsep.join(p for p in (root, *env.get("PYTHONPATH", "").split(os.pathsep)) if p)
+        env["PYTHONSAFEPATH"] = "1"  # nor the job's folder: `-m` would put it first, ahead of these modules
         started = time.monotonic()
         try:
             argv = job['argv']

@@ -74,7 +74,7 @@ async function main() {
     browser = await chromium.launch({headless: true, ...(process.env.ROS_BROWSER ? {executablePath: process.env.ROS_BROWSER} : {})});
     const context = await browser.newContext({viewport: {width: 1440, height: 900}, reducedMotion: 'reduce'});
     const page = await context.newPage();
-    if (server.pairing) await page.goto(server.url + '?pair=' + server.pairing);  // pair once, as the printed link does
+    if (server.pairing) await page.goto(server.url + 'workspace/#pair=' + server.pairing);  // pair once, as the printed link does
     page.on('pageerror', e => errors.push(e.message));
     page.on('console', m => {if (m.type() === 'error') errors.push(m.text());});
     page.on('request', r => {if (r.url().endsWith('/api/workspace_chat_send')) sent.push(r.postDataJSON());});
@@ -265,7 +265,7 @@ async function main() {
         window.researchDesktop = {
           async pickSource(kind, record, localOnly) {
             const session = (await (await fetch('/services/session')).json()).result;
-            const headers = {'Content-Type': 'application/json', 'X-ROS': '1', 'X-ROS-CSRF': session.csrf};
+            const headers = {'Content-Type': 'application/json', 'X-ROS': '1', 'X-ROS-CSRF': session.csrf, 'X-ROS-Pair': localStorage.getItem('ros.pair') || ''};
             const post = async (name, body) => (await (await fetch('/services/' + name, {method: 'POST', headers, body: JSON.stringify(body)})).json()).result;
             const register = async root => {const args = {root, kind, local_only: localOnly}; const prepared = await post('human-prepare', {name: 'source_register', args, record}); return post('human-commit', {name: 'source_register', args, record, approval: prepared.approval});};
             const chosen = choices[kind]; if (!chosen) return null;
@@ -274,8 +274,9 @@ async function main() {
           openSource: async () => {}, backend: async () => ({}), updates: async () => ({state: 'ready', version: '1.5.1', available: '9.9.9', percent: 100}), checkUpdates: async () => ({}), installUpdate: async () => {window.__installs = (window.__installs || 0) + 1;}, openExternal: async () => {},
         };
       }, picks);
+      // A browser paired earlier: the token from the printed link is already in this origin's storage at launch.
+      if (server.pairing) await desktopContext.addInitScript(pair => {try {localStorage.setItem('ros.pair', pair);} catch { /* no storage */ }}, server.pairing);
       const desktop = await desktopContext.newPage(); desktop.on('pageerror', e => errors.push(e.message));
-      if (server.pairing) await desktop.goto(server.url + '?pair=' + server.pairing);
       await desktop.goto(base + '#library?r=demo'); await desktop.getByRole('heading', {name: 'Library', exact: true}).waitFor();
       // A found update is offered at launch; Later lasts until the next launch; Restart & install reaches the host.
       await desktop.getByRole('dialog', {name: 'An update is ready'}).waitFor();

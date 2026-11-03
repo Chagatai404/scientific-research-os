@@ -328,7 +328,7 @@ def _legacy_sync(look: Look):
     """What was added to or changed in the old vault after it was migrated is brought in (the importers are idempotent)."""
     cfg = home.config(look.rec.root)
     vault_dir = cfg.get("legacy_vault")
-    if not vault_dir or not Path(vault_dir).is_dir():
+    if not vault_dir or home.network(vault_dir) or not Path(vault_dir).is_dir():
         return None
     now = time.time()
     if now - look.state.get("legacy_looked", 0) < LEGACY_EVERY and not look.first:

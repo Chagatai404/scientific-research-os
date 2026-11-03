@@ -23,7 +23,7 @@ function startServer(record, rosHome) {
     let out = '';
     p.stdout.on('data', (d) => {
       out += d;
-      const m = out.match(/http:\/\/127\.0\.0\.1:(\d+)\//), pair = out.match(/open once: (http:\/\/127\.0\.0\.1:\d+\/\?pair=[\w-]+)/);
+      const m = out.match(/http:\/\/127\.0\.0\.1:(\d+)\//), pair = out.match(/open once: (http:\/\/127\.0\.0\.1:\d+\/workspace\/#pair=[\w-]+)/);
       if (m && pair) resolve({proc: p, url: m[0], pair: pair[1]});
     });
     p.stderr.on('data', (d) => process.stderr.write(d));

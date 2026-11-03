@@ -14,7 +14,7 @@ async function noOverflow(page,label){assert.equal(await page.evaluate(()=>docum
 (async()=>{try{
  const fixture=await start();browser=await chromium.launch({headless:true,...(process.env.ROS_BROWSER?{executablePath:process.env.ROS_BROWSER}:{})});
  page=await browser.newPage({viewport:{width:1440,height:900}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto(fixture.url+'?pair='+fixture.pairing);
+ await page.goto(fixture.url+'workspace/#pair='+fixture.pairing);
  await page.goto(fixture.url+'workspace/#sources');await page.getByRole('heading',{name:'Connected places',exact:true}).waitFor();
  await page.getByLabel('Source Kind').selectOption('folder');await page.getByLabel('Approved Local Path').fill(source);await page.getByRole('button',{name:'Connect Path',exact:true}).click();await page.getByRole('heading',{name:'Unicode Ω source',exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'.env',exact:true}).count(),0);

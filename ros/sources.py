@@ -45,7 +45,7 @@ def connections(rec):
 
 def register(rec, root, kind='file', label='', local_only=True):
     if kind not in ('file', 'folder', 'vault', 'codebase'): raise ValueError('unsupported source kind')
-    path = Path(root).expanduser().resolve(strict=True)
+    path = home.local_path(root).expanduser().resolve(strict=True)
     if (kind == 'file') != path.is_file(): raise ValueError('choose a file or directory matching its source kind')
     if path.name in EXCLUDED or SECRET.search(path.name): raise ValueError('secret or internal paths cannot be connected')
     if path == Path(path.anchor): raise ValueError('connect a specific folder, not an entire drive')

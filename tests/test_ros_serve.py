@@ -79,23 +79,24 @@ class ServeTests(unittest.TestCase):
         self.assertEqual(self.req("POST", "/api/add_node", headers={"X-ROS": "1", "Transfer-Encoding": "chunked"})[0], 400)
 
     def test_acts_that_are_the_persons_alone_need_a_browser_paired_by_the_printed_link(self):
-        # The session call gives the page its CSRF token but never the cookie: a local program cannot pair itself by asking.
+        # The session call gives the page its CSRF token and sets no cookie (cookies reach every port of 127.0.0.1): only the
+        # token from the printed link, sent by the page as a header, pairs it.
         status, headers, body = self.req("GET", "/services/session")
         self.assertEqual(status, 200); self.assertNotIn("Set-Cookie", headers); self.assertFalse(json.loads(body)["result"]["paired"])
         csrf = json.loads(body)["result"]["csrf"]
         packet = {"name": "approve", "args": {"subject": "experiment:none", "decision": "approved", "by": "Me"}}
         unpaired = {"X-ROS": "1", "X-ROS-CSRF": csrf, "Sec-Fetch-Site": "same-origin", "Content-Type": "application/json"}
-        status, _, body = self.req("POST", "/services/human-prepare", packet, unpaired)
-        self.assertEqual(status, 403); self.assertIn(b"not paired", body)
-        self.assertEqual(self.req("GET", "/?pair=wrong-token")[0], 403)
+        for wrong in ({}, {"X-ROS-Pair": "wrong-token"}, {"X-ROS-Pair": "\u00e9t\u00e9"}):
+            status, _, body = self.req("POST", "/services/human-prepare", packet, {**unpaired, **wrong})
+            self.assertEqual(status, 403, wrong); self.assertIn(b"not paired", body)
         status, headers, _ = self.req("GET", "/?pair=" + self.server.pairing)
-        self.assertEqual((status, headers["Location"]), (303, "/"))
-        cookie = headers["Set-Cookie"].split(";", 1)[0]
-        self.assertIn("HttpOnly", headers["Set-Cookie"]); self.assertIn("SameSite=Strict", headers["Set-Cookie"])
-        status, _, body = self.req("GET", "/services/session", headers={"Cookie": cookie})
+        self.assertNotIn("Set-Cookie", headers, "a query string never pairs: the token belongs in the fragment")
+        paired = {**unpaired, "X-ROS-Pair": self.server.pairing}
+        status, _, body = self.req("GET", "/services/session", headers={"X-ROS-Pair": self.server.pairing})
         self.assertTrue(json.loads(body)["result"]["paired"])
-        status, _, body = self.req("POST", "/services/human-prepare", packet, {**unpaired, "Cookie": cookie})
+        status, _, body = self.req("POST", "/services/human-prepare", packet, paired)
         self.assertEqual(status, 200, body)
+        self.assertEqual(self.req("GET", "/", headers={"X-ROS-CSRF": "\u00e9"})[0], 200, "non-ASCII headers are refused, never a crash")
 
     def test_a_page_or_script_an_agent_writes_into_a_bundle_never_runs_as_the_portal(self):
         folder = Path(self.rec.root) / "bundles" / self.bundle
@@ -119,7 +120,8 @@ class ServeTests(unittest.TestCase):
         self.assertEqual(self.req("GET", "/", headers=cross)[0], 200, "a link from elsewhere opens the page")
         for path in ("/api/status", "/services/catalog", "/events", f"/media/bundles/{self.bundle}/plan.json", "/services/session"):
             self.assertEqual(self.req("GET", path, headers=cross)[0], 403, path)
-        self.assertEqual(self.req("GET", "/source-media?source=%22x%22")[0], 403, "the person's own source media")
+        self.assertEqual(self.req("GET", "/source-media?source=%22x%22", headers=cross)[0], 403, "the person's source media")
+        self.assertIn("frame-ancestors 'none'", self.req("GET", "/")[1].get("Content-Security-Policy", ""))
 
     def test_foreign_host_is_refused(self):
         status, _, _ = self.req("GET", "/api/status", headers={"Host": "evil.example:80"})

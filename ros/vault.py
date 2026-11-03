@@ -403,7 +403,7 @@ def set_vault(path: str | None = None, root: str | None = None) -> dict:
                 " (more than one vault was found)" if found else " (no Obsidian vault was found)")}
     fields = {}
     if path is not None:
-        p = Path(path).expanduser().resolve()
+        p = home.local_path(path).expanduser().resolve()
         if not p.is_dir():
             raise ValueError(f"{p} is not a folder")
         fields["vault"] = str(p)

@@ -160,19 +160,21 @@ OFFICE_PART_LIMIT, OFFICE_TOTAL_LIMIT = 20 << 20, 64 << 20  # uncompressed bytes
 def _office_text(target: Path) -> str | None:
     """Plain text of a .docx or .pptx (a zip of XML), without any library."""
     import zipfile
+    import zlib
     try:
         with zipfile.ZipFile(target) as z:
             names = sorted((n for n in z.namelist() if n.startswith('ppt/slides/slide') or n == 'word/document.xml'), key=lambda n: (len(n), n))
             parts, total = [], 0
             for n in names[:400]:
-                # A small file can inflate to gigabytes (a zip bomb): read only what a real document holds.
-                size = z.getinfo(n).file_size
-                total += size
-                if size > OFFICE_PART_LIMIT or total > OFFICE_TOTAL_LIMIT:
+                # A small file can inflate to gigabytes (a zip bomb), and the sizes it declares can lie: read at most the limit.
+                with z.open(n) as part:
+                    data = part.read(OFFICE_PART_LIMIT + 1)
+                total += len(data)
+                if len(data) > OFFICE_PART_LIMIT or total > OFFICE_TOTAL_LIMIT:
                     return None
-                xml = z.read(n).decode('utf-8', errors='replace').replace('</w:p>', chr(10)).replace('</a:p>', chr(10))
+                xml = data.decode('utf-8', errors='replace').replace('</w:p>', chr(10)).replace('</a:p>', chr(10))
                 parts.append(re.sub(r'<[^>]+>', ' ', xml))
-    except (OSError, zipfile.BadZipFile, KeyError):
+    except (OSError, zipfile.BadZipFile, KeyError, RuntimeError, NotImplementedError, EOFError, zlib.error):
         return None
     return re.sub(r'[ ]+', ' ', chr(10).join(parts)).strip()[:MAX_TEXT_BYTES]
 
