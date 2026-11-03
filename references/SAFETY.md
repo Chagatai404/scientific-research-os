@@ -27,7 +27,13 @@ chats. An unknown capability is unknown, never assumed demonstrated.
 
 Lessons carry no executable code: items, narration, images, video. Manim scenes run only at prepare time, in a
 subprocess, after a lint that refuses network, file and process access; only the rendered video reaches the learner.
-The portal serves this computer only, refuses foreign Host headers, and takes writes only with its own header.
+The portal serves this computer only, refuses foreign Host headers, and takes writes only with its own header. Other
+sites may link to its pages but not fetch from or frame it. Acts that are the person's alone need the desktop app's
+credential or a browser paired with the link `ros serve` prints (`references/PORTAL.md`, which also says what pairing does
+not stop). Files that agents or documents wrote (bundles, handouts, the vault, sources) are shown, never run: they are
+served as a sandboxed page with no scripts, and script or page files as plain text. No request or tool opens a path on a
+network share. Jobs run only this program's modules, never one placed in their folder, and the app's own git reads of a
+repository switch off the filters, hooks and pagers its config could name.
 
 ## Changing the system
 
