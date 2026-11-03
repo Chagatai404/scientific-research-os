@@ -29,6 +29,12 @@ Verified 2026-11-03 on Windows 11 Pro, branch `fix/security-1.7.2`.
 - Each security fix and each issue has a test that fails on the 1.7.1 code and passes now (`tests/test_ros_serve.py`,
   `tests/test_ros_local_safety.py`, `tests/test_ros_local_provider.py`, `tests/test_ros_operations.py`, `tests/test_ros_library.py`).
 - All four browser journeys pass with the pairing link.
+- `python desktop/verify.py`: python, frontend tests, typecheck, frontend build, the four browser journeys, the workspace benchmark and the
+  packaged lifecycle: all exit 0.
+- Installer built with a real `desktop/node_modules` (no `cannot find path for dependency` warning); `app.asar` holds `fs-extra`,
+  `electron-updater`, `js-yaml` and `lazy-val`; `latest.yml` names version 1.7.2.
+- Packaged 1.7.2 build: `desktop_frozen_smoke.py` (181 CLI tools, no Python on PATH, compute works), `desktop_native_smoke.py` (starts in
+  6.9 s as version 1.7.2), `desktop_updater_smoke.py` and `--corrupt`: all exit 0.
 
 ## Limits
 
