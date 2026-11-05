@@ -67,6 +67,11 @@ def main():
         if sys.argv[2] == 'operation':
             from .lib.desktop_operations import main as worker
             return worker()
+        if sys.argv[2] == 'render-cleanup':  # run by the uninstaller: take back what the safe renderer added to this computer
+            from .lib import renderkit
+            try: print(json.dumps(renderkit.cleanup(home.home() / 'render')))
+            except Exception as exc: print(json.dumps({'error': f'{type(exc).__name__}: {str(exc)[:200]}'}))
+            return 0
         if sys.argv[2] == 'notebook':
             from .lib.notebook_worker import main as worker
             return worker()

@@ -29,7 +29,8 @@ the [CHANGELOG](CHANGELOG.md).
 
 Download `Research-OS-Setup-<version>-x64.exe` from the
 [latest release](https://github.com/Chagatai404/scientific-research-os/releases/latest) and run it. The installer
-includes the app and its Python backend, adds shortcuts, and keeps your records when you uninstall. Installed copies
+includes the app and its Python backend, adds shortcuts, and keeps your records when you uninstall (uninstalling removes the figure renderer's container
+registration, the folder access it was given and its private Python copy). Installed copies
 check the public release feed and download newer stable versions; a pop-up at launch offers **Restart & install** or
 **Later**, and Settings shows progress. An offline or empty feed leaves the app usable.
 
@@ -71,7 +72,8 @@ check the public release feed and download newer stable versions; a pop-up at la
   unless you change it (1 to 100, or no limit, with a slider in Settings), each in a fresh context with only the tools its task needs. You can pause it. It draws lesson figures
   (and ManimGX animations where they run) itself, without a shell, in a sealed container with no network and no access to your files;
   it never takes audits, verdicts, experiment runs, or work that needs the web, and Settings lists what it leaves for you and why.
-  A computer without the sealed container (Windows only) or without a Python with matplotlib (`ROS_RENDER_PYTHON` names one) says so there.
+  The installed app draws with the Python of its animation pack, which carries matplotlib; a source checkout uses one with matplotlib
+  (`ROS_RENDER_PYTHON` names one). A computer without the sealed container (Windows only) says so there.
   Sessions and the librarian can read the folders you connected (never one marked local-only, with a cloud model), and after reading a
   file a session cannot search the web in that conversation.
 

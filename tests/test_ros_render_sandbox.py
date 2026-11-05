@@ -679,5 +679,83 @@ class Unavailable(unittest.TestCase):
             appcontainer.run([sys.executable], '.', {})
 
 
+class InstalledPack(unittest.TestCase):
+    """The installed app draws with its animation pack's Python (matplotlib ships in the pack), and uninstalling takes the renderer's
+    footprint back."""
+
+    def pack(self):
+        root = Path(tempfile.mkdtemp(prefix='ros-test-pack-'))
+        self.addCleanup(lambda: renderkit.remove_tree(root))
+        (root / 'python').mkdir()
+        (root / 'python' / 'python.exe').write_bytes(b'')  # what voice.voice_pack() looks for
+        (root / 'animation' / 'python').mkdir(parents=True)
+        (root / 'animation' / 'python' / 'python.exe').write_bytes(b'')
+        (root / 'animation' / 'manimgx' / 'site-packages').mkdir(parents=True)
+        return root
+
+    def test_the_pack_python_is_a_candidate_and_is_probed_with_the_pack_packages(self):
+        pack = self.pack()
+        python = str(pack / 'animation' / 'python' / 'python.exe')
+        with patch.dict(os.environ, {'ROS_VOICE_PACK': str(pack)}):
+            self.assertIn(python, renderkit.candidate_pythons())
+            self.assertEqual(renderkit.pack_site(python), str(pack / 'animation' / 'manimgx' / 'site-packages'))
+            self.assertIsNone(renderkit.pack_site(sys.executable), 'any other Python keeps its own packages')
+            seen = {}
+
+            def run(argv, **kw):
+                seen.update(kw['env'])
+                raise OSError('not a real interpreter')
+            with patch.object(renderkit.subprocess, 'run', run):
+                self.assertIsNone(renderkit.probe(python))
+        self.assertEqual(seen['PYTHONPATH'], str(pack / 'animation' / 'manimgx' / 'site-packages'))
+        self.assertEqual(seen['PYTHONNOUSERSITE'], '1')
+
+    def test_the_probe_counts_packages_found_through_pythonpath(self):
+        self.assertIn('*filter(None, sys.path)', renderkit.PROBE, 'a pack Python finds matplotlib only through PYTHONPATH')
+
+    def test_uninstall_cleanup_takes_back_grants_runtime_scratch_and_the_profile(self):
+        base = Path(tempfile.mkdtemp(prefix='ros-test-render-'))
+        self.addCleanup(lambda: renderkit.remove_tree(base))
+        outside = Path(tempfile.mkdtemp(prefix='ros-test-manim-'))
+        self.addCleanup(lambda: renderkit.remove_tree(outside))
+        (base / 'runtime-abc' / 'Lib').mkdir(parents=True)
+        (base / 'scratch' / 'task-1').mkdir(parents=True)
+        renderkit.remember_grant(base, outside)
+        renderkit.remember_grant(base, outside)  # noted once
+        self.assertEqual(json.loads((base / renderkit.GRANTS).read_text(encoding='utf-8')), [str(outside)])
+        revoked = []
+        with patch.object(appcontainer, 'existing_sid', return_value='S-1-15-2-1'), \
+             patch.object(appcontainer, 'revoke', lambda path, sid: revoked.append((path, sid))), \
+             patch.object(appcontainer, 'delete_profile', return_value=True):
+            done = renderkit.cleanup(base)
+            self.assertEqual(revoked, [(str(outside), 'S-1-15-2-1')])
+            self.assertTrue(done['profile'])
+            self.assertFalse(base.exists(), 'nothing of the renderer is left')
+            self.assertTrue(outside.is_dir(), 'a granted folder loses the access, never its files')
+            self.assertEqual(renderkit.cleanup(base)['removed'], [], 'safe to run twice')
+
+    def test_cleanup_leaves_anything_else_in_the_folder(self):
+        base = Path(tempfile.mkdtemp(prefix='ros-test-render-'))
+        self.addCleanup(lambda: renderkit.remove_tree(base))
+        (base / 'notes.txt').write_text('mine', encoding='utf-8')
+        with patch.object(appcontainer, 'existing_sid', return_value=None), patch.object(appcontainer, 'delete_profile', return_value=True):
+            renderkit.cleanup(base)
+        self.assertEqual((base / 'notes.txt').read_text(encoding='utf-8'), 'mine')
+
+    @unittest.skipUnless(WINDOWS, 'AppContainer profiles exist only on Windows')
+    def test_the_profile_is_really_unregistered_and_comes_back_on_next_use(self):
+        import ctypes
+        sid = appcontainer.container_sid()
+        self.assertEqual(appcontainer.existing_sid(), sid, 'the SID follows from the name')
+        self.assertTrue(appcontainer.delete_profile())
+        probe = appcontainer.PSID()
+        hr = appcontainer.userenv.CreateAppContainerProfile(appcontainer.NAME, 'probe', 'probe', None, 0, ctypes.byref(probe))
+        self.assertEqual(hr, 0, 'the profile was gone, so it was created anew (not "already exists")')
+        appcontainer.adv.FreeSid(probe)
+        self.assertTrue(appcontainer.delete_profile())
+        self.assertTrue(appcontainer.delete_profile(), 'deleting a missing profile is fine')
+        self.assertEqual(appcontainer.container_sid(), sid, 'the next render registers it again')
+
+
 if __name__ == '__main__':
     unittest.main()

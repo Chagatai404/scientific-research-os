@@ -211,11 +211,12 @@ What remains (decisions for the person where noted):
 5. **Files the exclusion rules do not recognise.** `.git`, dot-folders, `node_modules`, secret-looking names and `AppData` are never read, but a connected folder can hold other sensitive
    files (a password export named `notes.txt`). A hard link inside a connected folder to a file outside it is not detected. Connect specific folders, not a home folder.
 6. **Footprint.** The renderer leaves a registered AppContainer profile (`ros.render.sandbox.v1`), a read-and-execute entry for its SID on `<home>/render/runtime-*` and on the ManimGX packages
-   folder, and a copy of the interpreter. Nothing removes them on uninstall yet. A Codex run keeps a copy of the login in a temp folder for the length of the run (deleted afterwards, retried if
+   folder, and a copy of the interpreter. Uninstalling removes them (`research-os-backend.exe --worker render-cleanup`, run by the NSIS uninstaller,
+   not on an update); a source checkout has no uninstaller, so they stay there until that command is run. A Codex run keeps a copy of the login in a temp folder for the length of the run (deleted afterwards, retried if
    Codex still holds a file; if the process is killed, a folder named `ros-codex-home-*` remains until the next Codex run deletes it, once it is a day old).
 7. **Not Windows, not ready.** Elsewhere the renderer refuses to run (there is no verified equivalent) and figure tasks wait with the reason. On Windows it needs a Python with matplotlib
-   (`ROS_RENDER_PYTHON`, or `python` on PATH). The installer's animation pack has ManimGX, numpy and Pillow but not matplotlib, so an installed app without a system Python shows the reason until
-   the pack carries it (a packaging follow-up, not done here).
+   (`ROS_RENDER_PYTHON`, `python` on PATH, or the installed app's animation pack, which carries matplotlib since 1.7.3; `desktop/build-voice.py`
+   refuses to build a pack without it and proves a headless draw from the packed Python).
 8. **One container identity for every render.** All renders share one AppContainer SID, so a script running while another task's render is in progress could read that task's
    scratch folder (copies of its bundle's plan and visuals, nothing of the person's). Renders normally run one at a time; a per-task SID would close this.
 9. **Time of check to time of use** in the scratch tools is closed by sequencing (the script has ended and its job is gone before any scratch tool reads) and by re-checking links at every call, not by

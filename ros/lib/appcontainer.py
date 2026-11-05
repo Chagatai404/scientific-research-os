@@ -104,6 +104,8 @@ if WINDOWS:
     userenv.CreateAppContainerProfile.restype = ctypes.c_long
     userenv.DeriveAppContainerSidFromAppContainerName.argtypes = [wt.LPCWSTR, ctypes.POINTER(PSID)]
     userenv.DeriveAppContainerSidFromAppContainerName.restype = ctypes.c_long
+    userenv.DeleteAppContainerProfile.argtypes = [wt.LPCWSTR]
+    userenv.DeleteAppContainerProfile.restype = ctypes.c_long
     adv.ConvertSidToStringSidW.argtypes = [PSID, ctypes.POINTER(wt.LPWSTR)]
     adv.FreeSid.argtypes = [PSID]
     adv.FreeSid.restype = PSID
@@ -141,6 +143,27 @@ def container_sid() -> str:
         return _text_sid(sid)
     finally:
         adv.FreeSid(sid)
+
+
+def existing_sid() -> str | None:
+    """The textual SID of the container's name, without creating its profile (the SID follows from the name alone); None off Windows."""
+    if not WINDOWS:
+        return None
+    sid = PSID()
+    if userenv.DeriveAppContainerSidFromAppContainerName(NAME, ctypes.byref(sid)) != 0:
+        return None
+    try:
+        return _text_sid(sid)
+    finally:
+        adv.FreeSid(sid)
+
+
+def delete_profile() -> bool:
+    """Unregister the container's profile (what uninstalling does). True when it was removed or was not there."""
+    if not WINDOWS:
+        return True
+    hr = userenv.DeleteAppContainerProfile(NAME)
+    return hr == 0 or (hr & 0xFFFF) in (2, 3)  # removed, or no such profile
 
 
 def grant(path, sid: str, write: bool = False) -> None:

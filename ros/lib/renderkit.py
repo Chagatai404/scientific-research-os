@@ -373,7 +373,7 @@ for extra in ("contourpy", "fontTools.ttLib", "fontTools.subset", "matplotlib.ba
         __import__(extra)
     except Exception:
         pass
-sites = [p for p in dict.fromkeys([sysconfig.get_paths()["purelib"], *site.getsitepackages(), site.getusersitepackages()])
+sites = [p for p in dict.fromkeys([sysconfig.get_paths()["purelib"], *site.getsitepackages(), site.getusersitepackages(), *filter(None, sys.path)])
          if os.path.isdir(p) and os.path.basename(p).lower() == "site-packages"]
 sites = [(os.path.normcase(os.path.realpath(p)), os.path.realpath(p)) for p in sites]
 found = {}
@@ -402,9 +402,9 @@ def candidate_pythons() -> list[str]:
         which = shutil.which(name)
         if which:
             found.append(which)
-    pack = os.environ.get('ROS_VOICE_PACK')
-    if pack:
-        found.append(str(Path(pack) / 'animation' / 'python' / 'python.exe'))
+    animation = pack_animation()
+    if animation:
+        found.append(str(animation / 'python' / 'python.exe'))
     seen, out = set(), []
     for path in found:
         if 'windowsapps' in path.lower():  # the Microsoft Store stub: running it can open the Store
@@ -416,12 +416,35 @@ def candidate_pythons() -> list[str]:
     return out
 
 
+def pack_animation() -> Path | None:
+    """The installed app's animation pack (``<voice pack>/animation``: its own Python, and ManimGX with matplotlib in ``manimgx/site-packages``)."""
+    try:
+        from . import voice
+        pack = voice.voice_pack()
+    except Exception:
+        pack = None
+    pack = pack or (Path(os.environ['ROS_VOICE_PACK']) if os.environ.get('ROS_VOICE_PACK') else None)
+    animation = Path(pack) / 'animation' if pack else None
+    return animation if animation and (animation / 'python' / 'python.exe').is_file() else None
+
+
+def pack_site(python: str) -> str | None:
+    """The packages folder the animation pack's Python draws with (it has no site-packages of its own), or None for any other Python."""
+    animation = pack_animation()
+    if animation and os.path.normcase(os.path.realpath(python)) == os.path.normcase(os.path.realpath(animation / 'python' / 'python.exe')):
+        return str(animation / 'manimgx' / 'site-packages')
+    return None
+
+
 def probe(python: str) -> dict | None:
     """Ask a trusted interpreter (ours, not the model's code) what it needs to draw with matplotlib; None when it cannot."""
     try:
         with tempfile.TemporaryDirectory(prefix='ros-probe-') as empty:  # an empty working folder: nothing of ours is first on its path
+            env = dict(os.environ, MPLCONFIGDIR=empty)
+            if pack_site(python):
+                env.update(PYTHONPATH=pack_site(python), PYTHONNOUSERSITE='1')
             done = subprocess.run([python, '-c', PROBE], capture_output=True, text=True, timeout=120, cwd=empty,
-                                  creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), env=dict(os.environ, MPLCONFIGDIR=empty))
+                                  creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), env=env)
         if done.returncode != 0:
             return None
         return json.loads(done.stdout.strip().splitlines()[-1])
@@ -543,6 +566,51 @@ def sweep(base_dir, older_than=3600) -> None:
             pass
 
 
+GRANTS = 'granted-folders.json'
+
+
+def remember_grant(base_dir, folder) -> None:
+    """Note a folder outside ``base_dir`` that the container was given access to, so uninstalling can take that access back."""
+    path = Path(base_dir) / GRANTS
+    try:
+        known = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else []
+    except (OSError, ValueError):
+        known = []
+    if str(folder) not in known:
+        path.write_text(json.dumps([*known, str(folder)]), encoding='utf-8')
+
+
+def cleanup(base_dir) -> dict:
+    """Undo what the renderer added to this computer (run by the uninstaller): the container's access to the folders it was given, the
+    private interpreter copies and scratch folders under ``base_dir``, and the registered AppContainer profile. Leaves the person's own
+    records alone; safe to run twice. Returns what it did."""
+    base, done = Path(base_dir), {'revoked': [], 'removed': [], 'profile': False}
+    sid = appcontainer.existing_sid()
+    try:
+        outside = json.loads((base / GRANTS).read_text(encoding='utf-8')) if (base / GRANTS).is_file() else []
+    except (OSError, ValueError):
+        outside = []
+    if sid:
+        for folder in outside:
+            if Path(folder).is_dir():
+                appcontainer.revoke(folder, sid)
+                done['revoked'].append(folder)
+    if base.is_dir() and not is_link(base):
+        for entry in list(base.iterdir()):
+            if entry.name.startswith(('runtime-', 'scratch')) or entry.name == GRANTS:
+                if entry.is_dir() or is_link(entry):
+                    remove_tree(entry)
+                else:
+                    entry.unlink(missing_ok=True)
+                done['removed'].append(entry.name)
+        try:
+            base.rmdir()  # only when nothing else is left in it
+        except OSError:
+            pass
+    done['profile'] = appcontainer.delete_profile()
+    return done
+
+
 def bundle_inputs(folder, limit=1 << 20) -> dict:
     """What a figure task may see of its bundle, as copies: ``plan.json`` and the small plain files of ``visuals/``. Never the folder."""
     out, root = {}, Path(folder)
@@ -599,6 +667,7 @@ class Renderer:
         renderer = Renderer(root, sid)
         if info.get('manim'):
             try:
+                remember_grant(base, info['manim'])
                 appcontainer.grant(info['manim'], sid)
                 renderer.manim = Path(info['manim'])
             except OSError as exc:  # not the person's folder to change: figures still work, animations wait

@@ -9,12 +9,13 @@ Layout written to desktop/voice/ (copied to <install>/resources/voice/ by electr
     models/kokoro/           kokoro-v1.0.onnx, voices-v1.0.bin
     models/whisper-small/    the CTranslate2 'small' multilingual model
     animation/python/        CPython 3.13+ (ManimGX's wheels need it; the voice engines above stay on 3.12)
-    animation/manimgx/site-packages/   ManimGX with numpy, pillow, skia-pathops, fonts ... (software rendering included, no GPU needed)
+    animation/manimgx/site-packages/   ManimGX with numpy, pillow, skia-pathops, fonts ... (software rendering included, no GPU needed),
+                             and matplotlib: the safe renderer draws unattended figures with this Python (ros/lib/renderkit.py)
     LICENSES.txt             package and model licences
 
 The sources are the engine environments of the machine that builds the installer (default ~/voice-envs, override with
 ROS_VOICE_SRC): kokoro/, whisper/, manimgx/, kokoro-models/ and the Hugging Face cache for Systran/faster-whisper-small. Nothing is
-downloaded here (make manimgx/ with `python -m venv ~/voice-envs/manimgx` and `pip install manimgx`, Python 3.13 or newer). Run: python desktop/build-voice.py [--check]
+downloaded here (make manimgx/ with `python -m venv ~/voice-envs/manimgx` and `pip install manimgx matplotlib`, Python 3.13 or newer). Run: python desktop/build-voice.py [--check]
 """
 from __future__ import annotations
 import argparse
@@ -101,6 +102,16 @@ def animation_works() -> bool:
                               env=env, capture_output=True, text=True, timeout=600)
         ok = done.returncode == 0 and (Path(tmp) / 'proof.mp4').stat().st_size > 1000
         print('manimgx ok' if ok else (done.stderr.strip() or done.stdout.strip())[-300:])
+        if not ok:
+            return False
+        # The safe renderer's figures: matplotlib from the same packages, headless.
+        figure = Path(tmp) / 'figure.png'
+        draw = ('import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt; plt.plot([0, 1], [0, 1]); '
+                f'plt.savefig(r"{figure}"); print("matplotlib", matplotlib.__version__, "ok")')
+        done = subprocess.run([str(pack / 'python' / 'python.exe'), '-s', '-c', draw], env=dict(env, MPLCONFIGDIR=tmp, MPLBACKEND='Agg'),
+                              capture_output=True, text=True, timeout=300)
+        ok = done.returncode == 0 and figure.is_file() and figure.read_bytes()[:8] == b'\x89PNG\r\n\x1a\n'
+        print(done.stdout.strip() if ok else (done.stderr.strip() or done.stdout.strip())[-300:])
         return ok
 
 
@@ -111,6 +122,7 @@ def main() -> int:
     snap = sorted((Path.home() / '.cache' / 'huggingface' / 'hub' / 'models--Systran--faster-whisper-small' / 'snapshots').glob('*'))
     need = {'kokoro env': SRC / 'kokoro' / 'Lib' / 'site-packages', 'whisper env': SRC / 'whisper' / 'Lib' / 'site-packages',
             'manimgx env': SRC / 'manimgx' / 'Lib' / 'site-packages' / 'manimgx',
+            'matplotlib in the manimgx env (pip install matplotlib)': SRC / 'manimgx' / 'Lib' / 'site-packages' / 'matplotlib',
             'kokoro model': SRC / 'kokoro-models' / 'kokoro-v1.0.onnx', 'kokoro voices': SRC / 'kokoro-models' / 'voices-v1.0.bin',
             'whisper small model': snap[-1] / 'model.bin' if snap else Path('missing-whisper-small')}
     missing = [f'{k}: {v}' for k, v in need.items() if not v.exists()]
