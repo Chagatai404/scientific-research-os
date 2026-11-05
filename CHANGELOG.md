@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fixed: a handout's readiness check crashed when an item tested by its subject kept its rubric as a sentence instead of `{"criteria": [...]}` (64 such items in one record), and a session agent saw the crash as "connection reset" and blamed the network. A rubric in any stored shape is now read (a sentence is one criterion), and new items are saved in the one shape. Grading such an item no longer crashes either.
+- Fixed: an unexpected error in any tool no longer drops the connection. A session's agent, the app and Codex or local models now get the error by name ("... failed with an internal error (Type: message). This is a Research OS bug, not a connection problem"), and it is logged. A run that fails before its model starts, or while it is being failed, is now always closed as failed instead of staying "Working on your question…" until restart.
+- Fixed: on a Windows machine whose language is not English, `ros mcp` and the background workers read their input in the Windows code page, so "§" arrived as "Â§" and characters such as ⊗ or ψ could not be sent back. All their pipes are UTF-8 now.
+- Fixed: the handout list showed "revision 0" for a handout that had been written to many times.
 - Changed: the agent limit is a slider in Settings from 1 to 100 tasks an hour, with "Unlimited" as its last stop (stored as `agents_per_hour` 0). Stopping an agent or closing the app no longer counts as a failure of the task; a task whose agent ran out of steps is retried with a doubled step budget (up to 4x) and left alone after three such runs, with its reason shown and a "Try again" button (`agents_retry`).
 - Added: "Work on code" on the new-session screen and "New Code session" over an open conversation; `#chat?mode=build` opens a new session with the Code type chosen.
 
