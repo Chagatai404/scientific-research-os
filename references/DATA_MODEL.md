@@ -103,6 +103,13 @@ decision, code-symbol, source, lesson, handout, visual, conversation, change.
 id as their subject and retain a request id, text and selected model. They are append-only, are not learning
 evidence, and never approve plans or accept claims. Existing records need no conversion to add this node type.
 
+## Engine metadata
+
+`engine.json` in the record root, `{"engine": "1.7.3"}`, names the newest Research OS version that wrote the record. It is
+metadata about the record, not part of what the record says: the index never reads it and rebuilding does not need it. An older
+engine refuses to write a record whose `engine.json` is newer (it may still read); a newer engine updates the file on its
+first write. A record without the file gets it on its first write.
+
 ## Edge types
 
 requires, teaches, tests, supports, invalidates, implements, cites, supersedes, part-of, about, applied-in,
@@ -133,6 +140,9 @@ addresses, decides, relates.
 | `commitment`, `commitment.status`, `proposal` | source / commitment / proposals | text, evidence_required / status / change |
 | `intent` | hub | the person's words, the playbook chosen, the records it needs |
 | `handout.revise`, `handout.built` | handout | source digest, reviewer / pdf path, engine, digest |
+| `handout.accepted` | handout | `source_hash`: the person read this version in the app and accepted it; only then are its note and PDF written to the vault (human tool `handout_accept`, actor `person`) |
+| `handout.changes_requested` | handout | `source_hash`, `text`: what the person asked to change, in their words (human tool `handout_request_changes`); opens a `handout` task |
+| `handout.removed` | handout | `paths`: the unedited note and PDF taken out of the vault (human tool `handout_take_out`) |
 | `automation.run` | automation | mode, what each trigger did (only written when something happened) |
 | `note.annotate`, `note.reviewed`, `note.dismiss`, `note.release` | node / note path | the person's text in a vault note / marked reviewed / dismissed a suggestion / took the note over |
 | `inbox.found` | file path | kind, size, hash of a file dropped in the vault's Inbox (an `ingest` task follows) |

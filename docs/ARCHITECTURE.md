@@ -202,6 +202,13 @@ A kind is a `Kind(...)` entry in `handouts.KINDS` (its sections with word budget
 gate row is `Row(name, check(doc) -> (problems, warnings))` in `handouts.ROWS`; a failing row opens a `handout` task. Rendering stays in
 `ros/lib/pdf.py` (Markdown subset to Obsidian callouts, LaTeX and HTML); add syntax there once, for all three.
 
+Delivery follows invariant 5. Checking and building are the system's (the `handout_gate` automation, once per source hash);
+the vault is the person's: `handouts.publish_note` and the PDF placement (`handouts._place_pdf`) write only for a source
+hash with a `handout.accepted` event, made by the human tools `handout_accept`, `handout_request_changes` and
+`handout_take_out` from the handout's reading view. Any new path that writes a handout note or PDF into the vault must go
+through `handouts.is_accepted`. `handouts.waiting` feeds the decision queue and the brief ("Ready for you to read",
+"In your vault without your acceptance").
+
 ### A vault note type
 
 Add a stub function to `vault.NODE_STUBS` (or a node type to `vault.GENERIC`): frontmatter the system owns (`ros_*` keys
@@ -239,6 +246,25 @@ in addition to the legacy browser check. See `docs/portal-redesign/ARCHITECTURE.
 Put it in `ros/lib/` with its own CLI (`python -m ros.lib.<name>`), import it lazily from the domain module that uses
 it, and make its absence a reported problem, not an exception that escapes.
 
+### Supervision, diagnostics and network loss
+
+- **Logs.** `ros/desktop.py` configures the `ros` logger once (`backend.log` in `ROS_LOG_DIR`, rotating 2 MB x 5, every record and
+  traceback masked with `providers.SECRETS`); `threading.excepthook` and `PortalServer.handle_error` route to it. The Electron host writes
+  `desktop.log` and keeps the backend's last 100 stderr lines in memory, writing them only when the backend exits unexpectedly.
+- **Restart.** `desktop/main.cjs` restarts a backend that exits on its own (`RestartPolicy` in `desktop/lifecycle.cjs`: 3 restarts in
+  10 minutes after 1 s, 5 s, 15 s), with a new handshake, port and credential; handlers are registered once and read the current origin.
+- **Background problems.** `runtime.report(component, error)` logs and remembers the last few errors per component (`runtime.HEALTH`);
+  `GET /services/health` lists them for the Activity page. Feed it from any background loop instead of keeping a private error list.
+- **Child stderr.** `providers.launch` and `runtime.engine_process` read the child's stderr into a bounded `StderrTail`; only a failure
+  puts a masked excerpt in the error or the log. Never put stderr in a successful result.
+- **Transient failures.** An adapter raises `providers.TransientProviderError` for a lost connection or an overloaded service (text matched
+  by `providers.TRANSPORT`, Codex `codexErrorInfo`, Claude's result text). `runtime.execute` retries it 3 times (`RETRY_DELAYS`), scoping
+  tool-call operation ids by attempt (`a2:`; `ToolBridge(prefix=)` for Claude) so a cached result is never reused for a different call,
+  and tells the model what was already committed. `runtime.dispatch_once` ends such a task as `interrupted` (never `failed`) and the
+  `Dispatcher` backs off 2 to 15 minutes. A stalled stream is shown through the request's `status` callback (a `status` run step).
+- **Connectivity.** `ros/lib/connectivity.py` (a cached TCP connect, reached through `runtime.connection`) backs `GET /services/connectivity`,
+  which the app polls for its offline banner.
+
 ## Tests
 
 ### Desktop interfaces, sources and execution
@@ -268,6 +294,19 @@ Desktop UI operations stay in the existing React typed client and AST renderer. 
 assets before freezing the sidecar. Run `npm --prefix desktop run verify`, build the sidecar with
 `desktop/build-backend.ps1`, and package with `npm --prefix desktop run package`.
 
+- Engine version guard (`ros/store.py`): `engine.json` in the record root holds the newest engine version that wrote it
+  (`{"engine": "1.7.3"}`; metadata, not record truth). `_guard` runs under the write lock on every write path (events,
+  nodes, edges, items, deletes): a stored version newer than this process's (the `VERSION` file read at import, bundled
+  into the frozen backend; missing means no guard) raises `ValueError` and reads stay allowed; an equal or older stored
+  version is replaced. Versions compare numerically and the parsed file is cached until its mtime or size changes.
+- `ros mcp` supervisor (`ros/mcp.py` `Supervisor`): owns the client's stdin/stdout (bytes, UTF-8), runs `ros mcp --worker`
+  (frozen: `--worker cli mcp --worker`) as a child and forwards JSON-RPC lines. Every `ROS_MCP_CHECK_SECONDS` (10) and before
+  each request it compares the watched `VERSION` (`ROS_MCP_VERSION_FILE`) with the one it started with; on a change with no
+  request in flight it stops the worker, starts a new one, replays `initialize` and `notifications/initialized` (the replay's
+  reply is swallowed) and sends `notifications/tools/list_changed`. A crashed worker's open requests get a -32603 error and it
+  is restarted with backoff (5 crashes in 60 s, then errors). Only the worker runs the automation tick. `ROS_MCP_DEBUG=1`
+  makes `ping` return the worker's pid. `ROS_MCP_NO_SUPERVISOR=1` serves in-process. After a release, run
+  `desktop/update-checkout.ps1` to fast-forward the developer's editable checkout and reinstall it.
 - Unit tests: `python -m unittest discover -s tests -p "test_*.py"` (about 10 s). Name new files `test_ros_<area>.py`.
 - Browser: `node tests/ros-portal-browser.cjs`.
 - Workspace: `npm --prefix frontend test`, `npm --prefix frontend run build`, `node tests/ros-workspace-browser.cjs`,

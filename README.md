@@ -15,7 +15,8 @@ the [CHANGELOG](CHANGELOG.md).
   recall; you never pick modes or levels.
 - **Research.** Tell an agent the question. Agents search the literature, verify each source, write a literature brief,
   build the plan, run the experiments you approve and audit every claim in a fresh context (Scout, Verifier,
-  Adversary, Auditor). You read the handouts, approve plans, accept or reject claims and defend what you present.
+  Adversary, Auditor). You read the handouts, approve plans, accept or reject claims and defend what you present. A handout
+  is checked and built by the system and reaches your Obsidian vault only when you accept that version in the app.
 - **Remember.** Your Obsidian vault stays the home of your knowledge. The app writes its notes, PDFs, decision logs and
   maps into one `Research OS/` folder, never overwrites a note you edited, and gives every course or project you create
   a `01 Projects/<name>/` index that lists its lecture notes, handouts and sources.
@@ -73,6 +74,19 @@ check the public release feed and download newer stable versions; a pop-up at la
 Codex and Claude use their existing CLI logins; local models use explicit loopback profiles. Connections never scan or
 sync on their own, and nothing runs an experiment on its own. Approvals, decisions and waivers are always your acts. Cloud image/PDF vision needs the
 model's capability configured and each attachment allowed for one turn; Local Only media stays on the computer.
+
+### When something goes wrong
+
+The app keeps two log files in its log folder (`%APPDATA%\Research OS\logs`): `desktop.log` (the app starting, stopping and restarting
+its engine) and `backend.log` (the engine itself, 2 MB x 5 files, credentials masked). If the engine crashes, the app restarts it
+by itself (up to three times in ten minutes), reloads the window and says so; interrupted work is marked and nothing acknowledged is
+lost. After the third failed restart it asks whether to restart Research OS, open the log folder or quit. Failures in work you are not
+watching (agents, render jobs, the local engine) are listed under "Problems in the background" on the Activity page, with the log folder.
+
+A lost internet connection no longer fails a reply at once: a silent model stream shows "No reply from the model for 30 s", a reply
+that drops is retried up to three times after 5, 20 and 60 seconds (without repeating tool calls it already made), unattended agents
+wait and try again later (the task is "interrupted", never a failure), literature searches retry before saying "could not be reached",
+and the app shows "No internet connection" while the backend cannot reach the model services.
 
 ### Voice
 
@@ -152,6 +166,13 @@ If `ros` is "not found" after `pip install -e .` (on Windows the script folder, 
 `%APPDATA%\Python\Python3xx\Scripts`, is often not on PATH), use `python -m ros ...` instead. `ros install --client claude
 --user` also prints the `claude mcp add` command that registers the MCP server; Codex reads its skills from
 `~/.agents/skills` and its MCP entry from `~/.codex/config.toml`.
+
+The MCP server stays current by itself. `ros mcp` is a small supervisor that runs the real server as a child and watches the
+installed `VERSION` file; when a release is installed (or the app updates) it restarts the child within about ten seconds,
+between requests, and tells the client the tools may have changed. Nothing needs restarting. Installed from the app, the
+client entry points at the app's own backend program (run as `--worker cli mcp`), so an app update updates it. A record
+also remembers the newest engine that wrote it, and an older engine only reads it. If you run from a source checkout, update
+it with `powershell -File desktop/update-checkout.ps1 -Checkout <folder>` (or set `ROS_CHECKOUT`) after a release.
 
 ## How the pieces fit
 
