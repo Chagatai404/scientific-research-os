@@ -220,6 +220,10 @@ def make_handler(rec: "Record | Pool"):
                 return self._send(200, {'result': [{'name': name, 'help': t.help, 'schema': t.schema(), 'writes': t.writes, 'human': t.human} for name, t in api.TOOLS.items()]})
             if path == '/services/owned-work':
                 return self._send(200,{'result':{'active':len(runtime.ACTIVE),'indexing':sum(j['state'] in ('queued','indexing') for j in runtime.INDEX_JOBS.values())}})
+            if path == '/services/health':
+                return self._send(200, {'result': runtime.health()})
+            if path == '/services/connectivity':
+                return self._send(200, {'result': runtime.connection()}, extra={'Cache-Control': 'no-store'})
             if path == '/source-media':
                 args = {k: _arg(v[-1]) for k, v in parse_qs(url.query).items()}
                 try:
@@ -628,7 +632,8 @@ class PortalServer(ThreadingHTTPServer):
 
     def handle_error(self, request, client_address):
         if not isinstance(sys.exc_info()[1], ConnectionError):  # a browser that left is not worth a traceback
-            super().handle_error(request, client_address)
+            # To the log (the desktop app discards stderr), never to a response.
+            logging.getLogger("ros").error("portal request from %s failed", client_address[0] if client_address else "?", exc_info=sys.exc_info())
 
     def server_bind(self):
         if os.name == "nt" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):

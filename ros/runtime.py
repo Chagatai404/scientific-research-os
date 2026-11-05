@@ -10,10 +10,38 @@ import time
 import uuid
 from . import api, runner, home
 from .store import Record
-from .lib import providers
+from .lib import providers, connectivity
 
 LOG = logging.getLogger('ros')
+
+# Background problems nobody is watching a screen for: component -> the last few errors, newest last. Shown by /services/health.
+HEALTH = {}
+HEALTH_LOCK = threading.Lock()
+HEALTH_KEEP = 10
+
+def report(component, error, exc_info=None, log=True):
+    """Log a background failure (masked) and remember it for the activity board. Never raises."""
+    try:
+        text = providers.mask(str(error))[:300]
+        if log: LOG.error('%s: %s', component, text, exc_info=exc_info)
+        with HEALTH_LOCK:
+            HEALTH.setdefault(component, []).append({'at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()), 'error': text})
+            del HEALTH[component][:-HEALTH_KEEP]
+    except Exception: pass
+
+def health():
+    """What went wrong in the background, newest first."""
+    import os
+    with HEALTH_LOCK: rows = [dict(row, component=name) for name, items in HEALTH.items() for row in items]
+    return {'problems': sorted(rows, key=lambda r: r['at'], reverse=True)[:20], 'log': os.environ.get('ROS_LOG_DIR') or ''}
+
+def connection():
+    return connectivity.check()
+
 ACTIVE = {}
+# Retrying a model turn that lost its connection: pauses before attempts 2, 3 and 4 of a reply (3 retries = "attempt k of 3" after the first).
+RETRY_DELAYS = (5, 20, 60)
+ONLINE_WAIT = 120  # how long a retry waits for the internet to come back before trying anyway
 LOCK = threading.Lock()
 FOREGROUND = threading.Semaphore(1)
 INDEX_JOBS = {}
@@ -50,13 +78,16 @@ def launch_operation(rec,result):
     return result
 
 def recover(rec):
+    counts={'operations':0,'runs':0,'notebooks':0}
     for row in api.call('operation_list',rec):
-        if row['state']=='running':api.call('operation_finish',rec,identifier=row['id'],result={'ok':False,'interrupted':True,'error':'Backend stopped; inspect effects before requesting a new operation.'})
+        if row['state']=='running':counts['operations']+=1;api.call('operation_finish',rec,identifier=row['id'],result={'ok':False,'interrupted':True,'error':'Backend stopped; inspect effects before requesting a new operation.'})
     for row in api.call('run_list', rec, limit=500):
         if row['state'] not in ('completed', 'failed', 'cancelled', 'interrupted'):
-            api.call('run_transition', rec, run=row['id'], state='interrupted', detail='The owning backend stopped. Inspect partial output before starting a new turn.')
+            counts['runs']+=1; api.call('run_transition', rec, run=row['id'], state='interrupted', detail='The owning backend stopped. Inspect partial output before starting a new turn.')
     for job in api.call('notebook_jobs',rec):
-        if job['state']=='running':api.call('notebook_result',rec,request=job['id'],result={'ok':False,'interrupted':True,'error':'The owning backend stopped. Inspect the original request before executing again.'})
+        if job['state']=='running':counts['notebooks']+=1;api.call('notebook_result',rec,request=job['id'],result={'ok':False,'interrupted':True,'error':'The owning backend stopped. Inspect the original request before executing again.'})
+    LOG.info('recovery on start: marked %(runs)d runs, %(operations)d operations and %(notebooks)d notebook jobs interrupted', counts)
+    return counts
 
 def engine_process(rec,key,argv,packet,timeout):
     entry={'cancel':threading.Event(),'owned':[]}
@@ -69,13 +100,22 @@ def engine_process(rec,key,argv,packet,timeout):
             import os, subprocess, sys
             env=dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
             env['PYTHONPATH']=str(__import__('pathlib').Path(__file__).resolve().parents[1])+os.pathsep+env.get('PYTHONPATH','')
-            process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True,encoding='utf-8',env=env,
+            process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding='utf-8',env=env,
                                      **({'creationflags':subprocess.CREATE_NO_WINDOW} if os.name=='nt' else {'start_new_session':True}))
             entry['owned'].append(process)
             try:
-                output,_=process.communicate(json.dumps(packet),timeout=timeout)
-                return json.loads(output)
-            except (ValueError,subprocess.TimeoutExpired):return {'ok':False,'error':'Engine failed or timed out; inspect the request before retrying'}
+                try:
+                    output,errors=process.communicate(json.dumps(packet),timeout=timeout)
+                    try:return json.loads(output)
+                    except ValueError:pass
+                except subprocess.TimeoutExpired:
+                    providers.terminate(process)
+                    try:_,errors=process.communicate(timeout=5)
+                    except Exception:errors=''
+                # Failed: what the engine said on stderr goes to the log, and a short masked excerpt to the person; never on success.
+                tail=providers.excerpt(errors)
+                report('engine','engine request '+str(key)+' failed'+(': '+tail if tail else ''))
+                return {'ok':False,'error':'Engine failed or timed out; inspect the request before retrying'+(' (the engine said: '+tail+')' if tail else '')}
             finally:providers.terminate(process)
     finally:
         with LOCK:ACTIVE.pop((str(rec.root),key),None)
@@ -92,7 +132,9 @@ def run_job(rec,identifier):
             with ENGINE_WORKER:
                 if entry['cancel'].is_set():return
                 try:result=runner.Runner._run(job,entry['owned'].append)
-                except Exception as exc:result={'ok':False,'code':None,'output':type(exc).__name__+': '+str(exc)[:500],'seconds':0}
+                except Exception as exc:
+                    report('engine','job '+str(identifier)+' stopped on '+type(exc).__name__+': '+str(exc)[:200],exc_info=True)
+                    result={'ok':False,'code':None,'output':type(exc).__name__+': '+str(exc)[:500],'seconds':0}
                 if not entry['cancel'].is_set():
                     try:api.call('job_done',rec,task=identifier,result=result,by=owner)
                     except (ValueError,KeyError):pass
@@ -176,9 +218,20 @@ def execute(rec, result, request, legacy_engine=None):
     def flush():
         nonlocal buffer, last
         if buffer: api.call('run_output', rec, run=run, text=buffer); buffer = ''; last = time.monotonic()
+    shown = {'text': None, 'count': 0}
+    def set_status(text):
+        """What the person sees instead of "Working on your question…" while the connection is in trouble, kept as a `status` step of
+        the run (text '' clears it). Only changes are written, at most 40 a run; never raises."""
+        if text == shown['text'] or (text is None and not shown['text']): return
+        shown['text'] = text
+        if shown['count'] >= 40: return
+        shown['count'] += 1
+        try: api.call('run_step', rec, run=run, operation=f"status/{shown['count']}", tool_name='status', result={'text': text or ''})
+        except Exception: LOG.warning('run %s: a status line could not be recorded', run, exc_info=True)
     def emit(text):
         nonlocal buffer, output
         if entry['cancel'].is_set(): raise providers.ProviderError('cancelled')
+        if shown['text']: set_status(None)
         budget['bytes'] += len(text)
         if budget['bytes'] > min(60000,limits['output']*6): raise providers.ProviderError('Output budget reached.')
         buffer += text; output += text
@@ -324,12 +377,50 @@ def execute(rec, result, request, legacy_engine=None):
                 profile = request.get('vision_profile') or next((p for p in api.call('provider_profiles', rec) if p['id'] == packet['model']), None)
                 if profile:
                     packet.update(endpoint=profile['endpoint'], tool_support=profile['tools'])
-                if provider == 'claude':
-                    with ToolBridge(tool_call, packet['tools']) as bridge:
-                        packet['bridge'] = bridge
-                        reported=providers.ADAPTERS[provider](packet, emit, tool_call, entry['cancel'], entry['owned'].append)
-                else:
-                    reported=providers.ADAPTERS[provider](packet, emit, tool_call, entry['cancel'], entry['owned'].append)
+                label = {'claude': 'Claude', 'codex': 'Codex'}.get(provider, 'the local model')
+                retries = len(RETRY_DELAYS)
+                def retry_note(attempt):
+                    """What a retried request is told: the tool calls this reply already committed (so writes are not repeated) and the text already shown."""
+                    done = {}
+                    for step in api.call('run_get', rec, run=run)['steps']:
+                        if step['tool'] != 'status' and not step['tool'].startswith(('native:', 'local_pdf')): done[step['tool']] = done.get(step['tool'], 0) + 1
+                    note = f'\n\nConnection note: your previous attempt at this reply was cut off by a lost network connection; this is attempt {attempt}. '
+                    if done: note += 'Tool calls already committed and successful in this reply (do not repeat them or their writes): ' + ', '.join(f'{n} x{c}' for n, c in done.items()) + '. '
+                    if output.strip(): note += 'The person has already seen this text from you; continue from it without repeating it: ' + json.dumps(output[-1500:], ensure_ascii=False)
+                    return note
+                def wait_to_retry(attempt):
+                    delay = RETRY_DELAYS[attempt - 1]
+                    set_status(f'Connection lost; retrying in {delay} s (attempt {attempt} of {retries})')
+                    flush()
+                    if entry['cancel'].wait(delay): raise providers.ProviderError('cancelled')
+                    if provider in ('claude', 'codex'):
+                        until = time.monotonic() + ONLINE_WAIT
+                        while time.monotonic() < until and not connectivity.online():
+                            set_status('Waiting for the internet connection to come back…')
+                            if entry['cancel'].wait(5): raise providers.ProviderError('cancelled')
+                    if output.strip(): emit('\n\n(connection lost — continuing)\n\n')
+                base_system = packet['system']
+                for attempt in range(1, retries + 2):
+                    # A retry is a new process whose call ids restart from 1: they carry the attempt, so a new call is never answered
+                    # with the cached result of a different, earlier one (see tool_call).
+                    scope = f'a{attempt}:' if attempt > 1 else ''
+                    attempt_packet = dict(packet, status=set_status, system=base_system + (retry_note(attempt) if attempt > 1 else ''))
+                    try:
+                        if provider == 'claude':
+                            with ToolBridge(tool_call, packet['tools'], scope) as bridge:
+                                attempt_packet['bridge'] = bridge
+                                reported=providers.ADAPTERS[provider](attempt_packet, emit, tool_call, entry['cancel'], entry['owned'].append)
+                        else:
+                            scoped = lambda name, args, operation, scope=scope: tool_call(name, args, scope + operation)
+                            reported=providers.ADAPTERS[provider](attempt_packet, emit, scoped, entry['cancel'], entry['owned'].append)
+                        break
+                    except providers.TransientProviderError as exc:
+                        if entry['cancel'].is_set(): raise
+                        LOG.warning('run %s: attempt %d lost its connection: %s', run, attempt, providers.mask(exc))
+                        if attempt > retries:
+                            raise providers.ProviderError(f'The connection to {label} was lost and did not come back after {retries} attempts. Your message is saved; send it again or say “continue”.') from exc
+                        wait_to_retry(attempt)
+                set_status(None)
                 if reported and (reported.get('usage') is not None or reported.get('cost') is not None):api.call('run_usage',rec,run=run,usage=reported.get('usage'),cost=reported.get('cost'))
             flush()
             if entry['cancel'].is_set():
@@ -343,7 +434,7 @@ def execute(rec, result, request, legacy_engine=None):
             api.call('run_transition', rec, run=run, state='completed')
         finally: FOREGROUND.release()
     except Exception as exc:
-        if not isinstance(exc, (ValueError, KeyError)): LOG.exception('run %s stopped on an internal error', run)
+        if not isinstance(exc, (ValueError, KeyError)): LOG.exception('run %s stopped on an internal error', run); report('conversations', f'run {run} stopped on an internal error ({type(exc).__name__}: {str(exc)[:160]})', log=False)
         # Nothing here may leave the run open: each step is tried on its own, and a failure is logged, not raised.
         for step in (flush, lambda: record_change(partial=True)):
             try: step()
@@ -400,9 +491,9 @@ def dispatch_once(rec):
         entry = {'cancel': threading.Event(), 'owned': []}
         with LOCK: ACTIVE[key] = entry
         grant, used, finished = set(got['tools']), [0], [False]
-        def end(outcome, detail=''):
+        def end(outcome, detail='', transient=False):
             api.call('dispatch_end', rec, task=task['id'], record=got['record'], outcome=outcome, detail=detail)
-            return {'task': task['id'], 'kind': got['kind'], 'outcome': outcome, 'detail': detail, 'model': model}
+            return {'task': task['id'], 'kind': got['kind'], 'outcome': outcome, 'detail': detail, 'model': model, **({'transient': True} if transient else {})}
         target = rec
         if got['record'] != rec.root.name:
             if got['record'] not in home.projects(): return end('failed', 'the record of this task is not available')
@@ -428,12 +519,16 @@ def dispatch_once(rec):
         try:
             if not model.startswith(('ollama:', 'compatible:')): api.call('workspace_cloud_guard', rec)
             run_agent(rec, model, got['system'], got['brief'], grant, got['steps'], call, entry, limits, workdir=got.get('workdir') if got.get('native') else None)
+        except providers.TransientProviderError as exc:
+            # A lost connection is not the task's fault: it ends as interrupted (never a failure) and the dispatcher backs off.
+            LOG.warning('agent task %s lost its connection: %s', task['id'], providers.mask(exc))
+            return end('interrupted', 'The connection was lost (' + providers.mask(exc)[:200] + '); the task is taken again when it is back.', transient=True)
         except ValueError as exc:
             return end('refused' if 'local-only' in str(exc) else 'failed', str(exc))
         except providers.ProviderError as exc:
             return end('failed', str(exc))
         except Exception as exc:
-            LOG.exception('agent task %s stopped on an internal error', task['id'])
+            LOG.exception('agent task %s stopped on an internal error', task['id']); report('agents', f"agent task {task['id']} stopped on an internal error ({type(exc).__name__}: {str(exc)[:160]})", log=False)
             return end('failed', f'internal error ({type(exc).__name__}: {str(exc)[:300]}); it is logged')
         return end('done') if finished[0] else end('unfinished', 'the agent stopped without finishing the task; it is taken again later')
     finally:
@@ -444,9 +539,10 @@ def dispatch_once(rec):
 
 class Dispatcher:
     """The desktop's background dispatcher: every `interval` seconds it looks for a task an agent may take, one at a time."""
+    MIN_BACKOFF, MAX_BACKOFF = 120, 900
     def __init__(self, rec, interval=60, first=30):
         self.rec, self.interval, self.first = rec, interval, first
-        self.stop_event, self.errors, self.last = threading.Event(), [], None
+        self.stop_event, self.errors, self.last, self.backoff = threading.Event(), [], None, 0
         self.thread = threading.Thread(target=self.loop, daemon=True, name='ros-dispatcher')
     def start(self):
         self.thread.start(); return self
@@ -457,10 +553,17 @@ class Dispatcher:
         while not self.stop_event.wait(wait):
             wait = self.interval
             try:
+                if self.backoff and not connectivity.online():  # the connection is down: stay quiet, wait longer, try nothing
+                    self.backoff = min(self.backoff * 2, self.MAX_BACKOFF); wait = self.backoff; continue
                 self.last = dispatch_once(self.rec)
-                if self.last.get('kind'): wait = 5  # something was done: look again soon; the hourly limit keeps it bounded
+                if self.last.get('transient'):  # 2 min, doubling to 15 min, while the connection is down
+                    self.backoff = min(self.backoff * 2, self.MAX_BACKOFF) if self.backoff else self.MIN_BACKOFF; wait = self.backoff
+                else:
+                    self.backoff = 0
+                    if self.last.get('kind'): wait = 5  # something was done: look again soon; the hourly limit keeps it bounded
             except Exception as exc:  # a failed look never stops the dispatcher
                 self.errors = (self.errors + [type(exc).__name__ + ': ' + str(exc)[:200]])[-10:]
+                report('agents', 'the agent dispatcher failed: ' + type(exc).__name__ + ': ' + str(exc)[:200], exc_info=True)
 
 class JobWorker:
     """The desktop's local engine worker: the render jobs the record queued for itself (lesson narration with Kokoro, animation
@@ -490,10 +593,11 @@ class JobWorker:
             try: wait = 5 if self.once() else self.interval
             except Exception as exc:  # a failed look never stops the worker
                 self.errors = (self.errors + [type(exc).__name__ + ': ' + str(exc)[:200]])[-10:]; wait = self.interval
+                report('jobs', 'the render job worker failed: ' + type(exc).__name__ + ': ' + str(exc)[:200], exc_info=True)
 
 class ToolBridge:
     """A run-specific MCP HTTP endpoint. Its token grants only the already filtered tool callback."""
-    def __init__(self, call, tools):
+    def __init__(self, call, tools, prefix=''):
         from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
         import secrets
         token = secrets.token_hex(32)
@@ -509,7 +613,7 @@ class ToolBridge:
                     method = message.get('method'); params = message.get('params', {})
                     if method == 'initialize': result = {'protocolVersion': '2025-03-26', 'capabilities': {'tools': {}}, 'serverInfo': {'name': 'research-os-scoped', 'version': '1.3.0'}}
                     elif method == 'tools/list': result = {'tools': [{'name': t['name'], 'description': t['description'], 'inputSchema': t['parameters']} for t in tools]}
-                    elif method == 'tools/call': result = {'content': [{'type': 'text', 'text': json.dumps(call(params['name'], params.get('arguments', {}), 'claude:' + str(message['id'])))}]}
+                    elif method == 'tools/call': result = {'content': [{'type': 'text', 'text': json.dumps(call(params['name'], params.get('arguments', {}), 'claude:' + prefix + str(message['id'])))}]}
                     elif method.startswith('notifications/'):
                         self.send_response(202); self.end_headers(); return
                     else: raise ValueError('unsupported MCP method')

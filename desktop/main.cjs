@@ -2,9 +2,12 @@
 const {app, BrowserWindow, dialog, ipcMain, session, shell} = require('electron');
 const {spawn} = require('node:child_process');
 const path = require('node:path');
-const {handshake, terminate, allowedURL, externalURL} = require('./lifecycle.cjs');
+const {handshake, terminate, stopInstalledEngines, allowedURL, externalURL, StderrTail, RestartPolicy, describeExit, fileLog, noticeScript} = require('./lifecycle.cjs');
 const {updates} = require('./updates.cjs');
-let child, window, origin, credential, exiting = false;
+let child, window, origin, credential, ready, exiting = false, recovering = false, logsDir, log = () => {};
+let tail = new StderrTail(100);  // the backend's last stderr lines: memory only, masked, written to desktop.log only after an unexpected exit
+const restarts = new RestartPolicy();  // 3 restarts within 10 minutes, after 1 s, 5 s and 15 s
+const RESTART_NOTICE = 'Research OS restarted its engine after a crash. Interrupted work is marked; nothing acknowledged was lost.';
 // Windows known-folder APIs can ignore APPDATA environment overrides. Tests and
 // explicit isolated launches therefore select Electron's profile before its lock.
 if(process.env.ROS_DESKTOP_PROFILE){
@@ -18,7 +21,7 @@ if (printer.requested(process.argv)) printer.run(app, BrowserWindow, process.arg
 else if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => {if (window) {if (window.isMinimized()) window.restore(); window.show(); window.focus();}});
-  app.on('before-quit', () => {exiting = true; terminate(child);});
+  app.on('before-quit', () => {exiting = true; log('app quitting'); terminate(child);});
   app.on('window-all-closed', () => app.quit());
   app.whenReady().then(start).catch(error => {
     // A smoke run has nobody to press OK: say what failed in a file and exit non-zero instead of waiting behind a dialog.
@@ -31,27 +34,81 @@ async function operation(name, args = {}) {
   const response = await fetch(origin + '/api/' + name, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-ROS': '1', 'X-ROS-Session': credential, 'Origin': origin}, body: JSON.stringify(args)});
   const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Operation failed'); return body.result;
 }
-async function start() {
+// Starts the backend and waits for its handshake: a new process, port and credential each time. The session's header hook follows them.
+async function launchBackend() {
   const root = path.resolve(__dirname, '..');
   const executable = app.isPackaged ? path.join(process.resourcesPath, 'backend', 'research-os-backend', 'research-os-backend.exe') : process.env.ROS_PYTHON || 'python';
   const argv = app.isPackaged ? [] : ['-m', 'ros.desktop'];
-  child = spawn(executable, argv, {cwd: app.isPackaged ? app.getPath('userData') : root, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'], env: {...process.env, PYTHONUNBUFFERED: '1', ROS_PDF_ELECTRON: process.execPath, ...(app.isPackaged ? {} : {ROS_PDF_ELECTRON_APP: __dirname}), ...(app.isPackaged ? {} : {PYTHONPATH: [root,path.join(root,'.desktop-build','python-packages'),process.env.PYTHONPATH||''].join(path.delimiter)})}});
-  child.stderr.on('data', () => {}); // provider diagnostics may contain account information
-  const ready = await handshake(child); origin = 'http://127.0.0.1:' + ready.port; credential = ready.credential;
+  tail = new StderrTail(100);
+  log('backend spawn', [executable, ...argv].join(' '));
+  const proc = child = spawn(executable, argv, {cwd: app.isPackaged ? app.getPath('userData') : root, windowsHide: true, detached: process.platform !== 'win32', stdio: ['pipe', 'pipe', 'pipe'], env: {...process.env, PYTHONUNBUFFERED: '1', ROS_LOG_DIR: logsDir, ROS_PDF_ELECTRON: process.execPath, ...(app.isPackaged ? {} : {ROS_PDF_ELECTRON_APP: __dirname}), ...(app.isPackaged ? {} : {PYTHONPATH: [root,path.join(root,'.desktop-build','python-packages'),process.env.PYTHONPATH||''].join(path.delimiter)})}});
+  proc.stdin.on('error', () => {});
+  proc.stderr.on('data', chunk => tail.push(chunk)); // provider diagnostics may contain account information: masked, memory only
+  proc.once('exit', (code, signal) => onBackendExit(proc, code, signal));
+  ready = await handshake(proc); origin = 'http://127.0.0.1:' + ready.port; credential = ready.credential;
+  log('backend handshake', 'port ' + ready.port + ', version ' + ready.version);
+  // Credential stays in the host. No preload method exposes it to renderer or provider. Registering again replaces the earlier hook.
+  const current = origin;
+  session.fromPartition('persist:research-os').webRequest.onBeforeSendHeaders({urls: [current + '/*']}, (details, callback) => {if (details.url.startsWith(current + '/')) details.requestHeaders['X-ROS-Session'] = credential; callback({requestHeaders: details.requestHeaders});});
+  return ready;
+}
+function onBackendExit(proc, code, signal) {
+  log('backend exit', describeExit(code, signal) + (proc === child ? '' : ' (an earlier process)'));
+  if (proc !== child || exiting || !window || window.isDestroyed()) return;  // on purpose (close, update), or still starting
+  log('backend exited unexpectedly; its last stderr lines follow', tail.lines().join('\n'));
+  void recoverBackend();
+}
+async function recoverBackend() {
+  if (recovering) return; recovering = true;
+  try {
+    for (;;) {
+      if (exiting) return;
+      const step = restarts.next();
+      if (!step) {await giveUp(); return;}
+      log('backend restart', 'attempt ' + step.attempt + ' of 3 in ' + step.delay + ' ms');
+      await new Promise(resolve => setTimeout(resolve, step.delay));
+      if (exiting || !window || window.isDestroyed()) return;
+      try {
+        await launchBackend();
+        if (exiting || !window || window.isDestroyed()) return;
+        await window.loadURL(origin + '/workspace/');
+        await window.webContents.executeJavaScript(noticeScript(RESTART_NOTICE)).catch(() => {});
+        log('backend restarted', 'port ' + ready.port);
+        return;
+      } catch (error) {log('backend restart failed', error.message); terminate(child);}
+    }
+  } finally {recovering = false;}
+}
+async function giveUp() {
+  log('backend could not be restarted', 'giving up after 3 restarts');
+  for (;;) {
+    const options = {type: 'error', buttons: ['Restart Research OS', 'Open log folder', 'Quit'], defaultId: 0, cancelId: 2, message: 'Research OS could not restart its engine.', detail: 'Your acknowledged work is saved. Details are in the log folder.'};
+    const choice = await dialog.showMessageBox(...(window && !window.isDestroyed() ? [window] : []), options);
+    if (choice.response === 1) {await shell.openPath(logsDir); continue;}
+    exiting = true;
+    if (choice.response === 0) app.relaunch();
+    app.quit(); return;
+  }
+}
+async function start() {
+  logsDir = app.getPath('logs'); require('node:fs').mkdirSync(logsDir, {recursive: true}); log = fileLog(path.join(logsDir, 'desktop.log'));
+  log('desktop start', 'version ' + app.getVersion() + (app.isPackaged ? ' (packaged)' : ' (development)'));
+  await launchBackend();
   const ses = session.fromPartition('persist:research-os');
-  // Credential stays in the host. No preload method exposes it to renderer or provider.
-  ses.webRequest.onBeforeSendHeaders({urls: [origin + '/*']}, (details, callback) => {details.requestHeaders['X-ROS-Session'] = credential; callback({requestHeaders: details.requestHeaders});});
   window = new BrowserWindow({width: 1440, height: 900, minWidth: 320, minHeight: 480, show: false, icon:path.join(__dirname,'icons','icon.ico'), backgroundColor: '#181b1a', title: 'Research OS', webPreferences: {preload: path.join(__dirname, 'preload.cjs'), partition: 'persist:research-os', contextIsolation: true, sandbox: true, nodeIntegration: false, webSecurity: true}});
   ses.setPermissionRequestHandler((_contents, permission, callback, details) => callback(permission === 'media' && _contents === window.webContents && details.isMainFrame!==false && allowedURL(details.requestingUrl,origin) && (details.mediaTypes||[]).every(type=>type==='audio')));
   window.webContents.setWindowOpenHandler(() => ({action: 'deny'}));
   window.webContents.on('will-navigate', (event, url) => {if (!allowedURL(url, origin)) event.preventDefault();});
   window.webContents.on('will-attach-webview', event => event.preventDefault());
-  ipcMain.handle('backend:state', event => {sender(event); return {version: ready.version, protocol: ready.protocol};});
+  ipcMain.handle('backend:state', event => {sender(event); return {version: ready.version, protocol: ready.protocol};});  // registered once: a restart changes `ready`, not the handlers
   ipcMain.handle('external:open',(event,url)=>{sender(event);return shell.openExternal(externalURL(url));});
   const updatesEnabled=app.isPackaged && (require('node:fs').existsSync(path.join(path.dirname(process.execPath),'Uninstall Research OS.exe')) || process.env.ROS_DESKTOP_SMOKE==='1'&&Boolean(process.env.ROS_UPDATE_TEST_URL));
   const updateManager = updates({app, enabled:updatesEnabled, updater: require('electron-updater').autoUpdater,
     busy: async () => {const response=await fetch(origin+'/services/owned-work',{headers:{'X-ROS-Session':credential}});if(!response.ok)return true;const work=(await response.json()).result;return Boolean(work.active||work.indexing);},
-    install: async callback => {exiting=true;child.stdin.end('shutdown\n');await new Promise(resolve=>setTimeout(resolve,1000));terminate(child);callback();}});
+    install: async callback => {exiting=true;child.stdin.end('shutdown\n');await new Promise(resolve=>setTimeout(resolve,1000));terminate(child);
+      // Agent clients' MCP servers run this install's engine; stop them so the installer can replace it (they restart on next use).
+      log('stopped agent engines before update', String(stopInstalledEngines(path.join(process.resourcesPath, 'backend'))));
+      callback();}});
   if(process.env.ROS_DESKTOP_SMOKE==='1' && process.env.ROS_UPDATE_TEST_URL){
     const url=new URL(process.env.ROS_UPDATE_TEST_URL);
     if(url.protocol!=='http:'||!['127.0.0.1','localhost'].includes(url.hostname))throw new Error('Updater smoke feed must be loopback.');
@@ -94,7 +151,6 @@ async function start() {
     exiting = true; child.stdin.end('shutdown\n'); setTimeout(() => {terminate(child); app.quit();}, 1500);
   });
   await window.loadURL(origin + '/workspace/'); window.show();
-  child.once('exit', () => {if (!exiting && window) dialog.showMessageBox(window, {type: 'error', message: 'The local backend stopped. Your acknowledged work is saved. Restart Research OS to reconnect.'});});
   if (process.env.ROS_DESKTOP_SMOKE === '1') {
     if(process.env.ROS_UPDATE_TEST_URL){
       await updateManager.check();

@@ -2,7 +2,7 @@ import {CommandMenu} from './CommandMenu';
 import {UpdatePrompt} from './UpdatePrompt';
 import {InlineTitle} from './InlineTitle';
 import {useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent} from 'react';
-import {call, href, preference, routeOf, savePreference} from './api';
+import {call, href, preference, routeOf, savePreference, service} from './api';
 import type {DocumentData, RecordInfo} from './contracts';
 import {DocumentView, ResolveView} from './Document';
 import {EntityView, Search} from './views';
@@ -43,6 +43,7 @@ function Shell() {
   const [context, setContext] = useState(() => preference('context', 'open') === 'open');
   const [doc, setDoc] = useState<DocumentData | null>(null);
   const [online, setOnline] = useState(navigator.onLine);
+  const [reachable, setReachable] = useState<boolean | null>(null);  // the backend's own check of the internet (see /services/connectivity)
   const main = useRef<HTMLElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const navToggle = useRef<HTMLButtonElement>(null), sessionsToggle = useRef<HTMLButtonElement>(null);
@@ -60,11 +61,13 @@ function Shell() {
     const load = () => call<RecordInfo[]>('records', {}, undefined, false, abort.signal).then(setRecords).catch(() => {});
     load();
     const change = () => {savePreference('last-route', location.hash); setRoute(routeOf(location.hash));};
-    const network = () => setOnline(navigator.onLine);
+    const probe = () => service<{online: boolean}>('connectivity').then(result => setReachable(result.online)).catch(() => {});
+    const network = () => {setOnline(navigator.onLine); void probe();};
+    void probe(); const polling = window.setInterval(probe, 30000);
     const resize = () => {const narrow = window.innerWidth < MOBILE; setMobile(narrow); if (!narrow) setDrawer(null);};
     window.addEventListener('hashchange', change); window.addEventListener('online', network); window.addEventListener('offline', network);
     window.addEventListener('ros:records-changed', load); window.addEventListener('resize', resize);
-    return () => {abort.abort(); window.removeEventListener('hashchange', change); window.removeEventListener('online', network); window.removeEventListener('offline', network); window.removeEventListener('ros:records-changed', load); window.removeEventListener('resize', resize);};
+    return () => {abort.abort(); window.clearInterval(polling); window.removeEventListener('hashchange', change); window.removeEventListener('online', network); window.removeEventListener('offline', network); window.removeEventListener('ros:records-changed', load); window.removeEventListener('resize', resize);};
   }, []);
   const toggleNavigation = useCallback(() => {
     if (window.innerWidth < MOBILE) {if (drawer === 'nav') restoreFocus.current = 'nav'; setDrawer(d => d === 'nav' ? null : 'nav'); return;}
@@ -167,7 +170,7 @@ function Shell() {
       <a className="settings-toggle" href={href('settings', '', route.record)} aria-label="Settings" aria-current={route.view === 'settings' ? 'page' : undefined} title="Settings"><Icon name="settings" /></a>
       {selectedId && <button className="context-toggle" aria-controls="inspector" aria-expanded={context} onClick={() => {setContext(!context); savePreference('context', context ? 'closed' : 'open');}}>{context ? 'Hide context' : 'Show context'}</button>}
     </header>
-    <main inert={modalDrawer} id="main" ref={main} tabIndex={-1} className={(route.view === 'graph' || route.view === 'overview' || route.view === 'chat' ? 'wide ' : '') + (graphSurface ? 'canvas-page' : '')}>{!online && <p className="notice" role="status">Your browser reports no network connection. The local record is still available while ros serve is running.</p>}{content}</main>
+    <main inert={modalDrawer} id="main" ref={main} tabIndex={-1} className={(route.view === 'graph' || route.view === 'overview' || route.view === 'chat' ? 'wide ' : '') + (graphSurface ? 'canvas-page' : '')}>{(!online || reachable === false) && <p className="notice" role="status">No internet connection. Model replies, agents and literature searches wait and retry when it is back.</p>}{content}</main>
     <aside inert={modalDrawer} id="inspector" className="inspector" aria-label="Context inspector" hidden={!showInspector}><Inspector id={selectedId} record={route.record} document={selectedId ? doc : null} /></aside>
   </div>;
 }

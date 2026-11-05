@@ -20,6 +20,18 @@ from .dialogue import codex_executable, codex_models, provider_failure, takes_ef
 
 class ProviderError(ValueError): pass
 
+class TransientProviderError(ProviderError):
+    """The provider could not be reached, or the connection dropped or the service was overloaded: asking again later may work."""
+
+# What a failed network call says in the CLIs' and libraries' own words. Matched against the error text and the child's stderr.
+TRANSPORT = re.compile(r'(?i)(ECONNREFUSED|ECONNRESET|ECONNABORTED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|ENETDOWN|getaddrinfo|fetch failed|socket hang up|'
+                       r'connection (?:error|refused|reset|closed|lost|aborted|timed out)|unable to connect|network (?:error|is unreachable)|timed? ?out|'
+                       r'temporary failure in name resolution|name or service not known|stream disconnected|stream closed before|error sending request|'
+                       r'\b(?:502|503|504|529)\b|overloaded|service unavailable|bad gateway|gateway time-?out|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|ERR_NETWORK)')
+
+def transport_failure(*texts):
+    return any(t and TRANSPORT.search(str(t)) for t in texts)
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise ProviderError('Local provider redirects are blocked to preserve local-only disclosure.')
@@ -52,10 +64,48 @@ def launch(argv, cwd):
         node=shutil.which('node')
         if not found or (found.suffix.lower()!='.exe' and not node):raise ProviderError('Install the native CLI or its standard Node package; this command shim cannot be launched safely.')
         argv=[str(found),*argv[1:]] if found.suffix.lower()=='.exe' else [node,str(found),*argv[1:]]
-    return subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding='utf-8', errors='replace', bufsize=1,
-                            **({'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {'start_new_session': True}))
+    process = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace', bufsize=1,
+                               **({'creationflags': subprocess.CREATE_NO_WINDOW} if os.name == 'nt' else {'start_new_session': True}))
+    process.stderr_tail = StderrTail(process.stderr)
+    return process
 
-def lines(process, cancel, timeout=180):
+class StderrTail:
+    """The last lines a child process wrote to stderr, read by a thread so a full pipe never blocks the child. Kept in memory only;
+    ``excerpt`` masks credentials and is what may be logged or shown, and only when the child failed."""
+    def __init__(self, stream, keep=60):
+        import collections
+        self.rows = collections.deque(maxlen=keep)
+        if stream is not None: threading.Thread(target=self._read, args=(stream,), daemon=True).start()
+    def _read(self, stream):
+        try:
+            for line in stream:
+                if line.strip(): self.rows.append(line.rstrip()[:500])
+        except (OSError, ValueError): pass
+    def excerpt(self, count=4, limit=400):
+        return excerpt(chr(10).join(self.rows), count, limit)
+
+def mask(text):
+    return SECRETS.sub(lambda m: (m.group(1) or '') + '[hidden]', str(text))
+
+def excerpt(text, count=4, limit=400):
+    """The last ``count`` non-empty lines of ``text``, credentials masked, as one short line."""
+    rows = [r.strip() for r in str(text or '').splitlines() if r.strip()][-count:]
+    out = mask(' | '.join(rows))
+    return out if len(out) <= limit else '...' + out[-limit:]
+
+def stderr_excerpt(process, count=4):
+    tail = getattr(process, 'stderr_tail', None)
+    return tail.excerpt(count) if isinstance(tail, StderrTail) else ''
+
+def log_stderr(process, what):
+    """A child failed: its stderr tail goes to the log (masked), nowhere else."""
+    import logging
+    tail = stderr_excerpt(process, 12)
+    if tail: logging.getLogger('ros').warning('%s failed; its last stderr lines: %s', what, tail)
+
+def lines(process, cancel, timeout=180, status=None, quiet=30):
+    """The JSON events of a child's stdout. When nothing arrives for ``quiet`` seconds, ``status(text)`` says so (and again every
+    ``quiet`` seconds); ``status(None)`` when events resume. The stall is shown, never treated as a failure: the deadline decides."""
     q = queue.Queue(maxsize=1024)
     def read():
         try:
@@ -64,12 +114,20 @@ def lines(process, cancel, timeout=180):
                 q.put(line)
         finally: q.put(None)
     threading.Thread(target=read, daemon=True).start()
-    deadline = time.monotonic() + timeout
+    started = time.monotonic(); deadline = started + timeout; heard = started; stalled = 0
     while time.monotonic() < deadline:
         if cancel.is_set(): raise ProviderError('cancelled')
         try: line = q.get(timeout=.1)
-        except queue.Empty: continue
+        except queue.Empty:
+            silent = time.monotonic() - heard
+            if status and silent >= quiet * (stalled + 1):
+                stalled += 1
+                minutes = max(1, round((deadline - time.monotonic()) / 60))
+                status(f'No reply from the model for {round(silent)} s; the connection may be down. Still waiting (up to {minutes} min).')
+            continue
         if line is None: break
+        heard = time.monotonic()
+        if stalled: stalled = 0; status(None)
         try: yield json.loads(line)
         except ValueError: raise ProviderError('Provider returned a malformed stream event.')
     else: raise ProviderError('Provider deadline exceeded; partial output is saved.')
@@ -110,6 +168,7 @@ def codex(request, emit, tool_call, cancel, own):
     executable = codex_executable()
     if not executable: raise ProviderError('Codex is not installed. Sign in through its CLI after installation.')
     native, observe = request.get('native'), request.get('observe') or (lambda name, detail: None)
+    status = request.get('status') or (lambda text: None)
     with tempfile.TemporaryDirectory(prefix='ros-codex-context-') as scratch:
         # A Code session works in the person's repository with Codex's own shell and patch tools, sandboxed to that folder.
         directory = request['workdir'] if native else scratch
@@ -138,8 +197,17 @@ def codex(request, emit, tool_call, cancel, own):
             init = send('initialize', {'clientInfo': {'name': 'research_os', 'title': 'Research OS', 'version': '1.7.2'}, 'capabilities': {'experimentalApi': True}})
             start_id = turn_id = None
             usage=None
-            for event in lines(process, cancel, request.get('deadline', 180)):
-                if 'error' in event: raise ProviderError('Codex protocol/model/login error. Verify the selected model and CLI login; your turn is saved.')
+            for event in lines(process, cancel, request.get('deadline', 180), status, request.get('stall_after', 30)):
+                # Only a reply to one of our own requests that carries an error is fatal here. A notification (it has a method) named
+                # `error` is Codex reporting a failure of the turn: with `willRetry` it is reconnecting by itself, which is shown, not fatal.
+                if 'error' in event and 'method' not in event: raise codex_failure(event['error'], process)
+                if event.get('method') == 'error':
+                    params = event.get('params') or {}
+                    if params.get('willRetry', params.get('will_retry')):
+                        reason = str((params.get('error') or {}).get('message') or '')[:120]
+                        status('Codex lost its connection and is reconnecting' + (' (' + reason + ')' if reason else '') + '.')
+                        continue
+                    raise codex_failure(params.get('error') or params, process)
                 if event.get('id') == init and 'result' in event:
                     process.stdin.write('{"method":"initialized"}\n'); process.stdin.flush()
                     start_id = send('thread/start', {'model': request['model'].split(':', 1)[1], 'cwd': directory, 'sandbox': 'workspace-write' if native else 'read-only', 'approvalPolicy': 'never', 'ephemeral': True,
@@ -165,19 +233,25 @@ def codex(request, emit, tool_call, cancel, own):
                     except Exception as exc: result = {'error': internal_tool_error(params.get('tool'), exc)}; success = False
                     process.stdin.write(json.dumps({'id': event['id'], 'result': {'contentItems': [{'type': 'inputText', 'text': json.dumps(result, ensure_ascii=False)}], 'success': success}}) + '\n'); process.stdin.flush()
                 elif method == 'turn/completed':
-                    status = params.get('turn', {}).get('status')
-                    if status != 'completed': raise ProviderError('Codex turn ' + str(status))
+                    status_value = params.get('turn', {}).get('status')
+                    if status_value != 'completed':
+                        failure = params.get('turn', {}).get('error')
+                        if failure: raise codex_failure(failure, process)
+                        raise ProviderError('Codex turn ' + str(status_value))
                     return {'usage': usage}
                 elif 'id' in event and method:
                     # Decline every unknown approval/permission request. Scientific approvals are never provider permissions.
                     process.stdin.write(json.dumps({'id': event['id'], 'error': {'code': -32601, 'message': 'This operation is not granted by Research OS'}}) + '\n'); process.stdin.flush()
-            raise ProviderError('Codex stopped before a terminal turn event (exit %s). Run `codex` in a terminal to see why.' % process.poll())
+            time.sleep(.2); log_stderr(process, 'codex'); tail = stderr_excerpt(process)
+            message = 'Codex stopped before a terminal turn event (exit %s). Run `codex` in a terminal to see why.' % process.poll() + (' It said: ' + tail if tail else '')
+            raise (TransientProviderError if transport_failure(tail) else ProviderError)(message)
         finally: terminate(process)
 
 def claude(request, emit, tool_call, cancel, own):
     executable = shutil.which('claude') or shutil.which('claude.cmd')
     if not executable: raise ProviderError('Claude Code is not installed. Use its CLI login after installation.')
     native, observe = request.get('native'), request.get('observe') or (lambda name, detail: None)
+    status = request.get('status') or (lambda text: None)
     with tempfile.TemporaryDirectory(prefix='ros-claude-context-') as scratch:
         directory = request['workdir'] if native else scratch
         bridge = request.get('bridge')
@@ -197,8 +271,10 @@ def claude(request, emit, tool_call, cancel, own):
         process.stdin.write(content); process.stdin.close()
         partial = False
         try:
-            for event in lines(process, cancel, request.get('deadline', 180)):
-                if event.get('type') == 'stream_event':
+            for event in lines(process, cancel, request.get('deadline', 180), status, request.get('stall_after', 30)):
+                if event.get('type') == 'system' and event.get('subtype') == 'api_retry':
+                    status('Claude lost its connection and is retrying by itself.')
+                elif event.get('type') == 'stream_event':
                     delta = event.get('event', {}).get('delta', {})
                     if delta.get('type') == 'text_delta': emit(delta.get('text', '')); partial = True
                 elif native and event.get('type') == 'assistant':
@@ -206,10 +282,12 @@ def claude(request, emit, tool_call, cancel, own):
                         if block.get('type') == 'tool_use' and not str(block.get('name', '')).startswith('mcp__'):
                             observe(block.get('name', 'tool'), brief_action(block.get('input', {})))
                 elif event.get('type') == 'result':
-                    if event.get('is_error'): raise ProviderError('Claude request failed. Check CLI login, model availability or usage limit.')
+                    if event.get('is_error'): raise claude_failure(event, process)
                     if not partial: emit(event.get('result', ''))
                     return {'usage': event.get('usage'), 'cost': event.get('total_cost_usd')}
-            raise ProviderError('Claude stopped before a terminal result.')
+            time.sleep(.2); log_stderr(process, 'claude'); tail = stderr_excerpt(process)
+            message = 'Claude stopped before a terminal result.' + (' It said: ' + tail if tail else '')
+            raise (TransientProviderError if transport_failure(tail) else ProviderError)(message)
         finally: terminate(process)
 
 def local(request, emit, tool_call, cancel, own):
@@ -261,7 +339,14 @@ def local(request, emit, tool_call, cancel, own):
                         row['function']['arguments'] += json.dumps(args) if isinstance(args, dict) else args
         except (OSError, ValueError) as exc:
             if isinstance(exc, ProviderError): raise
-            raise ProviderError('Local endpoint unavailable or returned an invalid stream; check its address and model.') from None
+            import http.client
+            reason = getattr(exc, 'reason', exc)
+            # A server that is not running (refused) or that answers badly is not a lost connection; one that drops a stream is.
+            if isinstance(exc, (ConnectionResetError, ConnectionAbortedError, http.client.IncompleteRead, http.client.RemoteDisconnected)) or isinstance(reason, (ConnectionResetError, ConnectionAbortedError)):
+                raise TransientProviderError('The connection to the local endpoint dropped (' + type(reason).__name__ + '); partial output is saved.') from None
+            if isinstance(exc, OSError):
+                raise ProviderError('Local endpoint unavailable (' + str(reason)[:160] + '); check that it is running, its address and the model.') from None
+            raise ProviderError('Local endpoint returned an invalid stream; check its address and model.') from None
         if not finish: raise ProviderError('Local stream ended without completion; partial output is saved.')
         if not calls: return {'usage': usage}
         if not tools or step >= request.get('steps', 8): raise ProviderError('Tool budget reached or this model has no enabled tool capability.')
@@ -272,6 +357,34 @@ def local(request, emit, tool_call, cancel, own):
             except Exception as exc: result = {'error': internal_tool_error(call['function']['name'], exc)}
             messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps(result, ensure_ascii=False)})
     raise ProviderError('Tool budget reached.')
+
+def claude_failure(event, process=None):
+    """The error of a failed Claude result in the CLI's own words, with what it wrote to stderr; a lost connection is transient."""
+    text = str(event.get('result') or '').strip()
+    subtype = str(event.get('subtype') or '')
+    api = event.get('api_error_status')
+    log_stderr(process, 'claude') if process is not None else None
+    tail = stderr_excerpt(process) if process is not None else ''
+    detail = text[:400] or (subtype if subtype and subtype != 'success' else '')
+    if api: detail = (detail + ' ' if detail else '') + f'(HTTP {api})'
+    if transport_failure(text, subtype, api, tail if not text else ''):
+        return TransientProviderError('Claude could not reach its service: ' + (mask(detail) or tail or 'connection error') + '.')
+    message = 'Claude request failed: ' + mask(detail) + '.' if detail else 'Claude request failed. Check CLI login, model availability or usage limit.'
+    if not detail and tail: message += ' It said: ' + tail
+    return ProviderError(message)
+
+def codex_failure(error, process=None):
+    """A Codex error (a response's error, an error notification or a failed turn): its own message, transient when it names the transport."""
+    if isinstance(error, str): error = {'message': error}
+    error = error if isinstance(error, dict) else {}
+    info = error.get('codexErrorInfo') or error.get('codex_error_info')
+    kind = info if isinstance(info, str) else next(iter(info), '') if isinstance(info, dict) else ''
+    text = str(error.get('message') or '')[:400]
+    if process is not None: log_stderr(process, 'codex')
+    transient = kind in ('httpConnectionFailed', 'responseStreamConnectionFailed', 'responseStreamDisconnected', 'responseTooManyFailedAttempts', 'serverOverloaded', 'internalServerError') or transport_failure(text)
+    if transient: return TransientProviderError('Codex could not reach its service: ' + (mask(text) or kind) + '.')
+    # Only transport failures quote Codex's message; any other message may carry account details, so just its error kind is shown.
+    return ProviderError('Codex protocol/model/login error' + ('' if kind in ('', 'other') else ' (' + kind + ')') + '. Verify the selected model and CLI login; your turn is saved.')
 
 def internal_tool_error(tool, exc):
     """What the model is told when a tool fails unexpectedly: plainly a bug, not a connection problem. The run goes on."""
