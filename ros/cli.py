@@ -131,6 +131,8 @@ def parser(only: str | None = None) -> argparse.ArgumentParser:
     s.add_argument("--title")
     s = add("mcp", help="serve tools over stdio (MCP)")
     s.add_argument("--portal", type=int, metavar="PORT", help="also serve the portal for this project on PORT")
+    s.add_argument("--worker", action="store_true", help="the server loop itself, without the supervisor that restarts it "
+                                                         "after an update (what the supervisor runs)")
     s = add("install", help="install skills, agents and the MCP server for an agent client")
     s.add_argument("--client", required=True, choices=("claude", "codex", "gemini", "agents"))
     s.add_argument("--target", help="project folder (default: here)")
@@ -209,7 +211,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if out.get("installed", True) else 4
         if args.command == "mcp":
             from . import mcp
-            return mcp.serve(args.project, portal=args.portal)
+            if args.worker:
+                return mcp.serve(args.project, portal=args.portal)
+            return mcp.supervise(args.project, portal=args.portal)
         if args.command == "go":
             return _ask(args)
         try:
