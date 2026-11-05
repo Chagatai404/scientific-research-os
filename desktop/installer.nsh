@@ -5,8 +5,8 @@
 ; An update also runs the old uninstaller; then nothing is removed, because the new version uses the same renderer.
 !macro customUnInstall
   ${ifNot} ${isUpdated}
-    ${if} ${FileExists} "$INSTDIR\resources\backend\research-os-backend.exe"
-      nsExec::ExecToLog '"$INSTDIR\resources\backend\research-os-backend.exe" --worker render-cleanup'
+    ${if} ${FileExists} "$INSTDIR\resources\backend\research-os-backend\research-os-backend.exe"
+      nsExec::ExecToLog '"$INSTDIR\resources\backend\research-os-backend\research-os-backend.exe" --worker render-cleanup'
       Pop $0
     ${endIf}
   ${endIf}

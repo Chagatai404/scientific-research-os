@@ -7,6 +7,7 @@ The checks that need no container (paths, magic bytes, SVG, pixel and size caps,
 """
 import base64
 import json
+import re
 import os
 import socket
 import struct
@@ -709,6 +710,16 @@ class InstalledPack(unittest.TestCase):
                 self.assertIsNone(renderkit.probe(python))
         self.assertEqual(seen['PYTHONPATH'], str(pack / 'animation' / 'manimgx' / 'site-packages'))
         self.assertEqual(seen['PYTHONNOUSERSITE'], '1')
+
+    def test_the_uninstaller_runs_cleanup_with_the_exe_the_app_launches(self):
+        root = Path(__file__).resolve().parents[1] / 'desktop'
+        main = (root / 'main.cjs').read_text(encoding='utf-8')
+        parts = re.search(r"path\.join\(process\.resourcesPath, ((?:'[^']+', )*'[^']+\.exe')\)", main).group(1)
+        exe = '\\'.join(p.strip("' ") for p in parts.split(','))
+        nsh = (root / 'installer.nsh').read_text(encoding='utf-8')
+        self.assertIn('"$INSTDIR\\resources\\%s" --worker render-cleanup' % exe, nsh)
+        self.assertIn('${ifNot} ${isUpdated}', nsh, 'an update keeps the renderer')
+        self.assertEqual(json.loads((root / 'package.json').read_text(encoding='utf-8'))['build']['nsis']['include'], 'installer.nsh')
 
     def test_the_probe_counts_packages_found_through_pythonpath(self):
         self.assertIn('*filter(None, sys.path)', renderkit.PROBE, 'a pack Python finds matplotlib only through PYTHONPATH')

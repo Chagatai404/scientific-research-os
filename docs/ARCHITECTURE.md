@@ -363,6 +363,8 @@ To add a provider, implement its adapter in `ros/lib/providers.py`, advertise ve
 register it in `ADAPTERS`, and exercise streaming, tool results, interruption and malformed input
 with deterministic fixtures. Never run inference during discovery. Frozen worker entry points
 dispatch through `ros.desktop --worker`; `Runner` translates its fixed allowlist, never arbitrary modules.
+`--worker render-cleanup` is the uninstaller's (`desktop/installer.nsh`, skipped on an update): it revokes the safe renderer's
+folder grants, removes `<home>/render/runtime-*` and its scratch, and unregisters the AppContainer profile (`renderkit.cleanup`).
 
 Desktop UI operations stay in the existing React typed client and AST renderer. Build frontend
 assets before freezing the sidecar. Run `npm --prefix desktop run verify`, build the sidecar with
