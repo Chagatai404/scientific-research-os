@@ -67,7 +67,7 @@ check the public release feed and download newer stable versions; a pop-up at la
 - **Settings → Agents** controls the agents that work by themselves. The desktop takes the tasks the record opens (grade a
   written answer, answer a question, outline a course, ingest a file, scout sources, write items, narration, a lesson
   bundle or a handout, review), one at a time, with the model you last wrote to or the one you choose, at most 6 an hour
-  unless you change it, each in a fresh context with only the tools its task needs. You can pause it. It never takes
+  unless you change it (1 to 100, or no limit, with a slider in Settings), each in a fresh context with only the tools its task needs. You can pause it. It never takes
   audits, verdicts, experiment runs, or work that needs rendering or the web, and Settings lists what it leaves for you and why.
 
 Codex and Claude use their existing CLI logins; local models use explicit loopback profiles. Connections never scan or

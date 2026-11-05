@@ -115,7 +115,7 @@ function Shell() {
   function submitSearch(event: FormEvent) {event.preventDefault(); if (query.trim()) location.hash = href('search', query.trim(), route.record);}
   let content;
   switch (route.view) {
-    case 'overview': case 'chat': content = <Conversation key={route.record} id={route.id} record={route.record} />; break;
+    case 'overview': case 'chat': content = <Conversation key={route.record} id={route.id} record={route.record} startMode={route.params.mode} />; break;
     case 'library': content = <Library record={route.record} tab={route.params.tab || (route.legacy === 'sources' ? 'places' : '')} />; break;
     case 'activity': content = <Activity record={route.record} />; break;
     case 'tools': content = <Tools record={route.record} />; break;

@@ -179,7 +179,7 @@ anyone asking: either list it in `dispatch.AUTO` with its tool grant (`GRANTS`) 
 `dispatch.NEVER` with the reason a person or a client with a shell must do it (a kind that only needs a shell, like `visual` and `animation`, can also be in `dispatch.NATIVE`: taken when agents run on Claude Code or Codex, which then work with their own tools in the bundle folder) (`tests/test_ros_dispatch.py` fails until
 every kind is one or the other). Never grant `verdict`, a human-only tool, or a tool that holds the registry lock for
 minutes; long work stays a `job` task for the runner. `runtime.Dispatcher` runs one agent at a time in a fresh context,
-the agent finishes only its own task, and `agents_configure` (Settings) pauses it or limits it per hour.
+the agent finishes only its own task, and `agents_configure` (Settings) pauses it or limits it per hour (`agents_per_hour`: 1 to 100, `0` for no limit). A run that is stopped (`interrupted`, or `failed` with detail `cancelled`) never counts against a task; one that runs out of steps (`unfinished`) is retried with a doubled step budget (at most 4x) and left alone after three, and `agents_retry` clears a left-alone task.
 
 ### An automation (something the system does so that nobody has to ask)
 

@@ -33,6 +33,11 @@ NEVER = {"audit": "an independent audit is asked for by a person, from a fresh a
          "visual": "it needs a shell to render and look at the picture", "animation": "it needs a shell to render and look at the animation",
          "video": "it needs the web and a transcript"}
 MAX_FAILURES = 2  # a task that fails twice is left for a person or another client
+# A run that ends because the agent ran out of steps or time is not a failure: the task is taken again with a larger step budget
+# (doubled per earlier unfinished run, at most MAX_GROWTH times STEPS), and left alone after MAX_UNFINISHED such runs.
+MAX_UNFINISHED, MAX_GROWTH = 3, 4
+UNLIMITED, MAX_PER_HOUR, DEFAULT_PER_HOUR = 0, 100, 6  # ``agents_per_hour`` is 1..100, or 0 for no hourly limit
+OUTCOMES = ("done", "failed", "refused", "unfinished", "interrupted")
 # What a person just asked for in a session is prepared first, and may go beyond the hourly limit by this many tasks an hour, for
 # this long after they asked: they are waiting for it, unlike the background preparation the limit paces.
 FOCUS_PER_HOUR, FOCUS_HOURS = 8, 6
@@ -60,10 +65,17 @@ ROLE_FILES = ("scout", "verifier", "librarian", "visual-maker")
 
 
 def config(rec: Record) -> dict:
-    """What the person set: dispatch on or off (on by default), the model agents use, and how many tasks an hour at most."""
+    """What the person set: dispatch on or off (on by default), the model agents use, and how many tasks an hour at most.
+
+    The setting ``agents_per_hour`` is a whole number from 1 to 100, or ``0`` for no hourly limit (agents then take waiting tasks one
+    at a time, with no cap). ``per_hour`` here is that number, or ``None`` when unlimited. Older settings (1 to 60) read unchanged."""
     st = home.settings()
+    try:
+        raw = int(st.get("agents_per_hour") if st.get("agents_per_hour") is not None else DEFAULT_PER_HOUR)
+    except (TypeError, ValueError):
+        raw = DEFAULT_PER_HOUR
     return {"auto": st.get("agents_auto") is not False, "model": (st.get("agents_model") or "").strip(),
-            "per_hour": max(1, min(60, int(st.get("agents_per_hour") or 6)))}
+            "per_hour": None if raw == UNLIMITED else max(1, min(MAX_PER_HOUR, raw))}
 
 
 def model(rec: Record) -> str | None:
@@ -89,9 +101,18 @@ def _ledger(rec: Record) -> dict:
     def step(out, e):
         if e["type"] == "dispatch.start":
             out["starts"].append(e["ts"])
-        elif e["data"].get("outcome") in ("failed", "refused", "unfinished"):
-            out["failures"][e["data"]["task"]] = out["failures"].get(e["data"]["task"], 0) + 1
-    return rec.fold("dispatch", ("dispatch.start", "dispatch.end"), lambda: {"starts": [], "failures": {}}, step)
+        elif e["type"] == "dispatch.retry":  # the person asked to try the task again: its history no longer counts
+            for key in ("failures", "unfinished", "details"):
+                out[key].pop(e["data"]["task"], None)
+        else:
+            task, outcome, detail = e["data"]["task"], e["data"].get("outcome"), e["data"].get("detail", "")
+            if outcome == "unfinished":
+                out["unfinished"][task] = out["unfinished"].get(task, 0) + 1
+            elif outcome in ("failed", "refused") and detail.strip().lower() != "cancelled":  # a stop or a shutdown is not the task's fault
+                out["failures"][task] = out["failures"].get(task, 0) + 1
+                out["details"][task] = detail
+    return rec.fold("dispatch", ("dispatch.start", "dispatch.end", "dispatch.retry"),
+                    lambda: {"starts": [], "failures": {}, "unfinished": {}, "details": {}}, step)
 
 
 def focus(rec: Record, hub: str, conversation: str | None = None) -> dict:
@@ -129,13 +150,40 @@ def allowance(rec: Record, now: datetime | None = None) -> dict:
     chosen = model(rec)
     if not chosen:
         return {"ok": False, "reason": "No model is chosen yet: write to one in a session, or choose one in Settings.", **cfg}
+    if cfg["per_hour"] is None:  # no hourly limit
+        return {"ok": True, "reason": "", "model": chosen, "left_this_hour": None, "per_hour": None, "unlimited": True, "auto": True}
     left = max(0, cfg["per_hour"] - _used(rec, now))
     return {"ok": left > 0, "reason": "" if left else f"The limit of {cfg['per_hour']} tasks an hour is reached.", "model": chosen,
             "left_this_hour": left, "per_hour": cfg["per_hour"], "auto": True}
 
 
 def skipped(rec: Record) -> list[str]:
-    return sorted(t for t, n in _ledger(rec)["failures"].items() if n >= MAX_FAILURES)
+    return sorted(parked(rec))
+
+
+def parked(rec: Record) -> dict[str, str]:
+    """The tasks left alone, each with the reason: failed ``MAX_FAILURES`` times, or out of steps ``MAX_UNFINISHED`` times."""
+    ledger, out = _ledger(rec), {}
+    for task, n in ledger["failures"].items():
+        if n >= MAX_FAILURES:
+            out[task] = f"failed {n} times" + (f": {ledger['details'][task]}" if ledger["details"].get(task) else "")
+    for task, n in ledger["unfinished"].items():
+        if n >= MAX_UNFINISHED:
+            out.setdefault(task, f"ran out of steps {n} times; its budget is too small or the task too large")
+    return out
+
+
+def retry(rec: Record, task: str) -> dict:
+    """A person asks for a parked task to be tried again: its failures and unfinished runs stop counting."""
+    if not (task or "").strip():
+        raise ValueError("retry names a task")
+    rec.append("dispatch.retry", task, {"task": task}, actor="person")
+    return {"task": task, "retry": True}
+
+
+def budget(rec: Record, kind: str, task: str) -> int:
+    """The step budget of a task: STEPS for its kind, doubled for each earlier unfinished run, at most MAX_GROWTH times."""
+    return STEPS[kind] * min(MAX_GROWTH, 2 ** _ledger(rec)["unfinished"].get(task, 0))
 
 
 def shell(model_id: str | None) -> bool:
@@ -166,7 +214,8 @@ def claim(rec: Record, now: datetime | None = None) -> dict:
     beyond = False
     if not allowed["ok"]:
         # Past the hourly limit only what the person is waiting for goes, within its own allowance.
-        if not (prefer and allowed.get("model") and allowed.get("auto") and _used(rec, now) < allowed["per_hour"] + FOCUS_PER_HOUR):
+        if not (prefer and allowed.get("model") and allowed.get("auto") and allowed.get("per_hour") is not None
+                and _used(rec, now) < allowed["per_hour"] + FOCUS_PER_HOUR):
             return {"idle": allowed["reason"]}
         beyond = True
     by = f"agent:{allowed['model']}"
@@ -189,7 +238,7 @@ def claim(rec: Record, now: datetime | None = None) -> dict:
             return {"idle": "A figure task names no usable bundle; it was set aside."}
         workdir = str(folder)
     return {"native": kind in NATIVE, "workdir": workdir, "by": by, "model": allowed["model"], "record": got["record"], "task": task, "kind": kind, "role": got["role"],
-            "finish_with": got["finish_with"], "tools": sorted(GRANTS[kind] | {"finish"}), "steps": STEPS[kind], "deadline": DEADLINE,
+            "finish_with": got["finish_with"], "tools": sorted(GRANTS[kind] | {"finish"}), "steps": budget(rec, kind, task["id"]), "deadline": DEADLINE,
             "reveal": kind == "grade", "system": system(got), "brief": brief(task, got)}
 
 
@@ -223,10 +272,15 @@ def begin(rec: Record, task: str, role: str, model_id: str) -> dict:
 
 
 def end(rec: Record, task: str, record: str, outcome: str, detail: str = "") -> dict:
-    """Record how a run ended. A task still claimed when its run ends is ``unfinished``: its claim lapses and it can be taken
-    again, until it has failed ``MAX_FAILURES`` times."""
-    if outcome not in ("done", "failed", "refused", "unfinished"):
-        raise ValueError("outcome is done, failed, refused or unfinished")
+    """Record how a run ended. A task still claimed when its run ends is ``unfinished``: its claim lapses and it is taken again with
+    a larger step budget, until it has been unfinished ``MAX_UNFINISHED`` times. ``interrupted`` (the run was stopped) and a
+    ``failed`` run whose detail is ``cancelled`` never count against the task; failed and refused runs count toward ``MAX_FAILURES``."""
+    if outcome not in OUTCOMES:
+        raise ValueError("outcome is " + ", ".join(OUTCOMES[:-1]) + " or " + OUTCOMES[-1])
+    if outcome == "unfinished":  # the runtime's wording cannot know what happens next; this can
+        n = _ledger(rec)["unfinished"].get(task, 0) + 1
+        detail = ("ran out of steps %d times; its budget is too small or the task too large" % n if n >= MAX_UNFINISHED else
+                  "ran out of steps or time (%d of %d); it is taken again with a larger step budget" % (n, MAX_UNFINISHED))
     rec.append("dispatch.end", task, {"task": task, "record": record, "outcome": outcome, "detail": detail[:300]}, actor="dispatcher")
     return {"task": task, "outcome": outcome}
 
@@ -237,5 +291,6 @@ def status(rec: Record) -> dict:
     return {"enabled": config(rec)["auto"], "ok": allowed["ok"], "reason": allowed["reason"], "model": allowed.get("model") or None,
             "configured_model": config(rec)["model"],
             "left_this_hour": allowed.get("left_this_hour"), "per_hour": allowed.get("per_hour", config(rec)["per_hour"]),
-            "waiting": waiting(rec), "failed_twice": skipped(rec),
+            "unlimited": config(rec)["per_hour"] is None,
+            "waiting": waiting(rec), "failed_twice": skipped(rec), "left_alone": [{"task": t, "reason": r} for t, r in sorted(parked(rec).items())],
             "recent": [{"task": e["data"]["task"], "outcome": e["data"]["outcome"], "detail": e["data"].get("detail", ""), "at": e["ts"]} for e in recent[-10:]]}

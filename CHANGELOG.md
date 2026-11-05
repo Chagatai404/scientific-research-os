@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Changed: the agent limit is a slider in Settings from 1 to 100 tasks an hour, with "Unlimited" as its last stop (stored as `agents_per_hour` 0). Stopping an agent or closing the app no longer counts as a failure of the task; a task whose agent ran out of steps is retried with a doubled step budget (up to 4x) and left alone after three such runs, with its reason shown and a "Try again" button (`agents_retry`).
+- Added: "Work on code" on the new-session screen and "New Code session" over an open conversation; `#chat?mode=build` opens a new session with the Code type chosen.
+
 ## 1.7.2: security fixes
 
 - Fixed: a message longer than half the model's context was dropped, and the model was sent no messages at all. The newest message is now always sent, and the budget trims only older ones (#21).

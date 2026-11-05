@@ -122,8 +122,10 @@ class Dispatch(unittest.TestCase):
         def lazy(request, emit, tool, cancel, own): emit("I thought about it."); return {}
         self.assertEqual(self.run_with(lazy)["outcome"], "unfinished")
         self.assertEqual(self.state(tid), "claimed", "the claim lapses after its time and the task can be taken again")
-        api.call("dispatch_end", self.rec, task=tid, record=self.rec.root.name, outcome="failed", detail="again")
-        self.assertEqual(api.call("agents_status", self.rec)["failed_twice"], [tid])
+        self.assertEqual(api.call("agents_status", self.rec)["failed_twice"], [], "running out of steps is not a failure")
+        for detail in ("once", "again"): api.call("dispatch_end", self.rec, task=tid, record=self.rec.root.name, outcome="failed", detail=detail)
+        status = api.call("agents_status", self.rec)
+        self.assertEqual(status["failed_twice"], [tid]); self.assertEqual(status["left_alone"], [{"task": tid, "reason": "failed 2 times: again"}])
         with patch.object(tasks, "_lapsed", return_value=True):  # time passes: it is open again, and still left alone
             self.assertIn("Nothing waits", self.run_with(lazy)["idle"])
 
@@ -135,7 +137,7 @@ class Dispatch(unittest.TestCase):
 
     def test_only_grading_reads_a_hidden_rubric_and_tools_outside_the_grant_are_refused(self):
         self.open("outline", "o1")
-        item = self.rec.put_item({"kind": "free", "prompt": "Explain variance.", "concepts": ["capability:v"], "rubric": ["names the mean"]})
+        item = self.rec.put_item({"kind": "free", "prompt": "Explain variance.", "concepts": ["capability:v"], "rubric": {"criteria": ["names the mean"]}})
         refused = []
         def agent(request, emit, tool, cancel, own):
             for name, args in (("item", {"item": item, "reveal": True}), ("approve", {}), ("verdict", {}), ("waive", {}), ("delegate", {"role": "scout", "brief": "x"})):
@@ -152,9 +154,58 @@ class Dispatch(unittest.TestCase):
         self.assertEqual(api.call("agents_status", self.rec)["model"], "ollama:fixture", "the model the person last wrote to")
 
     def test_settings_are_checked(self):
-        for bad in ({"model": "gpt-9"}, {"per_hour": 0}, {"per_hour": 61}, {"per_hour": True}, {"auto": "yes"}):
+        for bad in ({"model": "gpt-9"}, {"per_hour": -1}, {"per_hour": 101}, {"per_hour": True}, {"per_hour": "unlimited"}, {"auto": "yes"}):
             with self.assertRaises(ValueError, msg=str(bad)): api.call("agents_configure", self.rec, **bad)
         self.assertEqual(api.call("agents_configure", self.rec, model="claude:sonnet", per_hour=3)["model"], "claude:sonnet")
+
+    def end(self, tid, outcome, detail=""):
+        return api.call("dispatch_end", self.rec, task=tid, record=self.rec.root.name, outcome=outcome, detail=detail)
+
+    def test_the_hourly_limit_goes_to_100_and_zero_means_unlimited(self):
+        self.assertEqual(api.call("agents_configure", self.rec, per_hour=100)["per_hour"], 100)
+        status = api.call("agents_status", self.rec)
+        self.assertEqual((status["left_this_hour"], status["unlimited"]), (100, False))
+        status = api.call("agents_configure", self.rec, per_hour=0)
+        self.assertEqual((status["per_hour"], status["left_this_hour"], status["unlimited"], status["ok"]), (None, None, True, True))
+        for n in range(8): dispatch.begin(self.rec, f"task:{n}", "r", "ollama:fixture")
+        self.assertTrue(dispatch.allowance(self.rec)["ok"], "no cap however many started this hour")
+        self.assertEqual(api.call("agents_configure", self.rec, per_hour=7)["per_hour"], 7, "and a number puts the cap back")
+
+    def test_a_task_the_person_stopped_or_a_shutdown_cancelled_never_counts_as_a_failure(self):
+        tid = self.open("outline", "o1")
+        for _ in range(3):
+            self.end(tid, "failed", "cancelled"); self.end(tid, "interrupted", "the app was closed")
+        self.assertEqual(api.call("agents_status", self.rec)["failed_twice"], [])
+        def agent(request, emit, tool, cancel, own): tool("finish", {"result": "ok"}, "s"); emit("."); return {}
+        self.assertEqual(self.run_with(agent)["outcome"], "done")
+        self.end(tid, "failed", "a real error"); self.end(tid, "failed", "another")
+        self.assertEqual(api.call("agents_status", self.rec)["failed_twice"], [tid])
+
+    def test_an_unfinished_task_gets_a_bigger_step_budget_each_time_and_is_parked_after_three(self):
+        tid = self.open("scout", "s1")
+        steps = []
+        for _ in range(3):
+            steps.append(dispatch.budget(self.rec, "scout", tid))
+            self.end(tid, "unfinished", "the agent stopped without finishing the task; it is taken again later")
+        self.assertEqual(steps, [dispatch.STEPS["scout"], 2 * dispatch.STEPS["scout"], 4 * dispatch.STEPS["scout"]])
+        ends = [e["data"]["detail"] for e in self.rec.events(type="dispatch.end")]
+        self.assertTrue(all("taken again later" not in d for d in ends))
+        self.assertIn("ran out of steps 3 times; its budget is too small or the task too large", ends[-1])
+        status = api.call("agents_status", self.rec)
+        self.assertEqual(status["left_alone"], [{"task": tid, "reason": "ran out of steps 3 times; its budget is too small or the task too large"}])
+        with patch.object(tasks, "_lapsed", return_value=True), api.LOCK:
+            self.assertIn("idle", dispatch.claim(self.rec))
+        self.assertEqual(dispatch.budget(self.rec, "scout", "task:other"), dispatch.STEPS["scout"], "the budget is per task")
+
+    def test_try_again_clears_a_left_alone_task(self):
+        tid = self.open("outline", "o1")
+        self.end(tid, "failed", "x"); self.end(tid, "failed", "y")
+        for _ in range(3): self.end(tid, "unfinished")
+        self.assertEqual(api.call("agents_status", self.rec)["failed_twice"], [tid])
+        status = api.call("agents_retry", self.rec, task=tid)
+        self.assertEqual((status["failed_twice"], status["left_alone"]), ([], []))
+        self.assertEqual(dispatch.budget(self.rec, "outline", tid), dispatch.STEPS["outline"])
+        with self.assertRaises(ValueError): api.call("agents_retry", self.rec, task="")
 
     def test_the_background_dispatcher_takes_a_task_on_its_own_and_stops(self):
         tid = self.open("outline", "o1")

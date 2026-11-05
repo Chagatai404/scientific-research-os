@@ -122,7 +122,8 @@ addresses, decides, relates.
 | `ask`, `answer` | lesson / ask id | text or mode / text |
 | `policy` | lesson | action, reason, item, capability, mode |
 | `task.open`, `task.claim`, `task.done`, `task.cancel` | task | kind, ref, brief, … / by / result / reason |
-| `dispatch.start`, `dispatch.end` | task | task, role, model / task, record, outcome (`done`, `unfinished`, `refused`, `failed`), detail. The ledger of unattended agent runs: it bounds how many an hour and leaves a task alone after two failures |
+| `dispatch.start`, `dispatch.end` | task | task, role, model / task, record, outcome (`done`, `unfinished`, `interrupted`, `refused`, `failed`), detail. The ledger of unattended agent runs: it bounds how many an hour (`agents_per_hour`, 1 to 100, 0 for none), leaves a task alone after two failures (a `failed` with detail `cancelled` and `interrupted` never count) and after three `unfinished` runs, each of which doubles the next step budget up to 4x |
+| `dispatch.retry` | task | task. A person asked for a left-alone task to be tried again: its earlier failures and unfinished runs stop counting |
 | `dispatch.focus` | hub | hub, conversation. A person asked for this in a session: for six hours its tasks (and those of the capabilities part of it and their bundles) are dispatched first, and up to eight an hour beyond the hourly limit |
 | `workbench.repo` | record | repo. The person chose the folder a Code session's agent works in (`record_repo`) |
 | `code.change` | change | conversation, run, files, commits: a Code session's change, recorded when its run completes |
