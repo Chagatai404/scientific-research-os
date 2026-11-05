@@ -162,6 +162,7 @@ def codex(request, emit, tool_call, cancel, own):
                 elif method == 'item/tool/call':
                     try: result = tool_call(params['tool'], params.get('arguments', {}), params['callId']); success = True
                     except (ValueError, KeyError) as exc: result = {'error': str(exc)}; success = False
+                    except Exception as exc: result = {'error': internal_tool_error(params.get('tool'), exc)}; success = False
                     process.stdin.write(json.dumps({'id': event['id'], 'result': {'contentItems': [{'type': 'inputText', 'text': json.dumps(result, ensure_ascii=False)}], 'success': success}}) + '\n'); process.stdin.flush()
                 elif method == 'turn/completed':
                     status = params.get('turn', {}).get('status')
@@ -268,7 +269,14 @@ def local(request, emit, tool_call, cancel, own):
         for call in calls.values():
             try: result = tool_call(call['function']['name'], json.loads(call['function']['arguments']), call['id'])
             except (ValueError, KeyError) as exc: result = {'error': str(exc)}
+            except Exception as exc: result = {'error': internal_tool_error(call['function']['name'], exc)}
             messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps(result, ensure_ascii=False)})
     raise ProviderError('Tool budget reached.')
+
+def internal_tool_error(tool, exc):
+    """What the model is told when a tool fails unexpectedly: plainly a bug, not a connection problem. The run goes on."""
+    import logging
+    logging.getLogger('ros').exception('tool %s failed', tool)
+    return f'{tool} failed with an internal error ({type(exc).__name__}: {str(exc)[:300]}). This is a Research OS bug, not a connection problem; it is logged.'
 
 ADAPTERS = {'codex': codex, 'claude': claude, 'ollama': local, 'compatible': local}

@@ -82,6 +82,8 @@ def compute(packet):
         return {'ok':process.returncode==0 and not failure,'manifest':manifest,'artifacts':artifacts,'output':output.decode('utf-8',errors='replace')[-60000:],'note':'Original files were not changed. Scratch execution is not an OS security sandbox.'}
 
 def main():
+    for _s in (sys.stdin, sys.stdout):
+        if hasattr(_s, 'reconfigure'): _s.reconfigure(encoding='utf-8')  # a Windows locale code page would garble or refuse non-ASCII
     try:
         request=json.load(sys.stdin);result=search(request['packet']) if request['kind']=='literature' else compute(request['packet'])
     except Exception as exc:result={'ok':False,'error':str(exc)[:1500]}

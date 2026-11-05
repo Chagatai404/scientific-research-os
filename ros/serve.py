@@ -19,6 +19,7 @@ from __future__ import annotations
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import logging
 import mimetypes
 import os
 from pathlib import Path
@@ -38,6 +39,13 @@ from . import api, home, runner, runtime
 from .store import Record
 
 
+def _internal_error(what: str, exc: Exception) -> str:
+    """Log an unexpected exception and say plainly that it is a bug, not a connection problem."""
+    logging.getLogger("ros").exception("%s failed", what)
+    return (f"{what} failed with an internal error ({type(exc).__name__}: {str(exc)[:300]}). "
+            "This is a Research OS bug, not a connection problem; it is logged.")
+
+
 def _takes_effort(model):
     """Codex models and Claude Sonnet/Opus have a reasoning-effort setting (same rule as ros/conversation.py)."""
     return bool(re.match(r'(codex:|claude:.*(sonnet|opus))', model))
@@ -55,7 +63,7 @@ TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf
 
 def _engine(request: dict, timeout: int = 200) -> dict:
     """Run optional providers outside api.LOCK; no shell or browser-supplied executable/path."""
-    env = dict(os.environ, PYTHONPATH=str(STATIC.parents[1]) + os.pathsep + os.environ.get("PYTHONPATH", ""))
+    env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTHONPATH=str(STATIC.parents[1]) + os.pathsep + os.environ.get("PYTHONPATH", ""))
     try:
         argv = [sys.executable, '--worker', 'dialogue'] if getattr(sys, 'frozen', False) else [sys.executable, '-m', 'ros.lib.dialogue']
         result = subprocess.run(argv, input=json.dumps(request),
@@ -312,10 +320,12 @@ def make_handler(rec: "Record | Pool"):
                         if name == 'workspace_delete': pool.forget(params['workspace'])
                         return self._send(200, {'result': done})
                     except (ValueError, KeyError) as exc: return self._send(400, {'error': str(exc)})
+                    except Exception as exc: return self._send(500, {'error': _internal_error(path, exc)})
                 if path == '/services/run-cancel':
                     if not self._human(): return self._send(403, {'error': 'human session required'})
                     try: return self._send(200, {'result': runtime.cancel(pool.get(args.get('record')), args['run'])})
                     except (KeyError, ValueError) as exc: return self._send(400, {'error': str(exc)})
+                    except Exception as exc: return self._send(500, {'error': _internal_error(path, exc)})
                 if path == '/services/notebook':
                     if not self._human(): return self._send(403, {'error': 'human session required'})
                     try:
@@ -338,6 +348,7 @@ def make_handler(rec: "Record | Pool"):
                         threading.Thread(target=notebook_job, daemon=True).start()
                         return self._send(200, {'result': {'state': 'queued', 'request': job['id'] if job else selected}})
                     except (KeyError, ValueError) as exc: return self._send(400, {'error': str(exc)})
+                    except Exception as exc: return self._send(500, {'error': _internal_error(path, exc)})
                 if path == '/services/source-index':
                     if not self._human(): return self._send(403, {'error': 'human session required'})
                     try:
@@ -348,6 +359,7 @@ def make_handler(rec: "Record | Pool"):
                         else: result = runtime.index_source(target, args['source'], stop=args.get('stop', False))
                         return self._send(200, {'result': result})
                     except (KeyError, ValueError) as exc: return self._send(400, {'error': str(exc)})
+                    except Exception as exc: return self._send(500, {'error': _internal_error(path, exc)})
                 if path == "/services/model-check":
                     if self.headers.get("Sec-Fetch-Site") != "same-origin":
                         return self._send(HTTPStatus.FORBIDDEN, {"error": "model checks must come from the portal"})
@@ -441,6 +453,8 @@ def make_handler(rec: "Record | Pool"):
                 else: result = api.call(name, target, **args)
             except (ValueError, KeyError) as exc:
                 return self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc.args[0] if exc.args else exc)})
+            except Exception as exc:
+                return self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": _internal_error(name, exc)})
             engine = result.pop("_engine", None) if name == "workspace_chat_send" else None
             runtime.launch_operation(target,result)
             if name=='handout_build' and result.get('job') and not args.get('wait'):

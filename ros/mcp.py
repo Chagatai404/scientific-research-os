@@ -162,6 +162,9 @@ def _error(mid, code: int, message: str) -> dict:
 def serve(project: str | None = None, stdin=None, stdout=None, portal: int | None = None, automate: bool = True) -> int:
     """Answer requests until stdin closes. With ``portal``, the same process also serves the project's portal on that
     port, so the agent and the browser share one writer (calls are serialized by ``api.LOCK``)."""
+    for stream in ((sys.stdin, sys.stdout) if stdin is None and stdout is None else ()):
+        if hasattr(stream, "reconfigure"):  # MCP stdio is UTF-8; a Windows locale code page garbles or refuses non-ASCII
+            stream.reconfigure(encoding="utf-8", errors="replace" if stream is sys.stdin else "strict")
     stdin, stdout = stdin or sys.stdin, stdout or sys.stdout
     server = Server(project)
     httpd, timer = None, None

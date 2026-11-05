@@ -18,6 +18,8 @@ PROTOCOL = 'ros.desktop.v1'
 
 def main():
     if len(sys.argv) > 2 and sys.argv[1] == '--worker':
+        for _s in (sys.stdin, sys.stdout):
+            if hasattr(_s, 'reconfigure'): _s.reconfigure(encoding='utf-8')  # a Windows locale code page would garble or refuse non-ASCII
         if sys.argv[2] == 'pdf-vision':
             from .lib.pdf_vision import main as worker
             return worker()

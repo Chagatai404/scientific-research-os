@@ -30,7 +30,7 @@ import sys
 from typing import Callable
 
 from . import graph, home, prepare, research, tasks, vault
-from .store import Record, canonical, event_id
+from .store import Record, canonical, event_id, rubric_criteria
 
 SCHEMA = 1
 KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}\Z")
@@ -322,6 +322,7 @@ def write(rec: Record, handout: str, section: str, text: str, by: str, title: st
         src["sources"] = [x for x in src["sources"] if x["key"] != s["key"]] + [{"key": s["key"], "text": str(s["text"]).strip()}]
     src["revision"] += 1
     _save(rec, src)
+    _node(rec, src, (rec.node(src["id"]) or {}).get("status") or "draft")  # the list reads the revision from the node
     sha = hashlib.sha256(sec["text"].encode()).hexdigest()[:16]
     rec.append("handout.revise", src["id"], {"section": section, "by": by, "sha": sha, "words": len(sec["text"].split()),
                                             "revision": src["revision"]}, actor=by)
@@ -395,7 +396,7 @@ def _hidden_strings(d: Doc) -> list[str]:
             for v in (it.get("explanation"), *(it.get("option_feedback") or []), it.get("feedback_wrong")):
                 if isinstance(v, str) and len(v.strip()) >= 25:
                     out.append(v)
-            out += [c for c in (it.get("rubric") or {}).get("criteria", []) if isinstance(c, str) and len(c) >= 25]
+            out += [c for c in rubric_criteria(it) if len(c) >= 25]
             if isinstance(it.get("answer"), str) and len(it["answer"]) >= 25:
                 out.append(it["answer"])
     return out

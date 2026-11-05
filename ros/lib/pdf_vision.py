@@ -29,6 +29,8 @@ def render(images):
     return {'ok':True,'images':result,'page_scope':notices}
 
 def main():
+    for _s in (sys.stdin, sys.stdout):
+        if hasattr(_s, 'reconfigure'): _s.reconfigure(encoding='utf-8')  # a Windows locale code page would garble or refuse non-ASCII
     try:result=render(json.load(sys.stdin)['images'])
     except Exception as exc:result={'ok':False,'error':'Local PDF rendering unavailable or failed: '+str(exc)[:200]}
     print(json.dumps(result));return 0 if result['ok'] else 1

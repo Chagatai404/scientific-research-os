@@ -79,7 +79,7 @@ class Runner:
 
     @staticmethod
     def _run(job: dict, own=None) -> dict:
-        env = dict(os.environ)  # a job runs this program's own modules, so they must be importable from anywhere
+        env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")  # a job runs this program's own modules, so they must be importable from anywhere
         # Always this program's own modules: a job's recorded pythonpath could name any folder (an external record's).
         root = str(Path(__file__).resolve().parents[1])
         # No empty entry: Python reads one as the current folder, which is the job's.

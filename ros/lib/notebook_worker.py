@@ -27,6 +27,8 @@ def run(request):
     return {'ok': True, **result}
 
 def main():
+    for _s in (sys.stdin, sys.stdout):
+        if hasattr(_s, 'reconfigure'): _s.reconfigure(encoding='utf-8')  # a Windows locale code page would garble or refuse non-ASCII
     try: result = run(json.load(sys.stdin))
     except Exception as exc: result = {'ok': False, 'error': str(exc)[:2000]}
     print(json.dumps(result, ensure_ascii=False))

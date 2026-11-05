@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .. import export, graph, home, importers, research, tasks, vault, organization as org
 from ..learn import schedule
-from ..store import validate_item
+from ..store import normal_rubric, rubric_criteria, validate_item
 from ..registry import P, iso_day, present, tool
 
 
@@ -113,6 +113,7 @@ def remove(rec, id=None, src=None, type=None, dst=None):
       item=P("object", "kind (choice|numeric|free), prompt, options+answer | answer+tolerance | rubric, explanation, "
                        "hints, concepts, difficulty, supersedes", True))
 def add_item(rec, item):
+    item = normal_rubric(item)
     problems = validate_item(item)
     for c in item.get("concepts", []):
         if isinstance(c, str) and ":" not in c:  # a lesson finds an item by the node id it tests
@@ -120,7 +121,7 @@ def add_item(rec, item):
     if "defence" in item:  # an item that defends a claim: the kind is fixed, and it names the claim and a rubric
         if item["defence"] not in research.DEFENCE:
             problems.append(f"defence is one of {', '.join(research.DEFENCE)}")
-        if item.get("kind") != "free" or not (item.get("rubric") or {}).get("criteria"):
+        if item.get("kind") != "free" or not rubric_criteria(item):
             problems.append("a defence item is a free item with a rubric of criteria")
         if not any(str(c).startswith("claim:") for c in item.get("concepts", [])):
             problems.append('a defence item lists its claim in concepts, e.g. ["claim:width"]')

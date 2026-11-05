@@ -63,6 +63,28 @@ def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def rubric_criteria(item: dict) -> list[str]:
+    """The criteria of an item's rubric, from any stored shape: {"criteria": [...]}, a bare list or one string."""
+    rubric = item.get("rubric") if isinstance(item, dict) else None
+    if isinstance(rubric, dict):
+        rubric = rubric.get("criteria")
+    if isinstance(rubric, str):
+        rubric = [rubric]
+    if not isinstance(rubric, list):
+        return []
+    return [c for c in rubric if isinstance(c, str)]
+
+
+def normal_rubric(item: dict) -> dict:
+    """The item with a string or list-of-strings rubric rewritten to {"criteria": [...]}; anything else is unchanged."""
+    rubric = item.get("rubric")
+    if isinstance(rubric, str):
+        return {**item, "rubric": {"criteria": [rubric]}}
+    if isinstance(rubric, list) and all(isinstance(c, str) for c in rubric):
+        return {**item, "rubric": {"criteria": list(rubric)}}
+    return item
+
+
 def validate_item(item: dict) -> list[str]:
     """Problems that keep an item out of the record. Checked when it is written, never during a lesson."""
     problems = []
@@ -85,6 +107,11 @@ def validate_item(item: dict) -> list[str]:
             problems.append("tolerance must be a non-negative number")
     if kind == "free" and "answer" in item:
         problems.append("a free item has a hidden rubric, not an answer")
+    if "rubric" in item:
+        rubric = item["rubric"]
+        criteria = rubric.get("criteria") if isinstance(rubric, dict) else None
+        if not (isinstance(criteria, list) and all(isinstance(c, str) and c.strip() for c in criteria)):
+            problems.append('a rubric is {"criteria": ["what a good answer does", ...]}')
     if "concepts" in item and not (isinstance(item["concepts"], list) and all(isinstance(c, str) for c in item["concepts"])):
         problems.append("concepts must be a list of node ids")
     sup = item.get("supersedes")
@@ -253,6 +280,7 @@ class Record:
 
     def put_item(self, item: dict) -> str:
         """Store an immutable item and return its hash. Writing the same content again is a no-op."""
+        item = normal_rubric(item)
         problems = validate_item(item)
         if problems:
             raise ValueError("; ".join(problems))

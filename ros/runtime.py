@@ -4,6 +4,7 @@ One foreground worker; providers never receive human/session credentials or arbi
 """
 from __future__ import annotations
 import json
+import logging
 import threading
 import time
 import uuid
@@ -11,6 +12,7 @@ from . import api, runner, home
 from .store import Record
 from .lib import providers
 
+LOG = logging.getLogger('ros')
 ACTIVE = {}
 LOCK = threading.Lock()
 FOREGROUND = threading.Semaphore(1)
@@ -37,6 +39,9 @@ def execute_operation(rec,identifier):
     except ValueError as exc:
         if 'already started' in str(exc):return next(r for r in api.call('operation_list',rec) if r['id']==identifier)
         return api.call('operation_finish',rec,identifier=identifier,result={'ok':False,'error':str(exc)})
+    except Exception as exc:
+        LOG.exception('operation %s stopped on an internal error', identifier)
+        return api.call('operation_finish',rec,identifier=identifier,result={'ok':False,'error':f'The operation stopped on an internal error ({type(exc).__name__}: {str(exc)[:300]}); it is logged.'})
 
 def launch_operation(rec,result):
     if isinstance(result,dict) and result.get('_operation'):
@@ -62,7 +67,7 @@ def engine_process(rec,key,argv,packet,timeout):
         with ENGINE_WORKER:
             if entry['cancel'].is_set():return {'ok':False,'error':'Engine request cancelled'}
             import os, subprocess, sys
-            env=dict(os.environ)
+            env=dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
             env['PYTHONPATH']=str(__import__('pathlib').Path(__file__).resolve().parents[1])+os.pathsep+env.get('PYTHONPATH','')
             process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True,encoding='utf-8',env=env,
                                      **({'creationflags':subprocess.CREATE_NO_WINDOW} if os.name=='nt' else {'start_new_session':True}))
@@ -163,7 +168,8 @@ def execute(rec, result, request, legacy_engine=None):
         if key in ACTIVE: return
         entry = {'cancel': threading.Event(), 'owned': []}; ACTIVE[key] = entry
     buffer, output, last = '', '', time.monotonic()
-    limits = api.call('execution_limits',rec)
+    limits = row = None  # read inside the try below, so a failure there still ends the run
+    private_scope, allowed, native = False, set(), False
     budget = {'steps': 0, 'bytes': 0}
     selected = [rec]
     opened = {}
@@ -177,10 +183,6 @@ def execute(rec, result, request, legacy_engine=None):
         if budget['bytes'] > min(60000,limits['output']*6): raise providers.ProviderError('Output budget reached.')
         buffer += text; output += text
         if len(buffer) > 500 or time.monotonic() - last > .4: flush()
-    row = api.call('run_get', rec, run=run)
-    private_scope = any(s.get('localOnly') for s in api.call('source_list',rec) if s['id'] in {ref.get('sourceId') for ref in row.get('scope',[])})
-    allowed = set(api.call('session_grant', rec, mode=row['mode']))
-    native = bool(api.call('session_native', rec, mode=row['mode']))
     seen_native, before, recorded = [0], {'git': False}, [False]
     def record_change(partial=False):
         """What a Code run changed in the repository, recorded once, also when it failed, was stopped or ran out of time."""
@@ -276,6 +278,11 @@ def execute(rec, result, request, legacy_engine=None):
         if not report: raise ValueError('The role returned no report; nothing was inferred.')
         return {'role': role, 'report': report[:20000]}
     try:
+        limits = api.call('execution_limits', rec)
+        row = api.call('run_get', rec, run=run)
+        private_scope = any(s.get('localOnly') for s in api.call('source_list',rec) if s['id'] in {ref.get('sourceId') for ref in row.get('scope',[])})
+        allowed = set(api.call('session_grant', rec, mode=row['mode']))
+        native = bool(api.call('session_native', rec, mode=row['mode']))
         while not FOREGROUND.acquire(timeout=.1):
             if entry['cancel'].is_set(): return
         try:
@@ -336,13 +343,19 @@ def execute(rec, result, request, legacy_engine=None):
             api.call('run_transition', rec, run=run, state='completed')
         finally: FOREGROUND.release()
     except Exception as exc:
-        flush()
-        record_change(partial=True)
-        current = api.call('run_get', rec, run=run)
-        if current['state'] not in ('cancelled', 'interrupted', 'completed', 'failed'):
-            detail = str(exc) if isinstance(exc, (ValueError, KeyError)) else 'The provider stopped unexpectedly. Partial output is retained.'
-            api.call('run_transition', rec, run=run, state='failed', detail=detail)
-            api.call('workspace_chat_complete', rec, conversation=result['conversation'], request=result['request'], text=detail, model=request['model'], error=True)
+        if not isinstance(exc, (ValueError, KeyError)): LOG.exception('run %s stopped on an internal error', run)
+        # Nothing here may leave the run open: each step is tried on its own, and a failure is logged, not raised.
+        for step in (flush, lambda: record_change(partial=True)):
+            try: step()
+            except Exception: LOG.exception('run %s: cleanup after a failure also failed', run)
+        try: state = api.call('run_get', rec, run=run)['state']
+        except Exception: LOG.exception('run %s: its state could not be read; marking it failed', run); state = None
+        if state not in ('cancelled', 'interrupted', 'completed', 'failed'):
+            detail = str(exc) if isinstance(exc, (ValueError, KeyError)) else f'The run stopped on an internal error ({type(exc).__name__}: {str(exc)[:300]}). Partial output is retained; this is logged.'
+            try: api.call('run_transition', rec, run=run, state='failed', detail=detail)
+            except Exception: LOG.exception('run %s could not be marked failed', run)
+            try: api.call('workspace_chat_complete', rec, conversation=result['conversation'], request=result['request'], text=detail, model=request['model'], error=True)
+            except Exception: LOG.exception('run %s: the conversation could not be told it failed', run)
     finally:
         for record in opened.values(): record.close()
         with LOCK: ACTIVE.pop(key, None)
@@ -419,6 +432,9 @@ def dispatch_once(rec):
             return end('refused' if 'local-only' in str(exc) else 'failed', str(exc))
         except providers.ProviderError as exc:
             return end('failed', str(exc))
+        except Exception as exc:
+            LOG.exception('agent task %s stopped on an internal error', task['id'])
+            return end('failed', f'internal error ({type(exc).__name__}: {str(exc)[:300]}); it is logged')
         return end('done') if finished[0] else end('unfinished', 'the agent stopped without finishing the task; it is taken again later')
     finally:
         for record in opened.values(): record.close()
@@ -499,6 +515,11 @@ class ToolBridge:
                     else: raise ValueError('unsupported MCP method')
                     body = {'jsonrpc': '2.0', 'id': message.get('id'), 'result': result}
                 except (ValueError, KeyError) as exc: body = {'jsonrpc': '2.0', 'id': locals().get('message', {}).get('id'), 'error': {'code': -32602, 'message': str(exc)}}
+                except Exception as exc:  # always answer: a dropped connection reads as a network fault, which this is not
+                    tool = str((locals().get('params') or {}).get('name') or locals().get('method') or 'request')
+                    logging.getLogger('ros').exception('tool bridge: %s failed', tool)
+                    body = {'jsonrpc': '2.0', 'id': locals().get('message', {}).get('id') if isinstance(locals().get('message'), dict) else None,
+                            'error': {'code': -32603, 'message': f'{tool} failed with an internal error ({type(exc).__name__}: {str(exc)[:300]}). This is a Research OS bug, not a connection problem; it is logged.'}}
                 data = json.dumps(body).encode(); self.send_response(200); self.send_header('Content-Type', 'application/json'); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data)
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         self.server.daemon_threads = True
