@@ -21,8 +21,9 @@ check the service. Running the check from the app would have failed the same way
 With the rubric read made tolerant, Lecture 7 **passes** the check (`ready: true`). The only warnings are "no PDF yet" and
 "draft until you review it".
 
-The 10:58 vault-sync error (`a handout key is letters, digits, dot, dash or underscore`, from `handouts.folder`) does not
-reproduce against the current record. It is unrelated to Lecture 7.
+The 10:58:07Z automation error (`a handout key is letters, digits, dot, dash or underscore`) does not reproduce with 1.7.2
+code. It was logged by actor `ros` one second after a 1.2.1 `ros mcp` server started (see G1), so it most likely came from
+old code.
 
 ## Findings
 
@@ -98,11 +99,18 @@ system's job.
 | F4 | M | `dispatch.py` ledger | A task cancelled by app shutdown is recorded as `failed` (`task:6201f565589358da`: "cancelled"), so quitting the app counts against a task. |
 | F5 | L | `dispatch_end` text | An "unfinished" task says "it is taken again later" even when it is now parked as "failed twice". |
 
-### G. Other mismatches seen
+### G. Version mismatches and discoverability
 
-- The `research-os` MCP server Claude Code uses runs from the local checkout `C:\Users\ASUS\scientific-research-os`, which
-  is at 1.2.1 (`27df821`). The app and the records are at 1.7.2.
-- The running app is the build installed under `C:\Users\ASUS\ros-install-test-13`.
+| # | Sev | Where | What happens |
+|---|-----|-------|--------------|
+| G1 | H | `ros mcp` (editable install) | Claude Code's `research-os` server runs whatever the local checkout holds. That was 1.2.1 (`27df821`) while the app and records were 1.7.2. Each server start runs an automation tick. At 10:58:07Z (one second after start) old code ran `vault_sync` (13 notes written) and `legacy_sync` (17 written) against the 1.7.2 `knowledge` record, and logged the handout-key error. Another tick at 11:15:22Z followed the start of a second 1.2.1 server. Nothing stops an older engine from writing to a newer record. |
+| G2 | M | `frontend/src/Conversation.tsx:185` | "Code" is a session-type button shown only on a new session screen, beside Ask, Learn, Research and Defend. It is not a section. The researcher could not find it. |
+
+Fixed 2026-11-05: the local checkout was fast-forwarded to 1.7.2 and this session's server restarted. The other session's
+server (started before the update) still runs 1.2.1 until it restarts. What the 1.2.1 writes changed in the vault has not
+been inspected yet.
+
+The running app is the build installed under `C:\Users\ASUS\ros-install-test-13` (1.7.2).
 
 ## Fix plan
 
@@ -124,3 +132,11 @@ Each slice gets regression tests and is committed when its tests pass. The full 
    visuals in the job worker. Drop the review gate on vault delivery. Retry parked tasks.
 6. **Limits (F1–F5).** Raise and widen the hourly choices, lift per-task budgets, stop counting shutdowns and "unfinished"
    as failures, and fix the misleading text.
+7. **One engine version everywhere (G1).** Requirement (from the researcher, 2026-11-05): the agent-side MCP server is
+   updated automatically with every release. Agent clients run the installed app's own engine, not a source checkout, so
+   an app update also updates the MCP server. A record stores the engine version that last wrote it, and an older engine
+   refuses to write (it may still read). A running server that finds a newer install tells the client to restart it.
+8. **Discoverability (G2).** Show Code with the other session types in an open conversation, or as its own entry.
+
+Superseding the two bad items does not unblock Lecture 7 on 1.7.2: `Record.items(concept)` returns superseded versions
+too, so the check still reads the string rubric. Lecture 7 needs slice 1.
