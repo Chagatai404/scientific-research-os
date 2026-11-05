@@ -33,9 +33,12 @@ def agents_retry(rec, task):
 
 
 @tool("dispatch_claim", "Take the most urgent task an unattended agent may do, if the limits allow: the task, its instructions, "
-      "its tools and its step budget, or why nothing was taken.", writes=True)
-def dispatch_claim(rec):
-    return dispatch.claim(rec)
+      "its tools and its step budget, or why nothing was taken.", writes=True,
+      renderer_ok=P("boolean", "whether the safe renderer works on this computer (the desktop checks it)"),
+      renderer_reason=P("string", "why it does not, in a sentence"),
+      animation_ok=P("boolean", "whether it can also render animations here"), animation_reason=P("string", "why it cannot, in a sentence"))
+def dispatch_claim(rec, renderer_ok=None, renderer_reason="", animation_ok=False, animation_reason=""):
+    return dispatch.claim(rec, renderer_ok=renderer_ok, renderer_reason=renderer_reason, animation_ok=animation_ok, animation_reason=animation_reason)
 
 
 @tool("dispatch_begin", "Record that an agent run started on a task.", writes=True, task=P("string", "task id", True),

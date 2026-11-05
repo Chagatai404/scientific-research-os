@@ -68,8 +68,12 @@ check the public release feed and download newer stable versions; a pop-up at la
 - **Settings → Agents** controls the agents that work by themselves. The desktop takes the tasks the record opens (grade a
   written answer, answer a question, outline a course, ingest a file, scout sources, write items, narration, a lesson
   bundle or a handout, review), one at a time, with the model you last wrote to or the one you choose, at most 6 an hour
-  unless you change it (1 to 100, or no limit, with a slider in Settings), each in a fresh context with only the tools its task needs. You can pause it. It never takes
-  audits, verdicts, experiment runs, or work that needs rendering or the web, and Settings lists what it leaves for you and why.
+  unless you change it (1 to 100, or no limit, with a slider in Settings), each in a fresh context with only the tools its task needs. You can pause it. It draws lesson figures
+  (and ManimGX animations where they run) itself, without a shell, in a sealed container with no network and no access to your files;
+  it never takes audits, verdicts, experiment runs, or work that needs the web, and Settings lists what it leaves for you and why.
+  A computer without the sealed container (Windows only) or without a Python with matplotlib (`ROS_RENDER_PYTHON` names one) says so there.
+  Sessions and the librarian can read the folders you connected (never one marked local-only, with a cloud model), and after reading a
+  file a session cannot search the web in that conversation.
 
 Codex and Claude use their existing CLI logins; local models use explicit loopback profiles. Connections never scan or
 sync on their own, and nothing runs an experiment on its own. Approvals, decisions and waivers are always your acts. Cloud image/PDF vision needs the

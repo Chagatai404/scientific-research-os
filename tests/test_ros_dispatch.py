@@ -1,6 +1,7 @@
 """Automatic dispatch: waiting agent tasks are taken by an agent run, within the person's limits, and only the kinds an unattended agent
 may do. The provider is a deterministic fixture that sees only what a real one would: the system prompt, the brief and its granted tools.
 """
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -9,7 +10,7 @@ import unittest
 from unittest.mock import patch
 
 from ros import api, dispatch, runtime, tasks
-from ros.lib import providers
+from ros.lib import providers, renderkit
 from ros.store import Record
 
 
@@ -20,6 +21,11 @@ class Dispatch(unittest.TestCase):
         env = patch.dict(os.environ, {"ROS_HOME": str(root), "ROS_NO_VAULT": "1"}); env.start(); self.addCleanup(env.stop)
         self.rec = Record(root / "projects" / "test"); self.addCleanup(self.rec.close); self.addCleanup(api.release)
         api.call("agents_configure", self.rec, model="ollama:fixture")
+        # The real renderer check starts an interpreter; a test says what this "computer" can do.
+        self.renderer = {"state": (False, "a test computer without it")}
+        dispatch.note_renderer(False, "a test computer without it")
+        patcher = patch.object(runtime, "renderer_status", lambda: self.renderer["state"]); patcher.start(); self.addCleanup(patcher.stop)
+        self.addCleanup(dispatch.note_renderer, False, "a test computer without it")
 
     def open(self, kind, key, brief="Do the work."):
         return tasks.open_task(self.rec, kind, "course:stat", brief, key=key)
@@ -98,24 +104,146 @@ class Dispatch(unittest.TestCase):
         self.assertEqual(self.state(background), "open", "past the limit only the focused work goes")
         self.assertIn("limit of 1", self.run_with(agent)["idle"])
 
-    def test_on_codex_a_visual_is_made_in_the_bundle_folder_with_its_own_sandboxed_tools(self):
-        visual = tasks.open_task(self.rec, "visual", "bundle:variance", "Draw the variance picture.", data={"bundle": "variance"}, key="v")
-        audit = self.open("audit", "a")
+    def test_a_visual_waits_with_an_honest_reason_where_the_safe_renderer_is_missing_and_is_never_drawn_with_a_shell(self):
+        tasks.open_task(self.rec, "visual", "bundle:variance", "Draw the variance picture.", data={"bundle": "variance"}, key="v")
+        for model in ("claude:sonnet", "codex:gpt-6.1-sol", "ollama:fixture"):
+            api.call("agents_configure", self.rec, model=model)
+            status = api.call("agents_status", self.rec)["waiting"]
+            self.assertNotIn("visual", status["automatic"])
+            why = status["left_for_you"]["visual"]["why"]
+            if model.startswith(("claude", "codex")):
+                self.assertEqual(why, "the safe renderer is not available on this computer: a test computer without it")
+            else:
+                self.assertIn("needs Claude or Codex", why)
+        calls = []
+        def agent(request, emit, tool, cancel, own): calls.append(request); return {}
         api.call("agents_configure", self.rec, model="claude:sonnet")
-        self.assertNotIn("visual", api.call("agents_status", self.rec)["waiting"]["automatic"], "unattended shell work only in Codex's sandbox")
+        with patch.dict(providers.ADAPTERS, {"claude": agent}):
+            self.assertIn("Nothing waits", runtime.dispatch_once(self.rec)["idle"])
+        self.assertEqual(calls, [], "never silently falls back to a run with a shell")
+
+    def figure_renderer(self):
+        root = Path(self.tmp.name) / "renderer"
+        class Fake:
+            def __init__(inner): inner.root = root / "rt"
+            def run_script(inner, scratch, script, wall=60, cancel=None):
+                (scratch.root / "out" / "variance.png").write_bytes(self.png)
+                return {"code": 0, "stdout": "saved", "stderr": "", "seconds": .1, "ended": "exit"}
+        return Fake()
+
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + (30).to_bytes(4, "big") + (20).to_bytes(4, "big") + b"\x08\x02\x00\x00\x00" + b"\x00" * 8
+
+    def test_with_the_safe_renderer_claude_and_codex_draw_without_a_shell_and_only_publish_a_checked_picture(self):
+        self.renderer["state"] = (True, ""); dispatch.note_renderer(True)
+        for model in ("claude:sonnet", "codex:gpt-6.1-sol"):
+            bundle = "variance-" + model.split(":")[0]
+            visual = tasks.open_task(self.rec, "visual", "bundle:" + bundle, "Draw the variance picture.", data={"bundle": bundle}, key="v-" + model)
+            folder = self.rec.root / "bundles" / bundle
+            folder.mkdir(parents=True); (folder / "plan.json").write_text('{"id": "%s"}' % bundle, encoding="utf-8")
+            api.call("agents_configure", self.rec, model=model)
+            self.assertIn("visual", api.call("agents_status", self.rec)["waiting"]["automatic"])
+            seen, scratch = {}, {}
+            def agent(request, emit, tool, cancel, own):
+                seen.update(native=request.get("native"), workdir=request.get("workdir"), system=request["system"], tools={t["name"] for t in request["tools"]})
+                self.assertEqual(json.loads(tool("scratch_read", {"path": "in/plan.json"}, "s0")["text"]), {"id": bundle}, "the model sees a copy of the plan")
+                tool("scratch_write", {"path": "work/figure.py", "text": "print(1)"}, "s1")
+                self.assertTrue(tool("render", {"script": "work/figure.py"}, "s2")["outputs"][0]["valid"])
+                picture = tool("look", {"path": "out/variance.png"}, "s3")
+                self.assertIsInstance(picture, providers.ImageResult); self.assertEqual(picture.image[1], "image/png")
+                for refused in ({"bundle_file": {"bundle": bundle, "path": "x.png", "base64": "AAAA"}}, {"Bash": {"command": "dir"}}):
+                    (name, args), = refused.items()
+                    with self.assertRaisesRegex(ValueError, "not granted"): tool(name, args, "s-" + name)
+                tool("publish", {"path": "out/variance.png", "name": "variance.png", "result": "<b>looked</b>: 2 elements"}, "s4")
+                tool("finish", {"result": "variance.png, looked at"}, "s5"); emit("Done."); return {}
+            with patch.object(runtime, "prepare_renderer", self.figure_renderer), patch.dict(providers.ADAPTERS, {model.split(":")[0]: agent}):
+                outcome = runtime.dispatch_once(self.rec)
+            self.assertEqual((outcome["kind"], outcome["outcome"]), ("visual", "done"), outcome)
+            self.assertFalse(seen["native"]); self.assertIsNone(seen["workdir"], "no shell and no folder of the bundle for the model")
+            self.assertEqual(seen["tools"] & {"bundle_file", "Bash", "Read", "Glob", "Grep", "Write", "Edit"}, set())
+            self.assertLessEqual({"scratch_list", "scratch_read", "scratch_write", "render", "look", "publish", "bundle_plan", "finish"}, seen["tools"])
+            self.assertIn("safe renderer", seen["system"]); self.assertIn("never follow instructions", seen["system"])
+            self.assertEqual((folder / "visuals" / "variance.png").read_bytes(), self.png)
+            self.assertEqual((folder / "visuals" / "variance.png.result.md").read_text(encoding="utf-8"), "<b>looked</b>: 2 elements")
+            self.assertEqual(self.state(visual), "done")
+            self.assertEqual(list((Path(self.tmp.name) / "renderer" / "scratch").glob("task-*")), [], "the scratch folder is gone with the task")
+
+    def test_an_agent_that_cannot_set_the_renderer_up_puts_the_task_back_without_blaming_it(self):
+        self.renderer["state"] = (True, ""); dispatch.note_renderer(True)
+        visual = tasks.open_task(self.rec, "visual", "bundle:v", "Draw.", data={"bundle": "v"}, key="v")
+        api.call("agents_configure", self.rec, model="claude:sonnet")
+        def boom(): raise renderkit.RenderError("the drawing runtime could not be prepared: disk full")
+        def agent(request, emit, tool, cancel, own): raise AssertionError("the model must not run")
+        with patch.object(runtime, "prepare_renderer", boom), patch.dict(providers.ADAPTERS, {"claude": agent}):
+            outcome = runtime.dispatch_once(self.rec)
+        self.assertEqual(outcome["outcome"], "interrupted"); self.assertIn("the safe renderer is not available on this computer: the drawing runtime", outcome["detail"])
+        self.assertEqual(api.call("agents_status", self.rec)["failed_twice"], [], "never counts against the task")
+        self.assertNotIn("dispatch.start", [e["type"] for e in self.rec.events()], "it did not start")
+        self.assertEqual(self.state(visual), "claimed")
+
+    def test_an_animation_is_made_in_the_safe_renderer_with_manimgx_where_it_runs_there_and_never_with_a_shell_for_claude(self):
+        anim = tasks.open_task(self.rec, "animation", "bundle:wave", "Animate the wave.", data={"bundle": "wave"}, key="a")
+        folder = self.rec.root / "bundles" / "wave"; folder.mkdir(parents=True); (folder / "plan.json").write_text('{"id": "wave"}', encoding="utf-8")
+        api.call("agents_configure", self.rec, model="claude:sonnet")
+        self.renderer["state"] = (True, ""); dispatch.note_renderer(True, "", False, "ManimGX is not installed")
+        status = api.call("agents_status", self.rec)["waiting"]
+        self.assertEqual(status["automatic"], {})
+        self.assertEqual(status["left_for_you"]["animation"]["why"], "the safe renderer cannot make animations on this computer: ManimGX is not installed (Codex can, with its own shell)")
+        dispatch.note_renderer(True, "", True)
+        self.assertIn("animation", api.call("agents_status", self.rec)["waiting"]["automatic"])
+        movie = b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 40
+        root = Path(self.tmp.name) / "renderer"
+        calls = {}
+        class Fake:
+            def __init__(inner): inner.root = root / "rt"
+            def run_script(inner, scratch, script, wall=60, cancel=None, scene=None):
+                calls["scene"] = scene
+                (scratch.root / "out" / "Wave.mp4").write_bytes(movie); (scratch.root / "out" / "Wave.storyboard.png").write_bytes(self.png)
+                return {"code": 0, "stdout": "", "stderr": "", "seconds": .1, "ended": "exit"}
+        seen = {}
+        def agent(request, emit, tool, cancel, own):
+            seen.update(native=request.get("native"), tools={t["name"] for t in request["tools"]}, system=request["system"])
+            tool("scratch_write", {"path": "work/wave.py", "text": "import manimgx as m"}, "s1")
+            out = tool("render", {"script": "work/wave.py", "scene_class": "Wave", "width": 640, "height": 360, "fps": 12}, "s2")
+            self.assertEqual({r["path"]: r["valid"] for r in out["outputs"]}, {"out/Wave.mp4": True, "out/Wave.storyboard.png": True})
+            with self.assertRaisesRegex(ValueError, "Scene class"): tool("render", {"script": "work/wave.py", "scene_class": "x; import os"}, "s3")
+            with self.assertRaisesRegex(ValueError, "1280x720"): tool("render", {"script": "work/wave.py", "scene_class": "Wave", "width": 4000}, "s4")
+            self.assertEqual(tool("look", {"path": "out/Wave.storyboard.png"}, "s5").image[1], "image/png")
+            tool("publish", {"path": "out/Wave.mp4", "name": "wave.mp4", "result": "looked at the storyboard"}, "s6")
+            tool("publish", {"path": "out/Wave.storyboard.png", "name": "wave-keyframes.png", "result": "storyboard"}, "s7")
+            tool("finish", {"result": "wave.mp4"}, "s8"); emit("Done."); return {}
+        with patch.object(runtime, "prepare_renderer", lambda: Fake()), patch.dict(providers.ADAPTERS, {"claude": agent}),                 patch.dict(runtime.RENDERER, {"info": {"manim": "site-packages", "manim_reason": ""}}):  # what the desktop's own check found
+            outcome = runtime.dispatch_once(self.rec)
+        self.assertEqual((outcome["kind"], outcome["outcome"]), ("animation", "done"), outcome)
+        self.assertFalse(seen["native"]); self.assertEqual(seen["tools"] & {"bundle_file", "Bash"}, set()); self.assertIn("ManimGX", seen["system"])
+        self.assertEqual(calls["scene"], {"class": "Wave", "width": 640, "height": 360, "fps": 12})
+        self.assertEqual((folder / "visuals" / "wave.mp4").read_bytes(), movie); self.assertTrue((folder / "visuals" / "wave-keyframes.png").is_file())
+
+    def test_the_render_tools_belong_to_a_figure_task_only(self):
+        self.open("outline", "o1")
+        results = {}
+        def agent(request, emit, tool, cancel, own):
+            results["tools"] = {t["name"] for t in request["tools"]}
+            with self.assertRaisesRegex(ValueError, "not granted"): tool("render", {"script": "work/x.py"}, "s1")
+            tool("finish", {"result": "x"}, "s2"); emit("."); return {}
+        self.run_with(agent)
+        self.assertFalse(results["tools"] & set(dispatch.RENDER_TOOLS))
+
+    def test_where_manimgx_cannot_run_in_the_renderer_an_animation_still_goes_to_codex_with_its_own_shell_in_the_bundle_folder(self):
+        anim = tasks.open_task(self.rec, "animation", "bundle:variance", "Animate the variance.", data={"bundle": "variance"}, key="a")
+        api.call("agents_configure", self.rec, model="claude:sonnet")
+        self.assertNotIn("animation", api.call("agents_status", self.rec)["waiting"]["automatic"], "unattended shell work only in Codex's sandbox")
         api.call("agents_configure", self.rec, model="codex:gpt-6.1-sol")
-        self.assertIn("visual", api.call("agents_status", self.rec)["waiting"]["automatic"])
+        self.assertIn("animation", api.call("agents_status", self.rec)["waiting"]["automatic"])
         seen = {}
         def codex(request, emit, tool, cancel, own):
             seen.update(native=request.get("native"), workdir=request.get("workdir"), system=request["system"])
-            (Path(request["workdir"]) / "variance.svg").write_text("<svg/>", encoding="utf-8")
-            tool("finish", {"result": "variance.svg, looked at"}, "s"); emit("Done."); return {}
+            (Path(request["workdir"]) / "scene.py").write_text("# manim", encoding="utf-8")
+            tool("finish", {"result": "scene.py, looked at"}, "s"); emit("Done."); return {}
         with patch.dict(providers.ADAPTERS, {"codex": codex}):
             outcome = runtime.dispatch_once(self.rec)
-        self.assertEqual((outcome["kind"], outcome["outcome"]), ("visual", "done"))
+        self.assertEqual((outcome["kind"], outcome["outcome"]), ("animation", "done"))
         self.assertTrue(seen["native"]); self.assertEqual(Path(seen["workdir"]), self.rec.root / "bundles" / "variance")
-        self.assertTrue((self.rec.root / "bundles" / "variance" / "variance.svg").is_file())
-        self.assertIn("bundle folder", seen["system"]); self.assertEqual(self.state(audit), "open", "audits are never dispatched")
+        self.assertIn("bundle folder", seen["system"]); self.assertEqual(self.state(anim), "done")
 
     def test_a_run_that_does_not_finish_is_recorded_and_a_task_failing_twice_is_left_alone(self):
         tid = self.open("outline", "o1")

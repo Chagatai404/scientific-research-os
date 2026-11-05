@@ -140,3 +140,83 @@ Each slice gets regression tests and is committed when its tests pass. The full 
 
 Superseding the two bad items does not unblock Lecture 7 on 1.7.2: `Record.items(concept)` returns superseded versions
 too, so the check still reads the string rubric. Lecture 7 needs slice 1.
+
+## Slice 4 and E2: agent reach and the safe renderer (2026-11-05)
+
+Researcher's decisions: cloud sessions may read the person's connected files, and unattended agents (Claude as well as Codex) may render
+teaching visuals themselves, both "but ensure security and isolation for malicious attempts". Design: `docs/ARCHITECTURE.md`, "The safe
+renderer" and "Reading the person's files in a cloud run". Tests: `tests/test_ros_render_sandbox.py`, `tests/test_ros_source_grants.py`,
+`tests/test_ros_dispatch.py`.
+
+### What was measured (this computer: Windows 11, Python 3.14.4, Claude Code 2.1.312, codex-cli 0.165.0)
+
+- **Image results through the bridge.** The bridge's `tools/call` returned text only. It now returns MCP `image` content for a result that carries a
+  picture (`providers.ImageResult`). With the real Claude CLI (`--tools ''`, the bridge as MCP config, sonnet), a tool returning a 64x64 red PNG whose
+  text said only "a 64x64 square": the model answered "The square is red." Codex's dynamic tool results accept `inputImage` (`codex app-server
+  generate-ts`: `DynamicToolCallOutputContentItem`); with a blue square the model answered "The square is blue." Neither needed a text fallback.
+- **AppContainer.** `CreateAppContainerProfile` and `DeriveAppContainerSidFromAppContainerName` through ctypes, `CreateProcessW` with
+  `SECURITY_CAPABILITIES` (no capability), a handle list, `PROCESS_CREATION_CHILD_PROCESS_RESTRICTED`, and a Job Object (kill on close, one process, CPU,
+  memory). `C:\Python314` is not the person's to change (administrators only), so the container cannot be granted read access to it; the renderer
+  therefore runs a private copy of the interpreter and only the packages matplotlib imports (about a minute, once, under `<home>/render/`). Gotchas:
+  Windows refuses to start a container process whose environment lacks `LOCALAPPDATA` (error 203; any folder will do), and the stdin pipe's read end
+  must be inheritable. A matplotlib PNG renders in the container in about two seconds.
+- **Attacks from a hostile script** (each recorded as `blocked` and confirmed against the world): reading a profile canary, an `.ssh`-style canary, a
+  canary outside the scratch folder and `~/.claude.json` (PermissionError); listing the profile; writing to the profile, to temp and to the runtime
+  (PermissionError); TCP to 1.1.1.1 (PermissionError) and to a loopback listener the test opened (timeout, listener saw nothing); `cmd.exe`,
+  `powershell.exe`, `os.system` and ctypes `CreateProcess` (all fail, no marker file); ctypes `ws2_32` connect (fails) and `WinDLL` of a DLL planted outside
+  the grants (PermissionError). The container could not create a junction in its scratch folder (PermissionError), so the tools' own refusal of links
+  is covered separately (a junction made by the test).
+- **Manim.** ManimGX (the pack's animation engine: software rendering, x264 inside its native module) renders a `Text` and a `MathTex` scene inside the
+  container (4.6 to 6 s for one second of 320x180 video) with no child process and no LaTeX; the container needs read access to its packages folder
+  (the person's own folder, so the grant works; a folder they do not own leaves animations waiting). Manim Community needs `ffmpeg` and LaTeX as child
+  processes and is not run in the boundary. This computer has MiKTeX and ffmpeg, which are therefore not used.
+- **Codex had built-in tools in runs meant to have none (a finding, fixed).** With the person's own `CODEX_HOME` and the run's overrides
+  (`features.shell_tool=false` and `-c mcp_servers.node_repl.enabled=false`), Codex still listed 714 callable tools, including a Node REPL MCP tool
+  (`node_repl`, `child_process.execSync`), `apply_patch`, `view_image` and web search. Asked to read a canary file outside its working folder, run `dir`
+  and search the web, it did all three. `features.apply_patch` is not a feature any more (Codex ignores it). The fix is a private `CODEX_HOME` (the login
+  plus a minimal configuration), a thread with `environments: []` and a stop on any built-in tool item. With it, three adversarial probes could
+  not read the canary, run a command, fetch a page or write a file, and the only items seen were messages, reasoning, the offered dynamic tools and
+  Codex's own (empty) MCP resource listing. Every non-Code Codex session had this exposure before, not only figure tasks.
+- **Real end-to-end run.** `runtime.dispatch_once` with `claude:sonnet` on a `visual` task (first run, so it includes building the runtime): the model wrote
+  a matplotlib script, ran it in the container, looked at it, published `variance.png` with its RESULT note, recorded `{path, result, elements}` in the
+  plan and finished in 112 s; the scratch folder was gone afterwards. The same task with `codex:gpt-6.1-sol` (private Codex home, no environment) also
+  finished, publishing `die-pmf.png` and recording it in the plan.
+
+### Threat model and residual risk (slice 4)
+
+What is isolated:
+
+- Code the model writes runs only in the container: no network, no files of the person (their profile, `.ssh`, `.claude.json`, the repository, the bundle folder
+  itself), no program it could start, no other process of this user (the container's token fails the access check for any process that is not its own),
+  bounded in CPU, memory, time, output and disk. The model has no shell and no built-in file tools: Claude runs with `--tools ''`, Codex in a private home with
+  no environment, and each is stopped or refused if it reaches for one.
+- The scratch tools cannot leave their folder (no `..`, drive, stream, UNC, device name or link, checked on every call), and a link the script plants is never followed
+  and is removed, not entered, when the folder is deleted.
+- What reaches the bundle is only a picture or video that passes magic-byte, size and pixel checks, or a declarative SVG, plus a RESULT note kept as text.
+- Cloud sessions read only what was connected; a local-only source is never read by a cloud model; a junction out of a connection is refused on every call; after a
+  read, nothing goes to a public service in that conversation.
+
+What remains (decisions for the person where noted):
+
+1. **Kernel and platform exploits.** An AppContainer is a user-mode boundary: a Windows kernel or driver vulnerability, or a flaw in the container implementation, defeats it. The renderer
+   has a small attack surface (CPU rendering, no GPU path for matplotlib and ManimGX), but this is not a hypervisor.
+2. **A model that misrepresents a picture.** The same model draws, looks and writes the RESULT note. A figure can be wrong, or described as better than it is; the
+   gate checks that a note and an element count exist, not that the science is right. Audits stay a person's act; nothing here makes a picture independently verified.
+3. **Prompt injection steering allowed writes.** Text in a source or handout can still talk the model into things it is allowed to do: adding nodes, edges, items or claims
+   to the person's own record, capturing passages, publishing a figure, finishing a task with a false result. These are attributed and appear in the person's queue; they
+   cannot approve, decide, waive, read hidden answers (except grading), reach the network or leave the record. A source can also make the model *read more of the connected
+   files* (it is allowed to), and the model's provider receives what it reads. Marking a source local-only is the control for that.
+4. **The taint is a rule about tools, not about the model's memory.** A new conversation starts clean; a person can still copy text between conversations. A model can still put read
+   text into a record note that a later, clean run reads; that stays inside the person's record and the provider they chose.
+5. **Files the exclusion rules do not recognise.** `.git`, dot-folders, `node_modules`, secret-looking names and `AppData` are never read, but a connected folder can hold other sensitive
+   files (a password export named `notes.txt`). A hard link inside a connected folder to a file outside it is not detected. Connect specific folders, not a home folder.
+6. **Footprint.** The renderer leaves a registered AppContainer profile (`ros.render.sandbox.v1`), a read-and-execute entry for its SID on `<home>/render/runtime-*` and on the ManimGX packages
+   folder, and a copy of the interpreter. Nothing removes them on uninstall yet. A Codex run keeps a copy of the login in a temp folder for the length of the run (deleted afterwards, retried if
+   Codex still holds a file; if the process is killed, a folder named `ros-codex-home-*` remains until the next Codex run deletes it, once it is a day old).
+7. **Not Windows, not ready.** Elsewhere the renderer refuses to run (there is no verified equivalent) and figure tasks wait with the reason. On Windows it needs a Python with matplotlib
+   (`ROS_RENDER_PYTHON`, or `python` on PATH). The installer's animation pack has ManimGX, numpy and Pillow but not matplotlib, so an installed app without a system Python shows the reason until
+   the pack carries it (a packaging follow-up, not done here).
+8. **One container identity for every render.** All renders share one AppContainer SID, so a script running while another task's render is in progress could read that task's
+   scratch folder (copies of its bundle's plan and visuals, nothing of the person's). Renders normally run one at a time; a per-task SID would close this.
+9. **Time of check to time of use** in the scratch tools is closed by sequencing (the script has ended and its job is gone before any scratch tool reads) and by re-checking links at every call, not by
+   handle-based opens.

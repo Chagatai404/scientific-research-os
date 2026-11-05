@@ -29,7 +29,8 @@ about. When a task is done, `finish` it with the record `work` named and call `w
 - **Narration segments** (`motivate`, `establish`, `connect`): plain spoken prose, formulas in LaTeX. Every factual
   claim gets a `claims` entry with a source `locator`, or `derivation: true` if it is derived in the segment.
 - **Visuals**: hand each to the `visual-maker` agent. It renders, looks at the result, fixes it, writes a RESULT note,
-  and states the element count (at most 7). Attach `{path, result, elements}`.
+  and states the element count (at most 7). Attach `{path, result, elements}`. The desktop's own agents draw in the safe
+  renderer (a sealed container with no shell and no network) and `publish` only a picture that passes its checks.
 - **Animation**: required when the idea is change over time, motion in geometry, a limit or a distribution building
   up (`dynamic: true`). Write the Manim scene and spec, then `bundle_animate`; the visual-maker looks at the key frames
   and sets `looked_at: true`. The basis (equation, model or data) is stated.

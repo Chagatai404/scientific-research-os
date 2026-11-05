@@ -71,8 +71,12 @@ def get(rec, source):
     return row
 
 
+# Where a browser, a mail client or Windows keeps a person's saved logins and cookies: never read, wherever the connection starts.
+PROFILE_DATA = {'appdata', 'application data', 'local settings'}
+
+
 def excluded(parts):
-    return any(p in EXCLUDED or p.startswith('.') or SECRET.search(p) for p in parts)
+    return any(p in EXCLUDED or p.lower() in PROFILE_DATA or p.startswith('.') or SECRET.search(p) for p in parts)
 
 
 def resolve(rec, source, path=''):

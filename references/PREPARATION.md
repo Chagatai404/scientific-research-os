@@ -6,8 +6,8 @@ A lesson plays only prepared content; the gate (`bundle_check`) decides when it 
 |---|---|---|
 | Narration per node (motivate, establish, connect) | the tutor agent from the dependency map and a scout's source map | Every segment has text that can be spoken (formula spans pass `speech_text`); every factual claim has a source locator or is marked as a derivation; math renders in KaTeX |
 | Voice | `bundle_voice` (Kokoro English by default; Chatterbox for Turkish) | 100% of segments have audio |
-| Static visuals | `visual-maker` | Rendered file, a RESULT note from the maker who looked at it, at most 7 elements |
-| Animation | `visual-maker` with Manim through `bundle_animate` | For every dynamic node (change over time, motion, a limit, a distribution building up): MP4, poster and key-frame strip, a stated basis, key frames looked at |
+| Static visuals | `visual-maker` (unattended, in the safe renderer: a sealed container, no shell) | Rendered file that passes the output checks, a RESULT note from the maker who looked at it, at most 7 elements |
+| Animation | `visual-maker` with Manim through `bundle_animate`, or in the safe renderer with ManimGX | For every dynamic node (change over time, motion, a limit, a distribution building up): MP4, poster and key-frame strip, a stated basis, key frames looked at |
 | Clip (optional) | `video-scout` | One segment of at most 3 minutes, verified against its transcript; otherwise left out |
 | Items | the tutor agent | Probe items at 3 or more difficulty levels per strand; a check item per node; a free-recall close item; a transfer item. Valid, distinct options that never justify themselves, math that renders |
 | Manifest | `prepare` | Hashes of the plan and every file; ready only when every row passes |
