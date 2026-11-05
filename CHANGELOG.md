@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.7.3: robustness — no silent failures, network loss handled, a sealed figure renderer
 
 - Fixed: a handout's readiness check crashed when an item tested by its subject kept its rubric as a sentence instead of `{"criteria": [...]}` (64 such items in one record), and a session agent saw the crash as "connection reset" and blamed the network. A rubric in any stored shape is now read (a sentence is one criterion), and new items are saved in the one shape. Grading such an item no longer crashes either.
 - Fixed: an unexpected error in any tool no longer drops the connection. A session's agent, the app and Codex or local models now get the error by name ("... failed with an internal error (Type: message). This is a Research OS bug, not a connection problem"), and it is logged. A run that fails before its model starts, or while it is being failed, is now always closed as failed instead of staying "Working on your question…" until restart.
