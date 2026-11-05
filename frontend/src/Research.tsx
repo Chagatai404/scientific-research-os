@@ -22,8 +22,10 @@ const WHY: Record<string, string> = {
   defend: 'A claim needs you to show you understand it before it can be accepted.',
   commitment: 'You made a commitment that is still open.',
   proposal: 'A change to how the work is done is waiting for your answer.',
+  read: 'The system checked it. Read it, then accept it into your vault or ask for changes.',
+  'in-vault': 'An agent put this note in your vault before you could read it. Accept it, or take it out.',
 };
-const NEXT_LABEL: Record<string, string> = {approve: 'Review the plan', decide: 'Review the finding', defend: 'Defend the claim', commitment: 'Open the commitment', proposal: 'Answer the proposal'};
+const NEXT_LABEL: Record<string, string> = {approve: 'Review the plan', decide: 'Review the finding', defend: 'Defend the claim', commitment: 'Open the commitment', proposal: 'Answer the proposal', read: 'Read the handout', 'in-vault': 'Accept or take out'};
 
 /** Where the work stands, taken from what is recorded: waiting decisions first, then running work, then what is queued. */
 export function stageOf(queue: QueueItem[], activity: Activity | undefined, claims: Claim[]) {
@@ -93,7 +95,7 @@ export function Research({record, material}: {record: string; material: string})
         {!ready.length && <p className="muted">No readable material yet. <a href={href('library', '', record)}>Add material in the Library</a> to use it as evidence.</p>}</form>
       {status && <p role="status" className="notice">{status}</p>}
       <div className="section-title"><h2>Needs your judgement</h2><span>{data.queue.length}</span></div>
-      {data.queue.length ? <ul className="entry-list">{data.queue.map((item, index) => <li key={item.subject + index}><a href={href('node', item.subject, item.record || record)}><span><strong>{item.headline || item.title || item.text || 'An item that needs you'}</strong><small>{NEXT_LABEL[item.kind] || item.kind} · {item.reason || WHY[item.kind] || 'Review the evidence before deciding'}</small></span><span aria-hidden="true">→</span></a></li>)}</ul> : <Empty title="No decisions waiting"><p>Plans and findings will appear here when they need you.</p></Empty>}
+      {data.queue.length ? <ul className="entry-list">{data.queue.map((item, index) => <li key={item.subject + index}><a href={item.subject.startsWith('handout:') ? entityHref(item.subject, item.record || record) : href('node', item.subject, item.record || record)}><span><strong>{item.headline || item.title || item.text || 'An item that needs you'}</strong><small>{NEXT_LABEL[item.kind] || item.kind} · {item.reason || WHY[item.kind] || 'Review the evidence before deciding'}</small></span><span aria-hidden="true">→</span></a></li>)}</ul> : <Empty title="No decisions waiting"><p>Plans and findings will appear here when they need you.</p></Empty>}
       <div className="section-title"><h2>Claims ledger</h2><span>{data.claims.length}</span></div>
       {data.claims.length ? <ul className="entry-list">{data.claims.map(c => <li key={c.id}><a href={entityHref(c.id, record)}><span><strong>{c.text || 'A recorded claim'}</strong><small>{c.verdict || 'Not checked yet'} · {c.ownership || 'Not yet defended by you'}</small></span><span aria-hidden="true">↗</span></a></li>)}</ul> : <p className="muted">No claims yet.</p>}
       <ActivityBoard value={data.activity} record={record}/>

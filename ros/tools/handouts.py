@@ -51,19 +51,38 @@ def handout_check(rec, handout):
     return h.check(rec, handout)
 
 
-@tool("handout_build", "Deliver a handout: write its note into the vault now and build its PDF (queued as a job, or "
-      "now with wait) when the gate passes.", writes=True, handout=HANDOUT,
+@tool("handout_build", "Queue a handout's PDF (as a job, or now with wait) when the gate passes. The note and PDF reach "
+      "the vault only after the person accepts that version in the app. The system runs this itself.", writes=True, handout=HANDOUT,
       wait=P("boolean", "build the PDF now instead of queueing it"),
       engine=P("string", "auto (default), latex or chromium", enum=("auto", "latex", "chromium")))
 def handout_build(rec, handout, wait=False, engine=None):
     return h.build(rec, handout, wait, engine)
 
 
-@tool("handout_attach", "Attach the PDF a build job made for one version of a handout: verify it, place it in the vault "
-      "and link it from the note.", writes=True, handout=HANDOUT,
+@tool("handout_attach", "Attach the PDF a build job made for one version of a handout: verify it and record it; it is "
+      "placed in the vault only if the person accepted that version.", writes=True, handout=HANDOUT,
       source_hash=P("string", "the version (default: the current one)"))
 def handout_attach(rec, handout, source_hash=None):
     return h.attach(rec, handout, source_hash)
+
+
+@tool("handout_accept", "The person read this version of a handout in the app and accepts it into their vault: its note "
+      "(and PDF) are written there.", human=True, handout=HANDOUT,
+      source_hash=P("string", "the version that was read (its source hash)", True))
+def handout_accept(rec, handout, source_hash):
+    return h.accept(rec, handout, source_hash)
+
+
+@tool("handout_request_changes", "The person read a handout and asks for changes in their own words: opens a task "
+      "for an agent with them.", human=True, handout=HANDOUT, text=P("string", "what should change", True))
+def handout_request_changes(rec, handout, text):
+    return h.request_changes(rec, handout, text)
+
+
+@tool("handout_take_out", "The person takes a handout's note and PDF out of their vault: removed only if they never "
+      "edited them.", human=True, handout=HANDOUT)
+def handout_take_out(rec, handout):
+    return h.take_out(rec, handout)
 
 
 @tool("handouts", "Every handout of this record with its status (draft, ready, built) and where its PDF is.")

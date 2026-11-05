@@ -34,7 +34,7 @@ ros_record: stat303                the record that holds it
 ros_kind: capability
 ros_portal: "http://127.0.0.1:8737/#node/capability:variance?r=stat303"
 ros_hash: 3f9a…                    a hash of what Research OS wrote
-ros_status: generated              generated | reviewed | draft-unreviewed
+ros_status: generated              generated | reviewed  (an accepted handout is written as reviewed)
 title: Variance
 aliases: [variance]
 state: demonstrated

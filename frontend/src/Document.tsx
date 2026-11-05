@@ -14,6 +14,7 @@ import {call, entityHref, href, routeOf, readDocument} from './api';
 import type {DocumentData, Resolution} from './contracts';
 import {useResource} from './hooks';
 import {Notice} from './ui';
+import {HandoutReview} from './HandoutReview';
 import {blockAnchor, explicitBlocks, handoutCallouts, legacyHandoutSyntax} from './documentSyntax';
 
 // Only this inline extension recognizes wikilinks and citation keys; Markdown parsing remains AST based.
@@ -128,6 +129,7 @@ export function DocumentView({id, record, onDocument}: {id: string; record: stri
   const doc = resource.data;
   function exportMarkdown() {const text = '# ' + doc!.title + '\n\n' + doc!.sections.map(s => '## ' + s.title + '\n\n' + s.text).join('\n\n'); const url = URL.createObjectURL(new Blob([text], {type:'text/markdown;charset=utf-8'})); const link = document.createElement('a'); link.href=url; link.download=doc!.title.replace(/[\\/:*?"<>|]/g,'-')+'.md'; link.click(); setTimeout(()=>URL.revokeObjectURL(url),1000);}
   return <article className="document"><div className="eyebrow">{doc.kind} <span>·</span> {doc.status}</div><h1>{doc.title}</h1>
+    <HandoutReview doc={doc} record={record} onDone={resource.retry} />
     <p className="lead muted">{doc.legacy ? 'Preserved session · ' : ''}{doc.sections.filter(s => s.text).length} sections · {doc.record}</p>
     {doc.sections.filter(s => s.text.trim()).map(section => <section id={'section-' + section.id} key={section.id}>
       <h2><a className="heading-link" href={entityHref(doc.id, record, 'section-' + section.id)} aria-label={'Link to ' + section.title}>{section.title}<span aria-hidden="true"> ↗</span></a></h2>

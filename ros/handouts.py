@@ -12,8 +12,12 @@ reporting material, never learning evidence, and carries no answer key.
     handouts/<key>/figures/         images the sections refer to
     handouts/<key>/build/<hash>/    main.tex, index.html, out/<hash>.pdf and result.json for one version
 
-The Markdown **note** in the vault is the primary artifact and is written as soon as there is text, marked as a draft by
-its agents until you have read it. The **PDF** is built from the same source by whatever toolchain the computer has
+The Markdown **note** is the primary artifact, but it reaches the Obsidian vault only for a version you have read and
+accepted in the app (``handout.accepted`` for that source hash, the human tool ``handout_accept``): nothing an agent
+wrote is put in your vault unseen. Checking and building are the system's job, never yours: the ``handout_gate``
+automation runs the gate after an agent's write and queues the PDF; a version that passes shows in the decision queue as
+"Ready for you to read". Accepting delivers its note, and its PDF once built; a later version waits for acceptance again
+while the vault keeps the accepted one untouched. The **PDF** is built from the same source by whatever toolchain the computer has
 (``ros.lib.pdf``); it is queued as a ``job`` and attached when it exists, and a missing toolchain is a reported fact,
 never a failure. The gate (``ROWS``) decides whether a version is ready; a failing row opens a ``handout`` task.
 """
@@ -278,7 +282,7 @@ def brief(rec: Record, src: dict) -> str:
             + (f" It needs at least {boxes} boxes." if boxes else "")
             + " Write each with handout_write (Markdown, LaTeX math in $...$, boxes as :::kind), give a source locator or "
               "mark a derivation for every factual section, add the sources with their keys and cite them as [@key], "
-              "then run handout_check. Read the context in the source first. Never put an answer key from an "
+              "and finish; the system checks and builds it, and shows it to the researcher. Read the context in the source first. Never put an answer key from an "
               "assessment item into a handout.")
 
 
@@ -471,9 +475,9 @@ def _pdf(d: Doc):
 
 
 def _review(d: Doc):
-    if d.rec.events(type="note.reviewed", subject=d.src["id"]):
+    if is_accepted(d.rec, d.src["id"], current_hash(d.rec, d.src)):
         return [], []
-    return [], ["agent-written and not yet read by you: it is marked a draft until you mark it reviewed"]
+    return [], ["waiting for you to read and accept this version in the app; it is not in your vault until you do"]
 
 
 ROWS: list[Row] = [Row("sources", _sources), Row("no keys", _no_keys), Row("math", _math),
@@ -545,7 +549,7 @@ def _node(rec: Record, src: dict, status: str, sha: str | None = None, pdf: str 
         rec.put_edges(new)
 
 
-def _note_stub(rec: Record, src: dict, status: str, pdf_rel: str | None):
+def _note_stub(rec: Record, src: dict, status: str, pdf_rel: str | None, accepted_on: str | None = None):
     body_md = markdown(rec, src)
     authors = sorted({s["by"] for s in src["sections"] if s["by"]})
 
@@ -553,9 +557,8 @@ def _note_stub(rec: Record, src: dict, status: str, pdf_rel: str | None):
         head = []
         if pdf_rel:
             head += [f"![[{pdf_rel}]]", ""]
-        head += [f"> [!warning] Draft by {', '.join(authors) or 'an agent'}",
-                 "> Written from the record by an agent. Read it, then mark it reviewed with `ros vault_resolve "
-                 f"--target {src['id']} --action reviewed` or set `ros_status: reviewed` above.", ""]
+        head += [f"> [!note] Accepted by you on {accepted_on or date.today().isoformat()}",
+                 f"> Written by {', '.join(authors) or 'an agent'}; you read this version in the app and accepted it.", ""]
         extra = {"handout_kind": src["kind"], "status": status,
                  "capabilities": [ctx.link(c) for c in src["scope"] if c.startswith("capability:")][:20]}
         if pdf_rel:
@@ -566,23 +569,147 @@ def _note_stub(rec: Record, src: dict, status: str, pdf_rel: str | None):
 
 
 def publish_note(rec: Record, handout: str, pdf_rel: str | None = None) -> dict | None:
-    """Write the handout's note into the vault (if one is set): the primary copy, as soon as there is text."""
+    """Write the handout's note into the vault (if one is set), but only for a version the person has accepted. Any other
+    version leaves the vault as it is."""
     src = load(rec, handout)
     if not vault.configured() or not any((s.get("text") or "").strip() for s in src["sections"]):
         return None
+    ev = _acceptance(rec, src["id"], current_hash(rec, src))
+    if ev is None:
+        return None
     node = rec.node(src["id"]) or {}
     pdf_rel = pdf_rel or node.get("pdf")
-    return vault.put_note(rec, _note_stub(rec, src, node.get("status", "draft"), pdf_rel))
+    return vault.put_note(rec, _note_stub(rec, src, node.get("status", "draft"), pdf_rel, ev["ts"][:10]))
+
+
+# ---- acceptance: the person reads a version in the app, then it reaches the vault ---------------------------------------
+def _acceptance(rec: Record, handout: str, sha: str) -> dict | None:
+    return next((e for e in rec.events(type="handout.accepted", subject=hid(handout)) if e["data"].get("source_hash") == sha), None)
+
+
+def is_accepted(rec: Record, handout: str, sha: str) -> bool:
+    """Whether the person accepted this exact version (source hash) of the handout."""
+    return _acceptance(rec, handout, sha) is not None
+
+
+def ever_accepted(rec: Record, handout: str) -> bool:
+    return bool(rec.events(type="handout.accepted", subject=hid(handout), limit=1))
+
+
+def _place_pdf(rec: Record, src: dict, sha: str) -> str | None:
+    """Put the PDF built for ``sha`` into the vault, only if that version is accepted."""
+    if not vault.configured() or not is_accepted(rec, src["id"], sha):
+        return None
+    pdf = folder(rec, src["id"]) / "build" / sha / "out" / f"{sha}.pdf"
+    if not pdf.is_file() or not any(e["data"].get("hash") == sha for e in rec.events(type="handout.built", subject=src["id"])):
+        return None
+    return vault.place(rec, pdf, src["id"], vault.layout(rec)["title"], src["title"])
+
+
+def accept(rec: Record, handout: str, source_hash: str) -> dict:
+    """The person read this version and accepts it into their vault: record it, then deliver the note and, if built, the
+    PDF. Only the current version can be accepted (a stale page is refused); accepting twice changes nothing."""
+    src = load(rec, handout)
+    sha = current_hash(rec, src)
+    if source_hash != sha:
+        raise ValueError("this handout changed since you read it: open it again and read the current version")
+    if not any((s.get("text") or "").strip() for s in src["sections"]):
+        raise ValueError("there is nothing written yet to accept")
+    rec.append("handout.accepted", src["id"], {"handout": src["id"], "source_hash": sha}, actor="person",
+               id=event_id("handout.accepted", f"{rec.root.name}|{src['id']}|{sha}"))
+    rel = _place_pdf(rec, src, sha)
+    if rel:
+        _node(rec, src, "built", sha, rel)
+    note = publish_note(rec, src["id"], rel)
+    return {"handout": src["id"], "source_hash": sha, "accepted": True, "note": note["path"] if note else None,
+            "vault_pdf": rel, "pdf_follows": rel is None}
+
+
+def request_changes(rec: Record, handout: str, text: str) -> dict:
+    """The person read it and asks for changes in their own words: recorded, and one ``handout`` task opens with them."""
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("say what should change")
+    src = load(rec, handout)
+    sha = current_hash(rec, src)
+    text = text.strip()
+    digest = hashlib.sha256(text.encode()).hexdigest()[:16]
+    rec.append("handout.changes_requested", src["id"], {"handout": src["id"], "source_hash": sha, "text": text}, actor="person",
+               id=event_id("handout.changes_requested", f"{rec.root.name}|{src['id']}|{sha}|{digest}"))
+    task = tasks.open_task(rec, "handout", src["id"],
+                           f"The researcher read the handout {src['title']!r} ({src['id']}) and asks for these changes, "
+                           f"in their words: {text}\nRevise the sections with handout_write; the system checks and builds "
+                           "it itself and shows the new version to the researcher.",
+                           data={"handout": src["id"], "row": "changes"}, key=f"changes|{sha}|{digest}")
+    return {"handout": src["id"], "task": task}
+
+
+def take_out(rec: Record, handout: str) -> dict:
+    """Remove the note and PDF this handout has in the vault, only if the person never edited them (the vault's own rule:
+    only unedited generated files are deleted). An edited file is left and reported."""
+    src = load(rec, handout)
+    if not vault.configured():
+        return {"handout": src["id"], "removed": [], "kept": []}
+    out = vault.remove_generated(rec, [src["id"], "file:" + src["id"]])
+    if out["removed"]:
+        node = dict(rec.node(src["id"]) or {})
+        node.pop("pdf", None)
+        rec.put_nodes([node])
+        rec.append("handout.removed", src["id"], {"handout": src["id"], "paths": out["removed"]}, actor="person")
+    return {"handout": src["id"], **out}
+
+
+def _vault_paths(rec: Record, handout: str) -> list[str]:
+    return vault.generated_paths(rec, [hid(handout), "file:" + hid(handout)]) if vault.configured() else []
+
+
+def waiting(rec: Record) -> list[dict]:
+    """What the person must look at: versions that pass the gate and are not accepted ("read"), and handout notes already
+    in the vault that the person never accepted ("in-vault")."""
+    out = []
+    for n in rec.nodes(type="handout"):
+        try:
+            src = load(rec, n["id"])
+        except (KeyError, ValueError):
+            continue
+        sha = current_hash(rec, src)
+        in_vault = [] if ever_accepted(rec, n["id"]) else _vault_paths(rec, n["id"])
+        if in_vault:
+            out.append({"kind": "in-vault", "subject": n["id"], "text": f"In your vault without your acceptance: {src['title']}",
+                        "title": src["title"], "source_hash": sha, "paths": in_vault})
+            continue
+        if is_accepted(rec, n["id"], sha):
+            continue
+        try:
+            man = json.loads((folder(rec, n["id"]) / "manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if man.get("ready") and man.get("source_hash") == sha:
+            out.append({"kind": "read", "subject": n["id"], "text": f"Ready for you to read: {src['title']}",
+                        "title": src["title"], "source_hash": sha})
+    return out
+
+
+def review_state(rec: Record, handout: str) -> dict:
+    """What the reading view offers the person for the current version."""
+    src = load(rec, handout)
+    sha = current_hash(rec, src)
+    mine = next((w for w in waiting(rec) if w["subject"] == src["id"]), None)
+    state = "accepted" if is_accepted(rec, src["id"], sha) else mine["kind"] if mine else "draft"
+    return {"state": state, "source_hash": sha, "in_vault": bool(_vault_paths(rec, src["id"]))}
 
 
 def build(rec: Record, handout: str, wait: bool = False, engine: str | None = None) -> dict:
-    """Deliver the handout: its note now, and its PDF as a queued job (or at once with ``wait``). The note is written
-    whenever there is text; the PDF is built only for a version the gate passes."""
+    """Check the handout and queue its PDF job (or build at once with ``wait``). The PDF is built only for a version the
+    gate passes. The note and PDF reach the vault only once the person accepts that version in the app."""
     v = check(rec, handout)
     src = load(rec, handout)
     note = publish_note(rec, handout)
     out = {"handout": src["id"], "ready": v["ready"], "source_hash": v["source_hash"], "missing": v["missing"],
-           "warnings": v["warnings"], "note": note["path"] if note else None, "tasks": v["tasks"]}
+           "warnings": v["warnings"], "note": note["path"] if note else None, "tasks": v["tasks"],
+           "accepted": is_accepted(rec, src["id"], v["source_hash"])}
+    if not out["accepted"]:
+        out["note_waits_for"] = ("your acceptance: " + ("it is ready for you to read in the app" if v["ready"]
+                                                        else "it appears for you to read when the gate passes"))
     if not v["ready"]:
         out["pdf"] = None
         out["why"] = "the PDF is built when the gate passes: " + ("; ".join(v["missing"][:3]) or "nothing is written yet")
@@ -647,12 +774,9 @@ def _attach(rec: Record, src: dict, sha: str, res: dict | None = None) -> dict:
     rec.append("handout.built", src["id"], {"hash": sha, "engine": res.get("engine"), "pages": res.get("pages"),
                                            "bytes": pdf.stat().st_size, "path": str(pdf.relative_to(rec.root))},
                actor="ros", id=event_id("handout.built", f"{rec.root.name}|{src['id']}|{sha}"))
-    rel = None
-    if vault.configured():
-        lay = vault.layout(rec)
-        rel = vault.place(rec, pdf, src["id"], lay["title"], src["title"])
+    rel = _place_pdf(rec, src, sha)  # only a version the person accepted reaches the vault
     _node(rec, src, "built", sha, rel)
-    if rel:
+    if rel and sha == current_hash(rec, src):
         publish_note(rec, src["id"], rel)
     return {"pdf": str(pdf), "vault_pdf": rel, "engine": res.get("engine"), "pages": res.get("pages")}
 

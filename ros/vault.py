@@ -53,7 +53,7 @@ END = "<!-- ros:end -->"
 MY_NOTES = "## My notes"
 SCAFFOLD_HASH = hashlib.sha256(MY_NOTES.encode()).hexdigest()[:16]
 EVENTS = ("note.dismiss", "note.release", "lesson.close", "decision", "verdict", "retrieval", "grade", "approval",
-          "inbox.found", "handout.built", "handout.revise")
+          "inbox.found", "handout.built", "handout.revise", "handout.accepted", "handout.removed")
 # Frontmatter keys Research OS owns; the hash covers these and the generated region. Anything else is the person's.
 OWNED = ("ros_id", "ros_record", "ros_kind", "ros_portal", "title", "aliases", "state", "next_review", "up",
          "prerequisites", "unlocks", "pdf", "legacy", "outcome", "by", "date", "subject", "verdict", "ownership",
@@ -730,6 +730,8 @@ def _build_moc(ctx: Ctx, stub: Stub):
             ids = [e["subject"] for e in rec.events(type="lesson.close") if not e["subject"].startswith("bundle:")]
         else:
             ids = [n["id"] for n in rec.nodes(type=ntype)]
+            if ntype == "handout":  # an agent's handout is listed only once the person accepted it
+                ids = [i for i in ids if rec.events(type="handout.accepted", subject=i, limit=1)]
         if ids:
             body += [f"## {title} ({len(ids)})", "", *[f"- {ctx.link(i)}" for i in ids[:100]], ""]
     srcs = rec.nodes(type="source")
@@ -770,7 +772,8 @@ def _from_user_record(ctx: Ctx) -> list[str]:
             v = learning.view(key)
             rows.append(f"| {ctx.link(key, v['title'], user)} | {v['state']} | {v['next_review'] or '—'} |")
         out += [f"## Capabilities ({len(ids)})", "", "| Capability | State | Next review |", "|---|---|---|", *rows, ""]
-    hand = [e["src"] for e in urec.edges(dst=ctx.hub_id, type="about") if e["src"].startswith("handout:")]
+    hand = [e["src"] for e in urec.edges(dst=ctx.hub_id, type="about") if e["src"].startswith("handout:")
+            and urec.events(type="handout.accepted", subject=e["src"], limit=1)]
     if hand:
         out += [f"## Study handouts ({len(hand)})", "", *[f"- {ctx.link(h, record=user)}" for h in sorted(hand)], ""]
     return out
@@ -881,7 +884,7 @@ def _emit(ctx: Ctx, stub: Stub, report: dict, dry_run: bool) -> None:
         return
     props, tags, body = stub.build(ctx, stub)
     note = Note(stub.id, stub.kind, stub.folder, stub.title, props, body, tuple(tags), stub.structural,
-                "draft-unreviewed" if (props.get("ros_kind") == "handout") else "generated")
+                "reviewed" if (props.get("ros_kind") == "handout") else "generated")  # handouts are written only once accepted
     target = ctx.vault / path
     fm = {**props, "tags": list(tags)}
     h = gen_hash(fm, body)
@@ -1380,6 +1383,49 @@ def place(rec: Record, src: Path, rid: str, hub_slug: str, title: str) -> str:
         mf.upsert(path=rel, key=key, status="generated", mtime_ns=st.st_mtime_ns, size=st.st_size, sha=sha,
                   gen_hash=sha, extra=json.dumps({"structural": False}))
         return rel
+
+
+def _on_disk(ctx: Ctx, rids: list[str]) -> list:
+    rows = []
+    for rid in rids:
+        row = ctx.mf.by_key(ctx.key(rid))
+        if row and row["status"] not in ("planned", "dismissed", "deleted") and (ctx.vault / row["path"]).is_file():
+            rows.append(row)
+    return rows
+
+
+def generated_paths(rec: Record, rids: list[str]) -> list[str]:
+    """The files this record has written to the vault for these ids (a handout's note and PDF): reads, writes nothing."""
+    vault = vault_path()
+    if not Manifest.path_for(vault).is_file():
+        return []
+    with opened(vault, True) as mf:
+        return [r["path"] for r in _on_disk(Ctx(rec, mf, vault), rids)]
+
+
+def remove_generated(rec: Record, rids: list[str]) -> dict:
+    """Delete the generated files of these ids, but only those the person never edited (the one rule for deleting
+    anything in the vault). An edited file stays and is reported with the reason."""
+    vault = vault_path()
+    removed, kept = [], []
+    with opened(vault) as mf:
+        ctx = Ctx(rec, mf, vault)
+        for row in _on_disk(ctx, rids):
+            target = vault / row["path"]
+            data = target.read_bytes()
+            if row["path"].lower().endswith(".md"):
+                p = parse_note(data.decode("utf-8", errors="replace"))
+                edited = (row["status"] == "user-edited" or p.region is None or gen_hash(p.fm, p.region) != p.fm.get("ros_hash")
+                          or _short(p.user) != SCAFFOLD_HASH)
+            else:
+                edited = row["status"] == "user-edited" or _sha(data) != row["sha"]
+            if edited:
+                kept.append({"path": row["path"], "why": "you edited it, so it stays"})
+                continue
+            target.unlink()
+            mf.delete(row["path"])
+            removed.append(row["path"])
+    return {"removed": removed, "kept": kept}
 
 
 def locate(rec: Record, rid: str) -> dict | None:

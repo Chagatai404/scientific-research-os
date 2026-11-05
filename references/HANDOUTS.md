@@ -20,7 +20,9 @@ you learned anything, and it never carries an assessment item's answer key.
    Markdown with LaTeX math (`$x$`, `$$x$$`), lists, pipe tables, an image line (`![caption]` with the path `figures/name.png` in round brackets) and boxes
    (`:::definition Name`, `rule`, `keyidea`, `mistake`, `remark`, `example`, `exercise`, `question`; a `=== solution` or
    `=== answer` line splits a box from its solution). Sources are added with their keys and cited as `[@key]`.
-3. `handout_check` runs the gate and opens a task for what is missing. `handout_build` writes the note and queues the PDF.
+3. The `handout_gate` automation runs the gate after the agent's write (`handout_check` opens a task for what is missing)
+   and queues the PDF (`handout_build`); nobody has to ask. A version that passes appears in the decision queue as "Ready
+   for you to read".
 
 ## The gate
 
@@ -38,10 +40,13 @@ A failing row opens a `handout` task with the row and its problems, once. To add
 
 ## Where it goes
 
-- The **note** (`Research OS/<Courses|Projects>/<Name>/Handouts/<Title>.md`) is written as soon as there is text. Its
-  properties carry `handout_kind`, `status` and `pdf`; its body uses Obsidian callouts, with solutions and answers
-  collapsed. It is marked `ros_status: draft-unreviewed` and says which agent wrote it, until you read it and mark it
-  reviewed (`vault_resolve --action reviewed`, or `ros_status: reviewed` in its properties).
+- The **note** (`Research OS/<Courses|Projects>/<Name>/Handouts/<Title>.md`) is written only after you accept that
+  version in the app ("Accept into my vault" in the handout's reading view, the human tool `handout_accept`, recorded as
+  `handout.accepted` with the version's source hash). Its properties carry `handout_kind`, `status` and `pdf`; its body
+  uses Obsidian callouts, with solutions and answers collapsed, and says "Accepted by you on <date>". A new version waits
+  for your acceptance again and the vault keeps the accepted one untouched. "Ask for changes" (`handout_request_changes`)
+  sends your words to an agent as a task. A note found in the vault that you never accepted is listed in the queue with
+  Accept or "Take it out of my vault" (`handout_take_out`: removed only if you never edited it).
 - The **PDF** is built from the same source: `main.tex` on the restored study-handout style (`roshandout.sty`), or
   `index.html` printed by a headless browser. It is placed in `Research OS/Attachments/<Name>/<Title>.pdf` and embedded
   in the note. A PDF you annotated is never overwritten: the next version is saved as `<Title> v2.pdf`.

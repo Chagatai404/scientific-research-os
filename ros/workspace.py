@@ -507,7 +507,8 @@ def document(rec: Record, subject: str, offset: int = 0) -> dict:
     return {"schema": "ros.document.v1", "id": subject, "record": rec.root.name,
             "title": node.get("title") or subject, "kind": node["type"], "sections": sections,
             "sources": sources, "source_hash": digest, "media_base": media_base,
-            "legacy": bool(node.get("legacy")), "status": node.get("status") or "recorded", **({"read": read} if read else {})}
+            "legacy": bool(node.get("legacy")), "status": node.get("status") or "recorded", **({"read": read} if read else {}),
+            **({"acceptance": handouts.review_state(rec, subject)} if node["type"] == "handout" else {})}
 
 
 def activity(rec: Record) -> dict:

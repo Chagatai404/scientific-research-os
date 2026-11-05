@@ -10,4 +10,5 @@ After the scouts, verifiers and ingest tasks of a question have finished, the re
 3. When an experiment has been approved, run and audited, `handout_create --kind findings --scope '["experiment:<key>"]'`:
    the context carries the approval, each claim with every step's verdict and notes, and the decisions so far. Write the
    results with the files and numbers they come from, and end with a decision memo that is a proposal.
-4. Tell the researcher the handout is ready (portal: the decision card links to it) and stop: they decide.
+4. Tell the researcher the handout is ready for them to read and accept in the app (the queue links to it) and stop:
+   they decide. It is not in their vault until they accept it, and they are never asked to run a check or a build.
