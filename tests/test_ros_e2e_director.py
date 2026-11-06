@@ -15,7 +15,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from ros import api, automation, home, mcp, runner, serve, tasks, vault  # noqa: E402
+from ros import api, automation, handouts, home, mcp, runner, serve, tasks, vault  # noqa: E402
 from ros.lib import pdf  # noqa: E402
 from ros.store import Record  # noqa: E402
 
@@ -157,9 +157,13 @@ class CourseByPrompting(Scenario):
                       **({"sources": [{"key": "w", "text": "Wasserman, All of Statistics, ch. 3"}]} if role == "gist" else {}))
         self.call("finish", task=task["task"]["id"], result=hid, by="agent:claude", record="me")
         self.tick()
+        # the system checked it itself; nothing is in the vault until the person accepts the version in the app
+        self.assertFalse([p for p in self.notes("Courses") if vault.parse_note(p.read_text()).fm.get("ros_kind") == "handout"])
+        self.assertIn(hid, [i["subject"] for i in api.call("queue", user)])
+        self.person(self.portal(), "handout_accept", "me", handout=hid, source_hash=handouts.current_hash(user, handouts.load(user, hid)))
         note = next(p for p in self.notes("Courses") if vault.parse_note(p.read_text()).fm.get("ros_kind") == "handout")
         fm = vault.parse_note(note.read_text()).fm
-        self.assertEqual((fm["handout_kind"], fm["ros_status"]), ("lecture", "draft-unreviewed"))
+        self.assertEqual((fm["handout_kind"], fm["ros_status"]), ("lecture", "reviewed"))
         self.assertIn("#node/handout:", fm["ros_portal"])
         self.assertEqual(user.node(hid)["status"], "ready")
         done = self.jobs()

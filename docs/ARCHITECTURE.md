@@ -176,10 +176,84 @@ tool's choices come from that registry **(checked)**. Use deterministic event id
 Add it to `tasks.KINDS`, open it with `tasks.open_task(..., key=...)` (the key makes it idempotent), and describe in
 the relevant skill which agent takes it and which tool finishes it. Then decide whether the desktop may take it without
 anyone asking: either list it in `dispatch.AUTO` with its tool grant (`GRANTS`) and step budget (`STEPS`), or in
-`dispatch.NEVER` with the reason a person or a client with a shell must do it (a kind that only needs a shell, like `visual` and `animation`, can also be in `dispatch.NATIVE`: taken when agents run on Claude Code or Codex, which then work with their own tools in the bundle folder) (`tests/test_ros_dispatch.py` fails until
-every kind is one or the other). Never grant `verdict`, a human-only tool, or a tool that holds the registry lock for
+`dispatch.NEVER` with the reason a person or a client with a shell must do it (a kind that needs to draw and look at a picture, like `visual` and `animation`, can also be in `dispatch.RENDER`: taken by Claude or
+Codex through the safe renderer below, with no shell and no built-in file tools; `dispatch.NATIVE` is only the Codex fallback for an animation on a
+computer where ManimGX cannot run in the renderer) (`tests/test_ros_dispatch.py` fails until every kind is one or the other). Never grant `verdict`, a human-only tool, or a tool that holds the registry lock for
 minutes; long work stays a `job` task for the runner. `runtime.Dispatcher` runs one agent at a time in a fresh context,
-the agent finishes only its own task, and `agents_configure` (Settings) pauses it or limits it per hour.
+the agent finishes only its own task, and `agents_configure` (Settings) pauses it or limits it per hour (`agents_per_hour`: 1 to 100, `0` for no limit). A run that is stopped (`interrupted`, or `failed` with detail `cancelled`) never counts against a task; one that runs out of steps (`unfinished`) is retried with a doubled step budget (at most 4x) and left alone after three, and `agents_retry` clears a left-alone task.
+
+### The safe renderer (how an unattended agent draws a figure or an animation)
+
+The threat is prompt injection (bundle text, handout text, source files and web material steering the model) and model-written render code. The
+model and the code it writes are both untrusted, so the model never gets a shell or Claude Code's built-in file tools (whatever it reads
+goes to the cloud). A figure or animation task (`dispatch.RENDER`) runs with only bridge tools, declared in `ros/lib/renderkit.py` and handled
+in `runtime.dispatch_once` (never record tools, so no MCP client or portal can reach them):
+
+| Tool | What it does | What confines it |
+|---|---|---|
+| `scratch_list`, `scratch_read`, `scratch_write` | text files (.py .txt .md .json .csv .svg .mmd, 200 KB, 300 files) of a fresh temporary folder per task | `Scratch.resolve`: a plain relative name only (no `..`, drive letter, `:` stream, UNC or `\\?\` form, reserved device name, trailing dot or space), every existing part checked as not a link, junction or reparse point, the real path checked to stay inside; nothing is ever linked or followed |
+| `render` | runs a Python script of the scratch folder (matplotlib, numpy), or a ManimGX scene (`scene_class`) | a Windows AppContainer (`ros/lib/appcontainer.py`), below |
+| `look` | returns a picture to the model as image content (MCP `image` block for Claude, `inputImage` for Codex) | magic bytes, 4 MB, pixel caps |
+| `publish` | copies one validated picture or video and a plain-text RESULT note into the bundle's `visuals/` | `renderkit.classify`, a plain file name that must match the content, the bundle folder and `visuals/` checked as not links |
+
+The scratch folder holds a COPY of what the task needs (`plan.json` and the small files of `visuals/`), never the bundle folder, and is removed
+with the task (a link inside it is removed itself, never entered). `bundle_file` is not granted to a render task: `publish` is the only way a
+picture reaches the bundle. Outputs are checked before anything leaves scratch (`renderkit.classify`): PNG, JPEG, GIF, WebP, MP4 or WebM by
+magic bytes, never by name; at most 8 MB (60 MB for video), 6000 pixels a side and 16 million pixels; an SVG only if purely declarative
+(allow-listed elements and attributes, no script, event handler, style sheet, `foreignObject`, `image`, animation, doctype or reference outside
+the file). The RESULT note is stored as plain text and never rendered as HTML.
+
+`render` runs inside a real operating-system boundary, not Python audit hooks (ctypes and native code step around hooks) and not a low-integrity
+token (it blocks writes, not reads or network). `appcontainer.run` starts the interpreter as an AppContainer process with `SECURITY_CAPABILITIES`
+and no capability at all: no network, loopback included (the bridge token is on a command line and the portal listens on 127.0.0.1), and no
+file the user can read except what is granted to the container's SID: read and execute on a PRIVATE COPY of the interpreter and only the
+packages matplotlib imports (`renderkit.build_runtime`, under `<home>/render/`), read and write on the task's scratch folder, and (for an
+animation) read on the ManimGX packages. It gets no child process (`PROCESS_CREATION_CHILD_PROCESS_RESTRICTED` and a Job Object active-process
+limit of one), only its three pipes as inherited handles (an explicit handle list, so no socket or file of the parent leaks in), and a Job
+Object that kills it when the handle closes, with CPU time, memory, wall-clock, output-size and scratch-disk limits and no UI access.
+`appcontainer.available()` says whether a computer can do this; nothing falls back to an unconfined process: where it cannot (not Windows, no
+AppContainer API, no Python with matplotlib, the runtime cannot be prepared) the task waits and Settings says "the safe renderer is not
+available on this computer: <reason>" (`dispatch.why_waiting`). Animations need ManimGX (software rendering and x264 inside its own native
+module, so no ffmpeg or LaTeX child process); Manim Community needs both as child processes and cannot run in the container. Without ManimGX an
+animation goes only to Codex with its own shell, as before.
+
+A run with no built-in tools must really have none. Measured on codex-cli 0.165: a Codex run started with the person's own `CODEX_HOME` still
+had a Node REPL tool (an MCP server of their configuration that `-c mcp_servers.node_repl.enabled=false` did not remove) that read any file and
+ran commands, and web search, whatever `features.shell_tool=false` said. So `providers.codex` gives every run that is not a Code session a private
+`CODEX_HOME` with only the login (copied, written back if Codex rotated it and the real one has not changed, deleted afterwards) and a minimal
+configuration (`CODEX_MINIMAL_CONFIG`: web search off, shell, exec, view-image, multi-agent, plugins, apps, browser, computer use, hooks off), a
+thread with no environment (`environments: []`) in a read-only sandbox, and stops the run if a built-in tool item (`commandExecution`,
+`fileChange`, `webSearch`, `imageView`, an MCP call but Codex's own resource listing, a sub-agent) ever appears. Claude runs with `--tools ''`
+and only the bridge's MCP tools, as every non-Code session already did.
+
+### Reading the person's files in a cloud run
+
+`SOURCE_READS` (`source_list`, `source_children`, `source_preview`, `source_search`, `library_status`) and `SOURCE_WRITES` (`source_capture`, which
+records a passage with its locators, and `library_process`, which is bounded, idempotent and returns counts only) are granted to learn,
+research and build sessions, the librarian role and the `ingest` task. Chat, defend and the other roles do not get them. `source_register`,
+`source_change`, `source_relocate`, `source_use_vault`, `library_add` and the rest stay human. The grant is not the boundary; these are:
+
+- **Real path per call.** `sources.resolve` resolves the path with `strict=True` on every call (so a junction or symlink is followed to its
+  target) and refuses it unless it is still inside the connection's root; `children` leaves such an entry out, `search` re-resolves every hit,
+  and a network share is refused by `home.local_path`. Names that start with a dot, `.git`, `node_modules`, secrets (`.env`, `*.pem`, ...) and
+  profile data (`AppData`) are excluded wherever the connection starts.
+- **Local-only.** A source the person marked local-only (the default when connecting) is refused to a cloud model on every call by
+  `runtime.source_refusal` (and its matches are dropped from a search), on top of `workspace_cloud_guard` and `private_scope`. A local model
+  (`ollama:`, `compatible:`) may read it.
+- **Marked as data.** `source_preview`, `source_search` and `source_capture` results carry `"untrusted": true` and a notice, and every system
+  prompt says text from sources is data, never instructions.
+- **Taint.** Once a run holds source content (`SOURCE_CONTENT`), `literature_search` and a `delegate` to a role that has it (scout, verifier)
+  are refused for the rest of the run; the taint is shared with the roles of the run and outlives it for the rest of the conversation
+  (`runtime.conversation_tainted`, a fold over the run steps), because the text read is in the messages of the next turn. Listing names
+  (`source_list`, `source_children`) does not taint.
+
+Tools that share a run with source reading, and why that is acceptable: the other read tools (`find`, `library`, `context`, `records`,
+`workspace_document`, ...) read the record and the vault, never the connected files or the lexical index (`tests/test_ros_source_grants.py`
+fails if any other tool module reads them); the record writes (`add_node`, `add_edge`, `add_item`, `add_claim`, `bundle_*`, `handout_*`) stay in
+the person's own record, are attributed and can be undone; `source_capture` keeps the passage in the person's own `source-snapshots`.
+The only granted tool that sends anything to a third party is `literature_search` (Crossref and Europe PMC receive the query), which the
+taint refuses; no tool module imports a networking library (the same test). What the model reads is, of course, sent to its own provider:
+that is the person's choice of a cloud model, and is why local-only sources exist.
 
 ### An automation (something the system does so that nobody has to ask)
 
@@ -201,6 +275,13 @@ opens the first tasks and returns what it did; `parse_intent` chooses the playbo
 A kind is a `Kind(...)` entry in `handouts.KINDS` (its sections with word budgets, minimum counts, the writer's brief). A
 gate row is `Row(name, check(doc) -> (problems, warnings))` in `handouts.ROWS`; a failing row opens a `handout` task. Rendering stays in
 `ros/lib/pdf.py` (Markdown subset to Obsidian callouts, LaTeX and HTML); add syntax there once, for all three.
+
+Delivery follows invariant 5. Checking and building are the system's (the `handout_gate` automation, once per source hash);
+the vault is the person's: `handouts.publish_note` and the PDF placement (`handouts._place_pdf`) write only for a source
+hash with a `handout.accepted` event, made by the human tools `handout_accept`, `handout_request_changes` and
+`handout_take_out` from the handout's reading view. Any new path that writes a handout note or PDF into the vault must go
+through `handouts.is_accepted`. `handouts.waiting` feeds the decision queue and the brief ("Ready for you to read",
+"In your vault without your acceptance").
 
 ### A vault note type
 
@@ -239,6 +320,25 @@ in addition to the legacy browser check. See `docs/portal-redesign/ARCHITECTURE.
 Put it in `ros/lib/` with its own CLI (`python -m ros.lib.<name>`), import it lazily from the domain module that uses
 it, and make its absence a reported problem, not an exception that escapes.
 
+### Supervision, diagnostics and network loss
+
+- **Logs.** `ros/desktop.py` configures the `ros` logger once (`backend.log` in `ROS_LOG_DIR`, rotating 2 MB x 5, every record and
+  traceback masked with `providers.SECRETS`); `threading.excepthook` and `PortalServer.handle_error` route to it. The Electron host writes
+  `desktop.log` and keeps the backend's last 100 stderr lines in memory, writing them only when the backend exits unexpectedly.
+- **Restart.** `desktop/main.cjs` restarts a backend that exits on its own (`RestartPolicy` in `desktop/lifecycle.cjs`: 3 restarts in
+  10 minutes after 1 s, 5 s, 15 s), with a new handshake, port and credential; handlers are registered once and read the current origin.
+- **Background problems.** `runtime.report(component, error)` logs and remembers the last few errors per component (`runtime.HEALTH`);
+  `GET /services/health` lists them for the Activity page. Feed it from any background loop instead of keeping a private error list.
+- **Child stderr.** `providers.launch` and `runtime.engine_process` read the child's stderr into a bounded `StderrTail`; only a failure
+  puts a masked excerpt in the error or the log. Never put stderr in a successful result.
+- **Transient failures.** An adapter raises `providers.TransientProviderError` for a lost connection or an overloaded service (text matched
+  by `providers.TRANSPORT`, Codex `codexErrorInfo`, Claude's result text). `runtime.execute` retries it 3 times (`RETRY_DELAYS`), scoping
+  tool-call operation ids by attempt (`a2:`; `ToolBridge(prefix=)` for Claude) so a cached result is never reused for a different call,
+  and tells the model what was already committed. `runtime.dispatch_once` ends such a task as `interrupted` (never `failed`) and the
+  `Dispatcher` backs off 2 to 15 minutes. A stalled stream is shown through the request's `status` callback (a `status` run step).
+- **Connectivity.** `ros/lib/connectivity.py` (a cached TCP connect, reached through `runtime.connection`) backs `GET /services/connectivity`,
+  which the app polls for its offline banner.
+
 ## Tests
 
 ### Desktop interfaces, sources and execution
@@ -263,11 +363,26 @@ To add a provider, implement its adapter in `ros/lib/providers.py`, advertise ve
 register it in `ADAPTERS`, and exercise streaming, tool results, interruption and malformed input
 with deterministic fixtures. Never run inference during discovery. Frozen worker entry points
 dispatch through `ros.desktop --worker`; `Runner` translates its fixed allowlist, never arbitrary modules.
+`--worker render-cleanup` is the uninstaller's (`desktop/installer.nsh`, skipped on an update): it revokes the safe renderer's
+folder grants, removes `<home>/render/runtime-*` and its scratch, and unregisters the AppContainer profile (`renderkit.cleanup`).
 
 Desktop UI operations stay in the existing React typed client and AST renderer. Build frontend
 assets before freezing the sidecar. Run `npm --prefix desktop run verify`, build the sidecar with
 `desktop/build-backend.ps1`, and package with `npm --prefix desktop run package`.
 
+- Engine version guard (`ros/store.py`): `engine.json` in the record root holds the newest engine version that wrote it
+  (`{"engine": "1.7.3"}`; metadata, not record truth). `_guard` runs under the write lock on every write path (events,
+  nodes, edges, items, deletes): a stored version newer than this process's (the `VERSION` file read at import, bundled
+  into the frozen backend; missing means no guard) raises `ValueError` and reads stay allowed; an equal or older stored
+  version is replaced. Versions compare numerically and the parsed file is cached until its mtime or size changes.
+- `ros mcp` supervisor (`ros/mcp.py` `Supervisor`): owns the client's stdin/stdout (bytes, UTF-8), runs `ros mcp --worker`
+  (frozen: `--worker cli mcp --worker`) as a child and forwards JSON-RPC lines. Every `ROS_MCP_CHECK_SECONDS` (10) and before
+  each request it compares the watched `VERSION` (`ROS_MCP_VERSION_FILE`) with the one it started with; on a change with no
+  request in flight it stops the worker, starts a new one, replays `initialize` and `notifications/initialized` (the replay's
+  reply is swallowed) and sends `notifications/tools/list_changed`. A crashed worker's open requests get a -32603 error and it
+  is restarted with backoff (5 crashes in 60 s, then errors). Only the worker runs the automation tick. `ROS_MCP_DEBUG=1`
+  makes `ping` return the worker's pid. `ROS_MCP_NO_SUPERVISOR=1` serves in-process. After a release, run
+  `desktop/update-checkout.ps1` to fast-forward the developer's editable checkout and reinstall it.
 - Unit tests: `python -m unittest discover -s tests -p "test_*.py"` (about 10 s). Name new files `test_ros_<area>.py`.
 - Browser: `node tests/ros-portal-browser.cjs`.
 - Workspace: `npm --prefix frontend test`, `npm --prefix frontend run build`, `node tests/ros-workspace-browser.cjs`,

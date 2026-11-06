@@ -3,7 +3,7 @@ export interface NodeData {id: string; type: string; title?: string; text?: stri
 export interface Relation {id: string; record: string; title: string; missing: boolean; edge: {src: string; dst: string; type: string; [key: string]: unknown}}
 export interface Entity {id: string; record: string; node: NodeData; incoming: Relation[]; outgoing: Relation[]; truncated: number}
 export interface Section {id: string; title: string; text: string; by?: string; locators?: unknown[]}
-export interface DocumentData {schema: 'ros.document.v1'; id: string; record: string; title: string; kind: string; status: string; sections: Section[]; sources: {key: string; text: string}[]; source_hash: string; media_base: string; legacy: boolean}
+export interface DocumentData {schema: 'ros.document.v1'; id: string; record: string; title: string; kind: string; status: string; sections: Section[]; sources: {key: string; text: string}[]; source_hash: string; media_base: string; legacy: boolean; acceptance?: {state: 'draft' | 'read' | 'in-vault' | 'accepted'; source_hash: string; in_vault: boolean}}
 export interface SearchResult {id: string; record: string; title: string; type: string; source: string}
 export interface Resolution {status: 'resolved' | 'ambiguous' | 'missing'; matches: {id: string; record: string; title: string; anchor: string}[]}
 export interface LibraryItem {id: string; title: string; status?: string; kind?: string; started?: string; closed?: boolean; ready?: boolean}
@@ -12,7 +12,7 @@ export interface GraphNode {id: string; label: string; kind: string; cls?: strin
 export interface GraphData {nodes: GraphNode[]; edges: {src: string; dst: string; type: string; provenance?: string | null; verified?: boolean | null; structure?: boolean}[]; width: number; height: number; title: string; focus?: string; progress?: {weeks: {week:string;answers:number;unaided_correct:number;reviews:number}[];due:number}; truncated?: number; bounded?: boolean}
 export interface LessonStep {action: string; title?: string; reason?: string; item?: string; capability?: string; mode?: string; question?: {kind: string; prompt: string; options?: string[]}; content?: {animation?:import('./MediaArtifacts').PreparedAnimation;clip?:import('./MediaArtifacts').PreparedClip;live?: boolean; note?: string; segments?: {id: string; text: string; audio?: string}[]; visuals?: {path: string}[]; base?: string}}
 export interface AnswerResult {attempt?: string; verdict?: string; feedback?: string; explanation?: string; next?: LessonStep; pending?: boolean}
-export interface QueueItem {kind: string; subject: string; title?: string; text?: string; headline?: string; record?: string; reason?: string}
+export interface QueueItem {kind: string; subject: string; title?: string; text?: string; headline?: string; record?: string; reason?: string; source_hash?: string}
 export interface Evidence {subject: string; kind: string; node?: NodeData; title?: string; text?: string; verdict?: string; ownership?: string; assurance?: string; can_accept?: boolean; required?: string[]; steps?: Record<string, {verdict: string; by: string; notes?: string}>; artifacts?: string[]; citations?: {citation: string}[]; adversary_memo?: string; authorizes?: string; plan?: Record<string, unknown>; links?: {vault?: {obsidian: string}; handouts?: LibraryItem[]}; [key: string]: unknown}
 
 export interface Folder {id: string; title: string; kind: 'course' | 'project' | 'collection'; parent: string}

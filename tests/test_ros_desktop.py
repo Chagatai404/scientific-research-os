@@ -172,7 +172,7 @@ class ProviderLaunch(unittest.TestCase):
     """The installed CLIs are reached through npm .cmd shims; those must start, and Codex must accept our arguments."""
     def run_adapter(self, adapter, request, lines=()):
         launched=[]
-        def launch(argv, cwd): launched.append(argv); return FakeProcess(lines)
+        def launch(argv, cwd, env=None): launched.append(argv); return FakeProcess(lines)
         with patch.object(providers,'launch',launch):
             try: adapter(dict(request,system='s',messages=[],deadline=2),lambda _:None,None,threading.Event(),lambda _:None)
             except providers.ProviderError as exc: error=exc
@@ -195,7 +195,7 @@ class ProviderLaunch(unittest.TestCase):
         with tempfile.TemporaryDirectory() as home:
             (Path(home)/'config.toml').write_text('[mcp_servers.my-server]\nurl="x"\n[mcp_servers."odd.name"]\nurl="x"\n[plugins."pdf@runtime"]\nenabled=true\n',encoding='utf-8')
             with patch.dict(os.environ,{'CODEX_HOME':home}), patch.object(providers,'codex_executable',return_value='codex'):
-                argv,error=self.run_adapter(providers.codex,{'model':'codex:gpt-6.1-sol'})
+                argv,error=self.run_adapter(providers.codex,{'model':'codex:gpt-6.1-sol','native':True,'workdir':home})  # a Code session keeps the person's own configuration and switches servers off one by one; a run with no built-in tools gets a private CODEX_HOME instead (tests/test_ros_render_sandbox.py)
         overrides=[argv[i+1] for i,value in enumerate(argv) if value=='-c']
         self.assertIn('mcp_servers.my-server.enabled=false',overrides); self.assertIn('plugins.pdf@runtime.enabled=false',overrides)
         # A quoted segment is read literally and a `mcp_servers={}` reset empties every transport: both make Codex exit with "invalid transport".

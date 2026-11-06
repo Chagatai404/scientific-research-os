@@ -170,7 +170,7 @@ class ComposeAndGateTests(Fixture):
         self.write_lecture(hid)
         out = api.call("handout_check", self.rec, handout=hid)
         self.assertTrue(out["ready"], out["missing"])
-        self.assertTrue(any("not yet read by you" in w for w in out["warnings"]))
+        self.assertTrue(any("waiting for you to read and accept" in w for w in out["warnings"]))
         self.assertEqual(self.rec.node(hid)["status"], "ready")
 
     def test_each_row_refuses_what_it_should(self):
@@ -243,20 +243,24 @@ class DeliveryTests(Fixture):
         self.write_lecture(hid)
         return hid
 
-    def test_the_note_is_written_with_text_and_marked_a_draft(self):
+    def test_the_note_reaches_the_vault_only_after_the_person_accepts_it(self):
         self.use_vault()
         hid = api.call("handout_create", self.rec, kind="lecture", scope=["capability:variance"], title="Variance")["handout"]
         self.write_lecture(hid, derivation="short")
         out = api.call("handout_build", self.rec, handout=hid)
         self.assertFalse(out["ready"])
         self.assertIsNone(out["pdf"] if "pdf" in out else None)
-        note = self.vault / out["note"]
+        self.assertIsNone(out["note"])  # nothing is in the vault until the person accepts a version
+        self.assertFalse(list(self.vault.rglob("*.md")))
+        accepted = api.call("handout_accept", self.rec, handout=hid, source_hash=out["source_hash"])
+        note = self.vault / accepted["note"]
         text = note.read_text(encoding="utf-8")
         fm = vault.parse_note(text).fm
-        self.assertEqual((fm["ros_kind"], fm["handout_kind"], fm["ros_status"]), ("handout", "lecture", "draft-unreviewed"))
+        self.assertEqual((fm["ros_kind"], fm["handout_kind"], fm["ros_status"]), ("handout", "lecture", "reviewed"))
         self.assertIn("> [!question] Recall", text)
         self.assertIn("> > [!success]- Answer", text)
-        self.assertIn("Draft by agent:writer", text)
+        self.assertIn("Accepted by you on", text)
+        self.assertNotIn("Draft by", text)
         self.assertEqual(vault.sync(self.rec)["kept_edited_count"], 0)
 
     @unittest.skipUnless(pdf.browser(), "no Chromium-family browser here")
@@ -268,6 +272,9 @@ class DeliveryTests(Fixture):
         self.assertTrue(out["built"], out)
         self.assertEqual(out["engine"], "chromium")
         self.assertTrue(Path(out["pdf"]).read_bytes().startswith(b"%PDF"))
+        self.assertIsNone(out.get("vault_pdf"))  # built, but not in the vault until the person accepts the version
+        self.assertIsNone(out["note"])
+        out = {**out, **api.call("handout_accept", self.rec, handout=hid, source_hash=out["source_hash"])}
         self.assertTrue(out["vault_pdf"].startswith("Research OS/Attachments/"))
         self.assertTrue((self.vault / out["vault_pdf"]).exists())
         note = vault.parse_note((self.vault / out["note"]).read_text(encoding="utf-8"))

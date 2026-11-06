@@ -9,6 +9,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import http.client
+import urllib.error
 import urllib.parse
 import urllib.request
 from . import computational_manifest
@@ -16,13 +18,28 @@ from . import computational_manifest
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,*args):raise ValueError('Retrieval redirect refused; inspect the source independently.')
 
+# Two retries after a transport failure, within the caller's time limit (see runtime.execute_operation).
+RETRY_DELAYS=(1,3)
+ATTEMPT_TIMEOUT=8
+
 def search(packet):
     query=urllib.parse.urlencode({'query':packet['query'],'rows':packet['limit']})
     url='https://api.crossref.org/works?'+query
     if packet['engine']=='europepmc':url='https://www.ebi.ac.uk/europepmc/webservices/rest/search?'+urllib.parse.urlencode({'query':packet['query'],'pageSize':packet['limit'],'format':'json'})
     opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),NoRedirect())
     request=urllib.request.Request(url,headers={'User-Agent':'ResearchOS/1.3 scholarly-metadata','Accept':'application/json'})
-    with opener.open(request,timeout=15) as response:raw=response.read(2*1024*1024+1)
+    name='Crossref' if packet['engine']=='crossref' else 'Europe PMC'
+    raw=None
+    for attempt in range(len(RETRY_DELAYS)+1):
+        try:
+            with opener.open(request,timeout=ATTEMPT_TIMEOUT) as response:raw=response.read(2*1024*1024+1)
+            break
+        except urllib.error.HTTPError as exc:
+            if exc.code<500 and exc.code!=429:return {'ok':False,'error':f'{name} refused the search (HTTP {exc.code}).'}
+            failure=f'{name} is not answering right now (HTTP {exc.code}); try again in a few minutes.'
+        except (OSError,http.client.HTTPException):failure=f'{name} could not be reached (no internet?).'
+        if attempt<len(RETRY_DELAYS):time.sleep(RETRY_DELAYS[attempt])
+        else:return {'ok':False,'error':failure}
     if len(raw)>2*1024*1024:raise ValueError('Metadata response exceeds 2 MB.')
     data=json.loads(raw);rows=data.get('message',{}).get('items',[]) if packet['engine']=='crossref' else data.get('resultList',{}).get('result',[])
     candidates=[]
@@ -82,6 +99,8 @@ def compute(packet):
         return {'ok':process.returncode==0 and not failure,'manifest':manifest,'artifacts':artifacts,'output':output.decode('utf-8',errors='replace')[-60000:],'note':'Original files were not changed. Scratch execution is not an OS security sandbox.'}
 
 def main():
+    for _s in (sys.stdin, sys.stdout):
+        if hasattr(_s, 'reconfigure'): _s.reconfigure(encoding='utf-8')  # a Windows locale code page would garble or refuse non-ASCII
     try:
         request=json.load(sys.stdin);result=search(request['packet']) if request['kind']=='literature' else compute(request['packet'])
     except Exception as exc:result={'ok':False,'error':str(exc)[:1500]}

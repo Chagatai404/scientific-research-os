@@ -15,6 +15,9 @@ Rules that keep it robust:
 * The index remembers how many bytes of each file it has consumed and a hash of the last few kilobytes before that
   point. If they changed (the file was rewritten or truncated) or the schema version moved, the index is dropped and
   rebuilt from scratch. Reads first check whether the files grew, so another process's appends are always seen.
+* ``engine.json`` (``{"engine": "1.7.3"}``) remembers the newest engine that wrote the record. An older engine may read
+  the record but refuses to write it (``_guard``), so a stale copy of the code cannot damage records a newer one made.
+  It is metadata about the record, not part of what the record says, and the index never reads it.
 * Event ids are unique. Importers derive them from their source (``event_id(source, key)``), so importing twice adds
   nothing. Imported events keep their original timestamps, so the log is not in time order; queries sort by ``ts``.
 """
@@ -27,6 +30,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import uuid
 
@@ -63,6 +67,28 @@ def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def rubric_criteria(item: dict) -> list[str]:
+    """The criteria of an item's rubric, from any stored shape: {"criteria": [...]}, a bare list or one string."""
+    rubric = item.get("rubric") if isinstance(item, dict) else None
+    if isinstance(rubric, dict):
+        rubric = rubric.get("criteria")
+    if isinstance(rubric, str):
+        rubric = [rubric]
+    if not isinstance(rubric, list):
+        return []
+    return [c for c in rubric if isinstance(c, str)]
+
+
+def normal_rubric(item: dict) -> dict:
+    """The item with a string or list-of-strings rubric rewritten to {"criteria": [...]}; anything else is unchanged."""
+    rubric = item.get("rubric")
+    if isinstance(rubric, str):
+        return {**item, "rubric": {"criteria": [rubric]}}
+    if isinstance(rubric, list) and all(isinstance(c, str) for c in rubric):
+        return {**item, "rubric": {"criteria": list(rubric)}}
+    return item
+
+
 def validate_item(item: dict) -> list[str]:
     """Problems that keep an item out of the record. Checked when it is written, never during a lesson."""
     problems = []
@@ -85,6 +111,11 @@ def validate_item(item: dict) -> list[str]:
             problems.append("tolerance must be a non-negative number")
     if kind == "free" and "answer" in item:
         problems.append("a free item has a hidden rubric, not an answer")
+    if "rubric" in item:
+        rubric = item["rubric"]
+        criteria = rubric.get("criteria") if isinstance(rubric, dict) else None
+        if not (isinstance(criteria, list) and all(isinstance(c, str) and c.strip() for c in criteria)):
+            problems.append('a rubric is {"criteria": ["what a good answer does", ...]}')
     if "concepts" in item and not (isinstance(item["concepts"], list) and all(isinstance(c, str) for c in item["concepts"])):
         problems.append("concepts must be a list of node ids")
     sup = item.get("supersedes")
@@ -158,6 +189,76 @@ def _file_lock(path: Path):
                 fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
+ENGINE_FILE = "engine.json"
+
+
+def _parse_version(text) -> tuple | None:
+    """``1.10.0`` -> (1, 10, 0): compared as numbers, so 1.10.0 is newer than 1.9.9. None when there is no number."""
+    m = re.match(r"\s*v?(\d+(?:\.\d+)*)", str(text or ""))
+    if not m:
+        return None
+    parts = [int(x) for x in m.group(1).split(".")]
+    while len(parts) > 1 and parts[-1] == 0:  # 1.7 and 1.7.0 are the same version
+        parts.pop()
+    return tuple(parts)
+
+
+def _running_version() -> str | None:
+    """The version of the code in this process, from the ``VERSION`` file beside the package (also bundled into the
+    frozen backend). Read once at import: a process keeps running the code it loaded, whatever is installed later.
+    Missing or unreadable: None, and the guard is off rather than a crash."""
+    try:
+        text = (Path(__file__).resolve().parents[1] / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return text if _parse_version(text) else None
+
+
+ENGINE_VERSION: str | None = _running_version()
+_stored_cache: dict[str, tuple] = {}  # engine.json path -> (mtime_ns, size, version text or None)
+
+
+def _stored_version(path: Path) -> str | None:
+    """The version in ``engine.json``, re-read only when the file's mtime or size changed. Unreadable counts as absent."""
+    key = str(path)
+    try:
+        st = path.stat()
+    except OSError:
+        _stored_cache.pop(key, None)
+        return None
+    stamp = (st.st_mtime_ns, st.st_size)
+    hit = _stored_cache.get(key)
+    if hit and hit[:2] == stamp:
+        return hit[2]
+    try:
+        value = json.loads(path.read_text(encoding="utf-8")).get("engine")
+        value = value if isinstance(value, str) and _parse_version(value) else None
+    except (OSError, ValueError, AttributeError):
+        value = None
+    _stored_cache[key] = (*stamp, value)
+    return value
+
+
+def _guard(root: Path) -> None:
+    """Called before every write, under the write lock where there is one. Refuse when a newer engine wrote the
+    record last; otherwise record this engine as the newest writer. Reads never come here."""
+    running = ENGINE_VERSION
+    if not running:
+        return
+    path = Path(root) / ENGINE_FILE
+    stored = _stored_version(path)
+    if stored and _parse_version(stored) > _parse_version(running):
+        raise ValueError(f"This record was last written by Research OS {stored}; this copy is {running} and may only "
+                         "read it. Update Research OS, or restart `ros mcp`, to write.")
+    if stored and _parse_version(stored) == _parse_version(running):
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{ENGINE_FILE}.{uuid.uuid4().hex}.tmp")
+    tmp.write_bytes(canonical({"engine": running}))
+    os.replace(tmp, path)
+    _stored_cache.pop(str(path), None)
+
+
 def _append_lines(path: Path, records: list[dict]) -> None:
     if not records:
         return
@@ -227,6 +328,7 @@ class Record:
             if missing:
                 raise ValueError(f"event lacks {sorted(missing)}: {ev!r}")
         with _file_lock(self.lock_path):
+            _guard(self.root)
             db = self.index()
             seen: set[str] = set()
             fresh = []
@@ -247,17 +349,20 @@ class Record:
         """
         if {'id','ts','actor','type','subject','data'}-event.keys():raise ValueError('incomplete event')
         with _file_lock(self.lock_path):
+            _guard(self.root)
             self.refresh()
             if self.index().execute('SELECT 1 FROM events WHERE id=?',(event['id'],)).fetchone():return False
             _append_lines(self.events_path,[event]);self.refresh();return True
 
     def put_item(self, item: dict) -> str:
         """Store an immutable item and return its hash. Writing the same content again is a no-op."""
+        item = normal_rubric(item)
         problems = validate_item(item)
         if problems:
             raise ValueError("; ".join(problems))
         h = item_hash(item)
         path = self.items_dir / f"{h}.json"
+        _guard(self.root)
         if not path.exists():
             self.items_dir.mkdir(parents=True, exist_ok=True)
             tmp = path.with_suffix(f".{uuid.uuid4().hex}.tmp")
@@ -277,6 +382,7 @@ class Record:
             if n.get("type") not in NODE_TYPES and not n.get("deleted"):
                 raise ValueError(f"unknown node type {n.get('type')!r} for {n.get('id')!r}")
         with _file_lock(self.lock_path):
+            _guard(self.root)
             _append_lines(self.nodes_path, nodes)
             self.refresh()
 
@@ -288,6 +394,7 @@ class Record:
             if e.get("type") not in EDGE_TYPES:
                 raise ValueError(f"unknown edge type {e.get('type')!r}")
         with _file_lock(self.lock_path):
+            _guard(self.root)
             _append_lines(self.edges_path, edges)
             self.refresh()
 

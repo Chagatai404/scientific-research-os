@@ -1,6 +1,6 @@
 {
   "name": "research-os-desktop",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "private": true,
   "description": "Local research and learning workbench",
   "author": "Research OS",
@@ -65,6 +65,7 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "deleteAppDataOnUninstall": false,
+      "include": "installer.nsh",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "artifactName": "Research-OS-Setup-${version}-${arch}.${ext}"

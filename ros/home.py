@@ -150,8 +150,8 @@ def set_settings(**fields) -> dict:
     if fields.get("agents_auto") is not None and not isinstance(fields["agents_auto"], bool):
         raise ValueError("agents_auto is true or false")
     if fields.get("agents_per_hour") is not None and (isinstance(fields["agents_per_hour"], bool) or not isinstance(fields["agents_per_hour"], int)
-                                                       or not 1 <= fields["agents_per_hour"] <= 60):
-        raise ValueError("agents_per_hour is a whole number from 1 to 60")
+                                                       or not 0 <= fields["agents_per_hour"] <= 100):
+        raise ValueError("agents_per_hour is a whole number from 1 to 100, or 0 for no hourly limit")
     if fields.get("agents_model") not in (None, "") and not re.fullmatch(r"(codex|claude|ollama|compatible):[A-Za-z0-9_.:/-]{1,100}", str(fields["agents_model"])):
         raise ValueError("agents_model is a provider and model such as claude:sonnet, or empty to use the model you last wrote to")
     root = fields.get("vault_root")

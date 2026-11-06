@@ -307,9 +307,10 @@ def brief(rec: Record, as_of: date | None = None, compact: bool = False) -> dict
             cfg = home.config(r.root)
             role = cfg.get("role") or "unlinked"
             records.append({"name": r.root.name, "role": role, "hub": cfg.get("project")})
-            for item in research.queue(r, as_of):
+            for item in research.queue(r, as_of) + handouts.waiting(r):
+                page = "document" if item["subject"].startswith("handout:") else "node"
                 needs.append({"record": r.root.name, **item, "evidence": _headline(r, item),
-                              "portal": portal_url(f"node/{item['subject']}", r.root.name)})
+                              "portal": portal_url(f"{page}/{item['subject']}", r.root.name)})
             for kind, c in tasks.counts(r).items():
                 if kind == "job":
                     jobs["open"] += c["open"]
@@ -334,9 +335,8 @@ def brief(rec: Record, as_of: date | None = None, compact: bool = False) -> dict
                 learned["lessons_this_week"] += len([e for e in r.events(type="lesson.close", since=week)
                                                      if not e["subject"].startswith("bundle:")])
             learned["unreviewed_handouts"] += [
-                {"record": r.root.name, "id": n["id"], "title": n.get("title"), "status": n.get("status"), "pdf": n.get("pdf")}
-                for n in r.nodes(type="handout") if n.get("status") in ("ready", "built")
-                and not r.events(type="note.reviewed", subject=n["id"])]
+                {"record": r.root.name, "id": w["subject"], "title": w["title"], "status": w["kind"],
+                 "pdf": (r.node(w["subject"]) or {}).get("pdf")} for w in handouts.waiting(r)]
     waiting = sum(c["open"] + c["claimed"] for c in counts.values())
     problems = _problems(rec)
     out = {"as_of": as_of.isoformat(), "record": rec.root.name, "records": records, "needs_you": needs,
@@ -441,7 +441,7 @@ def work(rec: Record, by: str, kinds: list[str] | None = None, skip: list[str] |
                         best = (r, t, first)
             if best is None:
                 return {"task": None, "message": "Nothing waits for an agent.", "needs_you": len(
-                    [i for r in recs for i in research.queue(r)]), "portal": portal_url("director", rec.root.name)}
+                    [i for r in recs for i in research.queue(r) + handouts.waiting(r)]), "portal": portal_url("director", rec.root.name)}
             r, t, _ = best
             try:
                 claimed = tasks.claim(r, t["id"], by.strip())

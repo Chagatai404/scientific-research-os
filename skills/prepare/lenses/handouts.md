@@ -24,4 +24,6 @@ You were given a `handout` task: write a study document for one handout (`refere
   you read only in part (an abstract is an abstract).
 - Figures: put them in `figures/` with `handout_file` and look at them before you refer to them.
 
-Then `handout_check`, fix every row it lists, and `handout_build`; finish the task with the handout id.
+You may run `handout_check` to see what is missing and fix every row it lists (the system also checks and builds after
+you write, so never ask the researcher to). Finish the task with the handout id and say it is ready for the researcher to
+read and accept in the app; it reaches their vault only after they accept it.

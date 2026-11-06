@@ -29,7 +29,8 @@ about. When a task is done, `finish` it with the record `work` named and call `w
 - **Narration segments** (`motivate`, `establish`, `connect`): plain spoken prose, formulas in LaTeX. Every factual
   claim gets a `claims` entry with a source `locator`, or `derivation: true` if it is derived in the segment.
 - **Visuals**: hand each to the `visual-maker` agent. It renders, looks at the result, fixes it, writes a RESULT note,
-  and states the element count (at most 7). Attach `{path, result, elements}`.
+  and states the element count (at most 7). Attach `{path, result, elements}`. The desktop's own agents draw in the safe
+  renderer (a sealed container with no shell and no network) and `publish` only a picture that passes its checks.
 - **Animation**: required when the idea is change over time, motion in geometry, a limit or a distribution building
   up (`dynamic: true`). Write the Manim scene and spec, then `bundle_animate`; the visual-maker looks at the key frames
   and sets `looked_at: true`. The basis (equation, model or data) is stated.
@@ -53,10 +54,12 @@ A lapse found in review re-enters preparation for that node only: add a new expl
 
 ## Handouts
 
-Lecture notes, recitations and textbook-style chapters are made the same way, from the record, for the Obsidian vault
-and as PDFs (`references/HANDOUTS.md`, lens `lenses/handouts.md`):
+Lecture notes, recitations and textbook-style chapters are made the same way, from the record, as notes and PDFs
+the researcher reads and accepts in the app before they reach the Obsidian vault (`references/HANDOUTS.md`, lens `lenses/handouts.md`):
 
 1. `handout_create --kind lecture --scope '["capability:<key>"]' --title <title>` (kinds: lecture, recitation,
    chapter) composes the context and opens one `handout` task.
-2. `handout_read --handout <id>`, then `handout_write` for each section with its sources, then `handout_check`.
-3. `handout_build` writes the note into the vault now and queues the PDF; a missing toolchain is reported, never an error.
+2. `handout_read --handout <id>`, then `handout_write` for each section with its sources, and finish the task.
+3. The system checks the handout and builds its PDF by itself after you write (a failing row opens a task for you); never
+   ask the researcher to run a check or a build. Say it is "ready for you to read and accept in the app"; never say it
+   is in the vault, because the note is written there only after they accept that version.

@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from ros import api, automation, home, mcp, registry, research, runner, tasks, vault  # noqa: E402
+from ros import api, automation, handouts, home, mcp, registry, research, runner, tasks, vault  # noqa: E402
 from ros.lib import pdf  # noqa: E402
 import support_ros_demo as demo  # noqa: E402
 
@@ -174,12 +174,12 @@ class HandoutPipelineTests(Fixture):
                      sources=hand.SOURCES if role == "gist" else None)
         return hid
 
-    def test_a_finished_handout_gets_its_note_and_a_pdf_job_without_anyone_asking(self):
+    def test_a_finished_handout_gets_its_check_and_a_pdf_job_without_anyone_asking(self):
         hid = self.write_all()
         out = api.call("reconcile", self.rec, mode="tick")
         self.assertIn("handout_gate", out["ran"], out)
-        notes = list((self.vault / "Research OS").rglob("Variance.md"))
-        self.assertTrue(any(vault.parse_note(p.read_text()).fm.get("ros_kind") == "handout" for p in notes))
+        notes = list((self.vault / "Research OS").rglob("Variance.md"))  # not in the vault before the person accepts
+        self.assertFalse(any(vault.parse_note(p.read_text()).fm.get("ros_kind") == "handout" for p in notes))
         jobs = api.call("jobs", self.rec)
         self.assertEqual(len(jobs), 1)
         self.assertEqual(self.rec.node(hid)["status"], "ready")
@@ -204,6 +204,8 @@ class HandoutPipelineTests(Fixture):
         self.assertEqual(observed, [True])  # the lock was free while the engine ran
         self.assertTrue(done[0]["ok"], done)
         self.assertEqual(self.rec.node(hid)["status"], "built")
+        self.assertFalse(list((self.vault / "Research OS" / "Attachments").rglob("*.pdf")))  # waits for acceptance
+        api.call("handout_accept", self.rec, handout=hid, source_hash=handouts.current_hash(self.rec, handouts.load(self.rec, hid)))
         self.assertTrue(list((self.vault / "Research OS" / "Attachments").rglob("*.pdf")))
         self.assertEqual(list(r.errors), [])
         self.assertEqual(api.call("jobs", self.rec), [])

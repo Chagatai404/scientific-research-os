@@ -3,11 +3,23 @@ client can attach: Claude Code, Codex, Gemini CLI, or a local model's harness. C
 process is the single writer for as long as it runs.
 
 Each tool takes an optional ``project``; without it the default project applies (see ``ros.home.resolve``).
+
+``ros mcp`` is a thin supervisor (``supervise``) that owns the client's stdin and stdout and runs the server loop
+(``serve``, started as ``ros mcp --worker``) as a child. It compares the installed ``VERSION`` file with the one it
+started with; when a release is installed and nothing is in flight it restarts the child, replays the client's
+``initialize`` to it and sends ``notifications/tools/list_changed``. The client's connection never breaks, and no
+server keeps running old code against records a newer release has written. Only the worker runs the automation tick.
 """
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
+import queue
+import subprocess
 import sys
+import threading
+import time
 
 from . import __version__, api, home, runner
 from .store import Record
@@ -102,14 +114,15 @@ class Server:
             if method == "initialize":
                 asked = (msg.get("params") or {}).get("protocolVersion")
                 result = {"protocolVersion": asked or PROTOCOL,
-                          "capabilities": {"tools": {"listChanged": False}, "prompts": {"listChanged": False}},
+                          "capabilities": {"tools": {"listChanged": True}, "prompts": {"listChanged": False}},
                           "serverInfo": {"name": "research-os", "version": __version__}, "instructions": INSTRUCTIONS}
                 try:
                     self.follow_up(self.record(None))
                 except ValueError:
                     pass  # no default record yet: the first call that names one starts it
             elif method == "ping":
-                result = {}
+                # ROS_MCP_DEBUG names the worker (tests use it to see a restart); a client's ping gets {}
+                result = {"pid": os.getpid(), "version": __version__} if os.environ.get("ROS_MCP_DEBUG") else {}
             elif method == "tools/list":
                 result = {"tools": self.tools()}
             elif method == "prompts/list":
@@ -162,6 +175,9 @@ def _error(mid, code: int, message: str) -> dict:
 def serve(project: str | None = None, stdin=None, stdout=None, portal: int | None = None, automate: bool = True) -> int:
     """Answer requests until stdin closes. With ``portal``, the same process also serves the project's portal on that
     port, so the agent and the browser share one writer (calls are serialized by ``api.LOCK``)."""
+    for stream in ((sys.stdin, sys.stdout) if stdin is None and stdout is None else ()):
+        if hasattr(stream, "reconfigure"):  # MCP stdio is UTF-8; a Windows locale code page garbles or refuses non-ASCII
+            stream.reconfigure(encoding="utf-8", errors="replace" if stream is sys.stdin else "strict")
     stdin, stdout = stdin or sys.stdin, stdout or sys.stdout
     server = Server(project)
     httpd, timer = None, None
@@ -200,3 +216,227 @@ def serve(project: str | None = None, stdin=None, stdout=None, portal: int | Non
             rec.close()
         api.release()  # the user-wide records kept open for project records
     return 0
+
+
+# ---- the supervisor -----------------------------------------------------------------------------------------------
+VERSION_FILE_ENV = "ROS_MCP_VERSION_FILE"      # the file watched for a new release (tests point it elsewhere)
+CHECK_SECONDS_ENV = "ROS_MCP_CHECK_SECONDS"    # how often the idle supervisor looks (default 10)
+MAX_RESTARTS = 5                               # crashes tolerated within RESTART_WINDOW seconds, then requests get an error
+RESTART_WINDOW = 60.0
+LIST_CHANGED = b'{"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}\n'
+
+
+def worker_command(project: str | None, portal: int | None) -> list[str]:
+    """The server loop as a child process: this Python's ``ros mcp --worker``, or the frozen backend's ``--worker cli``."""
+    cmd = [sys.executable, "--worker", "cli"] if getattr(sys, "frozen", False) else [sys.executable, "-m", "ros"]
+    if project:
+        cmd += ["--project", project]
+    cmd += ["mcp", "--worker"]
+    return cmd + (["--portal", str(portal)] if portal is not None else [])
+
+
+def _version_file() -> Path:
+    return Path(os.environ.get(VERSION_FILE_ENV) or Path(__file__).resolve().parents[1] / "VERSION")
+
+
+def _installed_version(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8").strip() or None
+    except OSError:
+        return None  # unreadable (an update is replacing it): look again later
+
+
+def _line(raw: bytes) -> bytes:
+    return raw.rstrip(b"\r\n") + b"\n"
+
+
+def _peek(raw: bytes) -> dict:
+    try:
+        msg = json.loads(raw.decode("utf-8", "replace"))
+    except ValueError:
+        return {}
+    return msg if isinstance(msg, dict) else {}
+
+
+class Supervisor:
+    """Owns the client's pipes; forwards lines to a worker and restarts it when a release is installed or it dies."""
+
+    def __init__(self, project=None, portal=None, stdin=None, stdout=None):
+        self.cmd = worker_command(project, portal)
+        self.stdin = stdin or sys.stdin.buffer
+        self.stdout = stdout or sys.stdout.buffer
+        self.lock = threading.RLock()
+        self.out_lock = threading.Lock()
+        self.proc: subprocess.Popen | None = None
+        self.reader: threading.Thread | None = None
+        self.gen = 0
+        self.closing = False
+        self.broken = False
+        self.pending: dict[str, object] = {}     # request id (as JSON) -> id, for what the worker has not yet answered
+        self.swallow: set[str] = set()           # replayed initialize ids whose replies are not the client's
+        self.init_line: bytes | None = None
+        self.inited_line: bytes | None = None
+        self.crashes: list[float] = []
+        self.version_file = _version_file()
+        self.version = _installed_version(self.version_file)
+        self.interval = float(os.environ.get(CHECK_SECONDS_ENV) or 10)
+
+    def emit(self, raw: bytes) -> None:
+        with self.out_lock:
+            try:
+                self.stdout.write(_line(raw))
+                self.stdout.flush()
+            except (OSError, ValueError):
+                self.closing = True  # the client has gone
+
+    def fail(self, mid, message: str) -> None:
+        self.emit(json.dumps(_error(mid, -32603, message), ensure_ascii=False).encode("utf-8"))
+
+    def spawn(self) -> None:
+        with self.lock:
+            self.gen += 1
+            gen = self.gen
+            self.version = _installed_version(self.version_file) or self.version
+            self.proc = subprocess.Popen(self.cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            self.reader = threading.Thread(target=self.read_worker, args=(gen, self.proc), daemon=True)
+            self.reader.start()
+            if self.init_line is not None:  # the new worker meets the client as the old one did; its reply is ours
+                msg = _peek(self.init_line)
+                msg["id"] = f"ros-replay-{gen}"
+                self.swallow.add(msg["id"])
+                self.send(json.dumps(msg, ensure_ascii=False).encode("utf-8"))
+                if self.inited_line is not None:
+                    self.send(self.inited_line)
+
+    def send(self, raw: bytes) -> bool:
+        try:
+            self.proc.stdin.write(_line(raw))
+            self.proc.stdin.flush()
+            return True
+        except (OSError, ValueError, AttributeError):
+            return False
+
+    def read_worker(self, gen: int, proc: subprocess.Popen) -> None:
+        for raw in proc.stdout:
+            msg = _peek(raw)
+            answer = "id" in msg and ("result" in msg or "error" in msg)
+            with self.lock:
+                if answer and isinstance(msg["id"], str) and msg["id"] in self.swallow:
+                    self.swallow.discard(msg["id"])
+                    continue
+                if answer:
+                    self.pending.pop(json.dumps(msg["id"]), None)
+            self.emit(raw)
+        proc.wait()
+        self.worker_exited(gen)
+
+    def worker_exited(self, gen: int) -> None:
+        """The worker's output ended. If that was not asked for, answer what it left open and start another."""
+        with self.lock:
+            if gen != self.gen or self.closing:
+                return
+            lost, self.pending = list(self.pending.values()), {}
+            self.swallow.clear()
+            now = time.monotonic()
+            self.crashes = [t for t in self.crashes if now - t < RESTART_WINDOW] + [now]
+            tries = len(self.crashes)
+            self.broken = tries > MAX_RESTARTS
+        for mid in lost:
+            self.fail(mid, "The Research OS server stopped while handling this request and is being restarted; ask again.")
+        if self.broken:
+            return
+        time.sleep(min(0.25 * 2 ** (tries - 1), 4.0))
+        with self.lock:
+            if gen == self.gen and not self.closing:
+                self.spawn()
+
+    def retire(self) -> None:
+        """Stop the current worker without the exit looking like a crash."""
+        with self.lock:
+            self.gen += 1
+            proc = self.proc
+        if proc is None:
+            return
+        try:
+            proc.stdin.close()
+        except (OSError, ValueError):
+            pass
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+    def check_update(self) -> None:
+        """Restart the worker when a different release is installed and no request is in flight."""
+        now = _installed_version(self.version_file)
+        with self.lock:
+            if now is None or now == self.version or self.pending or self.closing:
+                return
+        self.retire()
+        with self.lock:
+            self.crashes.clear()
+            self.broken = False
+            self.spawn()
+            if self.init_line is not None:
+                self.emit(LIST_CHANGED)
+
+    def forward(self, raw: bytes) -> None:
+        msg = _peek(raw)
+        method, mid = msg.get("method"), msg.get("id")
+        if method == "initialize" and mid is not None:
+            self.init_line, self.inited_line = raw, None
+        elif method == "notifications/initialized":
+            self.inited_line = raw
+        self.check_update()
+        with self.lock:
+            has_id = mid is not None and method is not None
+            if self.broken or self.proc is None:
+                if has_id:
+                    self.fail(mid, "The Research OS server could not be started; restart the client.")
+                return
+            if has_id:
+                self.pending[json.dumps(mid)] = mid
+            if not self.send(raw) and has_id:
+                self.pending.pop(json.dumps(mid), None)
+                self.fail(mid, "The Research OS server is restarting; ask again.")
+
+    def run(self) -> int:
+        lines: queue.Queue = queue.Queue()
+
+        def pump():
+            for raw in self.stdin:
+                lines.put(raw)
+            lines.put(None)
+        threading.Thread(target=pump, daemon=True).start()
+        self.spawn()
+        while True:
+            try:
+                raw = lines.get(timeout=self.interval)
+            except queue.Empty:
+                self.check_update()
+                continue
+            if raw is None or self.closing:
+                break
+            if raw.strip():
+                self.forward(raw)
+        with self.lock:
+            self.closing = True
+            proc, reader = self.proc, self.reader
+        if proc is None:
+            return 0
+        try:
+            proc.stdin.close()
+        except (OSError, ValueError):
+            pass
+        code = proc.wait()
+        if reader is not None:
+            reader.join(timeout=10)
+        return code
+
+
+def supervise(project: str | None = None, portal: int | None = None) -> int:
+    """``ros mcp``: the supervisor in front of the worker. ``ROS_MCP_NO_SUPERVISOR=1`` serves in this process instead."""
+    if os.environ.get("ROS_MCP_NO_SUPERVISOR"):
+        return serve(project, portal=portal)
+    return Supervisor(project, portal).run()

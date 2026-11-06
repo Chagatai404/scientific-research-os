@@ -273,10 +273,12 @@ def _bundle_gate(look: Look):
 
 
 def _handout_gate(look: Look):
-    """A handout an agent has finished writing is checked; its note goes to the vault and, if it is ready, its PDF is
-    queued. A handout still being written (its last section is newer than ``SETTLE_SECONDS``) waits."""
+    """A handout an agent has finished writing is checked and, if it is ready, its PDF is queued: nobody has to ask. Its
+    note reaches the vault only when the person accepts the version in the app. A handout still being written (its last
+    section is newer than ``SETTLE_SECONDS``) waits; a version is handled once (``done`` remembers its hash)."""
     rec = look.rec
     pending = look.state.setdefault("handouts", {})
+    done_hash = look.state.setdefault("done", {})
     events = rec.events(type="handout.revise") if look.first else [e for e in look.ch["events"] if e["type"] == "handout.revise"]
     for e in events:
         pending[e["subject"]] = e["ts"]
@@ -287,9 +289,13 @@ def _handout_gate(look: Look):
             continue
         pending.pop(h)
         try:
+            sha = handouts.current_hash(rec, handouts.load(rec, h))
+            if done_hash.get(h) == sha:
+                continue
             out = handouts.build(rec, h)
         except (KeyError, ValueError):
             continue
+        done_hash[h] = sha
         done += 1
         wrote += 1 if out.get("note") else 0
     return {"opened": done, "wrote": wrote} if done else None
@@ -387,7 +393,7 @@ TRIGGERS: list[Trigger] = [
     Trigger("course_handouts", ("tick",), _course_handouts),
     Trigger("literature_flow", ("tick",), _literature_flow),
     Trigger("bundle_gate", ("tick",), _bundle_gate),
-    Trigger("handout_gate", ("tick",), _handout_gate),
+    Trigger("handout_gate", ("call", "tick"), _handout_gate),
     Trigger("renders", ("tick",), _renders),
     Trigger("vault_sync", ("tick",), _vault_sync),
     Trigger("vault_scan", ("scan",), _vault_scan),

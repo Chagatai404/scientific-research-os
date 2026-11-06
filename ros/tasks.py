@@ -42,7 +42,7 @@ GUIDE = {
     "bundle": {"skill": "prepare", "role": "preparer", "finish_with": "bundle_check",
                "hint": "Build the prepared lesson bundle for the capability, then run the readiness gate."},
     "handout": {"skill": "prepare", "role": "writer", "finish_with": "handout_write",
-                "hint": "Write the handout's sections with sources (see the handouts lens), then handout_check."},
+                "hint": "Write the handout's sections with sources (see the handouts lens); the system checks and builds it itself."},
     "narration": {"skill": "prepare", "role": "preparer", "finish_with": "bundle_plan",
                   "hint": "Write narration segments with sources into the bundle plan."},
     "visual": {"skill": "prepare", "role": "visual-maker", "finish_with": "bundle_file",

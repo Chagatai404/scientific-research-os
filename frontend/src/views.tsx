@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {call, entityHref, href} from './api';
-import type {Evidence, LibraryItem, SearchResult} from './contracts';
+import type {Evidence, LibraryItem, QueueItem, SearchResult} from './contracts';
 import {RichText} from './Document';
 import {useResource} from './hooks';
 import {Empty, Notice, Tag} from './ui';
@@ -9,12 +9,13 @@ import {DecisionPanel} from './Research';
 /** Prepared handouts and past sessions. Embedded, it sits under the Library's own heading. */
 export function Library({record, embedded = false}: {record: string; embedded?: boolean}) {
   const resource = useResource('library-notes:' + record, async signal => {
-    const [handouts, sessions] = await Promise.all([call<LibraryItem[]>('handouts', {}, record, false, signal), call<LibraryItem[]>('library', {}, record, false, signal)]);
-    return {handouts, sessions};
+    const [handouts, sessions, queue] = await Promise.all([call<LibraryItem[]>('handouts', {}, record, false, signal), call<LibraryItem[]>('library', {}, record, false, signal), call<QueueItem[]>('queue', {}, record, false, signal)]);
+    return {handouts, sessions, waiting: queue.filter(item => item.subject.startsWith('handout:'))};
   }, record);
   const [filter, setFilter] = useState('');
   return <>{!embedded && <><div className="eyebrow">A place to return to</div><h1>Notes &amp; handouts</h1></>}<p className="lead muted">Read your handouts and past sessions, with or without an Obsidian vault.</p>
     <label className="filter-field">Filter by title<input type="search" value={filter} onChange={e => setFilter(e.target.value)} placeholder="A title or a few words" /></label>
+    {resource.data?.waiting.length ? <ul className="entry-list waiting-handouts" aria-label="Handouts waiting for you">{resource.data.waiting.map(item => <li key={item.subject}><a href={entityHref(item.subject, record)}><span><strong>{item.text || item.title}</strong><small>Open it to accept or ask for changes</small></span><span aria-hidden="true">→</span></a></li>)}</ul> : null}
     {!resource.data ? <Notice error={resource.error} retry={resource.retry} /> : <>{(['handouts', 'sessions'] as const).map(kind => {
       const items = resource.data![kind].filter(x => (x.title || x.id).toLowerCase().includes(filter.toLowerCase()));
       return <section key={kind}><div className="section-title"><h2>{kind === 'handouts' ? 'Handouts' : 'Past sessions'}</h2><span>{items.length}</span></div>

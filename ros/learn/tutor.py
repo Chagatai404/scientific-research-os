@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import math
 
-from ..store import Record
+from ..store import Record, rubric_criteria
 from .. import tasks
 
 VERDICTS = ("correct", "partially-correct", "incorrect")
@@ -107,8 +107,8 @@ def grade(rec: Record, attempt_id: str, verdict: str, feedback: str = "", by: st
         raise KeyError(f"no attempt {attempt_id}")
     data = {"lesson": a["data"].get("lesson"), "attempt": attempt_id, "verdict": verdict, "feedback": feedback}
     if criteria_met is not None:
-        criteria = ((rec.item(a["subject"]) or {}).get("rubric") or {}).get("criteria")
-        if criteria is not None and len(criteria_met) != len(criteria):
+        criteria = rubric_criteria(rec.item(a["subject"]) or {})
+        if criteria and len(criteria_met) != len(criteria):
             raise ValueError(f"the rubric has {len(criteria)} criteria: say whether each is met, in order")
         if verdict == "correct" and not all(criteria_met):
             raise ValueError("correct needs every criterion met; use partially-correct")

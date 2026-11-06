@@ -27,6 +27,13 @@ chats. An unknown capability is unknown, never assumed demonstrated.
 
 Lessons carry no executable code: items, narration, images, video. Manim scenes run only at prepare time, in a
 subprocess, after a lint that refuses network, file and process access; only the rendered video reaches the learner.
+An unattended agent never has a shell: it draws figures and ManimGX animations through the safe renderer, where the code it writes runs in a
+Windows AppContainer (no network, loopback included, no files but its scratch folder and a private copy of the interpreter, no child process,
+CPU, memory, time and size limits) and only a picture or video that passes the magic-byte, size and pixel checks (or a purely declarative SVG)
+is copied into the bundle, with its RESULT note stored as plain text. Where that boundary is not available the task waits and says why.
+An agent that reads the person's connected files is shown them as data, never instructions; a source marked local-only is never read by a
+cloud model, and once a run has read a file it can no longer send anything to a public service (`docs/ARCHITECTURE.md`, "The safe renderer"
+and "Reading the person's files in a cloud run").
 The portal serves this computer only, refuses foreign Host headers, and takes writes only with its own header. Other
 sites may link to its pages but not fetch from or frame it. Acts that are the person's alone need the desktop app's
 credential or a browser paired with the link `ros serve` prints (`references/PORTAL.md`, which also says what pairing does

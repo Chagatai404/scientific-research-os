@@ -65,7 +65,7 @@ test('Settings connects real records, checks services only on clicks and shares 
     assert.match(doc.body.textContent!, /12/);
     assert.equal((doc.querySelector('#vault-path') as HTMLInputElement).value, 'C:/Users/you/Obsidian/Knowledge');
     assert.equal(dom.window.localStorage.getItem('ros.workspace.model'), DEFAULT_MODEL);
-    assert.equal(doc.querySelectorAll('input').length, 4);
+    assert.equal(doc.querySelectorAll('input').length, 5, 'the agent limit is a slider now');
     assert.doesNotMatch(doc.body.textContent!, /Original portal|Another model|provider:model|API key/i);
     assert.equal(requests.length, 3, 'initial render reads only the catalog, the connections and the agents status: no model is invoked');
     assert.match(doc.body.textContent!, /Let agents work on waiting tasks by themselves/);

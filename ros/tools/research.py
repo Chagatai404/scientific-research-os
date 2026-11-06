@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import graph, home, research as rsc
+from .. import graph, handouts, home, research as rsc
 from ..registry import P, iso_day, tool
 
 
@@ -87,9 +87,9 @@ def propose(rec, change, rationale, by):
     return rsc.propose(rec, change, rationale, by)
 
 
-@tool("queue", "The decision queue: everything waiting for the researcher.")
+@tool("queue", "The decision queue: everything waiting for the researcher, including handouts ready to read and accept.")
 def queue(rec):
-    return rsc.queue(rec)
+    return rsc.queue(rec) + handouts.waiting(rec)
 
 
 @tool("approve", "A person approves, rejects or asks for changes to a plan.", human=True,
