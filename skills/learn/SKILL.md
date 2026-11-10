@@ -60,6 +60,31 @@ Rules that hold throughout:
 - **Help counts.** A hint or revealed explanation before an answer makes it assisted; do not relabel it.
 - Math in LaTeX (`$...$`). Short paragraphs. No praise inflation.
 
+## Resuming, drafts and choosing the medium
+
+- **Answer key.** Every question `next` returns carries an `answer_key`. Send it as `answer --key <answer_key>`: a retry, a
+  second client or a restarted app then writes one answer, not two.
+- **Drafts.** An unsent answer is kept with `draft_save --lesson <id> --item <item> --text "<typed so far>"` and read back with
+  `draft_get --lesson <id> --item <item>`. A draft is never an answer or evidence; the learner sends it themselves.
+- **Resume from anywhere.** `lesson_state --lesson <id>` gives the scope, what earlier evidence said, the answers so far, the
+  unsent draft, the next step and the review dates, whichever client started the lesson.
+- **What is already known.** `prior_evidence --scope <node>` says per capability what is known, due, shaky or new; the lesson
+  plan is fixed from it when the lesson starts. Do not probe what it shows as known.
+- **Medium.** `medium_choose --goal "<what they should understand>"` picks text, a figure, an animation or code, with the
+  reason and what is ready; `learning_readiness` says which engines this computer really has. Words come first; if a medium is
+  not ready, teach with the fallback and say so plainly.
+
+## The knowledge graph is yours
+
+Before probing a new scope, read what the graph already holds: `graph_teaching` returns what to teach next, the goals and the
+misconceptions agents noted. Use it to choose the first question; it is never evidence and never a grade.
+
+When a lesson closes, `close` (and `lesson_state` for a closed lesson) returns `graph_notes`: ready arguments for
+`graph_note_add` with stable keys. A `graph` task from `work` carries the same notes. Record each with `graph_note_add`
+(`--kind`, `--title`, `--text`, `--key`, `--by <you>`, `--work`, `--evidence`, `--links`), revise one you learned more about
+with `graph_note_revise`, and retract one that is wrong with `graph_note_retract`, then finish the task. The learner never
+manages the graph: do not ask them to add, check or approve a note, and do not mention keys or tools to them.
+
 ## Terminal and portal
 
 The learner may use the portal (`ros serve`, then the browser or Obsidian's Web Viewer) or the terminal

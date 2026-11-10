@@ -47,6 +47,15 @@ class Sessions(unittest.TestCase):
         self.assertEqual({t for t in modes.grant("chat") if api.TOOLS[t].writes}, {"brief", "bundle_plan"}, "a conversation writes nothing else")
         with self.assertRaises(ValueError): modes.mode("wander")
 
+    def test_learn_resumes_and_keeps_the_graph_while_chat_stays_read_only(self):
+        learn = modes.grant("learn")
+        for name in ("draft_save", "draft_get", "lesson_state", "prior_evidence", "learning_readiness", "medium_choose",
+                     "graph_note_add", "graph_note_revise", "graph_note_retract", "graph_teaching"):
+            self.assertIn(name, learn, name)
+        self.assertTrue(modes.GRAPH_WRITES <= modes.grant("research"))
+        self.assertFalse(modes.GRAPH_WRITES & modes.grant("chat"), "a conversation never keeps the graph")
+        self.assertFalse(modes.GRAPH_WRITES & modes.grant("defend"))
+
     def test_every_shipped_skill_and_agent_has_a_place_where_it_is_used(self):
         from ros import dispatch, tasks
         used = {m.skill for m in modes.MODES.values() if m.skill} | set(modes.SKILL_USES) | {g["skill"] for g in tasks.GUIDE.values() if g.get("skill")}

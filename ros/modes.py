@@ -39,6 +39,9 @@ SOURCE_READS = frozenset({"source_list", "source_children", "source_preview", "s
 SOURCE_WRITES = frozenset({"source_capture", "library_process"})
 # The teaching loop. `answer` and `ask` record what the person wrote, so the runtime binds those words (see `bind`).
 LOOP = frozenset({"start", "answer", "ask", "hint", "close"})
+# Resuming and choosing: `lesson_state` and the unsent answer (`draft_save`, `draft_get`) let any client pick a lesson up, `prior_evidence` says
+# what is already known, `learning_readiness` and `medium_choose` say which teaching medium is honestly available.
+RESUME = frozenset({"draft_save", "draft_get", "lesson_state", "prior_evidence", "learning_readiness", "medium_choose"})
 
 
 @dataclass(frozen=True)
@@ -77,7 +80,7 @@ MODES = {m.name: m for m in (
          "and say which figure or animation would help (its preparation task is queued). Grade waiting free answers "
          "(`item --reveal`, then `grade`) and answer open pedagogy requests (`pedagogy_history`, then `pedagogy_reply`) "
          "before the next step. When a task from `work` names a skill, read it with `skill` first.",
-         _READS | SOURCE_READS, BASE_WRITES | LOOP | SOURCE_WRITES | GRAPH_WRITES | {"link", "delegate"}, "topic"),
+         _READS | SOURCE_READS, BASE_WRITES | LOOP | RESUME | SOURCE_WRITES | GRAPH_WRITES | {"link", "delegate"}, "topic"),
     Mode("research", "research",
          "Work on the record's question, claims and evidence. You may add nodes, claims and items and request audits; you "
          "may not decide, approve, waive or give an audit verdict. Look for the person's earlier plans and sources with "

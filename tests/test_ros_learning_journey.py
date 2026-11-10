@@ -482,6 +482,18 @@ class MediaTests(Course):
         with self.assertRaises(ValueError):
             api.call("bundle_code", self.rec, bundle="m-1", node=B, path="sim.py", execution={"exit_code": 0})
 
+    def test_prepared_reading_shows_each_sections_readiness_and_recorded_code(self):
+        prepare.create(self.rec, "rd", "Reading", A)
+        plan = prepare.load_plan(self.rec, "rd")
+        plan["nodes"] = [{"id": "n1", "title": "One", "segments": [{"text": "Words."}], "code": [{"path": "x.py", "language": "python"}]}]
+        (prepare.bundle_dir(self.rec, "rd") / "plan.json").write_text(__import__("json").dumps(plan), encoding="utf-8")
+        self.rec.put_node("lesson:rd", "lesson", title="Reading", bundle="rd")
+        section = api.call("workspace_lesson_material", self.rec, lesson="lesson:rd")["sections"][0]
+        self.assertEqual(section["readiness"]["text"]["state"], "ready")
+        self.assertEqual(section["readiness"]["static-visual"]["state"], "not-planned")
+        self.assertEqual(section["code"], [{"path": "x.py", "language": "python"}])
+        self.assertEqual(section["readiness"]["code"]["state"], "missing", "a recorded example whose file is absent is not ready")
+
     def test_engine_readiness_is_honest_and_never_blocks(self):
         out = api.call("learning_readiness", self.rec)
         self.assertFalse(out["blocks_teaching"])

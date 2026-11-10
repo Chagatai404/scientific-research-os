@@ -25,9 +25,10 @@ import time
 from typing import Callable
 
 from . import graph, handouts, home, importers, library, prepare, research, roadmap, tasks, vault
+from .learn import tutor
 from .store import Record
 
-WATCH = ("approval", "handout.revise", "handout.built")
+WATCH = ("approval", "handout.revise", "handout.built", "lesson.close")
 MODES = ("call", "tick", "scan", "daily")
 SETTLE_SECONDS = 20  # a handout is checked when its writer has been quiet this long
 NEXT_LESSONS = 3  # how many of the next lessons are prepared ahead
@@ -301,6 +302,47 @@ def _handout_gate(look: Look):
     return {"opened": done, "wrote": wrote} if done else None
 
 
+def _notes_recorded(rec: Record, keys: list[str]) -> bool:
+    """Whether every suggested note key was already written (as an added note) in this record or a linked one."""
+    from . import workspaces
+    from .store import event_id
+    with workspaces.records(rec) as recs:
+        for key in keys:
+            if not any(r.event(event_id("graph.note.added", f"{name}|note:" + hashlib.sha256(f"{name}|{key}".encode()).hexdigest()[:20]
+                                         + f"|{key}")) for name, r in recs.items()):
+                return False
+    return True
+
+
+def _graph_upkeep(look: Look):
+    """The knowledge graph is kept by agents, never by the person: a closed lesson opens one ``graph`` task (once per lesson,
+    however often or by whichever client it is closed) that hands the agent the lesson's ``graph_notes`` to record. It is skipped when the notes
+    are already in the graph, and finished when they are."""
+    rec = look.rec
+    closes = rec.events(type="lesson.close") if look.first else [e for e in look.ch["events"] if e["type"] == "lesson.close"]
+    opened = closed = 0
+    for e in closes:
+        lesson = e["subject"]
+        if lesson.startswith("bundle:") or (rec.node(lesson) or {}).get("type") != "lesson":
+            continue
+        tid = tasks.task_id("graph", lesson, "close")
+        if tasks.known(rec, tid):
+            continue
+        notes = tutor.suggest_notes(rec, lesson)
+        if not notes or _notes_recorded(rec, [n["key"] for n in notes]):
+            continue
+        tasks.open_task(rec, "graph", lesson, f"Record what the closed lesson {lesson} showed in the knowledge graph.",
+                        data={"lesson": lesson, "graph_notes": {"for": "agent", "call": "graph_note_add", "notes": notes}},
+                        key="close")
+        opened += 1
+    for t in tasks.tasks(rec, "graph"):
+        keys = [n["key"] for n in (t.get("graph_notes") or {}).get("notes", [])]
+        if keys and _notes_recorded(rec, keys):
+            tasks.finish(rec, t["id"], {"recorded": len(keys)}, by="ros")
+            closed += 1
+    return {"opened": opened, "closed": closed} if opened or closed else None
+
+
 def _renders(look: Look):
     """Narration without audio is spoken by the local engine, as a job outside the portal's lock, when one is set up."""
     rec = look.rec
@@ -394,6 +436,7 @@ TRIGGERS: list[Trigger] = [
     Trigger("literature_flow", ("tick",), _literature_flow),
     Trigger("bundle_gate", ("tick",), _bundle_gate),
     Trigger("handout_gate", ("call", "tick"), _handout_gate),
+    Trigger("graph_upkeep", ("call", "tick"), _graph_upkeep),
     Trigger("renders", ("tick",), _renders),
     Trigger("vault_sync", ("tick",), _vault_sync),
     Trigger("vault_scan", ("scan",), _vault_scan),

@@ -20,14 +20,14 @@ import uuid
 from .store import Record
 
 KINDS = {"grade", "answer", "visual", "narration", "animation", "video", "audit", "verify", "review", "item",
-         "scout", "ingest", "outline", "bundle", "handout", "run", "job"}
+         "scout", "ingest", "outline", "bundle", "handout", "graph", "run", "job"}
 CLAIM_TTL = timedelta(minutes=30)
 FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 # Which task an agent should take first, most urgent first: a person waiting on an answer, then the checks that stand
 # between a result and a decision, then material for the next lesson, then groundwork. ``job`` is not an agent's.
 PRIORITY = ("grade", "answer", "audit", "verify", "run", "bundle", "handout", "narration", "visual", "animation",
-            "video", "item", "outline", "scout", "ingest", "review")
+            "video", "item", "outline", "scout", "ingest", "graph", "review")
 # How an agent does each kind of task: the skill to read, the role it plays, and the tool that finishes it.
 GUIDE = {
     "grade": {"skill": "learn", "role": "tutor", "finish_with": "grade",
@@ -43,6 +43,9 @@ GUIDE = {
                "hint": "Build the prepared lesson bundle for the capability, then run the readiness gate."},
     "handout": {"skill": "prepare", "role": "writer", "finish_with": "handout_write",
                 "hint": "Write the handout's sections with sources (see the handouts lens); the system checks and builds it itself."},
+    "graph": {"skill": "learn", "role": "tutor", "finish_with": "graph_note_add",
+              "hint": "A lesson closed: record the notes in its graph_notes with graph_note_add (revise or retract a note "
+                      "you find wrong), then finish. The graph is yours to keep; never ask the person to."},
     "narration": {"skill": "prepare", "role": "preparer", "finish_with": "bundle_plan",
                   "hint": "Write narration segments with sources into the bundle plan."},
     "visual": {"skill": "prepare", "role": "visual-maker", "finish_with": "bundle_file",
