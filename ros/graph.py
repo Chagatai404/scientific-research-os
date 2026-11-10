@@ -33,6 +33,16 @@ LITERACY_DIMENSIONS = ("method_understanding", "tool_operation", "implementation
 STATE_ORDER = ("unknown", "learning", "fragile", "stale", "demonstrated", "retained")
 
 
+def capability_reference(rec: Record, capability: str) -> dict:
+    """A real node-content revision, distinct from its human display alias."""
+    node = rec.node(capability)
+    if not node or node.get('type') != 'capability':
+        raise KeyError('no such capability')
+    revision = hashlib.sha256(json.dumps(node, sort_keys=True, separators=(',', ':'),
+                                        ensure_ascii=False).encode()).hexdigest()
+    return {'owner_record': rec.root.name, 'entity_id': capability, 'revision': revision}
+
+
 @dataclass
 class Assessment:
     state: str

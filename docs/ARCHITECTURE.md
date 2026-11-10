@@ -17,6 +17,8 @@ document and that test in the same commit.
                prepare · research · importers · export
                vault · handouts · automation · director · atlas
                organization (display names and membership, independent of scientific edges)
+               workspaces (stable logical scope, qualified physical ownership and explicit legacy membership)
+               context_selection (bounded conversation context with original event references and explicit omissions)
                library (material added by the person: listed at once, read in the background)
                modes (what a desktop session is in each mode: its skill, its tool grant, the person's own words)
                dispatch (which agent tasks the desktop takes unattended, the limits and the ledger of what it did)
@@ -48,6 +50,10 @@ There are no import cycles **(checked)**.
    tombstone. Items are immutable and named by their content hash; an edit is a new item that `supersedes` the old.
 3. **One writer per record at a time.** Writes take a short OS file lock; inside a process every tool call holds
    `registry.LOCK`. There are no leases or lock files to clean up.
+   The derived SQLite schema initializes under a separate `.index.lock`, preventing
+   simultaneous first opens from observing partial schema creation. A writer may
+   acquire the index lock while holding the write lock; index initialization never
+   acquires the write lock in reverse order. Original JSONL remains the truth.
 4. **Deterministic ids for imported facts** (`store.event_id(source, key)`), so importing twice adds nothing.
 5. **People decide.** Approving, deciding and waiving are `human=True` tools: never offered over MCP, confirmed at a
    terminal in the CLI, made in the portal.
@@ -108,10 +114,27 @@ A new domain area gets a new `ros/tools/<area>.py` whose docstring starts "Tools
 `ros/api.py`.
 
 `organization` owns workspace display names, course/project/library folders, and session/material membership.
+`workspace_inventory` is a read-only domain preview of legacy workspace membership across explicitly supplied,
+authorized records. It returns qualified physical references and separates explicit placement from ambiguous
+title candidates; it never discovers source folders, moves files or rewrites learning history.
 Its `organization.*` and `workspace.renamed` events are human preferences; they never rewrite source paths,
 scientific edge meaning, immutable item identities or historical learning evidence. The snapshot caches canonical
 nodes and recorded membership on node/edge stamps and incrementally folds preference events. New workspaces are
 isolated until explicitly linked. UI callers use `workspace_organization` and the human organization tools.
+
+`workspaces` projects one logical course/project over its explicitly linked records. `home.workspace_id` derives
+legacy identities from explicit user/hub links; `context.link` pins identity before later metadata changes. Read
+resolution never creates or assigns by title. Explicit keyed creation holds an OS lock across processes; General
+work is a singleton. `workspace.member.assigned` preferences retain qualified physical owner/entity/revision refs
+and override legacy inference, without moving history or adding scientific edges. `workspace_overview` groups
+sessions, sources, handouts and research; `workspace_work_resolve` returns both physical owner and selected logical
+workspace. Per-work metadata uses indexed node/event lookups, inventory graph reads use cached projections and
+preferences use incremental folds. `engage` reuses the selected linked project/course; unselected legacy calls
+retain their playbooks. Exact schemas are in `docs/core-experience/CONTRACTS.md`.
+
+Capability identity remains qualified and independent of display titles. Human `capability_equivalence` binds
+verified evidence to actual node-content revisions and refuses cycles; a stale definition stops equivalence.
+The read model references canonical-owner learning events once, never copies grades or silently pools assessments.
 
 `library` owns the ingestion queue. `library.added` (one per file, id derived from connection and path) makes material
 visible without reading it; `library.state` moves it Added -> Reading -> Ready or Needs attention with a plain-language

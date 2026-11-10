@@ -31,6 +31,8 @@ class Sessions(unittest.TestCase):
                         **({} if conversation else {"mode": mode}))  # a follow-up inherits its conversation's mode
         with patch.dict(providers.ADAPTERS, {"ollama": provider}):
             runtime.execute(self.rec, sent, sent["_engine"])
+        run = api.call("run_get", self.rec, run=sent["run"])
+        self.assertEqual(run["state"], "completed", run)
         return sent
 
     def test_every_mode_grants_only_real_non_human_tools_and_names_a_real_skill(self):
@@ -82,10 +84,10 @@ class Sessions(unittest.TestCase):
         self.assertEqual(started["next"]["action"], "probe"); self.assertNotIn("answer", started["next"]["question"])
         results = {}
         def second(request, emit, tool, cancel, own):
-            # The model tries to write the answer itself and to claim "I don't know" for the learner.
-            results["answer"] = tool("answer", {"lesson": started["lesson"], "item": started["next"]["item"], "response": "999", "dont_know": True}, "op-answer")
             with self.assertRaisesRegex(ValueError, "current step"):
                 tool("answer", {"lesson": started["lesson"], "item": "not-the-current-item", "response": "8"}, "op-answer-other")
+            # The model tries to write the answer itself and to claim "I don't know" for the learner.
+            results["answer"] = tool("answer", {"lesson": started["lesson"], "item": started["next"]["item"], "response": "999", "dont_know": True}, "op-answer")
             with self.assertRaisesRegex(ValueError, "one answer per message"):
                 tool("answer", {"lesson": started["lesson"], "item": started["next"]["item"], "response": "8"}, "op-answer-2")
             emit("Correct."); return {}

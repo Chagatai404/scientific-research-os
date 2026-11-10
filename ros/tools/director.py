@@ -17,9 +17,11 @@ from ..registry import P, iso_day, tool
       target=P("string", "a short key: a course code like stat303, or a topic or question key"),
       title=P("string", "its name"), deadline=P("string", "ISO date to finish by"),
       pace=P("integer", "minutes a week to spend"),
-      materials=P("string", "where the course material is, or what it is (syllabus, textbook, a folder, a link)"))
-def engage(rec, intent, kind="auto", target=None, title=None, deadline=None, pace=None, materials=None):
-    return director.engage(rec, intent, kind, target, title, deadline, pace, materials)
+      materials=P("string", "where the course material is, or what it is (syllabus, textbook, a folder, a link)"),
+      workspace_id=P('string', 'explicit selected logical workspace; a linked project record selects itself'),
+      material_refs=P('array', 'qualified selected workspace materials, preserving owner and actual revision'))
+def engage(rec, intent, kind="auto", target=None, title=None, deadline=None, pace=None, materials=None, workspace_id=None, material_refs=None):
+    return director.engage(rec, intent, kind, target, title, deadline, pace, materials, workspace_id, material_refs)
 
 
 @tool("brief", "The first call of every session: what needs the person's judgement (with the evidence), what is happening, "

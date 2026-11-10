@@ -34,8 +34,9 @@ export function AddMaterial({record, folder = '', onAdded, up = false, id = 'lib
     {error && <p className="notice error" role="alert">{error}</p>}</div>}</Menu>;
 }
 
-export function Library({record, tab}: {record: string; tab: string}) {
-  const [version, setVersion] = useState(0), [status, setStatus] = useState(''), [filter, setFilter] = useState(''), [where, setWhere] = useState('all'), [selected, setSelected] = useState('');
+export function Library({record, tab, selectedId = '', workspaceId = ''}: {record: string; tab: string; selectedId?: string; workspaceId?: string}) {
+  const [version, setVersion] = useState(0), [status, setStatus] = useState(''), [filter, setFilter] = useState(''), [where, setWhere] = useState('all'), [selected, setSelected] = useState(selectedId);
+  useEffect(() => setSelected(selectedId), [selectedId, workspaceId]);
   const view = tab === 'places' ? 'places' : tab === 'notes' ? 'notes' : 'material';
   useEffect(() => {const bump = () => setVersion(v => v + 1); window.addEventListener('ros:library-changed', bump); window.addEventListener('ros:organization-changed', bump); return () => {window.removeEventListener('ros:library-changed', bump); window.removeEventListener('ros:organization-changed', bump);};}, []);
   const org = useResource(`library:${record}:${version}`, signal => call<Organization>('workspace_organization', {}, record, false, signal), record);

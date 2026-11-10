@@ -4,26 +4,28 @@ import {MediaArtifacts} from './MediaArtifacts';
 import {Pedagogy} from './Pedagogy';
 import {AgentAction} from './AgentAction';
 import {useEffect, useRef, useState, type FormEvent} from 'react';
-import {call, href, preference, readDocument, savePreference} from './api';
-import type {AnswerResult, DocumentData, Entity, LibraryItem, LessonStep, Organization, Today} from './contracts';
+import {call, href, readWorkspace, preference, readDocument, savePreference} from './api';
+import type {AnswerResult, DocumentData, Entity, LibraryItem, LessonStep, Organization, Today, QualifiedRef} from './contracts';
 import {Classroom, DependencyPlan, type ClassroomMap} from './Classroom';
 import './classroom.css';
 import {RichText, safeUrl} from './Document';
 import {useRecordRevision, useResource} from './hooks';
 import {Empty, Notice} from './ui';
 
-export function Learn({id, record, material = ''}: {id: string; record: string; material?: string}) {
+export function Learn({id, record, material = '', workspaceId = '', materialRef}: {id: string; record: string; material?: string; workspaceId?: string; materialRef?: string}) {
   const [version, setVersion] = useState(0);
+  const scoped = useResource(`material-scope:${record}:${workspaceId}`, signal => workspaceId ? readWorkspace(record, workspaceId, signal) : Promise.resolve(null), record);
+
   const resource = useResource(`learn:${record}:${version}`, async signal => {
     const [bundles, today, org] = await Promise.all([call<LibraryItem[]>('bundles', {}, record, false, signal), call<Today>('today', {}, record, false, signal), call<Organization>('workspace_organization', {}, record, false, signal)]);
     return {bundles, today, org};
   }, record);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [goal, setGoal] = useState(''), [picked, setPicked] = useState(material), [setup, setSetup] = useState('');
-  const ready = (resource.data?.org.library || []).filter(m => m.state === 'ready');
+  const [goal, setGoal] = useState(''), [picked, setPicked] = useState(materialRef || material), [setup, setSetup] = useState('');
+  const ready: {id: string; title: string; ref: QualifiedRef; detail?: string}[] = workspaceId ? (scoped.data?.groups.sources || []).concat(scoped.data?.groups.handouts || []).filter(m => m.kind !== 'connection').map(m => ({id: JSON.stringify(m.ref), title: m.title, ref: m.ref, detail: `${m.owner_record} · ${m.path?.split(/[\\/]/).at(-1) || m.ref.entity_id}`})) : (resource.data?.org.library || []).filter(m => m.state === 'ready').map(m => ({...m, ref: {owner_record: record, entity_id: m.id}}));
   const chosen = ready.find(m => m.id === picked);
-  useEffect(() => {setPicked(material);}, [material]);
+  useEffect(() => {setPicked(materialRef || material);}, [material, materialRef]);
   async function start(bundle: string) {
     setBusy(true); setError('');
     try {const result = await call<{lesson: string}>('start', {bundle}, record, true); location.hash = href('session', result.lesson, record);}
@@ -41,7 +43,7 @@ export function Learn({id, record, material = ''}: {id: string; record: string; 
     event.preventDefault(); setBusy(true); setError(''); setSetup('Setting up your study plan…');
     try {
       const wanted = goal.trim() || `Teach me ${chosen?.title || ''}`;
-      const out = await call<{kind: string; for_you?: string[]}>('engage', {intent: chosen && goal.trim() ? `${wanted} Use ${chosen.title} as the material.` : wanted}, record, true);
+      const out = await call<{kind: string; for_you?: string[]}>('engage', {intent: wanted, ...(workspaceId ? {workspace_id: workspaceId} : {}), ...(chosen ? {material_refs: [chosen.ref]} : {})}, record, true);
       setSetup(`Your plan is set up. ${out.for_you?.join(' ') || 'Your agent is preparing the first lesson; you will see it here when it is ready.'}`); setGoal(''); setVersion(v => v + 1);
     } catch (e) {setSetup(''); setError((e as Error).message);} finally {setBusy(false);}
   }
@@ -56,7 +58,7 @@ export function Learn({id, record, material = ''}: {id: string; record: string; 
         : nextReady ? <><h2>{nextReady.title}</h2><p className="muted">Prepared and ready for you.</p><button className="primary" disabled={busy} onClick={() => start(nextReady.id)}>Start lesson</button></>
         : today.next_lesson ? <><h2>{today.next_lesson.title}</h2><p className="muted">Your agent is still preparing this lesson{today.next_lesson.missing?.length ? ': ' + today.next_lesson.missing.slice(0, 3).join('; ') : ''}.</p><a className="button" href={href('activity', '', record)}>See progress</a></>
         : <><h2>What do you want to understand?</h2><p className="muted">Describe it below, or pick something from your Library.</p></>}
-      {lastSession.startsWith('#session') && <p><a href={lastSession}>Resume your last lesson →</a></p>}</section>
+      {lastSession.startsWith('#session') && (!workspaceId || new URLSearchParams(lastSession.split('?')[1] || '').get('ws') === workspaceId) && <p><a href={lastSession}>Resume your last lesson →</a></p>}</section>
     <form className="goal-composer" onSubmit={plan}><label htmlFor="learn-goal">What do you want to understand?</label>
       <textarea id="learn-goal" rows={3} value={goal} onChange={e => setGoal(e.target.value)} required={!chosen} maxLength={4000} placeholder={chosen ? `Teach me ${chosen.title}` : 'Teach me mathematical statistics, or explain quantum teleportation'}/>
       <div className="composer-footer"><MaterialPick label="Learn from" items={ready} picked={picked} onPick={setPicked} none="Your own words only"/>

@@ -86,6 +86,7 @@ class Pool:
         self.default = default
         self._records = {default.root.name: default}
         self._lock = threading.Lock()
+        self.coordinator = runtime.Coordinator(legacy_engine=lambda request: _engine(request)) if os.environ.get('ROS_WORKSPACE_FAKE') == '1' or getattr(_engine, '__module__', '') != __name__ else runtime.Coordinator()
 
     def get(self, name: str | None = None) -> Record:
         if not name or name == self.default.root.name:
@@ -125,6 +126,7 @@ class Pool:
                 self._records.pop(name).close()
 
     def close(self) -> None:
+        self.coordinator.close()
         with self._lock:
             for r in self._records.values():
                 if r is not self.default:
@@ -320,7 +322,7 @@ def make_handler(rec: "Record | Pool"):
                         if not saved or saved[:3] != (str(target.root), name, fingerprint) or time.monotonic() - saved[3] > 600: raise ValueError('approval expired or subject changed; review the current version')
                         if name == 'workspace_delete' and params.get('workspace') in (pool.default.root.name, target.root.name):
                             raise ValueError('Open another workspace first: this one is open here, or it is the one the app started with.')
-                        done = runtime.launch_operation(target,api.call(name, target, **params))
+                        done = pool.coordinator.submit(target, name, api.call(name, target, **params))
                         if name == 'workspace_delete': pool.forget(params['workspace'])
                         return self._send(200, {'result': done})
                     except (ValueError, KeyError) as exc: return self._send(400, {'error': str(exc)})
@@ -459,8 +461,7 @@ def make_handler(rec: "Record | Pool"):
                 return self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc.args[0] if exc.args else exc)})
             except Exception as exc:
                 return self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": _internal_error(name, exc)})
-            engine = result.pop("_engine", None) if name == "workspace_chat_send" else None
-            runtime.launch_operation(target,result)
+            result = pool.coordinator.submit(target, name, result)
             if name=='handout_build' and result.get('job') and not args.get('wait'):
                 try:runtime.run_job(target,result['job'])
                 except (ValueError,KeyError):pass
@@ -471,8 +472,6 @@ def make_handler(rec: "Record | Pool"):
                     return value
                 result=qualify(result)
             self._send(HTTPStatus.OK, {"result": result})
-            if engine and not result.get('duplicate'):
-                threading.Thread(target=_chat_response, args=(target, result, engine), daemon=True).start()
 
         def _file(self, path: Path, cache: bool, base: Path | None = None, untrusted: bool = False):
             # Decide on the path as written before resolving it: on Windows, resolving a UNC path opens it, which connects

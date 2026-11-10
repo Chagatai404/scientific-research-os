@@ -2,8 +2,9 @@
 from datetime import datetime, timezone
 import re
 import uuid
+from .store import _file_lock
 
-from . import director, dispatch, modes, tasks, runs, sources, execution, workbench
+from . import director, dispatch, modes, tasks, runs, sources, execution, workbench, context_selection
 
 
 def takes_effort(model):
@@ -13,7 +14,15 @@ def takes_effort(model):
     return provider == "codex" or provider == "claude" and any(family in name for family in ("sonnet", "opus"))
 
 
-def send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None, answered=None):
+def send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None, answered=None, workspace=None):
+    # The whole turn (including new conversation creation) is one idempotency
+    # decision across CLI/MCP/HTTP processes. This is distinct from write.lock.
+    with _file_lock(rec.root / '.conversation-turn.lock'):
+        rec.refresh()
+        return _send(rec, text, model, conversation, effort, key, mode, scope, answered, workspace)
+
+
+def _send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None, answered=None, workspace=None):
     # A conversation keeps the mode it was started in; a follow-up that names another mode is refused, never downgraded.
     kept = (rec.node(conversation) or {}).get("mode", "chat") if conversation else None
     if mode and kept and mode != kept: raise ValueError(f'this conversation is in {kept} mode; start a new conversation for {mode}')
@@ -22,8 +31,10 @@ def send(rec, text, model, conversation=None, effort="medium", key=None, mode=No
     if key:
         previous = runs.by_key(rec, key)
         if previous:
+            if conversation and previous['conversation'] != conversation:
+                raise ValueError('this turn key belongs to a different conversation')
             return {"conversation": previous['conversation'], "request": previous['request'], "run": previous['id'], "state": previous['state'], "duplicate": True}
-    if sum(r['state'] not in runs.TERMINAL for r in runs.listing(rec,500)) >= execution.limits(rec)['queue']:
+    if len(runs.pending(rec)) >= execution.limits(rec)['queue']:
         raise ValueError('The workspace execution queue is full. Stop or wait for an existing run.')
     text = text.strip()
     if not text or len(text) > 12000:
@@ -78,27 +89,32 @@ def send(rec, text, model, conversation=None, effort="medium", key=None, mode=No
     else:
         conversation = "conversation:" + uuid.uuid4().hex[:12]
         if modes.mode(mode).engages:
-            setup = director.engage(rec, text, kind=modes.mode(mode).engages)
+            setup = director.engage(rec, text, kind=modes.mode(mode).engages,
+                                    workspace_id=workspace['workspace_id'] if workspace else None)
             # The person is waiting for this lesson or investigation: its preparation goes before background work.
             if setup.get("hub"): dispatch.focus(rec, setup["hub"], conversation)
         where = {"hub": setup["hub"], "hub_record": setup.get("user_record") or setup.get("record")} if setup and setup.get("hub") else {}
+        if workspace:
+            where['workspace_id'] = workspace['workspace_id']
+            if workspace.get('hub'):
+                where.update(hub=workspace['hub']['entity_id'], hub_record=workspace['hub']['owner_record'])
         rec.put_node(conversation, "conversation", title=text[:100], model=model, mode=mode, **where)
     request = "message:" + uuid.uuid4().hex
     for permission in permissions:execution.consume_vision_permission(rec,permission,request)
     scope=[{k:v for k,v in ref.items() if k!='visionPermission'} for ref in scope or []]
     sensitive = any(sources.get(rec, ref['sourceId'])['localOnly'] for ref in (scope or []))
     rec.append("conversation.message", conversation, {"request": request, "text": text, "model": model, "effort": selected_effort, 'mode': mode, 'scope': scope or [], 'local_only': sensitive, **({'answered': answered} if answered else {})}, actor="person")
-    state = history(rec, conversation)
     context = {"record": rec.root.name, "goal": (rec.node(conversation) or {}).get("title"),
                "setup": {k: v for k, v in (setup or {}).items() if k in ("kind", "record", "hub", "for_you")},
                "tasks": [{"kind": t["kind"], "brief": t.get("brief", "")[:500], "state": t["state"]} for t in tasks.tasks(rec)[:8]],
                "authority": "Human-only approval, decisions and waivers remain unchanged."}
     run = runs.enqueue(rec, key or request, conversation, request, model, mode, scope)
+    selection = context_selection.select(rec, conversation, text, execution.limits(rec)['context'] // 2)
+    context.update(selection['context'])
     context['attachments'] = attachments
     if answered: context['answered'] = {"attempt": answered, "note": "The learner answered on the lesson card; the attempt is recorded. Do not call `answer`: call `next` and continue."}
     return {"conversation": conversation, "request": request, "run": run['id'], "state": "queued", "setup": context["setup"],
-            "_engine": {"action": "reply", **({"answered": answered} if answered else {}), "model": model, "effort": effort, "messages": [{"role": m["role"], "content": m["text"]}
-             for m in state["messages"] if m["role"] in ("user", "assistant")][-30:], "context": context,'images':images,'vision_profile':destination,'_vision_permissions':permissions}}
+            "_engine": {"action": "reply", "_said": text, **({"answered": answered} if answered else {}), "model": model, "effort": effort, "messages": selection['messages'], "context": context,'images':images,'vision_profile':destination,'_vision_permissions':permissions}}
 
 
 def history(rec, conversation):
@@ -116,7 +132,7 @@ def history(rec, conversation):
             pending.pop(data["request"], None)
             messages.append({"id": event["id"], "role": "assistant" if event["type"].endswith("response") else "error",
                              "text": data["text"], "model": data.get("model"), "effort": data.get("effort"), "ts": event["ts"], 'scope':scopes.get(data['request'],[])})
-    listed = [r for r in runs.listing(rec, 500) if r['conversation'] == conversation]
+    listed = runs.for_conversation(rec, conversation)
     saved_runs = {r['request']: r for r in listed}
     active = [request for request in pending if saved_runs.get(request, {}).get('state') in ('queued', 'running', 'waiting_for_input', 'waiting_for_approval')]
     return {"conversation": conversation, "title": node["title"], "mode": node.get("mode", "chat"), "messages": messages[-100:], "pending": active,

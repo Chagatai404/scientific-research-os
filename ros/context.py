@@ -92,7 +92,16 @@ def link(rec: Record, user: str | None = None, project: str | None = None, title
     for r in (rec, user_rec):
         if r.node(project) is None:
             graph.add_node(r, project, kind, {"title": name})
-    return home.set_config(rec.root, role="project", user=target.name, project=project)
+    pinned = home.workspace_id(rec.root) if cfg.get('role') == 'project' else f'ws:{target.name}:{project}'
+    aliases = list(cfg.get('workspace_aliases', []))
+    for owner, ident in ((cfg.get('user'), cfg.get('project')), (target.name, project)):
+        ref = {'owner_record': owner, 'entity_id': ident}
+        if owner and ident and ref not in aliases:
+            aliases.append(ref)
+    configured = home.set_config(rec.root, role="project", user=target.name, project=project,
+                                 workspace_id=pinned, workspace_aliases=aliases)
+    # Keep the legacy link/CLI setup response; the typed identity tool exposes scope.
+    return {k: v for k, v in configured.items() if k not in ('workspace_id', 'workspace_aliases')}
 
 
 def context(rec: Record, as_of: date | None = None) -> dict:
@@ -234,8 +243,8 @@ def records_overview(rec: Record) -> list[dict]:
         # Keep the incremental organization fold between switcher reads, just as user_record does.
         title = organization.title(owner)
         out.append({"name": name, "title": title, "role": cfg.get("role") or "unlinked", "hub": cfg.get("project"),
-                    "current": root.resolve() == rec.root.resolve()})
+                    "workspace_id": home.workspace_id(root), "current": root.resolve() == rec.root.resolve()})
     if not any(r["current"] for r in out):  # a record kept in a repository's .ros/
         out.insert(0, {"name": rec.root.name, "title": organization.title(rec), "role": home.config(rec.root).get("role") or "unlinked",
-                       "hub": home.config(rec.root).get("project"), "current": True})
+                       "hub": home.config(rec.root).get("project"), "workspace_id": home.workspace_id(rec.root), "current": True})
     return out

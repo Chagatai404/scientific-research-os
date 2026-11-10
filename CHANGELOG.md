@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased: persistent workspace continuity
+
+- Added stable course/project workspace identities and one General work area.
+  Selected-workspace requests reuse their course or project instead of creating
+  a workspace for each prompt. Historical work keeps its original physical owner.
+- Added explicit, reversible membership preferences and grouped sessions, sources,
+  handouts and research. Source references retain recorded revisions; names alone
+  never establish ownership or concept equivalence.
+- Added revision-bound, person-verified capability equivalence without rewriting
+  assessment evidence. Workspace projections refresh after another client writes
+  while retaining warm metadata caches.
+- Fixed concurrent first opens of a record racing to create its derived SQLite
+  schema. Original source logs are preserved.
+- CLI, MCP and HTTP now share execution of queued operations and conversation
+  runs. Qualified continuation retains the original history; cross-process turn
+  retries are idempotent and cancellation prevents subsequent tool effects.
+- Long conversations select bounded context with original source/decision
+  references and explicit omissions instead of relying only on the newest turns.
+
 ## 1.7.3: robustness — no silent failures, network loss handled, a sealed figure renderer
 
 - Fixed: a handout's readiness check crashed when an item tested by its subject kept its rubric as a sentence instead of `{"criteria": [...]}` (64 such items in one record), and a session agent saw the crash as "connection reset" and blamed the network. A rubric in any stored shape is now read (a sentence is one criterion), and new items are saved in the one shape. Grading such an item no longer crashes either.

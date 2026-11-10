@@ -8,8 +8,9 @@ import logging
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from . import api, runner, home
-from .store import Record
+from .store import Record, _file_lock
 from .lib import providers, connectivity, renderkit
 
 LOG = logging.getLogger('ros')
@@ -73,13 +74,16 @@ def source_result(model, name, value, taint):
     run tainted once it holds source content."""
     if name not in SOURCE_CONTENT: return value
     got = True
+    private = isinstance(value, dict) and value.get('localOnly')
     if name == 'source_search' and isinstance(value, list):
         hidden = 0
         if not model.startswith(LOCAL_MODELS):
             kept = [r for r in value if not r.get('localOnly')]; hidden = len(value) - len(kept); value = kept
         got = bool(value)
+        private = any(row.get('localOnly') for row in value)
         value = {'results': value, **({'hidden': f'{hidden} matches are in local-only sources and were left out'} if hidden else {})}
     if got: taint['sources'] = True
+    if private: taint['private'] = True
     return dict(value, untrusted=True, notice=UNTRUSTED)
 
 # --- the safe renderer ------------------------------------------------------------------------------------------------------------------
@@ -111,6 +115,7 @@ def prepare_renderer():
         return RENDERER['renderer']
 
 ACTIVE = {}
+SCHEDULED = set()  # submissions not yet inside execute/engine_process
 # Retrying a model turn that lost its connection: pauses before attempts 2, 3 and 4 of a reply (3 retries = "attempt k of 3" after the first).
 RETRY_DELAYS = (5, 20, 60)
 ONLINE_WAIT = 120  # how long a retry waits for the internet to come back before trying anyway
@@ -120,12 +125,134 @@ INDEX_JOBS = {}
 INDEX_WORKER = threading.Semaphore(1)
 ENGINE_WORKER = threading.Semaphore(1)
 
+
+def _stop_entry(entry):
+    entry['cancel'].set()
+    for child in list(entry['owned']):
+        try:
+            if hasattr(child, 'poll'): providers.terminate(child)
+            else: child.close()
+        except OSError: pass
+
+
+@contextmanager
+def _run_action(rec, run):
+    """A committed cancellation precedes every later tool effect or receipt."""
+    with api.LOCK:
+        with _file_lock(rec.root / '.run-actions.lock'):
+            rec.refresh()
+            if api.call('run_get', rec, run=run)['state'] in ('cancelled', 'interrupted', 'failed', 'completed'):
+                raise ValueError('run cancelled or terminal')
+            yield
+
+
+class Coordinator:
+    """Execute host-only packets after the tool releases its registry lock.
+
+    The interface owns this coordinator and drains it before closing records.
+    Opening another interface never recovers or interrupts another owner's work.
+    """
+    def __init__(self, legacy_engine=None):
+        self.legacy_engine = legacy_engine
+        self.workers = {}
+        self.records = {}
+        self.lock = threading.RLock()
+        self.closed = False
+
+    def submit(self, rec, tool, raw_result, wait=False):
+        if not isinstance(raw_result, dict): return raw_result
+        value = dict(raw_result)
+        packet, operation = value.pop('_engine', None), value.pop('_operation', None)
+        owner = value.get('owner_record')
+        if owner and owner not in (rec.root.name, '.ros'):
+            root = home.resolve(owner)
+        else: root = rec.root
+        identifier = operation or (value.get('run') if packet else None)
+        if identifier and not value.get('duplicate'):
+            key = (str(root), identifier)
+            with self.lock:
+                if self.closed: raise ValueError('execution coordinator is closed')
+                for finished, worker in list(self.workers.items()):
+                    if not worker.is_alive(): self.workers.pop(finished)
+                # Worker handles outlive interface handles, even if a broken adapter
+                # refuses to stop. A caller closing its Record cannot invalidate one.
+                if str(root) not in self.records: self.records[str(root)] = Record(root)
+                rec = self.records[str(root)]
+                thread = self.workers.get(key)
+                if thread is None:
+                    def work():
+                        try:
+                            if operation: execute_operation(rec, operation)
+                            else: execute(rec, value, packet, legacy_engine=self.legacy_engine)
+                        finally:
+                            with LOCK: SCHEDULED.discard(key)
+                    thread = threading.Thread(target=work, name='ros-execution', daemon=True)
+                    self.workers[key] = thread
+                    with LOCK: SCHEDULED.add(key)
+                    thread.start()
+            if wait: thread.join()
+            if wait and packet: value['state'] = api.call('run_get', rec, run=identifier)['state']
+            if wait and operation:
+                value = next(row for row in api.call('operation_list', rec) if row['id'] == identifier)
+        if tool == 'run_cancel' and value.get('id'):
+            owned = self.records.get(str(root))
+            if owned is not None: cancel(owned, value['id'])
+            elif root == rec.root: cancel(rec, value['id'])
+        return api.external_result(value)
+
+    def close(self, grace=5, stop_timeout=5):
+        """Drain briefly, then interrupt only this interface's remaining workers.
+
+        A non-cooperative adapter is reported after a bounded stop interval; its
+        private Record stays open until its worker returns, never underneath it.
+        """
+        with self.lock:
+            self.closed = True
+            workers = list(self.workers.items())
+        deadline = time.monotonic() + max(0, grace)
+        for key, thread in workers:
+            if thread is not threading.current_thread(): thread.join(max(0, deadline-time.monotonic()))
+        pending = [(key, thread) for key, thread in workers if thread.is_alive()]
+        for (root, identifier), thread in pending:
+            with LOCK: entry = ACTIVE.get((root, identifier))
+            if entry:
+                entry['cancel'].set()
+                for child in list(entry['owned']):
+                    try:
+                        if hasattr(child, 'poll'): providers.terminate(child)
+                        else: child.close()
+                    except OSError: pass
+                rec = self.records[root]
+                try:
+                    row = api.call('run_get', rec, run=identifier)
+                    if row['state'] not in ('completed', 'failed', 'interrupted', 'cancelled'):
+                        api.call('run_transition', rec, run=identifier, state='interrupted', detail='The client closed; partial output and committed effects are retained.')
+                except KeyError: pass  # an operation, not a provider run
+        deadline = time.monotonic() + max(0, stop_timeout)
+        for key, thread in pending:
+            if thread is not threading.current_thread(): thread.join(max(0, deadline-time.monotonic()))
+        retained = {key[0] for key, thread in workers if thread.is_alive()}
+        with self.lock:
+            for root, rec in list(self.records.items()):
+                if root not in retained: rec.close(); self.records.pop(root)
+        if retained:
+            report('execution', 'A provider did not stop when its client closed; its worker record remains open until it stops.')
+            def release_late():
+                for key, thread in workers:
+                    if key[0] in retained and thread is not threading.current_thread(): thread.join()
+                with self.lock:
+                    for root in retained:
+                        record = self.records.pop(root, None)
+                        if record is not None: record.close()
+            threading.Thread(target=release_late, name='ros-execution-cleanup', daemon=True).start()
+        return not retained
+
 def out_of_steps(steps):
     """What the model is told when it has used its tool calls: stop, and say plainly what is left, so the person can say "continue"."""
     return (f'tool step budget reached: the {steps} tool calls of this reply are used. Call no more tools. Say what you did, what you did not '
             'get to, and that the person can say "continue" to carry on with a fresh budget.')
 
-def execute_operation(rec,identifier):
+def execute_operation(rec,identifier,parent_entry=None):
     import sys
     from pathlib import Path
     try:
@@ -134,7 +261,8 @@ def execute_operation(rec,identifier):
         if row['kind']=='compute':
             packet=dict(packet,output_dir=str(rec.root/'operation-artifacts'),input_files=[{'snapshot':str(rec.root/'source-snapshots'/ref['revision']),'revision':ref['revision'],'name':str(i)+'-'+(Path(ref['relativePath']).name or 'input')} for i,ref in enumerate(packet.get('inputs',[]))])
         argv=[sys.executable,'--worker','operation'] if getattr(sys,'frozen',False) else [sys.executable,'-m','ros.lib.desktop_operations']
-        value=engine_process(rec,identifier,argv,{'kind':row['kind'],'packet':packet},packet.get('timeout',20)+15)
+        options = {'parent_entry': parent_entry} if parent_entry is not None else {}
+        value=engine_process(rec,identifier,argv,{'kind':row['kind'],'packet':packet},packet.get('timeout',20)+15,**options)
         return api.call('operation_finish',rec,identifier=identifier,result=value)
     except ValueError as exc:
         if 'already started' in str(exc):return next(r for r in api.call('operation_list',rec) if r['id']==identifier)
@@ -150,34 +278,71 @@ def launch_operation(rec,result):
     return result
 
 def recover(rec):
+    import os
+    def live(row):
+        with LOCK:
+            if (str(rec.root), row['id']) in ACTIVE or (str(rec.root), row['id']) in SCHEDULED: return True
+        pid = row.get('owner_pid')
+        if not isinstance(pid, int) or pid == os.getpid(): return False
+        return process_alive(pid)
     counts={'operations':0,'runs':0,'notebooks':0}
     for row in api.call('operation_list',rec):
-        if row['state']=='running':counts['operations']+=1;api.call('operation_finish',rec,identifier=row['id'],result={'ok':False,'interrupted':True,'error':'Backend stopped; inspect effects before requesting a new operation.'})
-    for row in api.call('run_list', rec, limit=500):
-        if row['state'] not in ('completed', 'failed', 'cancelled', 'interrupted'):
+        if row['state'] in ('queued', 'running') and not live(row):counts['operations']+=1;api.call('operation_finish',rec,identifier=row['id'],result={'ok':False,'interrupted':True,'error':'Backend stopped; inspect effects before requesting a new operation.'})
+    for row in api.call('run_pending', rec):
+        if row['state'] not in ('completed', 'failed', 'cancelled', 'interrupted') and not live(row):
             counts['runs']+=1; api.call('run_transition', rec, run=row['id'], state='interrupted', detail='The owning backend stopped. Inspect partial output before starting a new turn.')
     for job in api.call('notebook_jobs',rec):
-        if job['state']=='running':counts['notebooks']+=1;api.call('notebook_result',rec,request=job['id'],result={'ok':False,'interrupted':True,'error':'The owning backend stopped. Inspect the original request before executing again.'})
+        if job['state']=='running' and not live(job):counts['notebooks']+=1;api.call('notebook_result',rec,request=job['id'],result={'ok':False,'interrupted':True,'error':'The owning backend stopped. Inspect the original request before executing again.'})
     LOG.info('recovery on start: marked %(runs)d runs, %(operations)d operations and %(notebooks)d notebook jobs interrupted', counts)
     return counts
 
-def engine_process(rec,key,argv,packet,timeout):
-    entry={'cancel':threading.Event(),'owned':[]}
+
+def process_alive(pid):
+    """A read-only owner probe; uncertain permissions never authorize recovery."""
+    import os
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0: return False
+    if os.name == 'nt':
+        import ctypes
+        from ctypes import wintypes
+        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel.OpenProcess.restype = wintypes.HANDLE
+        kernel.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+        kernel.GetExitCodeProcess.restype = wintypes.BOOL
+        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel.CloseHandle.restype = wintypes.BOOL
+        handle = kernel.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION only
+        if not handle:
+            return ctypes.get_last_error() != 87  # ERROR_INVALID_PARAMETER: the pid no longer exists
+        try:
+            code = wintypes.DWORD()
+            if not kernel.GetExitCodeProcess(handle, ctypes.byref(code)): return True
+            return code.value == 259  # STILL_ACTIVE
+        finally: kernel.CloseHandle(handle)
+    try: os.kill(pid, 0); return True
+    except ProcessLookupError: return False
+    except OSError: return True
+
+def engine_process(rec,key,argv,packet,timeout,parent_entry=None):
+    entry={'cancel':parent_entry['cancel'] if parent_entry else threading.Event(),'owned':[]}
     with LOCK:
         if (str(rec.root),key) in ACTIVE:raise ValueError('this engine request is already running')
         ACTIVE[(str(rec.root),key)]=entry
     try:
         with ENGINE_WORKER:
-            if entry['cancel'].is_set():return {'ok':False,'error':'Engine request cancelled'}
+            if entry['cancel'].is_set():return {'ok':False,'interrupted':True,'error':'Engine request cancelled'}
             import os, subprocess, sys
             env=dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
             env['PYTHONPATH']=str(__import__('pathlib').Path(__file__).resolve().parents[1])+os.pathsep+env.get('PYTHONPATH','')
             process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding='utf-8',env=env,
                                      **({'creationflags':subprocess.CREATE_NO_WINDOW} if os.name=='nt' else {'start_new_session':True}))
             entry['owned'].append(process)
+            if parent_entry is not None: parent_entry['owned'].append(process)
+            if entry['cancel'].is_set(): providers.terminate(process)
             try:
                 try:
                     output,errors=process.communicate(json.dumps(packet),timeout=timeout)
+                    if entry['cancel'].is_set():return {'ok':False,'interrupted':True,'error':'Engine request cancelled; inspect any partial effects before requesting new work.'}
                     try:return json.loads(output)
                     except ValueError:pass
                 except subprocess.TimeoutExpired:
@@ -281,6 +446,19 @@ def execute(rec, result, request, legacy_engine=None):
     with LOCK:
         if key in ACTIVE: return
         entry = {'cancel': threading.Event(), 'owned': []}; ACTIVE[key] = entry
+    watch_stop = threading.Event()
+    def check_cancel():
+        if entry['cancel'].is_set(): raise ValueError('run cancelled')
+        if api.call('run_get', rec, run=run)['state'] in ('cancelled', 'interrupted'):
+            _stop_entry(entry)
+            raise ValueError('run cancelled')
+    def watch_cancel():
+        while not watch_stop.wait(.1):
+            try: check_cancel()
+            except ValueError: return
+            except Exception: LOG.warning('run %s: cancellation state could not be read', run, exc_info=True)
+    watcher = threading.Thread(target=watch_cancel, name='ros-run-cancel', daemon=True)
+    watcher.start()
     buffer, output, last = '', '', time.monotonic()
     limits = row = None  # read inside the try below, so a failure there still ends the run
     private_scope, allowed, native = False, set(), False
@@ -303,7 +481,7 @@ def execute(rec, result, request, legacy_engine=None):
         except Exception: LOG.warning('run %s: a status line could not be recorded', run, exc_info=True)
     def emit(text):
         nonlocal buffer, output
-        if entry['cancel'].is_set(): raise providers.ProviderError('cancelled')
+        check_cancel()
         if shown['text']: set_status(None)
         budget['bytes'] += len(text)
         if budget['bytes'] > min(60000,limits['output']*6): raise providers.ProviderError('Output budget reached.')
@@ -322,13 +500,13 @@ def execute(rec, result, request, legacy_engine=None):
         flush()
         api.call('run_step', rec, run=run, operation=f'native/{seen_native[0]}', tool_name='native:' + str(name)[:60], result=detail)
     # The person's own latest words: what `answer` and `ask` record, whatever the model writes (see ros/modes.py).
-    said = next((m['content'] for m in reversed(request.get('messages', [])) if m['role'] == 'user'), '')
+    said = request.get('_said', next((m['content'] for m in reversed(request.get('messages', [])) if m['role'] == 'user'), ''))
     # A model's self-labelled reviewer cannot constitute independent audit. Audit verdicts are never offered.
     def tool_call(name, args, operation):
         if name not in allowed or api.TOOLS[name].human: raise ValueError('operation is not granted to this run')
         if not isinstance(args, dict): raise ValueError('tool arguments must be an object')
         if row['mode']=='chat' and ((name=='bundle_plan' and 'plan' in args) or (name=='item' and args.get('reveal'))):raise ValueError('this conversation grants read-only learner context')
-        if entry['cancel'].is_set(): raise ValueError('run cancelled')
+        check_cancel()
         if name=='literature_search' and private_scope:raise ValueError('A public search cannot disclose local-only scoped material.')
         if name=='literature_search' and taint['sources']:raise ValueError(TAINTED)
         if name=='transcription_draft' and (args.get('source'),args.get('path'),args.get('revision')) not in {(r.get('sourceId'),r.get('relativePath'),r.get('revision')) for r in row.get('scope',[])}:raise ValueError('Transcription must use an explicitly attached source revision.')
@@ -341,10 +519,10 @@ def execute(rec, result, request, legacy_engine=None):
             budget['steps'] += 1
             if budget['steps'] > limits['tool_steps']: raise ValueError(out_of_steps(limits['tool_steps']))
             flush()
-            spec = api.call('delegate', rec, **args)
+            with _run_action(rec, run): spec = api.call('delegate', rec, **args)
             if taint['sources'] and 'literature_search' in spec['tools']: raise ValueError(TAINTED)
             value = run_role(spec, operation)
-            api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
+            with _run_action(rec, run): api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
             return value
         if name == 'answer':
             if request.get('answered'): raise ValueError('the learner already answered this step on the lesson card and it is recorded; call `next` and continue')
@@ -358,7 +536,7 @@ def execute(rec, result, request, legacy_engine=None):
         if budget['steps'] > limits['tool_steps']: raise ValueError(out_of_steps(limits['tool_steps']))
         flush()
         target = rec if name in ('work', 'engage', 'brief') else selected[0]
-        with api.LOCK:
+        with _run_action(rec, run):
             if not request['model'].startswith(('ollama:','compatible:')):
                 api.call('workspace_cloud_guard',rec)
                 if target is not rec:api.call('workspace_cloud_guard',target)
@@ -366,6 +544,9 @@ def execute(rec, result, request, legacy_engine=None):
                 api.call('source_protect_derived',target,origin=rec.root.name,run=run)
             source_refusal(target, request['model'], name, args)
             value = source_result(request['model'], name, api.call(name, target, **args), taint)
+            if taint.get('private') and not taint.get('private_marked'):
+                api.call('source_protect_derived', rec, origin=target.root.name, run=run)
+                taint['private_marked'] = True
             if name == 'work' and isinstance(value, dict) and value.get('use_record'):
                 identifier = value['use_record']
                 if identifier == rec.root.name:
@@ -375,12 +556,18 @@ def execute(rec, result, request, legacy_engine=None):
                     selected[0] = opened[identifier]
                 else:
                     raise ValueError('The claimed task record is unavailable; inspect the task before continuing.')
+            if not (isinstance(value, dict) and value.get('_operation')):
+                if name == 'start' and isinstance(value, dict) and 'lesson' in value: value = dict(value, record=target.root.name)
+                if len(json.dumps(value)) > 80000: value = {'error': 'result exceeds context budget; inspect the operation in Research'}
+                api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
+                return value
         if isinstance(value,dict) and value.get('_operation'):
-            value=execute_operation(target,value['_operation'])
+            check_cancel()
+            value=execute_operation(target,value['_operation'],parent_entry=entry)
         # The conversation's lesson card opens the lesson where it lives (see conversation.lesson).
         if name == 'start' and isinstance(value, dict) and 'lesson' in value: value = dict(value, record=target.root.name)
         if len(json.dumps(value)) > 80000: value = {'error': 'result exceeds context budget; inspect the operation in Research'}
-        api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
+        with _run_action(rec, run): api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
         return value
     def run_role(spec, operation):
         """One independent role as its own bounded provider run: a fresh context (its instructions and the brief, never this
@@ -394,17 +581,20 @@ def execute(rec, result, request, legacy_engine=None):
             if not isinstance(args, dict): raise ValueError('tool arguments must be an object')
             if name == 'item' and args.get('reveal'): raise ValueError('a role never reads hidden rubrics')
             if name == 'literature_search' and taint['sources']: raise ValueError(TAINTED)
-            if entry['cancel'].is_set(): raise ValueError('run cancelled')
+            check_cancel()
             identifier = operation + '/' + step
             previous = next((s for s in api.call('run_get', rec, run=run)['steps'] if s['operation'] == identifier), None)
             if previous: return previous['result']
             used[0] += 1
             if used[0] > min(limits['tool_steps'], 8): raise ValueError('tool step budget reached')
-            with api.LOCK:
+            with _run_action(rec, run):
                 source_refusal(selected[0], request['model'], name, args)
                 value = source_result(request['model'], name, api.call(name, selected[0], **args), taint)
-            if len(json.dumps(value)) > 80000: value = {'error': 'result exceeds context budget'}
-            api.call('run_step', rec, run=run, operation=identifier, tool_name=role + ':' + name, result=value)
+                if taint.get('private') and not taint.get('private_marked'):
+                    api.call('source_protect_derived', rec, origin=selected[0].root.name, run=run)
+                    taint['private_marked'] = True
+                if len(json.dumps(value)) > 80000: value = {'error': 'result exceeds context budget'}
+                api.call('run_step', rec, run=run, operation=identifier, tool_name=role + ':' + name, result=value)
             return value
         report = run_agent(rec, request['model'], spec['system'], spec['brief'], grant, min(limits['tool_steps'], 8), role_call, entry, limits,
                            profile=request.get('vision_profile'))
@@ -421,7 +611,7 @@ def execute(rec, result, request, legacy_engine=None):
             if entry['cancel'].is_set(): return
         try:
             if entry['cancel'].is_set(): return
-            api.call('run_transition', rec, run=run, state='running')
+            if not api.call('run_start', rec, run=run)['claimed']: return
             if legacy_engine:
                 answer = legacy_engine(request)
                 if not answer.get('ok'): raise providers.ProviderError(answer.get('error') or 'Provider failed')
@@ -437,11 +627,20 @@ def execute(rec, result, request, legacy_engine=None):
                     request=dict(request,images=rendered['images'],context={**request.get('context',{}),'pdf_page_scope':rendered['page_scope']})
                 profile = request.get('vision_profile') or next((p for p in api.call('provider_profiles',rec) if p['id']==request['model']),None)
                 context_limit=min(limits['context'], profile['context_limit'] if profile else limits['context'])
-                context = json.dumps(request.get('context', {}), ensure_ascii=False)[:context_limit//2]
-                packet = dict(request, deadline=limits['deadline'], steps=limits['tool_steps'], output_limit=limits['output'], provider_calls=limits['provider_calls'],
+                selected_context = api.call('workspace_chat_context', rec, conversation=result['conversation'], query=said, budget=max(2000, context_limit//2))
+                context_data = dict(selected_context['context'])
+                for name in ('setup', 'authority', 'answered', 'attachments'):
+                    if name in request.get('context', {}):
+                        candidate = dict(context_data, **{name: request['context'][name]})
+                        if len(json.dumps(candidate, ensure_ascii=False)) <= context_limit//2:
+                            context_data = candidate
+                        else: context_data.setdefault('omitted_fields', []).append(name)
+                context = json.dumps(context_data, ensure_ascii=False)
+                packet = dict(request, messages=selected_context['messages'], context=context_data, deadline=limits['deadline'], steps=limits['tool_steps'], output_limit=limits['output'], provider_calls=limits['provider_calls'],
                               system=api.call('session_prompt', rec, mode=row['mode'], context=context, room=context_limit // 3, steps=limits['tool_steps']),
                               tools=[{'name': name, 'description': api.TOOLS[name].help, 'parameters': api.TOOLS[name].schema()} for name in sorted(allowed)])
                 packet.pop('_vision_permissions',None)
+                packet.pop('_said', None)  # exact words bind learner tools locally; selected excerpts go to the provider
                 if native:
                     status = api.call('workbench_status', rec)
                     if not status.get('repo'): raise ValueError("Choose this record's code folder first.")
@@ -470,6 +669,7 @@ def execute(rec, result, request, legacy_engine=None):
                     if output.strip(): note += 'The person has already seen this text from you; continue from it without repeating it: ' + json.dumps(output[-1500:], ensure_ascii=False)
                     return note
                 def wait_to_retry(attempt):
+                    check_cancel()
                     delay = RETRY_DELAYS[attempt - 1]
                     set_status(f'Connection lost; retrying in {delay} s (attempt {attempt} of {retries})')
                     flush()
@@ -529,6 +729,8 @@ def execute(rec, result, request, legacy_engine=None):
             try: api.call('workspace_chat_complete', rec, conversation=result['conversation'], request=result['request'], text=detail, model=request['model'], error=True)
             except Exception: LOG.exception('run %s: the conversation could not be told it failed', run)
     finally:
+        watch_stop.set()
+        watcher.join(timeout=1)
         for record in opened.values(): record.close()
         with LOCK: ACTIVE.pop(key, None)
 

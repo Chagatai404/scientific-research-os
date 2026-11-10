@@ -1,7 +1,7 @@
 import {Choice, MaterialPick} from './controls';
 import {useState, type FormEvent} from 'react';
-import {call, entityHref, href, human, preference, savePreference} from './api';
-import type {Organization, QueueItem} from './contracts';
+import {call, readWorkspace, entityHref, href, human, preference, savePreference} from './api';
+import type {Organization, QueueItem, QualifiedRef} from './contracts';
 import {useResource} from './hooks';
 import {Empty, Notice} from './ui';
 import {Operations} from './Operations';
@@ -59,21 +59,23 @@ export function DecisionPanel({subject, kind, record}: {subject: string; kind: s
     <button className="primary" disabled={busy || !by.trim()}>{busy ? 'Recording…' : 'Record my decision'}</button>{status && <p role="status" className="notice">{status}</p>}</form>;
 }
 
-export function Research({record, material}: {record: string; material: string}) {
+export function Research({record, material, workspaceId = '', materialRef}: {record: string; material: string; workspaceId?: string; materialRef?: string}) {
   const [version, setVersion] = useState(0);
+  const scoped = useResource(`material-scope:${record}:${workspaceId}`, signal => workspaceId ? readWorkspace(record, workspaceId, signal) : Promise.resolve(null), record);
+
   const result = useResource(`research:${record}:${version}`, async signal => {
     const [queue, claims, activity, org] = await Promise.all([call<QueueItem[]>('queue', {}, record, false, signal), call<Claim[]>('claims', {}, record, false, signal), call<Activity>('workspace_activity', {}, record, false, signal), call<Organization>('workspace_organization', {}, record, false, signal)]);
     return {queue, claims, activity, org};
   }, record);
-  const [question, setQuestion] = useState(''), [picked, setPicked] = useState(material), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
+  const [question, setQuestion] = useState(''), [picked, setPicked] = useState(materialRef || material), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
   const data = result.data;
-  const ready = (data?.org.library || []).filter(m => m.state === 'ready');
+  const ready: {id: string; title: string; ref: QualifiedRef; detail?: string}[] = workspaceId ? (scoped.data?.groups.sources || []).concat(scoped.data?.groups.handouts || []).filter(m => m.kind !== 'connection').map(m => ({id: JSON.stringify(m.ref), title: m.title, ref: m.ref, detail: `${m.owner_record} · ${m.path?.split(/[\\/]/).at(-1) || m.ref.entity_id}`})) : (data?.org.library || []).filter(m => m.state === 'ready').map(m => ({...m, ref: {owner_record: record, entity_id: m.id}}));
   const chosen = ready.find(m => m.id === picked);
   async function start(event: FormEvent) {
     event.preventDefault(); setBusy(true); setStatus('Setting up your investigation…');
     try {
-      const intent = `Investigate: ${question.trim()}` + (chosen ? ` Use ${chosen.title} as evidence.` : '');
-      const out = await call<{kind: string; for_you?: string[]}>('engage', {intent, kind: 'research'}, record, true);
+      const intent = question.trim();
+      const out = await call<{kind: string; for_you?: string[]}>('engage', {intent, kind: 'research', ...(workspaceId ? {workspace_id: workspaceId} : {}), ...(chosen ? {material_refs: [chosen.ref]} : {})}, record, true);
       setStatus(`Your investigation is set up. ${out.for_you?.join(' ') || 'Your agent is preparing the first steps.'}`); setQuestion(''); setVersion(v => v + 1);
     } catch (e) {setStatus((e as Error).message);} finally {setBusy(false);}
   }

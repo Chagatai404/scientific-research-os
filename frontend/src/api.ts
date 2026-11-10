@@ -1,4 +1,4 @@
-import {validateDocument, type DocumentData} from './contracts';
+import {validateDocument, type DocumentData, type QualifiedRef, type WorkspaceOverview} from './contracts';
 let session: Promise<{csrf: string}> | undefined;
 // The link `ros serve` prints pairs this browser for acts that are the person's alone: its token sits in the URL fragment
 // (never sent to a server), is kept in this origin's storage (no other port can read it) and goes with every write.
@@ -32,6 +32,9 @@ export async function call<T>(name: string, args: Record<string, unknown> = {}, 
 export async function readDocument(id: string, record?: string, signal?: AbortSignal): Promise<DocumentData> {
   return validateDocument(await call('workspace_document', {subject: id}, record, false, signal));
 }
+export async function readWorkspace(record?: string, workspace_id?: string, signal?: AbortSignal): Promise<WorkspaceOverview> {
+  return call('workspace_overview', {workspace_id}, record, false, signal);
+}
 export async function service<T>(name: string, args?: Record<string, unknown>): Promise<T> {
   const response = await fetch('/services/' + name, args ? {method: 'POST', headers: await mutationHeaders(), body: JSON.stringify(args)} : {});
   const body = await response.json();
@@ -42,11 +45,18 @@ export const readable = (id: string) => /^(handout|lesson|source|paper|visual):/
 export function href(view: string, id = '', record = '', anchor = '', extra: Record<string, string> = {}) {
   const params = new URLSearchParams();
   if (record) params.set('r', record);
+  const scope = typeof location !== 'undefined' ? routeOf(location.hash).params.ws : '';
+  if (scope && !Object.hasOwn(extra, 'ws')) params.set('ws', scope);
   if (anchor) params.set('a', anchor);
   for (const [key, value] of Object.entries(extra)) if (value) params.set(key, value);
   return `#${view}${id ? '/' + encodeURIComponent(id) : ''}${params.size ? '?' + params : ''}`;
 }
 export const entityHref = (id: string, record = '', anchor = '') => href(readable(id) ? 'document' : 'node', id, record, anchor);
+/** Open original work in its physical owner while retaining the selected logical scope. */
+export function workHref(ref: QualifiedRef, workspace_id: string) {
+  const view = ref.entity_id.startsWith('material:') ? 'library' : ref.entity_id.startsWith('conversation:') ? 'chat' : ref.entity_id.startsWith('lesson:') ? 'session' : readable(ref.entity_id) ? 'document' : 'node';
+  return href(view, ref.entity_id, ref.owner_record, '', {ws: workspace_id});
+}
 export function routeOf(hash: string) {
   const [path, query = ''] = hash.replace(/^#/, '').split('?');
   const slash = path.indexOf('/');

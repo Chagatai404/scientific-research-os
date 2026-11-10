@@ -1,4 +1,28 @@
-export interface RecordInfo {name: string; title?: string; current: boolean; role: string; hub?: string}
+export interface RecordInfo {name: string; title?: string; current: boolean; role: string; hub?: string; workspace_id?: string}
+/** Physical provenance stays separate from the logical workspace currently selected. */
+export interface QualifiedRef {owner_record: string; entity_id: string; revision?: string | number}
+export interface WorkspaceIdentity {
+  schema: 'ros.workspace.v1'; workspace_id: string; kind: 'course' | 'project' | 'general' | 'record';
+  hub: QualifiedRef | null; record: string; owner_record: string; title: string; aliases: QualifiedRef[]; selected_record?: string;
+}
+export type WorkspaceGroup = 'sessions' | 'sources' | 'handouts' | 'research' | 'other';
+export interface WorkspaceWork {
+  ref: QualifiedRef; owner_record: string; workspace_id: string; kind: string; title: string;
+  provenance: {basis: string[]; assignment: 'legacy' | 'person'};
+  handout_kind?: 'lecture' | 'recitation' | 'chapter' | string; source_hash?: string;
+  state?: string; status?: string; source?: string; format?: string; path?: string;
+}
+export interface WorkspaceOverview {
+  schema: 'ros.workspace-overview.v1'; workspace: WorkspaceIdentity; workspace_id: string;
+  groups: Record<WorkspaceGroup, WorkspaceWork[]>; counts: Record<WorkspaceGroup, number>; missing: QualifiedRef[];
+}
+export interface WorkspaceResolution {
+  schema: 'ros.workspace-resolution.v1'; status: 'resolved' | 'ambiguous' | 'missing'; matches: WorkspaceIdentity[];
+}
+export interface CapabilityIdentity {
+  schema: 'ros.capability-identity.v1'; ref: QualifiedRef; canonical: QualifiedRef;
+  equivalence_status: 'distinct' | 'verified' | 'stale'; evidence_refs: QualifiedRef[];
+}
 export interface NodeData {id: string; type: string; title?: string; text?: string; status?: string; [key: string]: unknown}
 export interface Relation {id: string; record: string; title: string; missing: boolean; edge: {src: string; dst: string; type: string; [key: string]: unknown}}
 export interface Entity {id: string; record: string; node: NodeData; incoming: Relation[]; outgoing: Relation[]; truncated: number}

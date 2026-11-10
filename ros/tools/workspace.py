@@ -1,6 +1,29 @@
 """Tools for the standalone workspace: readable documents and canonical entity references."""
-from .. import context, conversation as chat, modes, workspace as ws, organization as org
+from contextlib import contextmanager
+from .. import context, conversation as chat, modes, workspace as ws, organization as org, workspaces, context_selection
 from ..registry import P, TOOLS, tool
+
+
+@contextmanager
+def _chat_owner(rec, conversation=None, ref=None, workspace_id=None):
+    """Resolve navigation membership without transferring authority or history."""
+    if ref is not None and conversation and conversation != ref.get('entity_id'):
+        raise ValueError('conversation and qualified reference differ')
+    if ref is not None or (conversation and workspace_id):
+        resolved = workspaces.work_resolve(rec, ref or {'owner_record': rec.root.name, 'entity_id': conversation}, workspace_id)
+        conversation = resolved['ref']['entity_id']
+        name, wid = resolved['owner_record'], resolved['workspace_id']
+    else:
+        identity = workspaces.identity(rec, workspace_id)
+        name = identity['record'] if workspace_id and not conversation else rec.root.name
+        wid = identity['workspace_id']
+    metadata = {'owner_record': name, 'workspace_id': wid}
+    if name == rec.root.name:
+        yield rec, conversation, metadata
+    else:
+        with workspaces.records(rec) as records:
+            if name not in records: raise ValueError('conversation owner is not linked')
+            yield records[name], conversation, metadata
 
 
 @tool("workspace_connections", "Read the selected record and configured vault connection without discovery, scans, sync or migration.")
@@ -44,14 +67,18 @@ def overview_map(rec, expand=""):
     return ws.overview_map(rec, expand)
 
 
-@tool("workspace_chat_send", "Save a conversational message and prepare its model request; the portal executes the optional provider outside the record lock.",
+@tool("workspace_chat_send", "Save a conversational message; CLI, MCP and HTTP execute the bounded provider request outside the record lock.",
       writes=True, text=P("string", "the person's message", True), model=P("string", "provider:model", True),
       conversation=P("string", "existing conversation id; omit to start and frame a goal"),
       effort=P("string", "Codex reasoning effort; default medium", enum=("low", "medium", "high", "xhigh", "max")),
       key=P("string", "turn idempotency key"), mode=P("string", "chat, learn, research, defend or build (Code)", enum=modes.NAMES), scope=P("array", "explicit versioned source passages"),
-      answered=P("string", "the attempt the learner just recorded on the lesson card; the tutor may not record another for this message"))
-def chat_send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None, answered=None):
-    return chat.send(rec, text, model, conversation, effort, key, mode, scope, answered)
+      answered=P("string", "the attempt the learner just recorded on the lesson card; the tutor may not record another for this message"),
+      ref=P('object', 'qualified existing conversation reference'), workspace_id=P('string', 'selected logical workspace'))
+def chat_send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None, answered=None, ref=None, workspace_id=None):
+    with _chat_owner(rec, conversation, ref, workspace_id) as (owner, conversation, metadata):
+        selected = workspaces.identity(rec, workspace_id) if not conversation else None
+        result = chat.send(owner, text, model, conversation, effort, key, mode, scope, answered, workspace=selected)
+        return dict(result, **metadata, ref={'owner_record': owner.root.name, 'entity_id': result['conversation']})
 
 @tool('workspace_watched', 'The files of the records joined to this one (Knowledge and its projects) that a live view of this workspace watches, since its map spans them.')
 def watched(rec):
@@ -65,10 +92,20 @@ def sessions(rec, offset=0, limit=30):
 
 
 @tool("workspace_chat", "Read the messages and pending response of one conversation. Assistant messages are not scientific or learning evidence.",
-      conversation=P("string", "conversation id", True))
-def chat_read(rec, conversation):
-    result = chat.history(rec, conversation)
-    return dict(result, title=org.display_name(rec, conversation, result.get('title') or 'Conversation'))
+      conversation=P("string", "conversation id"), ref=P('object', 'qualified existing conversation reference'),
+      workspace_id=P('string', 'selected logical workspace'))
+def chat_read(rec, conversation=None, ref=None, workspace_id=None):
+    with _chat_owner(rec, conversation, ref, workspace_id) as (owner, conversation, metadata):
+        if not conversation: raise ValueError('conversation or qualified ref is required')
+        result = chat.history(owner, conversation)
+        return dict(result, title=org.display_name(owner, conversation, result.get('title') or 'Conversation'), **metadata,
+                    ref={'owner_record': owner.root.name, 'entity_id': conversation})
+
+@tool('workspace_chat_context', 'Select bounded recorded conversation context with qualified provenance and explicit omissions.',
+      conversation=P('string', 'conversation id', True), query=P('string', 'current request', True), budget=P('integer', 'serialized character budget'))
+def chat_context(rec, conversation, query, budget=8000):
+    if not rec.node(conversation): raise KeyError('no such conversation')
+    return context_selection.select(rec, conversation, query, min(100000, max(2000, budget)))
 
 
 @tool("workspace_chat_complete", "Append the response or failure for a saved message, idempotently, without creating assessment evidence or human decisions.",

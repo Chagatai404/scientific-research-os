@@ -188,7 +188,11 @@ def create(rec, kind, name, parent=''):
     if kind in ('course', 'project'):
         rec.put_node(ident, kind, title=name, organization=True)
     rec.append('organization.created', ident, {'title': name, 'kind': kind, 'parent': parent}, actor='person')
-    return {'id': ident, 'title': name, 'kind': kind, 'parent': parent}
+    made = {'id': ident, 'title': name, 'kind': kind, 'parent': parent}
+    if kind in ('course', 'project'):
+        made['workspace_id'] = f'ws:{rec.root.name}:{ident}'
+        made['owner_record'] = rec.root.name
+    return made
 
 
 def rename(rec, subject, name):
@@ -234,7 +238,7 @@ def workspace_create(rec, name):
         made.append('workspace.renamed', 'workspace', {'title': name}, actor='person')
     finally:
         made.close()
-    return {'name': key, 'title': name}
+    return {'name': key, 'title': name, 'workspace_id': home.workspace_id(root), 'owner_record': key}
 
 
 def workspace_delete(rec, name):

@@ -24,6 +24,27 @@ wrote and what it saw: path, size, mtime, hash). Both are rebuildable or re-aska
 
 ### Human organization preferences
 
+Logical scope is separate from physical source ownership: `record.json.workspace_id` pins a linked workspace's
+identity (`ws:<canonical-record>:<hub-id>`; physical scopes use `ws:<record>:workspace`). Old records derive the
+same value from their explicit link until a later link update pins it. Renaming titles does not rekey a workspace.
+`workspace_aliases` retains explicit historic/current qualified hub links so a relink's new hub and older work
+resolve to the same pinned identity; conflicting aliases are refused rather than silently merging workspaces.
+`workspace_kind: general` identifies the reserved home-wide General work record. Explicit keyed course/project
+creation stores `workspace_key`; these metadata fields are identity/organization, never scientific approval.
+
+`workspace.member.assigned` (subject logical workspace id, actor `person`) stores `ref` (`owner_record`,
+`entity_id`, optional real `revision`), `group` (`sessions`, `sources`, `handouts`, `research`, `other`) and
+`assigned` boolean. The newest preference for the qualified entity overrides legacy placement; false compensates
+an earlier assignment. The canonical workspace owner's record holds the preference, while the entity's original
+record/files/history stay intact. This is navigation membership, never a scientific edge or new learning evidence.
+
+`capability.equivalence` (subject alias capability id, actor `person`) stores qualified revision-bound `alias`
+and `canonical` refs, `evidence` and `verified_by`. Revisions are SHA-256 of actual canonical node JSON, independent
+of external display aliases. Only explicit verification establishes equivalence; matching titles do not. A changed
+definition makes the reference stale. Reading shared evidence returns original owner/event refs; attempts, grades,
+retrievals, review dates and physical study ownership are never rewritten or copied. See
+`docs/core-experience/CONTRACTS.md` for public tools and error behavior.
+
 `workspace.renamed` (subject `workspace`, data `title`) records a readable workspace name while the backing record
 name remains stable. `workspace.deleted` and `workspace.restored` (subject and data `name`) record that the person deleted or brought back
 another workspace; the deleted one keeps its folder and gets `deleted` (a UTC time) in its `record.json`, which leaves it out of

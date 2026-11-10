@@ -180,6 +180,27 @@ client entry points at the app's own backend program (run as `--worker cli mcp`)
 also remembers the newest engine that wrote it, and an older engine only reads it. If you run from a source checkout, update
 it with `powershell -File desktop/update-checkout.ps1 -Checkout <folder>` (or set `ROS_CHECKOUT`) after a release.
 
+### Stable course and project workspaces
+
+In the development checkout, `workspace_identity` returns the selected course or
+project's stable `workspace_id`; `workspace_overview` lists its sessions, sources,
+handouts and research. Starting another topic inside a selected course or project
+keeps that workspace. Display renames do not change its identity.
+
+```bash
+python -m ros --project stat303 --json workspace_identity
+python -m ros --project stat303 --json workspace_overview
+```
+
+Historical work can remain in Knowledge while appearing in its course workspace.
+Keep the returned `{owner_record, entity_id, revision?}` reference: the physical
+owner identifies the original history, while `workspace_id` identifies the selected
+course or project. Equal titles never merge records. Reviewed membership changes
+append preferences and can be reversed without moving source files or rewriting
+learning history. [Core contracts](docs/core-experience/CONTRACTS.md) describe the
+CLI/MCP/App fields and their authority boundaries. These checkout changes do not
+update an installed desktop release by themselves.
+
 ## How the pieces fit
 
 | Piece | Where |

@@ -7,6 +7,7 @@ import {Menu} from './overlay';
 import {AttachMenu, chipKind, chipName, loadAttachments, saveAttachments, MAX_ATTACHMENTS, type Attached} from './AttachMenu';
 import {useResource} from './hooks';
 import type {SourceRef} from './desktop';
+import type {QualifiedRef} from './contracts';
 import type {Run} from './Workbench';
 import {modelLabel, useModelPreferences, type ModelCatalog} from './modelPreferences';
 import {Player} from './Learn';
@@ -25,10 +26,10 @@ function latestStatus(steps?: {tool: string; result: unknown}[]) {
   return (last?.result as {text?: string} | undefined)?.text || '';
 }
 
-export function Conversation({id, record, startMode}: {id: string; record: string; startMode?: string}) {
+export function Conversation({id, record, startMode, workspaceId = ''}: {id: string; record: string; startMode?: string; workspaceId?: string}) {
   const capabilities = useResource('conversation-capabilities:' + record, () => service<ModelCatalog>('catalog?record=' + encodeURIComponent(record)));
   const models = useModelPreferences(capabilities.data?.models);
-  const draftKey = 'composer:' + JSON.stringify([record, id || 'new']);
+  const draftKey = 'composer:' + JSON.stringify(workspaceId ? [record, id || 'new', workspaceId] : [record, id || 'new']);
   const [text, setText] = useState(() => preference(draftKey, ''));
   const [mode, setModeState] = useState(() => { const saved = preference('session-mode', 'learn'); return SESSION_MODES.some(m => m.id === saved) ? saved : 'learn'; });
   const setMode = (next: string) => {setModeState(next); savePreference('session-mode', next);};
@@ -86,7 +87,7 @@ export function Conversation({id, record, startMode}: {id: string; record: strin
     if (!id) return;
     let cancelled = false; let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
-      try {const value = await call<Chat>('workspace_chat', {conversation: id}, record); if (!cancelled) {setChat(value); if (value.pending.length) timer = setTimeout(refresh, 1100);}}
+      try {const value = await call<Chat>('workspace_chat', {conversation: id, ...(workspaceId ? {workspace_id: workspaceId, ref: {owner_record: record, entity_id: id}} : {})}, record); if (!cancelled) {setChat(value); if (value.pending.length) timer = setTimeout(refresh, 1100);}}
       catch (e) {if (!cancelled) setError((e as Error).message);}
     }
     refresh(); return () => {cancelled = true; clearTimeout(timer);};
@@ -109,12 +110,12 @@ export function Conversation({id, record, startMode}: {id: string; record: strin
     setSending(true); setError('');
     const value = text.trim(), submittedDraft = text;
     try {
-      const result = await call<{conversation: string; request: string}>('workspace_chat_send', {text: value, model: currentModel, key: turnKey.current, ...(attachments.length ? {scope: attachments} : {}), ...(models.selectedEffort ? {effort: models.selectedEffort} : {}), ...(id ? {conversation: id} : {mode})}, record, true);
+      const result = await call<{conversation: string; request: string; owner_record?: string; workspace_id?: string; ref?: QualifiedRef}>('workspace_chat_send', {...(workspaceId ? {workspace_id: workspaceId, ...(id ? {ref: {owner_record: record, entity_id: id}} : {})} : {}), text: value, model: currentModel, key: turnKey.current, ...(attachments.length ? {scope: attachments} : {}), ...(models.selectedEffort ? {effort: models.selectedEffort} : {}), ...(id ? {conversation: id} : {mode})}, record, true);
       // A request can finish while the person is writing the next message or navigating.
       // Preserve that newer draft and never steal the new page's input/focus.
       turnKey.current = crypto.randomUUID(); setAttachments([]);
       const latest = preference(draftKey, submittedDraft), remaining = latest === submittedDraft ? '' : latest;
-      const destinationDraft = 'composer:' + JSON.stringify([record, result.conversation]);
+      const destinationDraft = 'composer:' + JSON.stringify(workspaceId ? [result.owner_record || record, result.conversation, result.workspace_id || workspaceId] : [record, result.conversation]);
       savePreference(destinationDraft, remaining); if (destinationDraft !== draftKey) savePreference(draftKey, '');
       if (mounted.current && currentDraft.current === draftKey) setText(remaining);
       let recent: {id: string; title: string}[] = [];
@@ -123,7 +124,7 @@ export function Conversation({id, record, startMode}: {id: string; record: strin
       window.dispatchEvent(new Event('ros:records-changed'));
       if (mounted.current && currentDraft.current === draftKey) {
         setChat(previous => ({conversation: result.conversation, title: previous?.title || value, messages: [...(previous?.messages || []), {id: result.request, role: 'user', text: value}], pending: [result.request], interrupted: 0}));
-        location.hash = href('chat', result.conversation, record);
+        location.hash = href('chat', result.conversation, result.owner_record || record, '', {ws: result.workspace_id || workspaceId});
       }
     } catch (e) {if (mounted.current) setError((e as Error).message);} finally {if (mounted.current) setSending(false); submitting.current = false;}
   }
@@ -135,7 +136,7 @@ export function Conversation({id, record, startMode}: {id: string; record: strin
     if (pending || !models.selected) {waitingAnswer.current = {attempt, said}; if (!models.selected) setError('Your answer is saved. Choose a model so your tutor can respond to it.'); return;}
     waitingAnswer.current = null;
     try {
-      await call('workspace_chat_send', {text: ('On the lesson card I answered: ' + said).slice(0, 11000), model: currentModel, conversation: id, answered: attempt, key: crypto.randomUUID(), ...(models.selectedEffort ? {effort: models.selectedEffort} : {})}, record, true);
+      await call('workspace_chat_send', {...(workspaceId ? {workspace_id: workspaceId, ref: {owner_record: record, entity_id: id}} : {}), text: ('On the lesson card I answered: ' + said).slice(0, 11000), model: currentModel, conversation: id, answered: attempt, key: crypto.randomUUID(), ...(models.selectedEffort ? {effort: models.selectedEffort} : {})}, record, true);
       runs.retry(); setChat(previous => previous && {...previous});
     } catch (e) {setError('Your answer is saved, but your tutor was not told: ' + (e as Error).message);}
   }
@@ -180,13 +181,13 @@ export function Conversation({id, record, startMode}: {id: string; record: strin
     } catch {ownedStream?.getTracks().forEach(track => track.stop()); if (active()) setError('Microphone permission was not granted. Allow it in your browser and try again.');} finally {if (active()) setOpeningMicrophone(false);}
   }
   return <div className={'conversation-workspace ' + (id ? 'has-conversation' : 'graph-home')} data-testid={!id ? 'graph-home' : undefined}>
-    {!id && <Graph record={record} focus="" embedded />}
-    {id && <div className="conversation-heading"><div><div className="eyebrow">An ongoing conversation</div><h1>{chat?.title || 'Let’s work through it'}</h1></div><a className="button" href={href('overview', '', record)}>New conversation</a></div>}
+    {!id && !workspaceId && <Graph record={record} focus="" embedded />}
+    {id && <div className="conversation-heading"><div><div className="eyebrow">An ongoing conversation</div><h1>{chat?.title || 'Let’s work through it'}</h1></div><a className="button" href={href(workspaceId ? 'chat' : 'overview', '', record, '', {ws: workspaceId})}>New conversation</a></div>}
     {chat && <div className="messages" aria-label="Conversation messages">{chat.messages.map(message => <article className={'message ' + message.role} key={message.id}><div className="message-meta">{message.role === 'user' ? 'You' : message.role === 'error' ? 'Could not complete' : message.model?.split(':')[0] || 'Research OS'}</div><RichText text={message.text} prefix={message.id} record={record} />{message.role==='assistant'&&message.scope?.some(ref=>ref.kind==='media')&&<button onClick={async()=>{const ref=message.scope!.find(ref=>ref.kind==='media')!;try{await call('transcription_draft',{source:ref.sourceId,path:ref.relativePath,revision:ref.revision,text:message.text,by:message.model||'tutor'},record,true);setError('Transcription draft saved. Review it beside the original in Sources.');}catch(e){setError((e as Error).message);}}}>Save Transcription Draft</button>}{message.role === 'assistant' && capabilities.data?.voice.kokoro && <button className="read-message" disabled={!!speaking} onClick={() => speak(message.id, message.text)}>{speaking === message.id ? 'Preparing Kokoro audio…' : 'Listen · Kokoro'}</button>}</article>)}
       {pending && activeRun && activeRun.steps.some(step => step.tool !== 'status') && <RunSteps steps={activeRun.steps.filter(step => step.tool !== 'status')} />}{pending && activeRun?.output && <div className="stream-output" aria-label="Partial response"><RichText text={activeRun.output} record={record}/></div>}{pending && <div className="thinking" role="status"><span className="pulse-dot" /> {activeRun?.state === 'queued' ? 'Queued for the foreground worker…' : latestStatus(activeRun?.steps) || 'Working on your question…'} <small>Your message is saved.</small></div>}{chat.interrupted > 0 && <p className="notice">A previous response was interrupted. You can send a follow-up to continue.</p>}<div ref={end} /></div>}
     {id && !chat?.lesson && chat?.plan && <PlanCard hub={chat.plan.hub} record={chat.plan.record || record} />}
     {id && chat?.lesson && <Player key={chat.lesson.lesson} id={chat.lesson.lesson} record={chat.lesson.record || record} embedded refresh={chat.messages.length} onAnswered={notify} />}
-    <div className="session-dock">{!id && <div className="mode-picker" role="group" aria-label="Session type">{SESSION_MODES.map(m => <button type="button" key={m.id} aria-pressed={mode === m.id} title={m.hint} onClick={() => setMode(m.id)}>{m.label}</button>)}<small className="muted">{SESSION_MODES.find(m => m.id === mode)?.hint}</small>{mode === 'build' && <RepoPicker record={record} />}</div>}{id && chat && <ModeBadge mode={chat.mode} record={record} />}{!id && <QuickStarts record={record} />}{newOutput &&<button type="button" onClick={()=>{follow.current=true;setNewOutput(false);end.current?.scrollIntoView({block:"nearest"});}}>New Output ↓</button>}{attachments.length > 0 && <ul className="attachment-chips" aria-label="Attached to this message">{attachments.map((attachment, index) => <li className="attachment-chip" key={attachment.sourceId + attachment.relativePath + attachment.revision}><span className="chip-name" title={attachment.relativePath}>{chipName(attachment)}</span><small>{chipKind(attachment)} · {attachment.localOnly ? 'Stays on this computer' : 'May be sent to the chosen model'}</small>
+    <div className="session-dock">{!id && <div className="mode-picker" role="group" aria-label="Session type">{SESSION_MODES.map(m => <button type="button" key={m.id} aria-pressed={mode === m.id} title={m.hint} onClick={() => setMode(m.id)}>{m.label}</button>)}<small className="muted">{SESSION_MODES.find(m => m.id === mode)?.hint}</small>{mode === 'build' && <RepoPicker record={record} />}</div>}{id && chat && <ModeBadge mode={chat.mode} record={record} />}{!id && !workspaceId && <QuickStarts record={record} />}{newOutput &&<button type="button" onClick={()=>{follow.current=true;setNewOutput(false);end.current?.scrollIntoView({block:"nearest"});}}>New Output ↓</button>}{attachments.length > 0 && <ul className="attachment-chips" aria-label="Attached to this message">{attachments.map((attachment, index) => <li className="attachment-chip" key={attachment.sourceId + attachment.relativePath + attachment.revision}><span className="chip-name" title={attachment.relativePath}>{chipName(attachment)}</span><small>{chipKind(attachment)} · {attachment.localOnly ? 'Stays on this computer' : 'May be sent to the chosen model'}</small>
       {attachment.kind === 'media' && !currentModel.startsWith('ollama:') && (attachment.localOnly ? <small className="chip-warning">This file stays on this computer. Choose a local model to let it read this file.</small> : <><small>Sending to {modelLabel(currentModel, capabilities.data?.models)}. Your permission covers this version of the file for one message within 10 minutes.</small><button type="button" onClick={() => permitAttachment(index)}>{attachment.visionPermission && attachment.permissionModel === currentModel ? 'Renew permission' : 'Allow this file to be sent'}</button></>)}
       <button type="button" className="chip-remove" aria-label={`Remove ${chipName(attachment)}`} onClick={() => setAttachments(attachments.filter((_, i) => i !== index))}>×</button></li>)}</ul>}<form className="goal-composer chat-composer" onSubmit={send}><label className="sr-only" htmlFor="chat-input">Your message</label><textarea id="chat-input" rows={2} value={text} onChange={e => {setText(e.target.value); savePreference(draftKey, e.target.value);}} placeholder={id ? 'Follow your thinking…' : 'What would you like to understand or investigate?'} required maxLength={12000} onKeyDown={e => {if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {e.preventDefault(); e.currentTarget.form?.requestSubmit();}}} />
       <div className="composer-footer"><div className="composer-tools"><AttachMenu record={record} count={attachments.length} onAttach={addAttachment} onNote={setNote}/>

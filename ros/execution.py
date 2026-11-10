@@ -2,6 +2,7 @@
 import hashlib
 import json
 import uuid
+import os
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 from . import sources, runs, graph, context
@@ -45,14 +46,15 @@ def notebook_result(rec, request, result):
 def notebook_start(rec,request):
     job=next((j for j in notebook_jobs(rec) if j['id']==request),None)
     if not job or job['state'] != 'queued': raise ValueError('notebook request is already started or terminal')
-    rec.append('notebook.started',request,{})
+    if not rec.append_once(make_event('notebook.started', request, {'owner_pid': os.getpid()}, id='notebook-start:'+request)):
+        raise ValueError('notebook request is already started or terminal')
     return {'started':True}
 
 def notebook_jobs(rec):
     def step(state, event):
         if event['type'] == 'notebook.requested': state[event['subject']] = {'id': event['subject'], **event['data'], 'state': 'queued'}
         elif event['subject'] in state:
-            if event['type']=='notebook.started':state[event['subject']]['state']='running'
+            if event['type']=='notebook.started':state[event['subject']].update(state='running', **event['data'])
             else:state[event['subject']].update(state='completed' if event['data']['result'].get('ok') else 'failed', result=event['data']['result'])
     return list(rec.fold('notebooks.v2', ('notebook.requested', 'notebook.started', 'notebook.finished'), dict, step).values())[::-1]
 
@@ -119,7 +121,7 @@ def operations(rec):
 
 def operation_queue(rec,kind,packet):
     identifier='operation:'+uuid.uuid4().hex
-    rec.append('operation.queued',identifier,{'kind':kind,'packet':packet})
+    rec.append('operation.queued',identifier,{'kind':kind,'packet':packet,'owner_pid':os.getpid()})
     return {'id':identifier,'state':'queued','_operation':identifier}
 
 def literature_search(rec,query,engine='crossref',limit=8):
@@ -167,12 +169,13 @@ def operation_start(rec,identifier):
     if row['kind']=='compute':
         node=rec.node(row['packet']['experiment']) or {}
         if node.get('authorization')!='approved' or node.get('approved_revision')!=row['packet']['revision'] or graph.plan_revision(node)!=row['packet']['revision']:raise ValueError('Plan changed after execution permission; review the new revision.')
-    rec.append('operation.state',identifier,{'state':'running'})
+    if not rec.append_once(make_event('operation.state', identifier, {'state':'running', 'owner_pid':os.getpid()}, id='operation-start:'+identifier)):
+        raise ValueError('Operation already started or terminal.')
     return row
 
 def operation_finish(rec,identifier,result):
     row=next((r for r in operations(rec) if r['id']==identifier),None)
     if not row:raise ValueError('No such operation.')
     if row['state'] in ('completed','failed','interrupted'):return row
-    rec.append('operation.state',identifier,{'state':'completed' if result.get('ok') else 'failed','result':result})
+    rec.append('operation.state',identifier,{'state':'interrupted' if result.get('interrupted') else 'completed' if result.get('ok') else 'failed','result':result})
     return next(r for r in operations(rec) if r['id']==identifier)

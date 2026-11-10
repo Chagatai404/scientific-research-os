@@ -163,7 +163,7 @@ def read_jsonl(path: Path, start: int = 0) -> ReadResult:
 
 @contextmanager
 def _file_lock(path: Path):
-    """An exclusive OS lock held only while lines are appended. Not a lease: it dies with the process."""
+    """An exclusive OS lock for a short record write or index initialization. Dies with the process."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a+b") as fh:
         if os.name == "nt":
@@ -407,9 +407,22 @@ class Record:
     # ---- index ---------------------------------------------------------------------------------------------
     def index(self) -> sqlite3.Connection:
         if self._db is None:
-            self.root.mkdir(parents=True, exist_ok=True)
-            self._db = sqlite3.connect(self.index_path, check_same_thread=False)
-            self._db.row_factory = sqlite3.Row
+            # Writers already hold .write.lock when opening their index. Use a separate lock,
+            # never acquired in reverse order, and keep the schema invisible to other openers
+            # until all tables and metadata exist (executescript commits between statements).
+            with _file_lock(self.root / ".index.lock"):
+                db = sqlite3.connect(self.index_path, check_same_thread=False)
+                db.row_factory = sqlite3.Row
+                try:
+                    if not db.execute("SELECT 1 FROM sqlite_master WHERE name='meta'").fetchone():
+                        db.executescript(_SCHEMA)
+                        db.execute("INSERT INTO meta VALUES('schema', ?)", (str(SCHEMA_VERSION),))
+                        db.execute("INSERT INTO meta VALUES('epoch', ?)", (uuid.uuid4().hex,))
+                        db.commit()
+                except BaseException:
+                    db.close()
+                    raise
+                self._db = db
             self.refresh()
         return self._db
 
@@ -433,11 +446,6 @@ class Record:
         if db is None:
             self.index()
             return
-        if not db.execute("SELECT 1 FROM sqlite_master WHERE name='meta'").fetchone():
-            db.executescript(_SCHEMA)
-            db.execute("INSERT INTO meta VALUES('schema', ?)", (str(SCHEMA_VERSION),))
-            db.execute("INSERT INTO meta VALUES('epoch', ?)", (uuid.uuid4().hex,))  # new on every rebuild
-            db.commit()
         if self._meta("schema") != str(SCHEMA_VERSION) or not all(
                 self._prefix_ok(name, path) for name, path in self._logs()):
             self.close()
