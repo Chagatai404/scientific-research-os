@@ -1,6 +1,7 @@
 import {visit} from 'unist-util-visit';
 import type {Root, Parent, Text, RootContent} from 'mdast';
 import type {Plugin} from 'unified';
+import {repairMath} from './mathRepair';
 
 const labels: Record<string, string> = {
   definition: 'Definition', rule: 'Rule', keyidea: 'Key Idea', mistake: 'Common Slip', remark: 'Note',
@@ -11,7 +12,8 @@ type Directive = Parent & {name: string; data?: {directiveLabel?: boolean; hName
 
 // Adapt only the old handout's fence headers and answer separators. The general
 // parser remains remark, line numbers stay intact, and the canonical source is never changed.
-export function legacyHandoutSyntax(source: string): string {
+export function legacyHandoutSyntax(original: string): string {
+  const source = repairMath(original); // display-only; the stored text is never rewritten
   const containers: {width: number; kind: string}[] = [];
   // A directive closer can otherwise win over a literal ::: inside fenced code
   // in micromark. Widen only real directive fences beyond all source colon runs.
