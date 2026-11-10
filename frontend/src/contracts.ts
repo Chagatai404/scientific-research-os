@@ -74,3 +74,25 @@ export interface ProviderCapabilities {
 export type CredentialStatus = 'present' | 'missing' | 'unavailable' | 'invalid';
 /** A custom agent manifest as `agent_list` returns it (instructions are left out). */
 export interface AgentManifestRow {id: string; version: number; title: string; base: string; tools: string[]; profile: string; hash: string; requires: string[]; limits: Record<string, number>}
+
+/** The four reading states are separate facts: a stored scan is never "read" until a person accepts a transcription of that revision. */
+export interface ReadingStates {stored: boolean; text_readable: boolean; indexed: boolean; verified: boolean}
+export interface LibraryMaterial {
+  id: string; ref: QualifiedRef; title: string; path: string; source: string; place: string; format: string; state: Material['state']; detail: string;
+  local_only: boolean; states: ReadingStates; read_basis: 'extracted_text' | 'reviewed_transcription' | null; stale: boolean; label: string; same_name_as: string[];
+}
+export interface LiteratureOrigin {
+  origin: 'library' | 'scholarly' | 'web'; operation?: string; engine?: string; url?: string; retrieved_at?: string; ref?: QualifiedRef; place?: string; path?: string;
+  snippet?: string; captured?: boolean; untrusted?: boolean; local_only?: boolean; access?: string; verification_status?: string; fetched_at?: string;
+}
+/** One deduplicated discovery result. A candidate is never evidence; `local_only` is true if any component is. */
+export interface LiteratureCandidate {
+  schema: string; key: string; title: string; doi: string | null; arxiv_id: string | null; year?: number | null; urls: string[]; refs: QualifiedRef[];
+  origins: LiteratureOrigin[]; states: ReadingStates; local_only: boolean; evidence: false; note: string;
+}
+export interface LiteratureCandidates {schema: string; query: string; workspace_id: string | null; candidates: LiteratureCandidate[]; counts: {candidates: number; items_before_merge: number}}
+export interface WebEngines {
+  schema: string; status: 'configured' | 'none_configured'; message: string;
+  engines: {id: string; engine: string; label: string; endpoint: string; credential: CredentialReference | null; enabled: boolean; evidence: string}[];
+}
+export interface OperationRow {id: string; kind: string; state: string; result?: {ok: boolean; error?: string}}

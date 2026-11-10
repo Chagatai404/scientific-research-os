@@ -1,4 +1,4 @@
-import {validateDocument, type DocumentData, type QualifiedRef, type WorkspaceOverview, type WorkspaceCatalog} from './contracts';
+import {validateDocument, type DocumentData, type QualifiedRef, type WorkspaceOverview, type WorkspaceCatalog, type OperationRow, type LiteratureCandidates} from './contracts';
 let session: Promise<{csrf: string}> | undefined;
 // The link `ros serve` prints pairs this browser for acts that are the person's alone: its token sits in the URL fragment
 // (never sent to a server), is kept in this origin's storage (no other port can read it) and goes with every write.
@@ -37,6 +37,19 @@ export async function readWorkspace(record?: string, workspace_id?: string, sign
 }
 export async function readCatalog(record?: string, signal?: AbortSignal): Promise<WorkspaceCatalog> {
   return call('workspace_catalog', {}, record, false, signal);
+}
+/** Wait for queued searches or page reads to reach a terminal state; the worker runs them, this only watches. */
+export async function waitForOperations(ids: string[], record: string, signal?: AbortSignal, tries = 40, delay = 1500): Promise<OperationRow[]> {
+  for (let i = 0; i < tries; i++) {
+    const rows = (await call<OperationRow[]>('operation_list', {}, record, false, signal)).filter(r => ids.includes(r.id));
+    if (rows.length === ids.length && rows.every(r => ['completed', 'failed', 'interrupted'].includes(r.state))) return rows;
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  return (await call<OperationRow[]>('operation_list', {}, record, false, signal)).filter(r => ids.includes(r.id));
+}
+/** One merged list from the local library, finished scholarly searches and finished web searches. */
+export function readCandidates(query: string, record: string, operations: string[], workspace_id = '', signal?: AbortSignal) {
+  return call<LiteratureCandidates>('literature_candidates', {query, operations, ...(workspace_id ? {workspace_id} : {})}, record, false, signal);
 }
 export async function service<T>(name: string, args?: Record<string, unknown>): Promise<T> {
   const response = await fetch('/services/' + name, args ? {method: 'POST', headers: await mutationHeaders(), body: JSON.stringify(args)} : {});

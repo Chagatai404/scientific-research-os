@@ -35,3 +35,10 @@ def retry(rec, subject):
       subject=P('string', 'library item', True))
 def forget(rec, subject):
     return library.forget(rec, subject)
+
+
+@tool('library_materials', 'List library material with its qualified reference and four separate states: stored, text readable, indexed for search, content verified. A scan without selectable text is never "read".',
+      limit=P('integer', 'at most 2000 rows; default 500'), offset=P('integer', 'page offset'))
+def materials(rec, limit=500, offset=0):
+    rows = library.materials(rec, limit, offset)
+    return {'schema': 'ros.library-materials.v1', 'materials': rows, 'counts': library.counts(rec), 'shown': len(rows)}
