@@ -128,7 +128,8 @@ def speakable(text: str) -> str:
 def run_command(args: list, timeout: int = DEFAULT_TIMEOUT, extra_env: dict | None = None) -> dict:
     """Run a program without a shell. The one place this module starts a process, so tests replace it."""
     started = time.monotonic()
-    env = dict(os.environ, PYTHONIOENCODING='utf-8', PYTHONUTF8='1', TOKENIZERS_PARALLELISM='false', **(extra_env or {}))
+    from .credentials import child_env
+    env = child_env(PYTHONIOENCODING='utf-8', PYTHONUTF8='1', TOKENIZERS_PARALLELISM='false', **(extra_env or {}))
     try:
         done = subprocess.run([str(a) for a in args], capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout, env=env, **({'creationflags': getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)} if os.name == 'nt' else {}))
     except FileNotFoundError:

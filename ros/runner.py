@@ -23,6 +23,8 @@ from typing import Callable
 from . import api
 from .store import Record
 
+BEFORE_JOB = None  # set by ros.runtime: called with the record before a job starts, so its profiles' credential variables are known
+ENVIRONMENT = None  # set by ros.runtime: builds a child's environment without paid or profile-referenced credential variables
 TICK = 5.0
 SCAN = 30.0
 
@@ -69,6 +71,7 @@ class Runner:
                     api.call("claim", rec, task=job["id"], by=self.by)
                 except (ValueError, KeyError):
                     continue  # someone else has it
+                if BEFORE_JOB: BEFORE_JOB(rec)
                 result = self._run(job)
                 try:
                     api.call("job_done", rec, task=job["id"], result=result, by=self.by)
@@ -79,7 +82,7 @@ class Runner:
 
     @staticmethod
     def _run(job: dict, own=None) -> dict:
-        env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8")  # a job runs this program's own modules, so they must be importable from anywhere
+        env = {**(ENVIRONMENT(os.environ) if ENVIRONMENT else os.environ), "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}  # a job runs this program's own modules, so they must be importable from anywhere
         # Always this program's own modules: a job's recorded pythonpath could name any folder (an external record's).
         root = str(Path(__file__).resolve().parents[1])
         # No empty entry: Python reads one as the current folder, which is the job's.

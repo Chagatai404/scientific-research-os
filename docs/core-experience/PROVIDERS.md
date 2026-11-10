@@ -41,13 +41,35 @@ Rules that hold for every kind:
   The one-shot reply path in `ros/lib/dialogue.py`, used by the portal's "Reply exactly READY" connection check, passes the same
   scrubbed environment (`providers.subscription_env()`) whenever a paid variable is set. With none set nothing would change, so it
   inherits the environment as before.
+- **A key a profile points to never reaches a child process.** A profile `{store: env, name: MY_LLM_KEY}` keeps its key in this
+  process's environment, where the in-process HTTP adapters read it. Every child this program starts gets its environment from one
+  builder, `credentials.child_env` (`providers.subscription_env` is the same call): this process's environment without `PAID_ENV`,
+  without `ROS_LOCAL_API_KEY` and without every variable named by an `env` reference of any profile read in this process
+  (`runtime.note_profiles` reads them; it runs at the start of every run, agent task, engine process and connection check, and
+  `child_env` hides what was noted). That covers the Codex and Claude Code children (including a Code session's own shell), the job
+  runner (`runner.BEFORE_JOB` reads the record's profiles before each job), engine processes, the dialogue worker, the safe renderer's probe and build, animation scenes, the PDF build and the
+  notebook runner. The one exception is the dialogue worker of a connection check: it keeps the single variable its own request
+  refers to (or `ROS_LOCAL_API_KEY` for a `compatible:` profile without a reference), because it reads that key itself. Names are compared case-insensitively. The set only grows while the process lives. A
+  process that has read no profile yet (for example a one-off command that builds a PDF before any run) knows only `PAID_ENV` and
+  `ROS_LOCAL_API_KEY`. The voice engine's child (`ros/lib/voice.py`) still builds its environment itself.
 - **No fallback.** If a credential is missing or refused, or a required capability is absent, the run stops. No other
   profile, provider or key is tried.
 - **No invented cost.** The remote adapter returns `{"usage": <as reported by the service or null>, "cost": null}`.
   `run.usage` records only what an adapter reports. A Claude Code result's own `total_cost_usd` is passed through unchanged.
 - **Retries.** A transient failure (a dropped connection, or HTTP 500, 502, 503, 504 or 529) is retried by
   `runtime.execute` up to 3 times on the same provider. A retry of a remote request is a new request to the same paid
-  service. HTTP 429 is never retried automatically.
+  service. HTTP 429 is never retried automatically. A timeout after the request was sent (the service may still be working on it) is
+  retried at most once (`TransientProviderError.retry_limit`); a timeout while connecting sent nothing and keeps the three retries.
+- **Certificates.** A certificate that is not trusted (`ssl.SSLCertVerificationError`, bare or wrapped in a `URLError`, or an
+  `ssl.SSLError` that names the certificate) is a plain `ProviderError` ("certificate not trusted"), never transient and never
+  retried: asking again cannot help, and the key was not sent. Other TLS errors, such as a connection cut mid-stream, stay transient.
+- **Unattended tasks.** A timeout after the request was sent also ends an agent task as `failed` (not `interrupted`, which the
+  dispatcher would take again), so the request is not repeated at the service's expense.
+- **Reply bound and usage.** The request bounds the reply with `max_tokens`, or with `max_completion_tokens` when the profile says so
+  (`token_param`, set through `execution.configure`) or when the endpoint host is `api.openai.com`, whose newer models refuse
+  `max_tokens`. Ollama's own protocol sends neither. `api` and `compatible` requests also send
+  `stream_options: {include_usage: true}` so that the final chunk reports usage; a later chunk with `usage: null` never overwrites
+  usage already collected.
 - **Remote transport.** HTTPS only, with the default certificate verification. Environment proxies are ignored. Any
   redirect is refused, so the `Authorization` header can never follow a redirect to another host. Credentials embedded in
   the URL, query strings and fragments are refused.
@@ -65,7 +87,9 @@ as follows:
 ```
 
 - **`provider_configure`** takes `provider` (`ollama | compatible | codex | claude | api`), `endpoint`, `model`, `tools`,
-  `vision`, `context_limit` and, new in this slice, `credential` (a reference object).
+  `vision`, `context_limit`, `credential` (a reference object) and, in `execution.configure`, the optional `token_param`
+  (`max_tokens` or `max_completion_tokens`, `api` and `compatible` only; a profile that does not set it is unchanged and keeps its
+  revision). The `provider_configure` tool does not expose `token_param` yet.
   - `api` needs an `https://` endpoint and a credential reference.
   - `codex` and `claude` refuse both an endpoint and a credential.
   - `ollama` refuses a credential.
@@ -94,9 +118,18 @@ as follows:
 - **The value in memory.** The resolved value is a `credentials.Secret`. It prints as `[credential]`, refuses JSON and
   pickling, and is revealed only to the adapter that builds the `Authorization` header.
 - **Where the key never appears:** events, profiles, manifests, exports, model context, tool results and logs. The adapter
-  removes the exact key from tool results before they go back to the model, and from every error message. The runtime
+  removes the key from tool results before they go back to the model, and from every error message. The runtime
   removes it from tool results before they are recorded as run steps (`runtime.redact`). Remote error bodies are never
   quoted; only the HTTP status is.
+  - **Every spelling is scrubbed.** `credentials.scrub` replaces the value as it is and as JSON writes it (escaped quotes and
+    backslashes, control characters, non-ASCII with and without escapes), longest first.
+  - **Scrub, then shorten.** A text is scrubbed before it is cut to its display length, so a key that straddles the cut is not left
+    half visible.
+  - **No short keys.** A value under 4 characters cannot be told from ordinary text, so it cannot be scrubbed safely. `resolve`
+    refuses it (`CredentialInvalid`, status `invalid`), and `os_store_write` refuses to store one.
+  - **Windows blobs.** `credentials.decode_blob` reads a stored blob as UTF-8 (what Research OS writes) or UTF-16LE (what `cmdkey`
+    and other programs write, with or without a byte-order mark), drops trailing NULs, and otherwise stops with "store it again"
+    without repeating the bytes.
 - **Platforms without a Credential Manager.** On a non-Windows platform, or where advapi32 is missing, the `os` store
   reports `unavailable` (`CredentialUnavailable`). It never silently falls back to `env`.
 - **Entering a key (S4b).** Writing a key into the OS store is the person's act and has no tool. The paired browser posts to
@@ -149,13 +182,13 @@ A manifest has exactly these fields: `id` (`agent:<lowercase-name>`), `version` 
 
 | Class | `code` | Meaning |
 |---|---|---|
-| `credentials.CredentialInvalid` | `credential_reference_invalid` | The reference is not `{store, name}` or the name is not allowed. The input is never echoed. |
+| `credentials.CredentialInvalid` | `credential_reference_invalid` | The reference is not `{store, name}`, the name is not allowed, or the stored value is under 4 characters. The input is never echoed. |
 | `credentials.CredentialMissing` | `credential_missing` | Absent, empty or revoked. Nothing was sent; no fallback. |
 | `credentials.CredentialUnavailable` | `credential_store_unavailable` | The OS credential store does not exist here or refused the operation. |
 | `providers.ProviderAuthError` | `provider_auth` | HTTP 401/403 from the remote API. Replace or check the key. |
 | `providers.ProviderLimitError` | `provider_limit` | HTTP 429. Not retried automatically. |
-| `providers.TransientProviderError` | `provider_transient` | The connection dropped or the service is overloaded. Retried on the same provider. |
-| `providers.ProviderError` | `provider_error` | A malformed or unfinished stream, a refused redirect, or a remote endpoint that is not HTTPS. |
+| `providers.TransientProviderError` | `provider_transient` | The connection dropped or the service is overloaded. Retried on the same provider (a timeout after the request was sent: once). |
+| `providers.ProviderError` | `provider_error` | A malformed or unfinished stream, a refused redirect, a remote endpoint that is not HTTPS, or a certificate that is not trusted. |
 | `provider_profiles.CapabilityMissing` | `capability_missing` | The profile lacks a required capability, or no profile is configured. |
 | `provider_profiles.AgentResultInvalid` | `agent_result_invalid` | A custom agent's result is not one JSON object matching its schema. |
 
@@ -170,7 +203,9 @@ All of these are `ValueError`s, so the existing CLI, MCP and HTTP error envelope
   maintain it).
 - **Connection check.** `/services/model-check` accepts `api:` and passes the worker only the reference, endpoint and model.
 - **Defining an agent.** The human tool `agent_define` wraps `execution.agent_define`. It is person-only, so a custom agent (whose
-  tools can never include a human tool) cannot define or widen an agent. `agent_list` and `agent_get` read.
+  tools can never include a human tool) cannot define or widen an agent. The set of human tools is computed from the tool registry by
+  the tools layer and passed in; `execution.agent_define`, `agent_get` and `agent_dispatch` require it (no empty default), so a
+  caller that forgets it fails instead of silently allowing a human tool. `agent_list` and `agent_get` read.
 - **Settings.** *Model providers* lists each profile with its kind, transport, where its data goes (this computer, a remote
   service, your subscription), the key reference and whether the key is present, and each capability with its evidence status. It adds
   an API connection (https endpoint, model id, Windows Credential Manager or environment variable name) and replaces or removes a

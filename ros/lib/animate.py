@@ -22,6 +22,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from . import credentials
+
 
 SCHEMA = 1
 BACKENDS = ('manimgx', 'manim')
@@ -77,8 +79,9 @@ def run_command(args: list[str], cwd: Path | None = None, timeout: int = DEFAULT
     """Run a program without a shell. The one place this module starts a process, so tests replace it."""
     started = time.monotonic()
     try:
+        # Always an explicit environment: no paid key and no variable a provider profile takes its key from reaches a scene's code.
         done = subprocess.run(args, cwd=cwd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout,
-                              **({'env': {**os.environ, **extra_env}} if extra_env else {}))
+                              env=credentials.child_env(**(extra_env or {})))
     except FileNotFoundError:
         return {'code': 127, 'stdout': '', 'stderr': f'{args[0]}: not found', 'seconds': 0.0}
     except subprocess.TimeoutExpired:

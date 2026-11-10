@@ -63,7 +63,12 @@ TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf
 
 def _engine(request: dict, timeout: int = 200) -> dict:
     """Run optional providers outside api.LOCK; no shell or browser-supplied executable/path."""
-    env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTHONPATH=str(STATIC.parents[1]) + os.pathsep + os.environ.get("PYTHONPATH", ""))
+    # The worker gets no paid key and no profile's credential variable, except the one its own request refers to (it reads that key itself).
+    refs = [request.get(name) for name in ("credential", "reference") if isinstance(request.get(name), dict)]
+    keep = [r["name"] for r in refs if r.get("store") == "env" and isinstance(r.get("name"), str)]
+    if str(request.get("model", "")).startswith("compatible:") and not request.get("credential"):
+        keep.append("ROS_LOCAL_API_KEY")  # a local server profile without a reference reads the legacy variable itself
+    env = runtime.child_env(keep=keep, PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTHONPATH=str(STATIC.parents[1]) + os.pathsep + os.environ.get("PYTHONPATH", ""))
     try:
         argv = [sys.executable, '--worker', 'dialogue'] if getattr(sys, 'frozen', False) else [sys.executable, '-m', 'ros.lib.dialogue']
         result = subprocess.run(argv, input=json.dumps(request),
@@ -379,7 +384,9 @@ def make_handler(rec: "Record | Pool"):
                     if model.startswith('api:') and not (profile and profile.get('credential')):
                         return self._send(HTTPStatus.BAD_REQUEST, {"error": "Connect this API model in Settings first (endpoint, model and where its key is stored)."})
                     # Only the credential *reference* goes to the worker; it reads the key itself, in its own process.
+                    runtime.note_profiles(pool.get(args.get('record')))
                     result = _engine({"action": "reply", "model": model, "effort": effort, **({'endpoint':profile['endpoint']} if profile and profile['endpoint'] else {}),
+                                      **({'token_param':profile['token_param']} if profile and profile.get('token_param') else {}),
                                       **({'credential':profile['credential']} if profile and profile.get('credential') else {}),
                                       "messages": [{"role": "user", "content": "Reply exactly READY."}],
                                       "context": {"purpose": "User-requested model connection check."}}, timeout=60)

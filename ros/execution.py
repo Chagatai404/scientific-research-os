@@ -19,6 +19,7 @@ PROFILE_SCHEMA = 'ros.provider-profile.v2'
 PROVIDERS = ('ollama', 'compatible', 'codex', 'claude', 'api')
 KINDS = {'codex': ('subscription', 'cli_login', 'cli'), 'claude': ('subscription', 'cli_login', 'cli'),
          'ollama': ('local', 'none', 'local_loopback'), 'compatible': ('local', 'none', 'local_loopback'), 'api': ('remote', 'api_key', 'remote_https')}
+TOKEN_PARAMS = ('max_tokens', 'max_completion_tokens')  # the request field that bounds an HTTP model's reply (providers.token_param)
 CREDENTIAL_ENV = re.compile(r'[A-Z_][A-Z0-9_]{0,63}')
 CREDENTIAL_OS = re.compile(r'ResearchOS:[A-Za-z0-9][A-Za-z0-9_.-]{0,99}')
 # What each adapter's capabilities rest on. `tested`: a deterministic fixture exercises it (tests/test_ros_provider_*.py,
@@ -53,6 +54,7 @@ def _profile(data):
            'endpoint': data.get('endpoint', ''), 'model': data['model'], 'tools': bool(data.get('tools')), 'vision': bool(data.get('vision')),
            'context_limit': data.get('context_limit', 16000), 'credential': credential,
            'capabilities': {'streaming': True, 'tools': bool(data.get('tools')), 'vision': bool(data.get('vision')), 'cancel': True}}
+    if data.get('token_param') in TOKEN_PARAMS: row['token_param'] = data['token_param']  # only when chosen: a profile without it keeps its revision
     row['revision'] = hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest()
     return row
 
@@ -60,8 +62,10 @@ def profiles(rec):
     def step(state, event): state[event['subject']] = event['data']
     return [_profile(data) for data in rec.fold('provider.profiles.v1', ('provider.configured',), dict, step).values() if data.get('provider') in KINDS]
 
-def configure(rec, provider, endpoint, model, tools=False, vision=False, context_limit=16000, credential=None):
+def configure(rec, provider, endpoint, model, tools=False, vision=False, context_limit=16000, credential=None, token_param=None):
     if provider not in PROVIDERS: raise ValueError('choose a supported provider')
+    if token_param is not None and (token_param not in TOKEN_PARAMS or provider not in ('api', 'compatible')):
+        raise ValueError('token_param is max_tokens or max_completion_tokens, and only an api or compatible profile takes it')
     parsed = urlparse(endpoint)
     if provider in ('ollama','compatible') and (parsed.scheme != 'http' or parsed.hostname not in ('127.0.0.1', 'localhost', '::1') or parsed.username or parsed.password or parsed.query or parsed.fragment): raise ValueError('use an HTTP loopback endpoint without credentials')
     if provider == 'api' and (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment): raise ValueError('a remote API profile needs an https:// endpoint without embedded credentials, query or fragment')
@@ -74,6 +78,7 @@ def configure(rec, provider, endpoint, model, tools=False, vision=False, context
     if not 2000 <= context_limit <= 200000: raise ValueError('context budget is between 2000 and 200000 characters')
     data = {'id': provider + ':' + model.strip(), 'provider': provider, 'endpoint': endpoint.rstrip('/'), 'model': model.strip(), 'tools': tools, 'vision': vision, 'context_limit': context_limit}
     if reference: data['credential'] = reference
+    if token_param: data['token_param'] = token_param
     rec.append('provider.configured', provider + ':' + model.strip(), data, actor='person')
     return _profile(data)
 
@@ -87,7 +92,7 @@ def capabilities(rec):
     return {'schema': 'ros.provider-capabilities.v1', 'statuses': list(STATUSES), 'adapters': adapters, 'profiles': rows}
 
 # --- custom agents (manifests are validated in ros/modes.py) --------------------------------------------------------------------
-def agent_define(rec, manifest, human=frozenset()):
+def agent_define(rec, manifest, human):
     """Record a person's custom agent manifest. A version is immutable: the same content again is a no-op, other content under
     the same version is refused. Not a tool: defining an agent is the person's act (see PROVIDERS.md)."""
     row = modes.agent_manifest(manifest, human)
@@ -106,7 +111,7 @@ def _agent_rows(rec):
 def agents(rec):
     return sorted(({k: v for k, v in r.items() if k != 'instructions'} for r in _agent_rows(rec)), key=lambda r: (str(r.get('id')), r['version']))
 
-def agent_get(rec, agent, version=None, human=frozenset()):
+def agent_get(rec, agent, version, human):
     """A stored manifest (the newest version unless one is named) and whether its hash and rules still verify."""
     rows = [r for r in _agent_rows(rec) if r.get('id') == agent and (version is None or r['version'] == version)]
     if not rows: raise KeyError('no such agent manifest')
@@ -115,7 +120,7 @@ def agent_get(rec, agent, version=None, human=frozenset()):
     except ValueError: verified = False
     return dict(row, verified=verified)
 
-def agent_dispatch(rec, agent, brief, version=None, human=frozenset()):
+def agent_dispatch(rec, agent, brief, version, human):
     """The verified manifest with its system prompt and brief; refuses a manifest whose hash or rules no longer verify."""
     return modes.agent_dispatch({k: v for k, v in agent_get(rec, agent, version, human).items() if k != 'verified'}, brief, human)
 

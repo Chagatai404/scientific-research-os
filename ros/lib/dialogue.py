@@ -158,7 +158,7 @@ def reply(request):
         from . import credentials, providers
         import threading
         chunks=[]
-        packet={'model':model,'system':system,'messages':messages,'endpoint':request.get('endpoint'),'steps':0,'deadline':60}
+        packet={'model':model,'system':system,'messages':messages,'endpoint':request.get('endpoint'),'steps':0,'deadline':60,'token_param':request.get('token_param')}
         if request.get('credential'): packet['credential']=credentials.resolve(request['credential'])  # read now, here; a missing key stops the check
         # A remote profile never falls back to anything else: without its credential and endpoint the adapter refuses.
         (providers.remote if provider=='api' else providers.local)(packet,chunks.append,None,threading.Event(),lambda _:None)

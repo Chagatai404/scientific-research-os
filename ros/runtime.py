@@ -15,6 +15,24 @@ from .lib import providers, connectivity, renderkit, credentials, provider_profi
 
 LOG = logging.getLogger('ros')
 
+def note_profiles(rec=None, profiles=None):
+    """Remember the environment variables the configured provider profiles take their keys from, so that no child process this program
+    starts (a CLI, a Code session's shell, a renderer, a PDF build, a job) inherits one (``credentials.child_env``). Never raises."""
+    try:
+        rows = profiles if profiles is not None else api.call('provider_profiles', rec)
+        credentials.note_env_references([row.get('credential') for row in rows])
+    except Exception:
+        LOG.warning('provider profiles could not be read to hide their credentials from child processes', exc_info=True)
+
+def child_env(rec=None, profiles=None, keep=(), **extra):
+    """The environment of a child process: this process's without paid API keys and without any profile's credential variable (``keep``
+    names the ones this child needs), plus ``extra``. With ``rec`` the profiles are read first."""
+    if rec is not None or profiles is not None: note_profiles(rec, profiles)
+    return credentials.child_env(keep=keep, **extra)
+
+runner.ENVIRONMENT = credentials.child_env  # the job runner cannot import ros.lib: it is handed the builder
+runner.BEFORE_JOB = note_profiles
+
 # Background problems nobody is watching a screen for: component -> the last few errors, newest last. Shown by /services/health.
 HEALTH = {}
 HEALTH_LOCK = threading.Lock()
@@ -261,6 +279,7 @@ def out_of_steps(steps):
 def execute_operation(rec,identifier,parent_entry=None):
     import sys
     from pathlib import Path
+    note_profiles(rec)
     try:
         row=api.call('operation_start',rec,identifier=identifier)
         packet=row['packet']
@@ -338,7 +357,7 @@ def engine_process(rec,key,argv,packet,timeout,parent_entry=None):
         with ENGINE_WORKER:
             if entry['cancel'].is_set():return {'ok':False,'interrupted':True,'error':'Engine request cancelled'}
             import os, subprocess, sys
-            env=dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8')
+            env=child_env(rec,PYTHONUTF8='1',PYTHONIOENCODING='utf-8')
             env['PYTHONPATH']=str(__import__('pathlib').Path(__file__).resolve().parents[1])+os.pathsep+env.get('PYTHONPATH','')
             process=subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,encoding='utf-8',env=env,
                                      **({'creationflags':subprocess.CREATE_NO_WINDOW} if os.name=='nt' else {'start_new_session':True}))
@@ -665,6 +684,7 @@ def execute(rec, result, request, legacy_engine=None):
                     messages.insert(0, message); total += len(message['content'])
                 packet['messages'] = messages
                 provider = packet['model'].split(':', 1)[0]
+                note_profiles(rec)
                 profile = request.get('vision_profile') or next((p for p in api.call('provider_profiles', rec) if p['id'] == packet['model']), None)
                 if profile:
                     packet.update(endpoint=profile['endpoint'], tool_support=profile['tools'])
@@ -693,6 +713,7 @@ def execute(rec, result, request, legacy_engine=None):
                             if entry['cancel'].wait(5): raise providers.ProviderError('cancelled')
                     if output.strip(): emit('\n\n(connection lost — continuing)\n\n')
                 base_system = packet['system']
+                repeated = 0
                 for attempt in range(1, retries + 2):
                     # A retry is a new process whose call ids restart from 1: they carry the attempt, so a new call is never answered
                     # with the cached result of a different, earlier one (see tool_call).
@@ -710,6 +731,11 @@ def execute(rec, result, request, legacy_engine=None):
                     except providers.TransientProviderError as exc:
                         if entry['cancel'].is_set(): raise
                         LOG.warning('run %s: attempt %d lost its connection: %s', run, attempt, providers.mask(exc))
+                        if exc.retry_limit is not None:
+                            # A request that timed out after it was sent may still be running at the service; a retry would be a second paid one.
+                            repeated += 1
+                            if repeated > exc.retry_limit:
+                                raise providers.ProviderError(f'{label[0].upper() + label[1:]} did not answer in time, twice. It is not asked again so that nothing is paid for twice. Your message is saved; send it again or say “continue”.') from exc
                         if attempt > retries:
                             raise providers.ProviderError(f'The connection to {label} was lost and did not come back after {retries} attempts. Your message is saved; send it again or say “continue”.') from exc
                         wait_to_retry(attempt)
@@ -755,6 +781,7 @@ def run_agent(rec, model, system, brief, grant, steps, call, entry, limits, prof
         if entry['cancel'].is_set(): raise providers.ProviderError('cancelled')
         chunks.append(text)
         if sum(map(len, chunks)) > min(60000, limits['output'] * 6): raise providers.ProviderError('Output budget reached.')
+    note_profiles(rec)
     profile = profile or next((p for p in api.call('provider_profiles', rec) if p['id'] == model), None)
     packet = {'model': model, 'effort': effort, 'images': [], 'context': {}, 'messages': [{'role': 'user', 'content': brief}], 'system': system,
               'deadline': limits['deadline'], 'steps': steps, 'output_limit': limits['output'], 'provider_calls': limits['provider_calls'],
@@ -777,6 +804,7 @@ def bind_credential(packet, model, profile):
     ``credentials.CredentialError``. A remote API model needs its configured profile. Nothing falls back to another provider or key."""
     if provider_profiles.provider_of(model, profile) == 'api' and not profile:
         raise provider_profiles.CapabilityMissing('Configure this remote API profile (endpoint and credential reference) first. Nothing was sent.')
+    if (profile or {}).get('token_param'): packet['token_param'] = profile['token_param']
     reference = (profile or {}).get('credential')
     if not reference: return None
     packet['credential'] = credentials.resolve(reference)
@@ -786,7 +814,10 @@ def redact(value, secret):
     """``value`` with the exact credential value removed, before it is recorded or given to a model (a file may hold the same key)."""
     if not secret: return value
     text = json.dumps(value, ensure_ascii=False, default=str)
-    return json.loads(credentials.scrub(text, secret)) if secret.reveal() in text else value
+    clean = credentials.scrub(text, secret)  # every spelling: as is, and as JSON writes it (escaped quotes, backslashes, control characters)
+    if clean == text: return value
+    try: return json.loads(clean)
+    except ValueError: return {'error': 'This result held a credential and was withheld.'}
 
 def run_custom_agent(rec, agent, brief, version=None, entry=None):
     """Run a person's custom agent (a verified manifest, ros/modes.py) on its configured profile: its narrowed tools only, never a
@@ -831,6 +862,7 @@ def dispatch_once(rec):
     if not AGENTS.acquire(blocking=False): return {'idle': 'An agent is already working.'}
     key, opened, session = None, {}, None
     try:
+        note_profiles(rec)  # before the renderer check starts an interpreter, and before any CLI child
         # Checked only when a figure or an animation waits (the check starts an interpreter); cached after that. A figure waits, with the
         # reason, where the safe renderer is not available.
         waiting = api.call('agents_status', rec)['waiting']
@@ -894,6 +926,10 @@ def dispatch_once(rec):
             run_agent(rec, model, got['system'], got['brief'], grant, got['steps'], call, entry, limits, workdir=got.get('workdir') if got.get('native') else None,
                       extra_tools=renderkit.tool_specs() if session else ())
         except providers.TransientProviderError as exc:
+            if exc.retry_limit is not None:
+                # A timeout after the request was sent: the service may be doing the work, and taking the task again would pay for it twice.
+                LOG.warning('agent task %s: the provider did not answer after the request was sent: %s', task['id'], providers.mask(exc))
+                return end('failed', 'The model did not answer in time after the request was sent, so it was not asked again (that could be paid twice). Start the task again if you want that.')
             # A lost connection is not the task's fault: it ends as interrupted (never a failure) and the dispatcher backs off.
             LOG.warning('agent task %s lost its connection: %s', task['id'], providers.mask(exc))
             return end('interrupted', 'The connection was lost (' + providers.mask(exc)[:200] + '); the task is taken again when it is back.', transient=True)

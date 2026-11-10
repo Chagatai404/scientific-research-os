@@ -29,7 +29,7 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from . import appcontainer
+from . import appcontainer, credentials
 
 MAX_WRITE = 200_000            # bytes of text one scratch_write may hold
 MAX_READ = 60_000              # characters one scratch_read returns
@@ -440,7 +440,7 @@ def probe(python: str) -> dict | None:
     """Ask a trusted interpreter (ours, not the model's code) what it needs to draw with matplotlib; None when it cannot."""
     try:
         with tempfile.TemporaryDirectory(prefix='ros-probe-') as empty:  # an empty working folder: nothing of ours is first on its path
-            env = dict(os.environ, MPLCONFIGDIR=empty)
+            env = credentials.child_env(MPLCONFIGDIR=empty)
             if pack_site(python):
                 env.update(PYTHONPATH=pack_site(python), PYTHONNOUSERSITE='1')
             done = subprocess.run([python, '-c', PROBE], capture_output=True, text=True, timeout=120, cwd=empty,
@@ -491,7 +491,7 @@ def build_runtime(target: Path, info: dict) -> None:
     cache = partial / 'mplcache'
     cache.mkdir()
     subprocess.run([str(partial / 'python.exe'), '-I', '-B', '-c', 'import matplotlib.pyplot'], capture_output=True, timeout=300,
-                   creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), env=dict(os.environ, MPLCONFIGDIR=str(cache), MPLBACKEND='Agg', PYTHONNOUSERSITE='1'))
+                   creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), env=credentials.child_env(MPLCONFIGDIR=str(cache), MPLBACKEND='Agg', PYTHONNOUSERSITE='1'))
     (partial / 'ros-runtime.json').write_text(json.dumps({'version': info['version'], 'matplotlib': info['matplotlib'], 'tops': tops}), encoding='utf-8')
     if target.exists():
         remove_tree(target)
@@ -528,7 +528,7 @@ def find_manim(python: str) -> tuple[Path | None, str]:
         try:
             with tempfile.TemporaryDirectory(prefix='ros-probe-') as empty:
                 done = subprocess.run([python, '-s', '-B', '-c', 'import manimgx'], capture_output=True, text=True, timeout=120, cwd=empty,
-                                      creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), env=dict(os.environ, PYTHONPATH=str(site), PYTHONNOUSERSITE='1'))
+                                      creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0), env=credentials.child_env(PYTHONPATH=str(site), PYTHONNOUSERSITE='1'))
         except (OSError, subprocess.TimeoutExpired) as exc:
             reasons.append(str(exc)[:120])
             continue

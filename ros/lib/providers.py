@@ -55,17 +55,20 @@ def mcp_content(value):
     return blocks
 
 class TransientProviderError(ProviderError):
-    """The provider could not be reached, or the connection dropped or the service was overloaded: asking again later may work."""
+    """The provider could not be reached, or the connection dropped or the service was overloaded: asking again later may work.
+    ``retry_limit`` (when set) is how many automatic retries are allowed in all: a request that may already have been processed
+    (it timed out after being sent) is a paid request that a retry would repeat."""
     code = 'provider_transient'
+    retry_limit = None
 
 # Environment variables that would make a subscription CLI bill an API account or a cloud platform instead of the person's
 # login. A subscription child never inherits them, so a key that happens to be set cannot silently turn a run into a paid one.
-PAID_ENV = ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'OPENAI_API_KEY', 'CODEX_API_KEY', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX')
+PAID_ENV = credentials.PAID_ENV
 
 def subscription_env(**extra):
-    """The environment of a subscription CLI child: this process's, without paid API keys, plus ``extra``."""
-    paid = {name.upper() for name in PAID_ENV}
-    return {**{k: v for k, v in os.environ.items() if k.upper() not in paid}, **extra}
+    """The environment of a subscription CLI child (and of every other child this program starts): this process's, without the paid
+    API keys and without any variable a provider profile refers to as its credential (``credentials.child_env``), plus ``extra``."""
+    return credentials.child_env(**extra)
 
 # What a failed network call says in the CLIs' and libraries' own words. Matched against the error text and the child's stderr.
 TRANSPORT = re.compile(r'(?i)(ECONNREFUSED|ECONNRESET|ECONNABORTED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|ENETDOWN|getaddrinfo|fetch failed|socket hang up|'
@@ -433,7 +436,9 @@ def local(request, emit, tool_call, cancel, own):
     secret = request.get('credential')  # the profile's own reference; else the legacy ROS_LOCAL_API_KEY variable
     if provider == 'compatible':
         key = secret.reveal() if isinstance(secret, credentials.Secret) else os.environ.get('ROS_LOCAL_API_KEY')
-        if key: headers['Authorization'] = 'Bearer ' + key
+        if key:
+            headers['Authorization'] = 'Bearer ' + key
+            if not isinstance(secret, credentials.Secret): secret = credentials.Secret(key)  # the legacy variable's key is scrubbed from errors too
     def failure(exc):
         import http.client
         reason = getattr(exc, 'reason', exc)
@@ -441,12 +446,12 @@ def local(request, emit, tool_call, cancel, own):
         if isinstance(exc, (ConnectionResetError, ConnectionAbortedError, http.client.IncompleteRead, http.client.RemoteDisconnected)) or isinstance(reason, (ConnectionResetError, ConnectionAbortedError)):
             return TransientProviderError('The connection to the local endpoint dropped (' + type(reason).__name__ + '); partial output is saved.')
         if isinstance(exc, OSError):
-            return ProviderError('Local endpoint unavailable (' + credentials.scrub(str(reason)[:160], secret) + '); check that it is running, its address and the model.')
+            return ProviderError('Local endpoint unavailable (' + credentials.scrub(str(reason), secret)[:160] + '); check that it is running, its address and the model.')
         return ProviderError('Local endpoint returned an invalid stream; check its address and model.')
     return _chat(request, emit, tool_call, cancel, own, flavor='ollama' if provider == 'ollama' else 'openai', model=model,
                  url=endpoint + ('/api/chat' if provider == 'ollama' else '/chat/completions'), headers=headers, opener=local_open,
                  failure=failure, rejected='Local endpoint rejected this model request.', unfinished='Local stream ended without completion; partial output is saved.',
-                 max_tokens=provider == 'compatible', secret=secret)
+                 max_tokens=provider == 'compatible', secret=secret, usage_option=provider == 'compatible')
 
 def remote(request, emit, tool_call, cancel, own):
     """A remote HTTPS API speaking OpenAI-compatible chat completions, with the API key of the profile's credential reference.
@@ -467,8 +472,19 @@ def remote(request, emit, tool_call, cancel, own):
             if code in (500, 502, 503, 504, 529): return TransientProviderError(f'The remote API is unavailable (HTTP {code}); partial output is saved.')
             return ProviderError(f'The remote API refused the request (HTTP {code}); check the endpoint and model.')
         reason = getattr(exc, 'reason', exc)
+        # A certificate that is not trusted is no passing network fault: asking again cannot help and the key was not sent. It is found both
+        # bare and wrapped in a URLError. Other TLS errors (a connection cut mid-stream is an SSLEOFError) stay transient.
+        tls = next((e for e in (exc, reason) if isinstance(e, ssl.SSLCertVerificationError) or isinstance(e, ssl.SSLError) and 'CERTIFICATE' in str(e).upper()), None)
+        if tls is not None:
+            return ProviderError("The remote API certificate not trusted: the secure connection was refused, so the key was not sent. Check the endpoint address and this computer's certificate store.")
         if isinstance(exc, (ConnectionResetError, ConnectionAbortedError, http.client.IncompleteRead, http.client.RemoteDisconnected)) or isinstance(reason, (ConnectionResetError, ConnectionAbortedError)):
             return TransientProviderError('The connection to the remote API dropped (' + type(reason).__name__ + '); partial output is saved.')
+        if isinstance(exc, TimeoutError):
+            # Not wrapped in a URLError: the request went out and no answer (or no more of it) came. The service may be working on it, and a
+            # retry is another paid request, so at most one is made.
+            error = TransientProviderError('The remote API did not answer in time after the request was sent; partial output is saved.')
+            error.retry_limit = 1
+            return error
         if isinstance(exc, OSError):
             return TransientProviderError('The remote API could not be reached (' + type(reason).__name__ + '); check the connection and endpoint.')
         return ProviderError('The remote API returned an invalid stream; check its endpoint and model.')
@@ -476,14 +492,23 @@ def remote(request, emit, tool_call, cancel, own):
         reported = _chat(request, emit, tool_call, cancel, own, flavor='openai', model=model, url=endpoint + '/chat/completions',
                          headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + secret.reveal()}, opener=remote_open,
                          failure=failure, rejected='The remote API rejected this model request.',
-                         unfinished='The remote API stream ended without completion; partial output is saved.', max_tokens=True, secret=secret)
+                         unfinished='The remote API stream ended without completion; partial output is saved.', max_tokens=True, secret=secret, usage_option=True)
     except ProviderError as exc:
         text = credentials.scrub(str(exc), secret)
         if text == str(exc): raise
         raise type(exc)(text) from None
     return {'usage': reported.get('usage'), 'cost': None}
 
-def _chat(request, emit, tool_call, cancel, own, *, flavor, model, url, headers, opener, failure, rejected, unfinished, max_tokens, secret=None):
+TOKEN_PARAMS = ('max_tokens', 'max_completion_tokens')
+
+def token_param(url, request):
+    """The request field that bounds the reply: the profile's ``token_param`` when it names a known one, else ``max_completion_tokens``
+    for api.openai.com (whose newer models refuse ``max_tokens``) and ``max_tokens`` for every other OpenAI-compatible server."""
+    chosen = request.get('token_param')
+    if chosen in TOKEN_PARAMS: return chosen
+    return 'max_completion_tokens' if urlparse(url).hostname == 'api.openai.com' else 'max_tokens'
+
+def _chat(request, emit, tool_call, cancel, own, *, flavor, model, url, headers, opener, failure, rejected, unfinished, max_tokens, secret=None, usage_option=False):
     """The streamed chat loop shared by local and remote HTTP models: ``flavor`` is ``ollama`` (its own NDJSON) or ``openai``
     (server-sent chat completion chunks). Tool results go back with any exact credential value removed."""
     messages = [{'role': 'system', 'content': request['system']}, *request['messages']]
@@ -498,7 +523,8 @@ def _chat(request, emit, tool_call, cancel, own, *, flavor, model, url, headers,
         if time.monotonic() > deadline: raise ProviderError('Provider deadline exceeded.')
         payload = {'model': model, 'messages': messages, 'stream': True}
         if tools: payload['tools'] = tools
-        if max_tokens: payload['max_tokens'] = request.get('output_limit', 4096)
+        if max_tokens: payload[token_param(url, request)] = request.get('output_limit', 4096)
+        if usage_option: payload['stream_options'] = {'include_usage': True}
         req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
         content, calls, finish, usage = '', {}, False, None
         try:
@@ -513,11 +539,11 @@ def _chat(request, emit, tool_call, cancel, own, *, flavor, model, url, headers,
                     if raw == '[DONE]': finish = True; break
                     event = json.loads(raw)
                     if flavor == 'ollama':
-                        if event.get('error'): raise ProviderError(credentials.scrub(str(event['error'])[:200], secret))
+                        if event.get('error'): raise ProviderError(credentials.scrub(str(event['error']), secret)[:200])
                         delta = event.get('message', {}); finish = bool(event.get('done')); usage = {k: event.get(k) for k in ('prompt_eval_count', 'eval_count')} if finish else usage
                     else:
                         if event.get('error'): raise ProviderError(rejected)
-                        choice = (event.get('choices') or [{}])[0]; delta = choice.get('delta', {}); finish = bool(choice.get('finish_reason')) or finish; usage = event.get('usage', usage)
+                        choice = (event.get('choices') or [{}])[0]; delta = choice.get('delta', {}); finish = bool(choice.get('finish_reason')) or finish; usage = event.get('usage') or usage
                     text = delta.get('content') or ''; content += text; emit(text)
                     for index, call in enumerate(delta.get('tool_calls', [])):
                         # OpenAI-style streams send one call in pieces tied by a top-level index; Ollama sends each call whole (its

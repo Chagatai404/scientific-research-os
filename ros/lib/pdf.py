@@ -40,6 +40,8 @@ import sys
 import tempfile
 import time
 
+from . import credentials
+
 ASSETS = Path(__file__).resolve().parent / "pdf_assets"
 KATEX = Path(__file__).resolve().parents[1] / "portal" / "vendor" / "katex"
 TEMPLATE_VERSION = "2"
@@ -555,6 +557,7 @@ def _kill_tree(process: subprocess.Popen) -> None:
 
 
 def _run(command: list, cwd: Path, timeout: float, env: dict | None = None) -> tuple[int | None, str]:
+    env = credentials.child_env() if env is None else env  # never the bare environment: it may hold a model key
     process = subprocess.Popen(command, cwd=str(cwd), env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
     try:
@@ -621,7 +624,7 @@ def compile_latex(folder: Path, main: str = "main.tex", timeout: float = 300, al
     xelatex = _tool("xelatex")
     if xelatex is None:
         return {"ok": False, "pdf": None, "log": "", "timed_out": False, "missing": True}
-    env = dict(os.environ, openin_any="p", openout_any="p", shell_escape="f", TEXMFOUTPUT=str(folder))
+    env = credentials.child_env(openin_any="p", openout_any="p", shell_escape="f", TEXMFOUTPUT=str(folder))
     if "miktex" in xelatex.lower():
         flags = ["-interaction=nonstopmode", "-halt-on-error", "-disable-write18",
                  "-enable-installer" if allow_install else "-disable-installer"]

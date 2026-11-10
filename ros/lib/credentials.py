@@ -9,6 +9,7 @@ the value to the transport that sends it. Nothing is cached, so a replaced key i
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 
@@ -17,6 +18,15 @@ NAMESPACE = 'ResearchOS:'
 ENV_NAME = re.compile(r'[A-Z_][A-Z0-9_]{0,63}')
 OS_NAME = re.compile(r'ResearchOS:[A-Za-z0-9][A-Za-z0-9_.-]{0,99}')
 HIDDEN = '[hidden]'
+MIN_KEY = 4  # a shorter value cannot be told apart from ordinary text, so it cannot be scrubbed safely: it is refused instead
+
+# Environment variables that would make a subscription CLI bill an API account or a cloud platform instead of the person's login.
+PAID_ENV = ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'OPENAI_API_KEY', 'CODEX_API_KEY', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX')
+# The legacy variable a local OpenAI-compatible server's key was once read from (providers.local): a key like any other.
+LEGACY_ENV = ('ROS_LOCAL_API_KEY',)
+# The variable names that any profile read in this process refers to (upper-cased; Windows names are case-insensitive). Add-only: a profile
+# removed later keeps its name hidden from children, which is harmless. See ``child_env``.
+_REFERENCED = set()
 
 
 class CredentialError(ValueError):
@@ -69,6 +79,31 @@ def reference(value) -> dict:
     return {'store': store, 'name': name}
 
 
+def note_env_references(refs) -> None:
+    """Remember the variable names of the ``env`` references among ``refs`` (anything else is ignored), so that no child process this
+    program starts inherits a key a provider profile points to."""
+    for ref in refs or ():
+        if isinstance(ref, dict) and ref.get('store') == 'env' and isinstance(ref.get('name'), str) and ENV_NAME.fullmatch(ref['name']):
+            _REFERENCED.add(ref['name'].upper())
+
+
+def forget_env_references() -> None:
+    """Empty the remembered names (tests)."""
+    _REFERENCED.clear()
+
+
+def referenced_env() -> frozenset:
+    return frozenset(_REFERENCED)
+
+
+def child_env(base=None, *, names=(), keep=(), **extra) -> dict:
+    """The environment of a child process: ``base`` (default: this process's) without the paid API variables (``PAID_ENV``), without
+    every variable some provider profile refers to as a credential (plus ``names``), and with ``extra`` added. ``keep`` names variables
+    that this one child needs (the credential worker reading its own reference) and so stay. Names compare case-insensitively."""
+    hidden = ({n.upper() for n in (*PAID_ENV, *LEGACY_ENV)} | _REFERENCED | {str(n).upper() for n in names}) - {str(n).upper() for n in keep}
+    return {**{k: v for k, v in (os.environ if base is None else base).items() if k.upper() not in hidden}, **extra}
+
+
 def describe(ref: dict) -> str:
     ref = reference(ref)
     return f"environment variable {ref['name']}" if ref['store'] == 'env' else f"OS credential {ref['name']}"
@@ -86,6 +121,9 @@ def resolve(ref, environ=None) -> Secret:
         value = _os_read(ref['name']) or ''
     if not value.strip():
         raise CredentialMissing(f'The credential ({describe(ref)}) is missing or revoked. Nothing was sent and no other provider was used.')
+    if len(value.strip()) < MIN_KEY:
+        raise CredentialInvalid(f'The credential ({describe(ref)}) is shorter than {MIN_KEY} characters, which is too short to be a key and could not be kept out of '
+                                'logs and records. Nothing was sent and no other provider was used.')
     return Secret(value.strip())
 
 
@@ -99,13 +137,37 @@ def status(ref, environ=None) -> str:
     except CredentialInvalid: return 'invalid'
 
 
+def spellings(value) -> list:
+    """Every way ``value`` can appear in text: itself and its JSON-string forms (escaped quotes, backslashes, control characters and
+    non-ASCII escaped or as is), longest first so a longer form is never left half-replaced by a shorter one."""
+    forms = {value, json.dumps(value)[1:-1], json.dumps(value, ensure_ascii=False)[1:-1]}
+    return sorted((f for f in forms if len(f) >= MIN_KEY), key=len, reverse=True)
+
+
 def scrub(text, *secrets) -> str:
-    """``text`` with every exact credential value replaced by ``[hidden]`` (a server may echo the key in an error)."""
+    """``text`` with every credential value, in every spelling, replaced by ``[hidden]`` (a server may echo the key in an error, and a
+    tool result is JSON). Scrub *before* shortening a text: a cut can leave half a key that no exact match finds. A value shorter than
+    ``MIN_KEY`` is never scrubbed (``resolve`` refuses such a credential)."""
     text = str(text)
     for secret in secrets:
         value = secret.reveal() if isinstance(secret, Secret) else secret
-        if isinstance(value, str) and len(value) >= 4: text = text.replace(value, HIDDEN)
+        if isinstance(value, str):
+            for form in spellings(value): text = text.replace(form, HIDDEN)
     return text
+
+
+def decode_blob(data: bytes) -> str:
+    """The text of a stored credential blob. Research OS writes UTF-8; the Windows ``cmdkey`` tool and other programs write UTF-16LE
+    (with or without a byte-order mark). Trailing NULs are dropped. Anything else is refused without repeating its bytes."""
+    data = bytes(data)
+    candidates = []
+    if data[:2] in (b'\xff\xfe', b'\xfe\xff'): candidates.append('utf-16')
+    candidates += ['utf-8', 'utf-16-le'] if len(data) % 2 == 0 else ['utf-8']
+    for encoding in candidates:
+        try: text = data.decode(encoding, errors='strict').lstrip('\ufeff').rstrip('\x00')
+        except UnicodeDecodeError: continue
+        if '\x00' not in text and not any(ord(c) < 32 and c not in '\t\r\n' for c in text): return text
+    raise CredentialUnavailable('The stored credential is not text Research OS can read (UTF-8 or UTF-16); store it again.')
 
 
 # --- Windows Credential Manager (advapi32), stdlib ctypes only ------------------------------------------------------------------
@@ -170,9 +232,7 @@ def _os_read(name):
     try:
         size = found.contents.CredentialBlobSize
         data = ctypes.string_at(found.contents.CredentialBlob, size) if size else b''
-        return data.decode('utf-8', errors='strict')
-    except UnicodeDecodeError:
-        raise CredentialUnavailable('The stored credential is not in the format Research OS writes; store it again.') from None
+        return decode_blob(data)
     finally:
         lib.CredFree(found)
 
@@ -183,7 +243,7 @@ def os_store_write(name: str, value: str) -> None:
     if api is None: raise CredentialUnavailable('The OS credential store is unavailable on this computer.')
     _namespaced(name)
     data = str(value).strip().encode('utf-8')
-    if not data or len(data) > MAX_BLOB: raise CredentialInvalid('A stored credential is 1 to 2560 bytes.')
+    if len(data) < MIN_KEY or len(data) > MAX_BLOB: raise CredentialInvalid(f'A stored credential is {MIN_KEY} to {MAX_BLOB} bytes.')
     ctypes, lib = api['ctypes'], api['lib']
     blob = (ctypes.c_ubyte * len(data)).from_buffer_copy(data)
     cred = api['CREDENTIALW']()
