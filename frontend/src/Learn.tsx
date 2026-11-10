@@ -11,6 +11,7 @@ import './classroom.css';
 import {RichText, safeUrl} from './Document';
 import {useRecordRevision, useResource} from './hooks';
 import {Empty, Notice} from './ui';
+import {distinctWork} from './WorkspaceOverview';
 
 export function Learn({id, record, material = '', workspaceId = '', materialRef}: {id: string; record: string; material?: string; workspaceId?: string; materialRef?: string}) {
   const [version, setVersion] = useState(0);
@@ -23,7 +24,7 @@ export function Learn({id, record, material = '', workspaceId = '', materialRef}
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [goal, setGoal] = useState(''), [picked, setPicked] = useState(materialRef || material), [setup, setSetup] = useState('');
-  const ready: {id: string; title: string; ref: QualifiedRef; detail?: string}[] = workspaceId ? (scoped.data?.groups.sources || []).concat(scoped.data?.groups.handouts || []).filter(m => m.kind !== 'connection').map(m => ({id: JSON.stringify(m.ref), title: m.title, ref: m.ref, detail: `${m.owner_record} · ${m.path?.split(/[\\/]/).at(-1) || m.ref.entity_id}`})) : (resource.data?.org.library || []).filter(m => m.state === 'ready').map(m => ({...m, ref: {owner_record: record, entity_id: m.id}}));
+  const ready: {id: string; title: string; ref: QualifiedRef; detail?: string}[] = workspaceId ? distinctWork((scoped.data?.groups.sources || []).concat(scoped.data?.groups.handouts || []).filter(m => m.kind !== 'connection')).map(m => ({id: JSON.stringify(m.ref), title: m.title, ref: m.ref, detail: `${m.owner_record} · ${m.path?.split(/[\\/]/).at(-1) || m.ref.entity_id}`})) : (resource.data?.org.library || []).filter(m => m.state === 'ready').map(m => ({...m, ref: {owner_record: record, entity_id: m.id}}));
   const chosen = ready.find(m => m.id === picked);
   useEffect(() => {setPicked(materialRef || material);}, [material, materialRef]);
   async function start(bundle: string) {

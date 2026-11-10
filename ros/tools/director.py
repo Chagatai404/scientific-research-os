@@ -14,7 +14,7 @@ from ..registry import P, iso_day, tool
       "and literature follow on their own. Saying it again changes nothing.", writes=True,
       intent=P("string", "what the person said, in their words", True),
       kind=P("string", "what it is (default: worked out from the words)", enum=director.KINDS),
-      target=P("string", "a short key: a course code like stat303, or a topic or question key"),
+      target=P("string", "a short key: a course code, or a topic or question key"),
       title=P("string", "its name"), deadline=P("string", "ISO date to finish by"),
       pace=P("integer", "minutes a week to spend"),
       materials=P("string", "where the course material is, or what it is (syllabus, textbook, a folder, a link)"),

@@ -1,10 +1,11 @@
 import {Choice, MaterialPick} from './controls';
 import {useState, type FormEvent} from 'react';
-import {call, readWorkspace, entityHref, href, human, preference, savePreference} from './api';
+import {call, readCatalog, readWorkspace, workHref, entityHref, href, human, preference, savePreference} from './api';
 import type {Organization, QueueItem, QualifiedRef} from './contracts';
 import {useResource} from './hooks';
 import {Empty, Notice} from './ui';
 import {Operations} from './Operations';
+import {distinctWork} from './WorkspaceOverview';
 import {ActivityBoard, type Activity} from './ActivityBoard';
 
 interface Claim {id: string; text?: string; verdict?: string; ownership?: string}
@@ -63,13 +64,14 @@ export function Research({record, material, workspaceId = '', materialRef}: {rec
   const [version, setVersion] = useState(0);
   const scoped = useResource(`material-scope:${record}:${workspaceId}`, signal => workspaceId ? readWorkspace(record, workspaceId, signal) : Promise.resolve(null), record);
 
+  const catalog = useResource(`workspace-catalog:${record}`, signal => workspaceId ? Promise.resolve(null) : readCatalog(record, signal), record);
   const result = useResource(`research:${record}:${version}`, async signal => {
     const [queue, claims, activity, org] = await Promise.all([call<QueueItem[]>('queue', {}, record, false, signal), call<Claim[]>('claims', {}, record, false, signal), call<Activity>('workspace_activity', {}, record, false, signal), call<Organization>('workspace_organization', {}, record, false, signal)]);
     return {queue, claims, activity, org};
   }, record);
   const [question, setQuestion] = useState(''), [picked, setPicked] = useState(materialRef || material), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
   const data = result.data;
-  const ready: {id: string; title: string; ref: QualifiedRef; detail?: string}[] = workspaceId ? (scoped.data?.groups.sources || []).concat(scoped.data?.groups.handouts || []).filter(m => m.kind !== 'connection').map(m => ({id: JSON.stringify(m.ref), title: m.title, ref: m.ref, detail: `${m.owner_record} · ${m.path?.split(/[\\/]/).at(-1) || m.ref.entity_id}`})) : (data?.org.library || []).filter(m => m.state === 'ready').map(m => ({...m, ref: {owner_record: record, entity_id: m.id}}));
+  const ready: {id: string; title: string; ref: QualifiedRef; detail?: string}[] = workspaceId ? distinctWork((scoped.data?.groups.sources || []).concat(scoped.data?.groups.handouts || []).filter(m => m.kind !== 'connection')).map(m => ({id: JSON.stringify(m.ref), title: m.title, ref: m.ref, detail: `${m.owner_record} · ${m.path?.split(/[\\/]/).at(-1) || m.ref.entity_id}`})) : (data?.org.library || []).filter(m => m.state === 'ready').map(m => ({...m, ref: {owner_record: record, entity_id: m.id}}));
   const chosen = ready.find(m => m.id === picked);
   async function start(event: FormEvent) {
     event.preventDefault(); setBusy(true); setStatus('Setting up your investigation…');
@@ -82,6 +84,10 @@ export function Research({record, material, workspaceId = '', materialRef}: {rec
   const stage = data ? stageOf(data.queue, data.activity, data.claims) : undefined;
   return <div className="research-page"><div className="eyebrow">Move a question toward a defended answer</div><h1>Research</h1>
     <p className="lead muted">One question at a time. Each step says what is happening and what is waiting for you.</p>
+    {!workspaceId && !!catalog.data?.workspaces.length && <section className="workspace-group" aria-label="Courses and projects"><h2>Courses and projects <small>{catalog.data.workspaces.length}</small></h2>
+      <ul className="entry-list">{catalog.data.workspaces.map(w => <li key={w.workspace_id}><a href={href('research', '', w.record, '', {ws: w.workspace_id})}><span><strong>{w.title}</strong><small>{w.kind === 'general' ? 'General work' : w.kind === 'project' ? 'Project' : 'Course'} · open its research</small></span><span aria-hidden="true">→</span></a></li>)}</ul></section>}
+    {!!workspaceId && !!scoped.data && <section className="workspace-group" aria-label="Research in this workspace"><h2>{scoped.data.workspace.title}: research work <small>{scoped.data.groups.research.length}</small></h2>
+      {scoped.data.groups.research.length ? <ul className="entry-list">{scoped.data.groups.research.map(row => <li key={JSON.stringify(row.ref)}><a href={workHref(row.ref, workspaceId)}><span><strong>{row.title}</strong><small>{row.kind} · {row.owner_record}</small></span><span aria-hidden="true">→</span></a></li>)}</ul> : <p className="muted">No research work in this workspace yet.</p>}</section>}
     {!data ? <Notice error={result.error} retry={result.retry}/> : <>
       <ol className="stage-trail" aria-label="Research stages">{STAGES.map((name, i) => <li key={name} aria-current={i === stage!.index ? 'step' : undefined} className={i < stage!.index ? 'done' : ''}><span>{i + 1}</span>{name}</li>)}</ol>
       <ul className="check-trail" aria-label="How your agent checks the work">{CHECKS.map(([name, match, what]) => {

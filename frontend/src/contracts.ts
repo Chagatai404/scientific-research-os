@@ -12,6 +12,7 @@ export interface WorkspaceWork {
   handout_kind?: 'lecture' | 'recitation' | 'chapter' | string; source_hash?: string;
   state?: string; status?: string; source?: string; format?: string; path?: string;
 }
+export interface WorkspaceCatalog {schema: 'ros.workspace-catalog.v1'; workspaces: WorkspaceIdentity[]}
 export interface WorkspaceOverview {
   schema: 'ros.workspace-overview.v1'; workspace: WorkspaceIdentity; workspace_id: string;
   groups: Record<WorkspaceGroup, WorkspaceWork[]>; counts: Record<WorkspaceGroup, number>; missing: QualifiedRef[];

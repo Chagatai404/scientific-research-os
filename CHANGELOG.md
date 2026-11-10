@@ -16,8 +16,13 @@
 - CLI, MCP and HTTP now share execution of queued operations and conversation
   runs. Qualified continuation retains the original history; cross-process turn
   retries are idempotent and cancellation prevents subsequent tool effects.
+- Every course and project, including ones that exist only as a folder in Knowledge,
+  now appears once in the workspace selector and the Research list. A workspace shows its
+  sessions, sources, handouts and research in separate groups; copies of the same file
+  collapse into one row, and the chosen workspace stays selected across navigation and reload.
 - Long conversations select bounded context with original source/decision
   references and explicit omissions instead of relying only on the newest turns.
+  The person's newest message is always sent whole.
 
 ## 1.7.3: robustness — no silent failures, network loss handled, a sealed figure renderer
 

@@ -109,6 +109,15 @@ physical record as `r` and logical workspace as `ws`; `readWorkspace` reads this
 projection. Runtime continuation uses these qualified references without duplicating
 conversation lines.
 
+### Workspace catalog (S3)
+
+`workspace_catalog` (read-only, schema `ros.workspace-catalog.v1`) lists every course and project once per
+`workspace_id`, including hub-only courses/projects folded from Knowledge (`ws:knowledge:<hub id>`) and split
+courses merged through their aliases. It never creates a workspace. The App's workspace selector and the global
+Research list read it; scope survives navigation, reload and Back. Overview groups (sessions, sources, handouts,
+research, other) collapse two rows into one only when their recorded `source_hash` matches or source and path
+match; other representations appear under the row's details. Equal names never merge files.
+
 ## Starting work
 
 `engage` adds optional `workspace_id`. An explicitly selected workspace or the

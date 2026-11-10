@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useState, type DragEvent, type FormEvent, type ReactNode} from 'react';
-import {call, href, human, preference, savePreference, readWorkspace, workHref} from './api';
+import {call, href, human, preference, savePreference, readWorkspace, readCatalog, workHref} from './api';
 import type {Folder, Organization, RecordInfo, SessionRow, WorkspaceIdentity} from './contracts';
 import {useResource} from './hooks';
 import {Menu, Modal, useOverlayController} from './overlay';
@@ -162,9 +162,10 @@ export function SessionsPane({record, records, active, workspaceId = '', destina
 }
 function ScopedSessions({record, records, active, workspaceId, destination}: {record: string; records: RecordInfo[]; active: string; workspaceId: string; destination: string}) {
   const result = useResource(`scoped-sessions:${record}:${workspaceId}`, signal => readWorkspace(record, workspaceId, signal), record);
+  const catalog = useResource(`workspace-catalog:${record}`, signal => readCatalog(record, signal), record);
   const [filter, setFilter] = useState('');
   const data = result.data;
-  return <aside className="sessions-pane" aria-label="Sessions"><div className="pane-head"><Menu kind="workspace" label="Workspaces" buttonLabel={`Workspace: ${data?.workspace.title || 'Loading…'}`} button={<span>{data?.workspace.title || 'Loading…'} ▾</span>}>{close => <div className="menu-list" role="menu">{records.map(r => <a key={r.name} role="menuitem" href={href('overview', '', r.name, '', {ws: r.role === 'user' ? '' : r.workspace_id || ''})} onClick={close}>{r.title || r.name}</a>)}</div>}</Menu></div>
+  return <aside className="sessions-pane" aria-label="Sessions"><div className="pane-head"><Menu kind="workspace" label="Workspaces" buttonLabel={`Workspace: ${data?.workspace.title || 'Loading…'}`} button={<span>{data?.workspace.title || 'Loading…'} ▾</span>}>{close => <div className="menu-list" role="menu">{(catalog.data?.workspaces || []).map(w => <a key={w.workspace_id} role="menuitem" aria-current={w.workspace_id === workspaceId ? 'true' : undefined} href={href('overview', '', w.record, '', {ws: w.workspace_id})} onClick={close}>{w.title}</a>)}<a role="menuitem" href={href('overview', '', records.find(r => r.role === 'user')?.name || '', '', {ws: ''})} onClick={close}>All work</a></div>}</Menu></div>
     <div className="pane-actions"><a className="button primary" href={href('chat', '', destination, '', {ws: workspaceId})}>＋ New session</a></div>
     <input type="search" aria-label="Search sessions" placeholder="Search sessions" value={filter} onChange={e => setFilter(e.target.value)}/>
     {!data ? <p role="status">{result.error || 'Loading sessions…'}</p> : <nav aria-label="Courses, projects and sessions"><ul className="tree">{data.groups.sessions.filter(s => s.title.toLowerCase().includes(filter.toLowerCase())).map(s => <li key={JSON.stringify(s.ref)}><a aria-current={s.ref.entity_id === active && s.owner_record === record ? 'page' : undefined} href={workHref(s.ref, workspaceId)}>{s.title}</a></li>)}</ul>{!data.groups.sessions.length && <p className="hint">Your sessions appear here.</p>}</nav>}

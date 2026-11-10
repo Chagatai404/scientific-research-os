@@ -61,6 +61,11 @@ def graph(rec, mode="knowledge", focus=None, depth=1, limit=120, relation=None):
     return ws.subgraph(rec, mode, focus, depth, limit, relation)
 
 
+@tool("workspace_catalog", "Every course, project and General workspace the person can open, one stable identity each, including those that exist only as a hub inside Knowledge.")
+def catalog(rec):
+    return ws.workspace_catalog(rec)
+
+
 @tool("workspace_map", "Read the central map: workspace, then Knowledge, Research and Goals, their places and topics, and the recorded links between them. Files and notes belong to the Library and appear only when a place is expanded.",
       expand=P("string", "a course, subject or project whose files and notes to show"))
 def overview_map(rec, expand=""):

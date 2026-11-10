@@ -524,3 +524,16 @@ def activity(rec: Record) -> dict:
     return {"done": done[-8:][::-1], "running": running[:8], "next": waiting[:8],
             "counts": {"done": len(done), "running": len(running), "next": len(waiting)},
             "recent": [{"id": e["id"], "type": e["type"], "subject": e["subject"], "by": e["actor"], "ts": e["ts"]} for e in reversed(events)]}
+
+
+def workspace_catalog(rec: Record) -> dict:
+    """Every course, project and General workspace reachable from this record, one identity each.
+
+    Hub-only courses and projects (a ``course:``/``project:`` node inside Knowledge with no record of their
+    own) are included with the Knowledge record as their destination. Read-only; nothing is created.
+    """
+    from . import workspaces
+    with workspaces.records(rec) as recs:
+        found = [dict(v) for v in workspaces._catalog(recs).values() if v['kind'] != 'record']
+    found.sort(key=lambda v: (v['kind'], v['title'].casefold(), v['workspace_id']))
+    return {'schema': 'ros.workspace-catalog.v1', 'workspaces': found}

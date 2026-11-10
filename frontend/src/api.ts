@@ -1,4 +1,4 @@
-import {validateDocument, type DocumentData, type QualifiedRef, type WorkspaceOverview} from './contracts';
+import {validateDocument, type DocumentData, type QualifiedRef, type WorkspaceOverview, type WorkspaceCatalog} from './contracts';
 let session: Promise<{csrf: string}> | undefined;
 // The link `ros serve` prints pairs this browser for acts that are the person's alone: its token sits in the URL fragment
 // (never sent to a server), is kept in this origin's storage (no other port can read it) and goes with every write.
@@ -34,6 +34,9 @@ export async function readDocument(id: string, record?: string, signal?: AbortSi
 }
 export async function readWorkspace(record?: string, workspace_id?: string, signal?: AbortSignal): Promise<WorkspaceOverview> {
   return call('workspace_overview', {workspace_id}, record, false, signal);
+}
+export async function readCatalog(record?: string, signal?: AbortSignal): Promise<WorkspaceCatalog> {
+  return call('workspace_catalog', {}, record, false, signal);
 }
 export async function service<T>(name: string, args?: Record<string, unknown>): Promise<T> {
   const response = await fetch('/services/' + name, args ? {method: 'POST', headers: await mutationHeaders(), body: JSON.stringify(args)} : {});
