@@ -1,6 +1,9 @@
-"""Optional provider transports. No record imports, credentials or canonical writes.
+"""Optional provider transports. No record imports or canonical writes.
 
-Only explicit start() invokes inference. All streams are bounded by the supervisor.
+Only explicit start() invokes inference. All streams are bounded by the supervisor. Three kinds of transport: a subscription
+CLI (Codex, Claude Code: the person's own login, never an API key from the environment), a loopback local model server
+(Ollama, OpenAI-compatible) and a remote HTTPS API (``api``: OpenAI-compatible chat completions, with an API key the runtime
+resolves from a credential reference and hands over as an opaque ``credentials.Secret``). See docs/core-experience/PROVIDERS.md.
 """
 from __future__ import annotations
 import contextlib
@@ -12,14 +15,26 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import ssl
 import time
 from urllib.parse import urlparse
+import urllib.error
 import urllib.request
 from pathlib import Path
 
+from . import credentials
 from .dialogue import codex_executable, codex_models, provider_failure, takes_effort
 
-class ProviderError(ValueError): pass
+class ProviderError(ValueError):
+    code = 'provider_error'
+
+class ProviderAuthError(ProviderError):
+    """The service refused the credential (HTTP 401/403). Nothing else is tried: replace the key in its store."""
+    code = 'provider_auth'
+
+class ProviderLimitError(ProviderError):
+    """The service refused for a rate or usage limit (HTTP 429). Not retried automatically: a retry is another paid request."""
+    code = 'provider_limit'
 
 class ImageResult(dict):
     """A tool result that is a dict (what is stored in the record and shown as text) and also carries one picture for the model to
@@ -41,6 +56,16 @@ def mcp_content(value):
 
 class TransientProviderError(ProviderError):
     """The provider could not be reached, or the connection dropped or the service was overloaded: asking again later may work."""
+    code = 'provider_transient'
+
+# Environment variables that would make a subscription CLI bill an API account or a cloud platform instead of the person's
+# login. A subscription child never inherits them, so a key that happens to be set cannot silently turn a run into a paid one.
+PAID_ENV = ('ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'OPENAI_API_KEY', 'CODEX_API_KEY', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX')
+
+def subscription_env(**extra):
+    """The environment of a subscription CLI child: this process's, without paid API keys, plus ``extra``."""
+    paid = {name.upper() for name in PAID_ENV}
+    return {**{k: v for k, v in os.environ.items() if k.upper() not in paid}, **extra}
 
 # What a failed network call says in the CLIs' and libraries' own words. Matched against the error text and the child's stderr.
 TRANSPORT = re.compile(r'(?i)(ECONNREFUSED|ECONNRESET|ECONNABORTED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|EHOSTUNREACH|ENETUNREACH|ENETDOWN|getaddrinfo|fetch failed|socket hang up|'
@@ -58,6 +83,21 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def local_open(request):
     return urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect()).open(request, timeout=10)
 
+class RemoteNoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ProviderError('The remote API answered with a redirect; it is refused so the API key is never sent to another address.')
+
+def remote_open(request, timeout=60):
+    """One HTTPS request to a remote API: certificate-verified, no environment proxy, no redirect."""
+    return urllib.request.build_opener(urllib.request.ProxyHandler({}), RemoteNoRedirect(),
+                                       urllib.request.HTTPSHandler(context=ssl.create_default_context())).open(request, timeout=timeout)
+
+def remote_url(endpoint):
+    parsed = urlparse(endpoint or '')
+    if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ProviderError('A remote API profile needs an https:// endpoint without embedded credentials, query or fragment.')
+    return endpoint.rstrip('/')
+
 def local_url(endpoint):
     parsed = urlparse(endpoint)
     if parsed.scheme != 'http' or parsed.hostname not in ('localhost', '127.0.0.1', '::1') or parsed.username or parsed.password or parsed.query or parsed.fragment:
@@ -73,6 +113,8 @@ def terminate(process):
         except ProcessLookupError: pass
 
 def launch(argv, cwd, env=None):
+    """Start a subscription CLI child. Without an explicit ``env`` it gets this process's environment minus paid API keys."""
+    env = subscription_env() if env is None else env
     if os.name == 'nt' and Path(argv[0]).suffix.lower() in ('.cmd','.bat'):
         # An npm .cmd shim is never run through cmd.exe. Newer packages ship a native binary beside the shim's package;
         # older ones a JavaScript entry point that node runs.
@@ -269,7 +311,7 @@ def codex(request, emit, tool_call, cancel, own):
                 for name in config.get(section,{}):
                     if name and not any(c in name for c in '."\'= \t'):overrides += ['-c',section+'.'+name+'.enabled=false']
         except (OSError,ValueError):pass
-        process = launch([executable, 'app-server', '--listen', 'stdio://', *overrides], directory, None if native else dict(os.environ, CODEX_HOME=private))
+        process = launch([executable, 'app-server', '--listen', 'stdio://', *overrides], directory, subscription_env() if native else subscription_env(CODEX_HOME=private))
         own(process)
         sequence = 0
         def send(method, params=None):
@@ -357,7 +399,7 @@ def claude(request, emit, tool_call, cancel, own):
         if native: argv += ['--permission-mode', 'acceptEdits', '--disallowedTools', *NEVER_RUN]
         if bridge or native: argv += ['--allowedTools', ','.join(([NATIVE_TOOLS] if native else []) + (['mcp__research_os__*'] if bridge else []))]
         if request.get('images'): argv += ['--input-format', 'stream-json']
-        process = launch(argv, directory); own(process)
+        process = launch(argv, directory); own(process)  # launch removes paid API keys from the child's environment
         content = json.dumps(request['messages'], ensure_ascii=False)
         if request.get('images'):
             blocks = [{'type':'text','text':content}, *[{'type':'image','source':{'type':'base64','media_type':image['mime'],'data':image['data']}} for image in request['images']]]
@@ -387,10 +429,67 @@ def claude(request, emit, tool_call, cancel, own):
 def local(request, emit, tool_call, cancel, own):
     provider, model = request['model'].split(':', 1)
     endpoint = local_url(request.get('endpoint') or ('http://127.0.0.1:11434' if provider == 'ollama' else 'http://127.0.0.1:1234/v1'))
+    headers = {'Content-Type': 'application/json'}
+    secret = request.get('credential')  # the profile's own reference; else the legacy ROS_LOCAL_API_KEY variable
+    if provider == 'compatible':
+        key = secret.reveal() if isinstance(secret, credentials.Secret) else os.environ.get('ROS_LOCAL_API_KEY')
+        if key: headers['Authorization'] = 'Bearer ' + key
+    def failure(exc):
+        import http.client
+        reason = getattr(exc, 'reason', exc)
+        # A server that is not running (refused) or that answers badly is not a lost connection; one that drops a stream is.
+        if isinstance(exc, (ConnectionResetError, ConnectionAbortedError, http.client.IncompleteRead, http.client.RemoteDisconnected)) or isinstance(reason, (ConnectionResetError, ConnectionAbortedError)):
+            return TransientProviderError('The connection to the local endpoint dropped (' + type(reason).__name__ + '); partial output is saved.')
+        if isinstance(exc, OSError):
+            return ProviderError('Local endpoint unavailable (' + credentials.scrub(str(reason)[:160], secret) + '); check that it is running, its address and the model.')
+        return ProviderError('Local endpoint returned an invalid stream; check its address and model.')
+    return _chat(request, emit, tool_call, cancel, own, flavor='ollama' if provider == 'ollama' else 'openai', model=model,
+                 url=endpoint + ('/api/chat' if provider == 'ollama' else '/chat/completions'), headers=headers, opener=local_open,
+                 failure=failure, rejected='Local endpoint rejected this model request.', unfinished='Local stream ended without completion; partial output is saved.',
+                 max_tokens=provider == 'compatible', secret=secret)
+
+def remote(request, emit, tool_call, cancel, own):
+    """A remote HTTPS API speaking OpenAI-compatible chat completions, with the API key of the profile's credential reference.
+    Usage is passed through only as the service reports it; no cost is ever computed or guessed."""
+    secret = request.get('credential')
+    if not isinstance(secret, credentials.Secret) or not secret:
+        raise credentials.CredentialMissing('This remote API profile has no usable credential. Nothing was sent and no other provider was used.')
+    endpoint = remote_url(request.get('endpoint'))
+    model = request['model'].split(':', 1)[1]
+    def failure(exc):
+        import http.client
+        if isinstance(exc, urllib.error.HTTPError):
+            code = exc.code
+            try: exc.close()
+            except Exception: pass
+            if code in (401, 403): return ProviderAuthError(f'The remote API refused the credential (HTTP {code}). Replace or check the key in its store; nothing else was tried.')
+            if code == 429: return ProviderLimitError('The remote API refused for a rate or usage limit (HTTP 429). It is not retried automatically.')
+            if code in (500, 502, 503, 504, 529): return TransientProviderError(f'The remote API is unavailable (HTTP {code}); partial output is saved.')
+            return ProviderError(f'The remote API refused the request (HTTP {code}); check the endpoint and model.')
+        reason = getattr(exc, 'reason', exc)
+        if isinstance(exc, (ConnectionResetError, ConnectionAbortedError, http.client.IncompleteRead, http.client.RemoteDisconnected)) or isinstance(reason, (ConnectionResetError, ConnectionAbortedError)):
+            return TransientProviderError('The connection to the remote API dropped (' + type(reason).__name__ + '); partial output is saved.')
+        if isinstance(exc, OSError):
+            return TransientProviderError('The remote API could not be reached (' + type(reason).__name__ + '); check the connection and endpoint.')
+        return ProviderError('The remote API returned an invalid stream; check its endpoint and model.')
+    try:
+        reported = _chat(request, emit, tool_call, cancel, own, flavor='openai', model=model, url=endpoint + '/chat/completions',
+                         headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + secret.reveal()}, opener=remote_open,
+                         failure=failure, rejected='The remote API rejected this model request.',
+                         unfinished='The remote API stream ended without completion; partial output is saved.', max_tokens=True, secret=secret)
+    except ProviderError as exc:
+        text = credentials.scrub(str(exc), secret)
+        if text == str(exc): raise
+        raise type(exc)(text) from None
+    return {'usage': reported.get('usage'), 'cost': None}
+
+def _chat(request, emit, tool_call, cancel, own, *, flavor, model, url, headers, opener, failure, rejected, unfinished, max_tokens, secret=None):
+    """The streamed chat loop shared by local and remote HTTP models: ``flavor`` is ``ollama`` (its own NDJSON) or ``openai``
+    (server-sent chat completion chunks). Tool results go back with any exact credential value removed."""
     messages = [{'role': 'system', 'content': request['system']}, *request['messages']]
     if request.get('images'):
         messages=[dict(message) for message in messages]
-        if provider=='ollama':messages[-1]['images']=[image['data'] for image in request['images']]
+        if flavor=='ollama':messages[-1]['images']=[image['data'] for image in request['images']]
         else:messages[-1]['content']=[{'type':'text','text':messages[-1]['content']}, *[{'type':'image_url','image_url':{'url':'data:'+image['mime']+';base64,'+image['data']}} for image in request['images']]]
     tools = [{'type': 'function', 'function': t} for t in request.get('tools', [])] if request.get('tool_support') else []
     deadline = time.monotonic() + min(600, request.get('deadline', 180))
@@ -399,14 +498,11 @@ def local(request, emit, tool_call, cancel, own):
         if time.monotonic() > deadline: raise ProviderError('Provider deadline exceeded.')
         payload = {'model': model, 'messages': messages, 'stream': True}
         if tools: payload['tools'] = tools
-        if provider == 'compatible': payload['max_tokens'] = request.get('output_limit', 4096)
-        url = endpoint + ('/api/chat' if provider == 'ollama' else '/chat/completions')
-        headers={'Content-Type':'application/json'}
-        if provider=='compatible' and os.environ.get('ROS_LOCAL_API_KEY'):headers['Authorization']='Bearer '+os.environ['ROS_LOCAL_API_KEY']
+        if max_tokens: payload['max_tokens'] = request.get('output_limit', 4096)
         req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers=headers)
         content, calls, finish, usage = '', {}, False, None
         try:
-            with local_open(req) as response:
+            with opener(req) as response:
                 own(response)
                 for raw in response:
                     if cancel.is_set(): raise ProviderError('cancelled')
@@ -416,32 +512,25 @@ def local(request, emit, tool_call, cancel, own):
                     if raw.startswith('data:'): raw = raw[5:].strip()
                     if raw == '[DONE]': finish = True; break
                     event = json.loads(raw)
-                    if provider == 'ollama':
-                        if event.get('error'): raise ProviderError(str(event['error'])[:200])
+                    if flavor == 'ollama':
+                        if event.get('error'): raise ProviderError(credentials.scrub(str(event['error'])[:200], secret))
                         delta = event.get('message', {}); finish = bool(event.get('done')); usage = {k: event.get(k) for k in ('prompt_eval_count', 'eval_count')} if finish else usage
                     else:
-                        if event.get('error'): raise ProviderError('Local endpoint rejected this model request.')
+                        if event.get('error'): raise ProviderError(rejected)
                         choice = (event.get('choices') or [{}])[0]; delta = choice.get('delta', {}); finish = bool(choice.get('finish_reason')) or finish; usage = event.get('usage', usage)
                     text = delta.get('content') or ''; content += text; emit(text)
                     for index, call in enumerate(delta.get('tool_calls', [])):
                         # OpenAI-style streams send one call in pieces tied by a top-level index; Ollama sends each call whole (its
                         # index sits under `function`), so every Ollama call gets its own row.
-                        number = len(calls) if provider == 'ollama' else call.get('index', index); row = calls.setdefault(number, {'id': call.get('id', 'local-' + str(step) + '-' + str(number)), 'function': {'name': '', 'arguments': ''}, 'type': 'function'})
+                        number = len(calls) if flavor == 'ollama' else call.get('index', index); row = calls.setdefault(number, {'id': call.get('id', 'local-' + str(step) + '-' + str(number)), 'function': {'name': '', 'arguments': ''}, 'type': 'function'})
                         fn = call.get('function', {})
                         row['function']['name'] += fn.get('name', '')
                         args = fn.get('arguments', '')
                         row['function']['arguments'] += json.dumps(args) if isinstance(args, dict) else args
         except (OSError, ValueError) as exc:
             if isinstance(exc, ProviderError): raise
-            import http.client
-            reason = getattr(exc, 'reason', exc)
-            # A server that is not running (refused) or that answers badly is not a lost connection; one that drops a stream is.
-            if isinstance(exc, (ConnectionResetError, ConnectionAbortedError, http.client.IncompleteRead, http.client.RemoteDisconnected)) or isinstance(reason, (ConnectionResetError, ConnectionAbortedError)):
-                raise TransientProviderError('The connection to the local endpoint dropped (' + type(reason).__name__ + '); partial output is saved.') from None
-            if isinstance(exc, OSError):
-                raise ProviderError('Local endpoint unavailable (' + str(reason)[:160] + '); check that it is running, its address and the model.') from None
-            raise ProviderError('Local endpoint returned an invalid stream; check its address and model.') from None
-        if not finish: raise ProviderError('Local stream ended without completion; partial output is saved.')
+            raise failure(exc) from None
+        if not finish: raise ProviderError(unfinished)
         if not calls: return {'usage': usage}
         if not tools or step >= request.get('steps', 8): raise ProviderError('Tool budget reached or this model has no enabled tool capability.')
         messages.append({'role': 'assistant', 'content': content, 'tool_calls': list(calls.values())})
@@ -449,7 +538,7 @@ def local(request, emit, tool_call, cancel, own):
             try: result = tool_call(call['function']['name'], json.loads(call['function']['arguments']), call['id'])
             except (ValueError, KeyError) as exc: result = {'error': str(exc)}
             except Exception as exc: result = {'error': internal_tool_error(call['function']['name'], exc)}
-            messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps(result, ensure_ascii=False)})
+            messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': credentials.scrub(json.dumps(result, ensure_ascii=False), secret)})
     raise ProviderError('Tool budget reached.')
 
 def claude_failure(event, process=None):
@@ -486,4 +575,4 @@ def internal_tool_error(tool, exc):
     logging.getLogger('ros').exception('tool %s failed', tool)
     return f'{tool} failed with an internal error ({type(exc).__name__}: {str(exc)[:300]}). This is a Research OS bug, not a connection problem; it is logged.'
 
-ADAPTERS = {'codex': codex, 'claude': claude, 'ollama': local, 'compatible': local}
+ADAPTERS = {'codex': codex, 'claude': claude, 'ollama': local, 'compatible': local, 'api': remote}

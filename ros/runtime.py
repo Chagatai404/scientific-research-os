@@ -11,7 +11,7 @@ import uuid
 from contextlib import contextmanager
 from . import api, runner, home
 from .store import Record, _file_lock
-from .lib import providers, connectivity, renderkit
+from .lib import providers, connectivity, renderkit, credentials, provider_profiles
 
 LOG = logging.getLogger('ros')
 
@@ -62,14 +62,20 @@ def conversation_tainted(rec, conversation):
     state = rec.fold('source-read-conversations', ('run.queued', 'run.step'), lambda: {'conversation': {}, 'tainted': set()}, step)
     return conversation in state['tainted']
 
-def source_refusal(rec, model, name, args):
-    """A cloud model never reads a connection the person marked local-only, whatever the run's scope is; checked on every call."""
-    if model.startswith(LOCAL_MODELS) or name not in SOURCE_BOUND: return
+def is_local(model, profile=None):
+    """Whether a run's data stays on this computer, from the profile's real transport (ros/lib/provider_profiles.py): a remote API
+    profile or a custom agent never becomes local because of a name."""
+    return provider_profiles.is_local(model, profile)
+
+def source_refusal(rec, model, name, args, local=None):
+    """A cloud model never reads a connection the person marked local-only, whatever the run's scope is; checked on every call.
+    ``local`` is the run's transport decision; without it only the shipped loopback adapters' own names count as local."""
+    if (model.startswith(LOCAL_MODELS) if local is None else local) or name not in SOURCE_BOUND: return
     row = next((c for c in api.call('source_list', rec) if c['id'] == (args or {}).get('source')), None)
     if row and row.get('localOnly'):
         raise ValueError('This source is local-only: its files are never given to a cloud model. Mark it readable in Sources, or use a local model.')
 
-def source_result(model, name, value, taint):
+def source_result(model, name, value, taint, local=None):
     """What the model gets back from a source tool: content marked untrusted, local-only matches left out for a cloud model, and the
     run tainted once it holds source content."""
     if name not in SOURCE_CONTENT: return value
@@ -77,7 +83,7 @@ def source_result(model, name, value, taint):
     private = isinstance(value, dict) and value.get('localOnly')
     if name == 'source_search' and isinstance(value, list):
         hidden = 0
-        if not model.startswith(LOCAL_MODELS):
+        if not (model.startswith(LOCAL_MODELS) if local is None else local):
             kept = [r for r in value if not r.get('localOnly')]; hidden = len(value) - len(kept); value = kept
         got = bool(value)
         private = any(row.get('localOnly') for row in value)
@@ -463,6 +469,8 @@ def execute(rec, result, request, legacy_engine=None):
     limits = row = None  # read inside the try below, so a failure there still ends the run
     private_scope, allowed, native = False, set(), False
     taint = {'sources': False}  # set once the run holds content read from the person's files
+    # Decided from the profile's real transport once the profile is read (until then: cloud); the run's resolved credential, if any.
+    boundary = {'local': False, 'secret': None}
     budget = {'steps': 0, 'bytes': 0}
     selected = [rec]
     opened = {}
@@ -521,7 +529,7 @@ def execute(rec, result, request, legacy_engine=None):
             flush()
             with _run_action(rec, run): spec = api.call('delegate', rec, **args)
             if taint['sources'] and 'literature_search' in spec['tools']: raise ValueError(TAINTED)
-            value = run_role(spec, operation)
+            value = redact(run_role(spec, operation), boundary['secret'])
             with _run_action(rec, run): api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
             return value
         if name == 'answer':
@@ -537,13 +545,13 @@ def execute(rec, result, request, legacy_engine=None):
         flush()
         target = rec if name in ('work', 'engage', 'brief') else selected[0]
         with _run_action(rec, run):
-            if not request['model'].startswith(('ollama:','compatible:')):
+            if not boundary['local']:
                 api.call('workspace_cloud_guard',rec)
                 if target is not rec:api.call('workspace_cloud_guard',target)
             if private_scope and api.TOOLS[name].writes:
                 api.call('source_protect_derived',target,origin=rec.root.name,run=run)
-            source_refusal(target, request['model'], name, args)
-            value = source_result(request['model'], name, api.call(name, target, **args), taint)
+            source_refusal(target, request['model'], name, args, local=boundary['local'])
+            value = redact(source_result(request['model'], name, api.call(name, target, **args), taint, local=boundary['local']), boundary['secret'])
             if taint.get('private') and not taint.get('private_marked'):
                 api.call('source_protect_derived', rec, origin=target.root.name, run=run)
                 taint['private_marked'] = True
@@ -567,6 +575,7 @@ def execute(rec, result, request, legacy_engine=None):
         # The conversation's lesson card opens the lesson where it lives (see conversation.lesson).
         if name == 'start' and isinstance(value, dict) and 'lesson' in value: value = dict(value, record=target.root.name)
         if len(json.dumps(value)) > 80000: value = {'error': 'result exceeds context budget; inspect the operation in Research'}
+        value = redact(value, boundary['secret'])
         with _run_action(rec, run): api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
         return value
     def run_role(spec, operation):
@@ -574,7 +583,7 @@ def execute(rec, result, request, legacy_engine=None):
         conversation), its own tools, a report as the result. It runs outside the registry lock, on its own step budget, and
         its tool calls appear among this run's committed steps as <role>:<tool>."""
         if private_scope: raise ValueError('Local-only material cannot be sent to a delegated role.')
-        if not request['model'].startswith(('ollama:', 'compatible:')): api.call('workspace_cloud_guard', rec)
+        if not boundary['local']: api.call('workspace_cloud_guard', rec)
         role, grant, used = spec['role'], set(spec['tools']), [0]
         def role_call(name, args, step):
             if name not in grant or api.TOOLS[name].human: raise ValueError('operation is not granted to this role')
@@ -588,12 +597,13 @@ def execute(rec, result, request, legacy_engine=None):
             used[0] += 1
             if used[0] > min(limits['tool_steps'], 8): raise ValueError('tool step budget reached')
             with _run_action(rec, run):
-                source_refusal(selected[0], request['model'], name, args)
-                value = source_result(request['model'], name, api.call(name, selected[0], **args), taint)
+                source_refusal(selected[0], request['model'], name, args, local=boundary['local'])
+                value = source_result(request['model'], name, api.call(name, selected[0], **args), taint, local=boundary['local'])
                 if taint.get('private') and not taint.get('private_marked'):
                     api.call('source_protect_derived', rec, origin=selected[0].root.name, run=run)
                     taint['private_marked'] = True
                 if len(json.dumps(value)) > 80000: value = {'error': 'result exceeds context budget'}
+                value = redact(value, boundary['secret'])
                 api.call('run_step', rec, run=run, operation=identifier, tool_name=role + ':' + name, result=value)
             return value
         report = run_agent(rec, request['model'], spec['system'], spec['brief'], grant, min(limits['tool_steps'], 8), role_call, entry, limits,
@@ -605,6 +615,7 @@ def execute(rec, result, request, legacy_engine=None):
         row = api.call('run_get', rec, run=run)
         taint['sources'] = conversation_tainted(rec, result['conversation'])
         private_scope = any(s.get('localOnly') for s in api.call('source_list',rec) if s['id'] in {ref.get('sourceId') for ref in row.get('scope',[])})
+        boundary['local'] = is_local(request['model'], request.get('vision_profile') or next((p for p in api.call('provider_profiles', rec) if p['id'] == request['model']), None))
         allowed = set(api.call('session_grant', rec, mode=row['mode']))
         native = bool(api.call('session_native', rec, mode=row['mode']))
         while not FOREGROUND.acquire(timeout=.1):
@@ -657,7 +668,8 @@ def execute(rec, result, request, legacy_engine=None):
                 profile = request.get('vision_profile') or next((p for p in api.call('provider_profiles', rec) if p['id'] == packet['model']), None)
                 if profile:
                     packet.update(endpoint=profile['endpoint'], tool_support=profile['tools'])
-                label = {'claude': 'Claude', 'codex': 'Codex'}.get(provider, 'the local model')
+                boundary['secret'] = bind_credential(packet, packet['model'], profile)
+                label = {'claude': 'Claude', 'codex': 'Codex', 'api': 'the remote API'}.get(provider, 'the local model')
                 retries = len(RETRY_DELAYS)
                 def retry_note(attempt):
                     """What a retried request is told: the tool calls this reply already committed (so writes are not repeated) and the text already shown."""
@@ -674,7 +686,7 @@ def execute(rec, result, request, legacy_engine=None):
                     set_status(f'Connection lost; retrying in {delay} s (attempt {attempt} of {retries})')
                     flush()
                     if entry['cancel'].wait(delay): raise providers.ProviderError('cancelled')
-                    if provider in ('claude', 'codex'):
+                    if provider in ('claude', 'codex', 'api'):
                         until = time.monotonic() + ONLINE_WAIT
                         while time.monotonic() < until and not connectivity.online():
                             set_status('Waiting for the internet connection to come back…')
@@ -749,14 +761,66 @@ def run_agent(rec, model, system, brief, grant, steps, call, entry, limits, prof
               'tools': [{'name': n, 'description': api.TOOLS[n].help, 'parameters': api.TOOLS[n].schema()} for n in sorted(grant) if n in api.TOOLS] + list(extra_tools)}
     if profile: packet.update(endpoint=profile['endpoint'], tool_support=profile['tools'])
     if workdir: packet.update(native=True, workdir=workdir)  # the CLI's own file and shell tools, in this folder
+    secret = bind_credential(packet, model, profile)
     provider = model.split(':', 1)[0]
     if provider == 'claude':
         with ToolBridge(call, packet['tools']) as bridge:
             packet['bridge'] = bridge
             providers.ADAPTERS[provider](packet, emit, call, entry['cancel'], entry['owned'].append)
     else:
-        providers.ADAPTERS[provider](packet, emit, call, entry['cancel'], entry['owned'].append)
+        providers.ADAPTERS[provider](packet, emit, lambda name, args, step: redact(call(name, args, step), secret), entry['cancel'], entry['owned'].append)
     return ''.join(chunks).strip()
+
+# --- credentials and custom agents (docs/core-experience/PROVIDERS.md) -------------------------------------------------------------
+def bind_credential(packet, model, profile):
+    """Resolve the profile's credential reference into the packet as an opaque ``credentials.Secret``, read now, or stop with a
+    ``credentials.CredentialError``. A remote API model needs its configured profile. Nothing falls back to another provider or key."""
+    if provider_profiles.provider_of(model, profile) == 'api' and not profile:
+        raise provider_profiles.CapabilityMissing('Configure this remote API profile (endpoint and credential reference) first. Nothing was sent.')
+    reference = (profile or {}).get('credential')
+    if not reference: return None
+    packet['credential'] = credentials.resolve(reference)
+    return packet['credential']
+
+def redact(value, secret):
+    """``value`` with the exact credential value removed, before it is recorded or given to a model (a file may hold the same key)."""
+    if not secret: return value
+    text = json.dumps(value, ensure_ascii=False, default=str)
+    return json.loads(credentials.scrub(text, secret)) if secret.reveal() in text else value
+
+def run_custom_agent(rec, agent, brief, version=None, entry=None):
+    """Run a person's custom agent (a verified manifest, ros/modes.py) on its configured profile: its narrowed tools only, never a
+    person-only tool, local-only sources only on a real loopback transport, its limits within the workspace's, and its final
+    message checked against its result schema. Records nothing itself; the tools it is granted record their own effects."""
+    entry = entry or {'cancel': threading.Event(), 'owned': []}
+    spec = api.call('agent_dispatch', rec, agent=agent, brief=brief, version=version)
+    profile = next((p for p in api.call('provider_profiles', rec) if p['id'] == spec['profile']), None)
+    provider_profiles.require(profile, spec['requires'])
+    local = is_local(spec['profile'], profile)
+    if not local: api.call('workspace_cloud_guard', rec)
+    limits = dict(api.call('execution_limits', rec))
+    for key, value in spec['limits'].items(): limits[key] = min(limits[key], value)
+    grant = {name for name in spec['tools'] if name in api.TOOLS and not api.TOOLS[name].human}
+    taint, used = {'sources': False}, [0]
+    def call(name, args, step):
+        if name not in grant or api.TOOLS[name].human: raise ValueError('operation is not granted to this agent')
+        if not isinstance(args, dict): raise ValueError('tool arguments must be an object')
+        if name == 'item' and args.get('reveal'): raise ValueError('a custom agent never reads hidden rubrics')
+        if name == 'literature_search' and taint['sources']: raise ValueError(TAINTED)
+        if entry['cancel'].is_set(): raise ValueError('cancelled')
+        used[0] += 1
+        if used[0] > limits['tool_steps']: raise ValueError(out_of_steps(limits['tool_steps']))
+        source_refusal(rec, spec['profile'], name, args, local=local)
+        value = source_result(spec['profile'], name, api.call(name, rec, **args), taint, local=local)
+        if taint.get('private') and not taint.get('private_marked'):
+            api.call('source_protect_derived', rec, origin=rec.root.name, run=agent)
+            taint['private_marked'] = True
+        return value if len(json.dumps(value, default=str)) <= 80000 else {'error': 'result exceeds context budget'}
+    text = run_agent(rec, spec['profile'], spec['system'], spec['brief'], grant, limits['tool_steps'], call, entry, limits, profile=profile)
+    try: value = json.loads(text)
+    except ValueError: raise provider_profiles.AgentResultInvalid('The agent did not return one JSON object; nothing is inferred from its text.') from None
+    provider_profiles.check_result(spec['result_schema'], value)
+    return {'agent': spec['id'], 'version': spec['version'], 'hash': spec['hash'], 'profile': spec['profile'], 'result': value}
 
 AGENTS = threading.Semaphore(1)  # one unattended agent at a time, beside the foreground session
 
@@ -798,6 +862,7 @@ def dispatch_once(rec):
         api.call('dispatch_begin', rec, task=task['id'], role=got['role'], model=model)
         limits = dict(api.call('execution_limits', rec), deadline=got['deadline'])
         taint = {'sources': False}
+        local = is_local(model, next((p for p in api.call('provider_profiles', rec) if p['id'] == model), None))
         def call(name, args, step):
             if name not in grant or (name in api.TOOLS and api.TOOLS[name].human): raise ValueError('operation is not granted to this agent')
             if not isinstance(args, dict): raise ValueError('tool arguments must be an object')
@@ -816,16 +881,16 @@ def dispatch_once(rec):
             used[0] += 1
             if used[0] > got['steps']: raise ValueError('tool step budget reached')
             with api.LOCK:
-                if not model.startswith(('ollama:', 'compatible:')):
+                if not local:
                     api.call('workspace_cloud_guard', rec)
                     if target is not rec: api.call('workspace_cloud_guard', target)
-                source_refusal(target, model, name, args)
-                value = source_result(model, name, api.call(name, target, **args), taint)
+                source_refusal(target, model, name, args, local=local)
+                value = source_result(model, name, api.call(name, target, **args), taint, local=local)
             if isinstance(value, dict) and value.get('_operation'): value = execute_operation(target, value['_operation'])
             if name == 'finish': finished[0] = True
             return value if len(json.dumps(value)) <= 80000 else {'error': 'result exceeds context budget'}
         try:
-            if not model.startswith(('ollama:', 'compatible:')): api.call('workspace_cloud_guard', rec)
+            if not local: api.call('workspace_cloud_guard', rec)
             run_agent(rec, model, got['system'], got['brief'], grant, got['steps'], call, entry, limits, workdir=got.get('workdir') if got.get('native') else None,
                       extra_tools=renderkit.tool_specs() if session else ())
         except providers.TransientProviderError as exc:

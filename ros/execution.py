@@ -1,28 +1,123 @@
 """Explicit execution profiles and notebook requests, separate from scientific approval."""
 import hashlib
 import json
+import re
 import uuid
 import os
 from datetime import datetime, timezone
 from urllib.parse import urlparse
-from . import sources, runs, graph, context
+from . import sources, runs, graph, context, modes
 from pathlib import PurePosixPath
 from .store import make_event, event_id
 
+# --- provider profiles (docs/core-experience/PROVIDERS.md) -----------------------------------------------------------------------
+# A profile is the person's explicit choice of a model and how it is reached: a subscription CLI login (codex, claude), a loopback
+# local server (ollama, compatible) or a remote HTTPS API (api). It stores a credential *reference* only, never a key; the runtime
+# resolves the reference at dispatch (ros/lib/credentials.py). Whether a run may read local-only sources is decided at dispatch
+# from the real endpoint (ros/lib/provider_profiles.is_local), never from the stored `kind` or the provider name.
+PROFILE_SCHEMA = 'ros.provider-profile.v2'
+PROVIDERS = ('ollama', 'compatible', 'codex', 'claude', 'api')
+KINDS = {'codex': ('subscription', 'cli_login', 'cli'), 'claude': ('subscription', 'cli_login', 'cli'),
+         'ollama': ('local', 'none', 'local_loopback'), 'compatible': ('local', 'none', 'local_loopback'), 'api': ('remote', 'api_key', 'remote_https')}
+CREDENTIAL_ENV = re.compile(r'[A-Z_][A-Z0-9_]{0,63}')
+CREDENTIAL_OS = re.compile(r'ResearchOS:[A-Za-z0-9][A-Za-z0-9_.-]{0,99}')
+# What each adapter's capabilities rest on. `tested`: a deterministic fixture exercises it (tests/test_ros_provider_*.py,
+# test_ros_custom_agents.py, test_ros_network.py); `declared`: implemented, not fixture-tested; `live-verified`: a recorded,
+# bounded smoke against the real service (none in this release); `unsupported`: refused.
+STATUSES = ('declared', 'tested', 'live-verified', 'unsupported')
+EVIDENCE = {
+    'codex': {'streaming': 'tested', 'tools': 'tested', 'vision': 'tested', 'cancel': 'tested'},
+    'claude': {'streaming': 'tested', 'tools': 'tested', 'vision': 'tested', 'cancel': 'tested'},
+    'ollama': {'streaming': 'tested', 'tools': 'tested', 'vision': 'declared', 'cancel': 'tested'},
+    'compatible': {'streaming': 'tested', 'tools': 'tested', 'vision': 'declared', 'cancel': 'tested'},
+    'api': {'streaming': 'tested', 'tools': 'tested', 'vision': 'declared', 'cancel': 'tested'},
+}
+
+def credential_reference(value):
+    """A credential reference ``{"store": "env"|"os", "name"}``; a key value is refused and never repeated."""
+    if not isinstance(value, dict) or set(value) != {'store', 'name'} or value.get('store') not in ('env', 'os') or not isinstance(value.get('name'), str):
+        raise ValueError('A credential reference is exactly {"store": "env" or "os", "name": ...}; a key value is never accepted.')
+    if value['store'] == 'env' and not CREDENTIAL_ENV.fullmatch(value['name']):
+        raise ValueError('An environment reference names a variable (capital letters, digits and _); never paste the key itself.')
+    if value['store'] == 'os' and not CREDENTIAL_OS.fullmatch(value['name']):
+        raise ValueError('An OS credential store reference is a name in the ResearchOS: namespace; never paste the key itself.')
+    return {'store': value['store'], 'name': value['name']}
+
+def _profile(data):
+    """The v2 form of a stored profile event, deterministic so equal events give equal profiles (vision permissions compare them)."""
+    provider = data['provider']
+    kind, auth, transport = KINDS[provider]
+    credential = data.get('credential') or None
+    if credential and provider == 'compatible': auth = 'api_key'
+    row = {'schema': PROFILE_SCHEMA, 'id': data['id'], 'provider': provider, 'kind': kind, 'auth': auth, 'transport': transport,
+           'endpoint': data.get('endpoint', ''), 'model': data['model'], 'tools': bool(data.get('tools')), 'vision': bool(data.get('vision')),
+           'context_limit': data.get('context_limit', 16000), 'credential': credential,
+           'capabilities': {'streaming': True, 'tools': bool(data.get('tools')), 'vision': bool(data.get('vision')), 'cancel': True}}
+    row['revision'] = hashlib.sha256(json.dumps(row, sort_keys=True).encode()).hexdigest()
+    return row
+
 def profiles(rec):
     def step(state, event): state[event['subject']] = event['data']
-    return list(rec.fold('provider.profiles.v1', ('provider.configured',), dict, step).values())
+    return [_profile(data) for data in rec.fold('provider.profiles.v1', ('provider.configured',), dict, step).values() if data.get('provider') in KINDS]
 
-def configure(rec, provider, endpoint, model, tools=False, vision=False, context_limit=16000):
-    if provider not in ('ollama', 'compatible', 'codex', 'claude'): raise ValueError('choose a supported provider')
+def configure(rec, provider, endpoint, model, tools=False, vision=False, context_limit=16000, credential=None):
+    if provider not in PROVIDERS: raise ValueError('choose a supported provider')
     parsed = urlparse(endpoint)
     if provider in ('ollama','compatible') and (parsed.scheme != 'http' or parsed.hostname not in ('127.0.0.1', 'localhost', '::1') or parsed.username or parsed.password or parsed.query or parsed.fragment): raise ValueError('use an HTTP loopback endpoint without credentials')
+    if provider == 'api' and (parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment): raise ValueError('a remote API profile needs an https:// endpoint without embedded credentials, query or fragment')
     if provider in ('codex','claude') and endpoint:raise ValueError('native CLIs use their existing login, not an endpoint or copied credentials')
+    if provider in ('codex','claude') and credential is not None: raise ValueError('a subscription profile uses its CLI login; it never takes an API key or a credential reference')
+    if provider == 'ollama' and credential is not None: raise ValueError('an Ollama profile takes no credential')
+    if provider == 'api' and credential is None: raise ValueError('a remote API profile needs a credential reference: {"store": "env", "name": "VARIABLE"} or {"store": "os", "name": "ResearchOS:<label>"}')
+    reference = credential_reference(credential) if credential is not None else None
     if not model.strip() or len(model) > 100: raise ValueError('enter the installed model id')
     if not 2000 <= context_limit <= 200000: raise ValueError('context budget is between 2000 and 200000 characters')
     data = {'id': provider + ':' + model.strip(), 'provider': provider, 'endpoint': endpoint.rstrip('/'), 'model': model.strip(), 'tools': tools, 'vision': vision, 'context_limit': context_limit}
+    if reference: data['credential'] = reference
     rec.append('provider.configured', provider + ':' + model.strip(), data, actor='person')
-    return data
+    return _profile(data)
+
+def capabilities(rec):
+    """What each adapter can do and on what evidence, and what each configured profile declares. No credential status or value:
+    whether a referenced key is present is checked only at dispatch."""
+    adapters = {name: {'kind': KINDS[name][0], 'auth': 'optional_api_key' if name == 'compatible' else KINDS[name][1], 'transport': KINDS[name][2],
+                       'capabilities': dict(EVIDENCE[name])} for name in PROVIDERS}
+    rows = [{'id': p['id'], 'provider': p['provider'], 'kind': p['kind'], 'auth': p['auth'], 'revision': p['revision'], 'declared': p['capabilities'],
+             'evidence': dict(EVIDENCE[p['provider']]), 'credential': p['credential']} for p in profiles(rec)]
+    return {'schema': 'ros.provider-capabilities.v1', 'statuses': list(STATUSES), 'adapters': adapters, 'profiles': rows}
+
+# --- custom agents (manifests are validated in ros/modes.py) --------------------------------------------------------------------
+def agent_define(rec, manifest, human=frozenset()):
+    """Record a person's custom agent manifest. A version is immutable: the same content again is a no-op, other content under
+    the same version is refused. Not a tool: defining an agent is the person's act (see PROVIDERS.md)."""
+    row = modes.agent_manifest(manifest, human)
+    subject = row['id'] + '@' + str(row['version'])
+    if not rec.events(type='agent.defined', subject=subject, limit=1) and \
+            rec.append_once(make_event('agent.defined', subject, row, id=event_id('agent-defined', subject), actor='person')):
+        return dict(row, created=True)
+    existing = rec.events(type='agent.defined', subject=subject)
+    if existing and existing[0]['data'].get('hash') == row['hash']: return dict(row, created=False)  # oldest first: the version
+    raise ValueError('this agent version already exists with different content; a manifest version is immutable, define a new version')
+
+def _agent_rows(rec):
+    def step(state, event): state.setdefault(event['subject'], event['data'])  # the first manifest of a version is the version
+    return [r for r in rec.fold('agents.v1', ('agent.defined',), dict, step).values() if isinstance(r, dict) and isinstance(r.get('version'), int)]
+
+def agents(rec):
+    return sorted(({k: v for k, v in r.items() if k != 'instructions'} for r in _agent_rows(rec)), key=lambda r: (str(r.get('id')), r['version']))
+
+def agent_get(rec, agent, version=None, human=frozenset()):
+    """A stored manifest (the newest version unless one is named) and whether its hash and rules still verify."""
+    rows = [r for r in _agent_rows(rec) if r.get('id') == agent and (version is None or r['version'] == version)]
+    if not rows: raise KeyError('no such agent manifest')
+    row = max(rows, key=lambda r: r['version'])
+    try: verified = modes.agent_manifest(row, human)['hash'] == row.get('hash')
+    except ValueError: verified = False
+    return dict(row, verified=verified)
+
+def agent_dispatch(rec, agent, brief, version=None, human=frozenset()):
+    """The verified manifest with its system prompt and brief; refuses a manifest whose hash or rules no longer verify."""
+    return modes.agent_dispatch({k: v for k, v in agent_get(rec, agent, version, human).items() if k != 'verified'}, brief, human)
 
 def notebook_request(rec, source, path, by, reason, mutation=None, execute=False, groups=None, timeout=600):
     row = sources.get(rec, source)
