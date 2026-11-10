@@ -13,8 +13,8 @@ import http.server
 from pathlib import Path
 from unittest.mock import patch
 
-from ros import api, execution
-from ros.lib import web
+from ros import api, execution, modes, runtime
+from ros.lib import providers, web
 from ros.store import Record
 
 DOI = '10.1234/die.variance.5'
@@ -82,7 +82,8 @@ class Journey(unittest.TestCase):
         """What the runtime does: claim the operation, run the worker on its packet, record the actual result."""
         row = api.call('operation_start', self.rec, identifier=operation['id'])
         result = runner(row['packet']) if runner else web.read(row['packet'], allow_loopback=True) if row['kind'] == 'web_read' else None
-        return api.call('operation_finish', self.rec, identifier=operation['id'], result=result)
+        with execution.worker_scope():   # only the worker path may finish a web operation (see test_ros_web)
+            return api.call('operation_finish', self.rec, identifier=operation['id'], result=result)
 
     def fake_op(self, kind, packet, result):
         queued = execution.operation_queue(self.rec, kind, packet)
@@ -266,8 +267,133 @@ class Journey(unittest.TestCase):
             queued = api.call('web_search', self.rec, query='variance of a die')
             row = api.call('operation_start', self.rec, identifier=queued['id'])
             out = web.search(dict(row['packet'], endpoint='https://10.0.0.1/s'))
-            api.call('operation_finish', self.rec, identifier=queued['id'], result=out)
+            with execution.worker_scope():
+                api.call('operation_finish', self.rec, identifier=queued['id'], result=out)
         self.assertNotIn('sk-journey-SECRET-98765', (self.rec.root / 'events.jsonl').read_text(encoding='utf-8'))
+
+
+TAINTED_TEXT = 'no longer send anything to a public service'
+OUTBOUND = ('literature_search', 'web_search', 'web_read', 'literature_discover')
+
+
+class RuntimeBoundaries(unittest.TestCase):
+    """What a model session may do with the web tools after it has read the person's files (ros/runtime.py), with no network."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        env = patch.dict(os.environ, {'ROS_HOME': str(root / 'home'), 'ROS_NO_VAULT': '1', 'ROS_TEST_SEARCH_KEY': 'sk-runtime-SECRET-1'})
+        env.start()
+        self.addCleanup(env.stop)
+        self.rec = Record(root / 'home' / 'projects' / 'demo')
+        self.addCleanup(self.rec.close)
+        self.addCleanup(api.release)
+        self.sources = {}
+        for name, text, local in (('readings', '# Notes\nThe variance of a fair die is 35/12.\n', False),
+                                  ('diary', '# Quokka diary\nMy private hypothesis about quokka migration and lunar tides.\n', True)):
+            folder = root / name
+            folder.mkdir()
+            (folder / (name + '.md')).write_text(text, encoding='utf-8')
+            self.sources[name] = api.call('source_register', self.rec, root=str(folder), kind='folder', local_only=local)['id']
+            api.call('library_add', self.rec, source=self.sources[name])
+        api.call('library_process', self.rec, limit=25)
+        api.call('web_engine_configure', self.rec, engine='brave', label='B', credential={'store': 'env', 'name': 'ROS_TEST_SEARCH_KEY'})
+        self.sent = []
+
+    def engine(self, rec, key, argv, packet, timeout, parent_entry=None):
+        """The worker, replaced: it records what would have left this computer and answers like a finished engine."""
+        self.sent.append(packet['kind'])
+        if packet['kind'] == 'web_search':
+            return {'ok': True, 'engine': 'brave', 'retrieved_at': '2026-11-10T00:00:00Z', 'candidates': []}
+        return {'ok': False, 'error': 'nothing was fetched in this test'}
+
+    def turn(self, provider, model='claude:fixture', mode='research', text='Look at my notes', conversation=None):
+        args = {'conversation': conversation} if conversation else {}
+        sent = api.call('workspace_chat_send', self.rec, text=text, model=model, mode=mode, **args)
+        with patch.dict(providers.ADAPTERS, {model.split(':')[0]: provider}), patch.object(runtime, 'engine_process', self.engine):
+            runtime.execute(self.rec, sent, sent['_engine'])
+        return sent
+
+    def test_the_outbound_rule_is_one_named_set_that_covers_every_query_tool(self):
+        self.assertEqual(set(runtime.OUTBOUND), set(OUTBOUND))
+
+    def test_after_a_source_is_read_no_outbound_query_tool_runs_in_the_same_turn_or_the_next_one(self):
+        seen = {}
+
+        def provider(request, emit, tool, cancel, own):
+            seen['tools'] = {t['name'] for t in request['tools']}
+            tool('web_search', {'query': 'variance of a die'}, 'w0')            # nothing was read yet: allowed
+            tool('web_read', {'url': 'https://example.org/p0'}, 'r0')
+            tool('source_preview', {'source': self.sources['readings'], 'path': 'readings.md'}, 'read')
+            for index, (name, args) in enumerate((('web_search', {'query': '35/12 of a die'}), ('web_read', {'url': 'https://example.org/p1'}),
+                                                  ('literature_search', {'query': 'variance'}))):
+                with self.assertRaisesRegex(ValueError, TAINTED_TEXT):
+                    tool(name, args, f'after{index}')
+            emit('done')
+            return {}
+        sent = self.turn(provider)
+        self.assertLessEqual({'web_search', 'web_read', 'web_capture', 'literature_search'}, seen['tools'])
+        self.assertEqual(self.sent, ['web_search', 'web_read'], 'nothing after the read reached the worker')
+
+        def next_turn(request, emit, tool, cancel, own):
+            for index, (name, args) in enumerate((('web_search', {'query': 'again'}), ('web_read', {'url': 'https://example.org/p2'}))):
+                with self.assertRaisesRegex(ValueError, TAINTED_TEXT):
+                    tool(name, args, f'later{index}')
+            emit('.')
+            return {}
+        self.turn(next_turn, conversation=sent['conversation'], text='now search the web')
+        self.assertEqual(self.sent, ['web_search', 'web_read'])
+
+        def elsewhere(request, emit, tool, cancel, own):
+            tool('web_search', {'query': 'a fresh conversation'}, 'fresh')
+            emit('.')
+            return {}
+        self.turn(elsewhere)
+        self.assertEqual(self.sent, ['web_search', 'web_read', 'web_search'])
+
+    def test_a_delegation_with_any_outbound_tool_is_refused_after_a_read(self):
+        outcome = {}
+
+        def provider(request, emit, tool, cancel, own):
+            tool('source_preview', {'source': self.sources['readings'], 'path': 'readings.md'}, 'read')
+            for index, name in enumerate(OUTBOUND):
+                role = modes.Role('scout', frozenset({'skill', name}), 'a report')
+                with patch.dict(modes.ROLES, {'scout': role}), self.assertRaisesRegex(ValueError, TAINTED_TEXT):
+                    tool('delegate', {'role': 'scout', 'brief': 'find papers on ' + str(index)}, f'delegate{index}')
+            outcome['done'] = True
+            emit('.')
+            return {}
+        self.turn(provider, mode='learn')
+        self.assertEqual(outcome, {'done': True})
+        self.assertEqual(self.sent, [])
+
+    def test_the_web_tools_are_granted_to_research_and_the_scout_and_to_no_other_mode(self):
+        web_tools = {'web_search', 'web_read', 'web_capture'}
+        self.assertLessEqual(web_tools, modes.grant('research'))
+        self.assertLessEqual(web_tools, modes.role('scout').tools)
+        for name in modes.NAMES:
+            if name != 'research':
+                self.assertFalse(web_tools & modes.grant(name), name)
+        for role in modes.ROLES.values():
+            if role.name != 'scout':
+                self.assertFalse(web_tools & role.tools, role.name)
+
+    def test_a_cloud_model_never_receives_local_only_candidates_and_a_local_model_taints_the_run(self):
+        listed = api.call('literature_candidates', self.rec, query='quokka')
+        self.assertTrue(any(c['local_only'] for c in listed['candidates']), 'the fixture really has a local-only candidate')
+        for tool_name, value in (('literature_candidates', listed), ('literature_discover', api.call('literature_discover', self.rec, query='quokka'))):
+            taint = {'sources': False}
+            cloud = runtime.source_result('claude:fixture', tool_name, value, taint, local=False)
+            self.assertEqual([c for c in cloud['candidates'] if c['local_only']], [], tool_name)
+            self.assertNotIn('diary', json.dumps(cloud).casefold())   # neither its title nor its path
+            self.assertEqual(cloud['counts']['candidates'], len(cloud['candidates']))
+            self.assertIn('local-only', cloud['hidden'])
+            self.assertFalse(taint.get('sources') or taint.get('private'), 'names a cloud model never saw leave nothing to protect')
+            taint = {'sources': False}
+            local = runtime.source_result('ollama:fixture', tool_name, value, taint, local=True)
+            self.assertTrue(any(c['local_only'] for c in local['candidates']), tool_name)
+            self.assertTrue(taint['sources'] and taint['private'], 'what a local model holds must not go into a public query')
 
 
 if __name__ == '__main__':

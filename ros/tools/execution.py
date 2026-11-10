@@ -75,5 +75,8 @@ def operations(rec):return [{k:v for k,v in r.items() if k!='packet'} for r in e
 @tool('operation_start','Claim a queued operation once and return its bound engine packet.',writes=True,identifier=P('string','operation id',True))
 def operation_start(rec,identifier):return execution.operation_start(rec,identifier)
 
-@tool('operation_finish','Persist an actual engine result, never a model assertion of completion.',writes=True,identifier=P('string','operation id',True),result=P('object','worker result',True))
+@tool('operation_finish','Persist an actual engine result, never a model assertion of completion. A web_search or web_read is finished only by the operations worker; a client call for one is refused.',writes=True,identifier=P('string','operation id',True),result=P('object','worker result',True))
 def operation_finish(rec,identifier,result):return execution.operation_finish(rec,identifier,result)
+
+# The operations worker's scope (ros/execution.py ``worker_scope``): the runtime reaches it through ``api``, never by importing the domain.
+worker_scope=execution.worker_scope

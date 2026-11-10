@@ -182,6 +182,38 @@ class ChildEnvironment(Isolated):
         except Exception: pass  # there is no such operation; only the first thing it does matters here
         self.assertNotIn(NAME, credentials.child_env())
 
+    def test_a_web_engine_key_is_hidden_from_every_child_and_only_its_own_search_worker_keeps_it(self):
+        web_name = "ROS_TEST_WEB_ENGINE_KEY"
+        web_ref = {"store": "env", "name": web_name}
+        rec = self.record("iso8")
+        api.call("web_engine_configure", rec, engine="brave", label="B", credential=web_ref)
+        credentials.forget_env_references()  # a fresh process that has read nothing yet
+        runtime.note_profiles(rec)
+        self.assertIn(web_name, credentials.referenced_env())
+        with patch.dict(os.environ, {web_name: "web-key-value"}):
+            self.assertNotIn(web_name, runtime.child_env(rec))
+            self.assertNotIn(web_name, runner.ENVIRONMENT(os.environ))
+            seen = []
+            def popen(argv, **kw): seen.append(kw.get("env")); raise OSError("stop")
+            packets = {"web_search": {"query": "q", "credential": web_ref}, "web_read": {"url": "https://example.org/"},
+                       "literature": {"query": "q", "engine": "crossref"}, "compute": {}}
+            for kind, packet in packets.items():
+                with patch("subprocess.Popen", popen):
+                    try: runtime.engine_process(rec, "k-" + kind, ["x"], {"kind": kind, "packet": packet}, 1)
+                    except OSError: pass
+            self.assertEqual(len(seen), 4)
+            for kind, env in zip(packets, seen):
+                if kind == "web_search": self.assertEqual(env.get(web_name), "web-key-value", "the search worker resolves its own reference")
+                else: self.assertFalse(web_name in env, kind)
+            # the search worker keeps only the variable its own packet names, never another engine's or a provider's
+            with patch.dict(os.environ, {NAME: VALUE, "ROS_TEST_OTHER_ENGINE": "other"}):
+                credentials.note_env_references([REF, {"store": "env", "name": "ROS_TEST_OTHER_ENGINE"}])
+                seen.clear()
+                with patch("subprocess.Popen", popen):
+                    try: runtime.engine_process(rec, "k-last", ["x"], {"kind": "web_search", "packet": packets["web_search"]}, 1)
+                    except OSError: pass
+                self.assertFalse("ROS_TEST_OTHER_ENGINE" in seen[0] or NAME in seen[0])
+
     def test_a_local_server_without_a_reference_keeps_its_legacy_key_in_the_worker(self):
         seen = {}
         def run(argv, **kw): seen.update(kw); return type("D", (), {"stdout": '{"ok": true}\n'})()

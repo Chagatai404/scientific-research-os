@@ -4,6 +4,8 @@ import json
 import re
 import uuid
 import os
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 from . import sources, runs, graph, context, modes
@@ -273,9 +275,24 @@ def operation_start(rec,identifier):
         raise ValueError('Operation already started or terminal.')
     return row
 
+# What a web operation returns is page text or search results from the network, and a later step keeps them as a source or as candidates.
+# `operation_finish` is a public tool, so without this a client could finish a queued `web_read` with text it made up and `web_capture` would
+# keep it. These kinds are finished only from the operations worker (runtime.execute_operation, runtime.recover), which wraps the call in
+# ``worker_scope``. The scope belongs to one thread and one block: no other thread, and no later call in this one, is let through.
+WORKER_ONLY = frozenset({'web_search','web_read'})
+_WORKER = threading.local()
+
+@contextmanager
+def worker_scope():
+    """The block in which the operations worker records what its engine returned (see ``WORKER_ONLY``)."""
+    _WORKER.depth = getattr(_WORKER, 'depth', 0) + 1
+    try:yield
+    finally:_WORKER.depth -= 1
+
 def operation_finish(rec,identifier,result):
     row=next((r for r in operations(rec) if r['id']==identifier),None)
     if not row:raise ValueError('No such operation.')
     if row['state'] in ('completed','failed','interrupted'):return row
+    if row['kind'] in WORKER_ONLY and not getattr(_WORKER,'depth',0):raise ValueError('Only the operations worker finishes a web operation: what a page or a search returned comes from the engine, never from a client.')
     rec.append('operation.state',identifier,{'state':'interrupted' if result.get('interrupted') else 'completed' if result.get('ok') else 'failed','result':result})
     return next(r for r in operations(rec) if r['id']==identifier)

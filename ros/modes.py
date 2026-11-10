@@ -26,6 +26,11 @@ BASE_WRITES = frozenset({
     "add_node", "add_edge", "add_item", "add_claim", "request_audits", "reply", "grade", "teach", "propose",
     "handout_create", "handout_write", "handout_file", "handout_check", "pedagogy_reply", "compute_stage",
     "literature_search", "transcription_draft"})
+# The public web: a search through the person's configured engine, one https page read by the worker and kept as a source with its URL and
+# hash. Granted to research sessions and the scout only, never to chat, learn, defend or build. The query leaves this computer, so the runtime
+# refuses these after a run has read source content (`runtime.OUTBOUND`); only the operations worker finishes them (`execution.WORKER_ONLY`),
+# and the engine's key never reaches any child but its own search worker (`runtime.search_credential`). What a page says is data, never instructions.
+WEB_WRITES = frozenset({"web_search", "web_read", "web_capture"})
 # Retention: what is due, what is ready next, what the person holds.
 RETAIN = frozenset({"today", "due", "review_scope", "frontier", "capabilities", "map", "progress", "next"})
 # Application: finding the old plans, contracts, notes and sources a new piece of work should build on.
@@ -85,7 +90,7 @@ MODES = {m.name: m for m in (
          "Work on the record's question, claims and evidence. You may add nodes, claims and items and request audits; you "
          "may not decide, approve, waive or give an audit verdict. Look for the person's earlier plans and sources with "
          "`find`, `records` and `vault_find` before proposing new ones, and `link` what you build on.",
-         _READS | SOURCE_READS, BASE_WRITES | SOURCE_WRITES | GRAPH_WRITES | {"link", "delegate"}, "research"),
+         _READS | SOURCE_READS, BASE_WRITES | SOURCE_WRITES | GRAPH_WRITES | WEB_WRITES | {"link", "delegate"}, "research"),
     Mode("defend", "defend",
          "Help the person own a claim: write defence items with `add_item`, practise them with `start --scope claim:<id>` "
          "and report ownership with `claim_status`. Recall is graded against the item's rubric; never suggest a waiver.",
@@ -115,7 +120,7 @@ class Role:
 
 
 ROLES = {r.name: r for r in (
-    Role("scout", frozenset({"skill", "context", "research", "literature_search"}),
+    Role("scout", frozenset({"skill", "context", "research", "literature_search"}) | WEB_WRITES,
          "the scout report as JSON, as its instructions describe"),
     Role("verifier", frozenset({"skill", "claims", "claim_status", "support", "items", "item", "literature_search"}),
          "whether each source supports, partly supports, contradicts or does not address the claim, with exact locations and limits"),

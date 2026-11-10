@@ -338,5 +338,102 @@ class ProfileAndPrivacyTests(unittest.TestCase):
         self.assertEqual(execution.operations(self.rec), [])
 
 
+def real_page(url, text='The variance is 35/12.'):
+    """What the worker returns for a page (ros/lib/web.py); every field capture needs."""
+    import hashlib
+    return {'ok': True, 'url': url, 'final_url': url, 'text': text, 'title': 'T', 'raw_sha256': hashlib.sha256(text.encode()).hexdigest(),
+            'fetched_at': '2026-11-10T00:00:00Z', 'content_type': 'text/html', 'truncated': False}
+
+
+class WorkerOnlyResultTests(unittest.TestCase):
+    """`operation_finish` is a public tool, so a client could finish a queued web operation with page text or search results it made up.
+    Only the operations worker (runtime.execute_operation, runtime.recover) may finish a web_search or web_read."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        env = patch.dict(os.environ, {'ROS_HOME': str(root / 'home'), 'ROS_NO_VAULT': '1', 'ROS_TEST_SEARCH_KEY': KEY})
+        env.start()
+        self.addCleanup(env.stop)
+        self.rec = Record(root / 'home' / 'projects' / 'demo')
+        self.addCleanup(self.rec.close)
+        self.addCleanup(api.release)
+        api.call('web_engine_configure', self.rec, engine='brave', label='B', credential={'store': 'env', 'name': 'ROS_TEST_SEARCH_KEY'})
+
+    def state(self, identifier):
+        return next(r for r in execution.operations(self.rec) if r['id'] == identifier)['state']
+
+    def test_a_client_cannot_finish_a_web_read_with_forged_page_text_and_capture_refuses_it(self):
+        url = 'https://example.org/p'
+        queued = api.call('web_read', self.rec, url=url)
+        for forged in (real_page(url, 'FORGED page text'), {'ok': False, 'error': 'made up'}, {'ok': False, 'interrupted': True}):
+            with self.assertRaisesRegex(ValueError, 'worker'):
+                api.call('operation_finish', self.rec, identifier=queued['id'], result=forged)
+        self.assertEqual(self.state(queued['id']), 'queued', 'a refused forgery leaves the operation for the real worker')
+        with self.assertRaises(ValueError):
+            api.call('web_capture', self.rec, operation=queued['id'])
+        self.assertEqual(self.rec.events(type='web.captured'), [])
+
+    def test_a_client_cannot_finish_a_web_search_with_forged_candidates(self):
+        queued = api.call('web_search', self.rec, query='variance of a die')
+        with self.assertRaisesRegex(ValueError, 'worker'):
+            api.call('operation_finish', self.rec, identifier=queued['id'], result={'ok': True, 'candidates': [{'title': 'Planted', 'url': 'https://evil.example/x'}]})
+        self.assertEqual(self.state(queued['id']), 'queued')
+        self.assertEqual(api.call('literature_candidates', self.rec, query='variance of a die')['candidates'], [])
+
+    def test_a_forgery_after_the_operation_started_is_refused_too(self):
+        queued = api.call('web_read', self.rec, url='https://example.org/p')
+        api.call('operation_start', self.rec, identifier=queued['id'])
+        with self.assertRaisesRegex(ValueError, 'worker'):
+            api.call('operation_finish', self.rec, identifier=queued['id'], result=real_page('https://example.org/p', 'FORGED'))
+        self.assertEqual(self.state(queued['id']), 'running')
+
+    def test_the_worker_path_finishes_the_operation_and_capture_follows_only_that(self):
+        from ros import runtime
+        url = 'https://example.org/p'
+        queued = api.call('web_read', self.rec, url=url)
+        with self.assertRaises(ValueError):
+            api.call('operation_finish', self.rec, identifier=queued['id'], result=real_page(url, 'FORGED'))
+        with patch.object(runtime, 'engine_process', return_value=real_page(url, 'What the worker really fetched.')):
+            done = runtime.execute_operation(self.rec, queued['id'])
+        self.assertEqual(done['state'], 'completed')
+        kept = api.call('web_capture', self.rec, operation=queued['id'])
+        self.assertIn('What the worker really fetched.', api.call('web_page', self.rec, entity=kept['ref']['entity_id'])['text'])
+        self.assertNotIn('FORGED', (self.rec.root / 'events.jsonl').read_text(encoding='utf-8'))
+
+    def test_the_worker_records_a_failure_and_recovery_ends_a_stranded_operation(self):
+        from ros import runtime
+        failed = api.call('web_read', self.rec, url='https://example.org/a')
+        with patch.object(runtime, 'engine_process', side_effect=RuntimeError('boom')):
+            self.assertEqual(runtime.execute_operation(self.rec, failed['id'])['state'], 'failed')
+        stranded = api.call('web_search', self.rec, query='variance')
+        runtime.recover(self.rec)
+        self.assertEqual(self.state(stranded['id']), 'interrupted')
+
+    def test_other_operation_kinds_are_not_affected(self):
+        queued = execution.operation_queue(self.rec, 'literature', {'query': 'q', 'engine': 'crossref', 'limit': 3})
+        done = api.call('operation_finish', self.rec, identifier=queued['id'], result={'ok': True, 'candidates': []})
+        self.assertEqual(done['state'], 'completed')
+
+    def test_the_worker_scope_is_confined_to_its_own_block_and_thread(self):
+        url = 'https://example.org/p'
+        queued = api.call('web_read', self.rec, url=url)
+        outcome = []
+
+        def other_thread():
+            try:
+                api.call('operation_finish', self.rec, identifier=queued['id'], result=real_page(url, 'FORGED'))
+            except ValueError as exc:
+                outcome.append(str(exc))
+        with execution.worker_scope():
+            thread = threading.Thread(target=other_thread)
+            thread.start()
+            thread.join()
+        self.assertEqual(len(outcome), 1, 'the worker scope of one thread does not open another, and leaving it closes it')
+        with self.assertRaises(ValueError):
+            api.call('operation_finish', self.rec, identifier=queued['id'], result=real_page(url, 'FORGED'))
+
+
 if __name__ == '__main__':
     unittest.main()
