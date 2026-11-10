@@ -2,6 +2,7 @@ import {EffortSlider} from './controls';
 import {ConnectionSettings} from './ConnectionSettings';
 import {VaultActions} from './VaultActions';
 import {AgentSettings} from './AgentSettings';
+import {ProviderSettings} from './ProviderSettings';
 import {useEffect, useState, type FormEvent} from 'react';
 import {call, href, service} from './api';
 import {useResource} from './hooks';
@@ -43,7 +44,7 @@ export function Settings({record}: {record: string}) {
         {!catalog.data?.models.some(model => model.id === preferences.model) && <option value={preferences.model}>{modelLabel(preferences.model)} · unavailable</option>}
         {catalog.data?.models.map(model => <option key={model.id} value={model.id}>{model.label}</option>)}</select>
       <EffortSlider model={preferences.selected} effort={preferences.selectedEffort} onChange={effort => preferences.update(preferences.model, effort)} />
-      {catalog.data && !catalog.data.models.length && <p>No model CLI is available. Install and sign in to Codex or Claude, or start Ollama, then reload.</p>}
+      {catalog.data && !catalog.data.models.length && <ProviderSettings record={record} guided />}
       <div className="settings-actions"><button disabled={!!busy || !preferences.selected} onClick={checkModel}>{busy === 'model' ? 'Checking Model…' : 'Check Model Connection'}</button><button onClick={catalog.retry} disabled={!!busy}>Refresh Models</button></div>
       {catalog.data?.ollama && <p>{catalog.data.ollama.available ? `${catalog.data.ollama.models} Ollama Models Available Locally.` : catalog.data.ollama.hint}</p>}
       {check && <p role="status">{check}</p>}{catalog.error && <p role="alert">{catalog.error}</p>}

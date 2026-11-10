@@ -39,8 +39,14 @@ def _send(rec, text, model, conversation=None, effort="medium", key=None, mode=N
     text = text.strip()
     if not text or len(text) > 12000:
         raise ValueError("a message is between 1 and 12000 characters")
-    if not re.fullmatch(r"(codex|claude|ollama|compatible):[A-Za-z0-9_.:/-]{1,100}", model):
+    if not re.fullmatch(r"(codex|claude|ollama|compatible|api):[A-Za-z0-9_.:/-]{1,100}", model):
         raise ValueError("choose a supported model")
+    if model.startswith("api:"):
+        # A remote API model runs only on a profile the person connected, with a credential reference. Whether the key is present
+        # is checked when the run starts (runtime.bind_credential); a missing key stops that run and no other provider is tried.
+        profile = next((p for p in execution.profiles(rec) if p["id"] == model), None)
+        if not profile or not profile.get("credential"):
+            raise ValueError("Connect this API model in Settings first (endpoint, model and where its key is stored). Nothing was sent and no other provider was used.")
     if model == "codex:default": model = "codex:gpt-6.1-sol"
     if effort not in ("low", "medium", "high", "xhigh", "max"):
         raise ValueError("reasoning effort must be low, medium, high, xhigh or max")

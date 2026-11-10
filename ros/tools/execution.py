@@ -18,6 +18,9 @@ def capabilities(rec): return execution.capabilities(rec)
 @tool('agent_list', "List the person's custom agent manifests (id, version, hash, base grant, tools, profile, limits), without their instructions.")
 def agent_list(rec): return execution.agents(rec)
 
+@tool('agent_define', "Save a custom agent manifest (a person's act). It can only narrow a base role or mode grant, never hold a person-only tool or a credential, and a version is immutable.", human=True, manifest=P('object', 'ros.agent-manifest.v1: id agent:<name>, version, title, instructions, base, tools, profile, result_schema, limits, requires', True))
+def agent_define(rec, manifest): return execution.agent_define(rec, manifest, _human())
+
 @tool('agent_get', "Read one custom agent manifest (newest version unless one is named) and whether its hash and rules still verify.", agent=P('string', 'agent:<name>', True), version=P('integer', 'manifest version'))
 def agent_get(rec, agent, version=None): return execution.agent_get(rec, agent, version, _human())
 

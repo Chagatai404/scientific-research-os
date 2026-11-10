@@ -144,7 +144,7 @@ class Manifests(Fixture):
         self.assertNotIn(SENTINEL.encode(), self.record_bytes())
 
     def test_agent_definition_is_not_an_agent_tool(self):
-        self.assertNotIn("agent_define", api.TOOLS, "defining an agent is the person's act; no agent-callable tool writes manifests")
+        self.assertTrue(api.TOOLS["agent_define"].human, "defining an agent is the person's act: a human tool, never offered to an agent")
         self.assertFalse(api.TOOLS["agent_list"].writes); self.assertFalse(api.TOOLS["agent_get"].writes)
 
 
@@ -285,6 +285,21 @@ class AC12Matrix(Fixture):
         self.assertEqual((remote_calls, local_calls), (["claims"], ["claims"]))
         sent = [json.loads(line) for line in codex.stdin.getvalue().splitlines()]
         self.assertTrue(any(e.get("id") == 9 for e in sent), "codex received the tool result")
+
+
+class DefineTool(Fixture):
+    def test_agent_define_is_a_person_only_tool_that_a_custom_agent_can_never_hold(self):
+        self.assertTrue(api.TOOLS["agent_define"].human)
+        made = api.call("agent_define", self.rec, manifest=manifest())
+        self.assertTrue(made["created"])
+        self.assertEqual([a["id"] for a in api.call("agent_list", self.rec)], ["agent:summariser"])
+        self.assertEqual(api.call("agent_define", self.rec, manifest=manifest())["created"], False)
+        for base in ("role:verifier", "mode:research", "mode:learn"):
+            with self.subTest(base=base), self.assertRaisesRegex(ValueError, "person's act|narrow"):
+                api.call("agent_define", self.rec, manifest=manifest(base=base, tools=["agent_define"]))
+        with self.assertRaises(ValueError): api.call("agent_define", self.rec, manifest=manifest(id="agent:other", authority="approve"))
+        spec = api.call("agent_dispatch", self.rec, agent="agent:summariser", brief="b")
+        self.assertNotIn("agent_define", json.dumps(spec["tools"]))
 
 
 if __name__ == "__main__":

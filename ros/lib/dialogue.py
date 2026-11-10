@@ -139,7 +139,7 @@ def catalog():
 def reply(request):
     model = request["model"]
     if model == "codex:default": model = DEFAULT_MODEL
-    if not re.fullmatch(r"(codex|claude|ollama|compatible):[A-Za-z0-9_.:/-]{1,100}", model):
+    if not re.fullmatch(r"(codex|claude|ollama|compatible|api):[A-Za-z0-9_.:/-]{1,100}", model):
         raise ValueError("choose a supported provider and model")
     provider, name = model.split(":", 1)
     effort = request.get("effort", "medium")
@@ -154,11 +154,14 @@ def reply(request):
               "Never approve plans, accept claims, waive ownership, claim a background task was completed, or treat confidence as mastery. "
               "Distinguish hypotheses from evidence. Agent preparation tasks may still be pending; state that honestly. "
               "Keep the researcher's immediate goal central. Context: " + json.dumps(request.get("context", {}), ensure_ascii=False))
-    if provider == 'compatible' or provider=='ollama' and request.get('endpoint'):
-        from . import providers
+    if provider in ('api', 'compatible') or provider=='ollama' and request.get('endpoint'):
+        from . import credentials, providers
         import threading
         chunks=[]
-        result=providers.local({'model':model,'system':system,'messages':messages,'endpoint':request.get('endpoint'),'steps':0,'deadline':60},chunks.append,None,threading.Event(),lambda _:None)
+        packet={'model':model,'system':system,'messages':messages,'endpoint':request.get('endpoint'),'steps':0,'deadline':60}
+        if request.get('credential'): packet['credential']=credentials.resolve(request['credential'])  # read now, here; a missing key stops the check
+        # A remote profile never falls back to anything else: without its credential and endpoint the adapter refuses.
+        (providers.remote if provider=='api' else providers.local)(packet,chunks.append,None,threading.Event(),lambda _:None)
         return {'text':''.join(chunks),'model':model,'effort':None}
     if provider == "ollama":
         payload = json.dumps({"model": name, "messages": [{"role": "system", "content": system}, *messages], "stream": False}).encode()
@@ -180,8 +183,13 @@ def reply(request):
             argv = [executable, "--print", "--output-format", "json", "--model", name, "--tools", "", "--strict-mcp-config",
                     "--mcp-config", '{"mcpServers":{}}', "--no-session-persistence", "--setting-sources", ""]
             if takes_effort(model): argv += ["--effort", effort]
+        from . import providers
+        # Same environment as providers.launch: no paid API key is inherited, so a subscription check cannot bill an API account.
+        # With none set the environment is unchanged, so it is simply inherited.
+        scrubbed = providers.subscription_env()
+        env = {} if len(scrubbed) == len(os.environ) else {"env": scrubbed}
         done = subprocess.run(argv, input=transcript, capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=folder,
-                              timeout=180, **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}))
+                              timeout=180, **env, **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}))
         if done.returncode:
             # CLI diagnostics can contain account details. Keep them out of the record and browser.
             raise ValueError(provider_failure(provider, done))
@@ -217,11 +225,28 @@ def transcribe(request):
     return {"text": result.get("text", "")}
 
 
+def credential(request):
+    """The person's own key-entry act, run in this worker so the value travels only over stdin and never reaches the record, an
+    event, a tool result or a log. ``set`` writes it to the ``ResearchOS:`` namespace of the OS credential store, ``delete`` revokes it,
+    ``status`` reports ``present``, ``missing``, ``unavailable`` or ``invalid`` for any reference. The answer never holds the value."""
+    from . import credentials
+    what = request.get("operation", "status")
+    if what == "status": ref = credentials.reference(request.get("reference"))
+    else: ref = credentials.reference({"store": "os", "name": request.get("name")})
+    if what == "set":
+        value = request.get("value")
+        if not isinstance(value, str) or not value.strip(): raise ValueError("enter the key to store")
+        credentials.os_store_write(ref["name"], value)
+    elif what == "delete": credentials.os_store_delete(ref["name"])
+    elif what != "status": raise ValueError("unknown credential operation")
+    return {"name": ref["name"], "store": ref["store"], "status": credentials.status(ref)}
+
+
 if __name__ == "__main__":
     try:
         request = json.load(sys.stdin)
         action = request.get("action", "reply")
-        result = {"catalog": lambda _: catalog(), "reply": reply, "speech": speech, "transcribe": transcribe}[action](request)
+        result = {"catalog": lambda _: catalog(), "reply": reply, "speech": speech, "transcribe": transcribe, "credential": credential}[action](request)
         print(json.dumps({"ok": True, **result}, ensure_ascii=True))
     except Exception as exc:
         message = str(exc) if isinstance(exc, ValueError) else "The local provider did not complete the request. Check its setup and try again."

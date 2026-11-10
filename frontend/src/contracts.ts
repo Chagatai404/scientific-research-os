@@ -58,3 +58,19 @@ export function validateDocument(value: unknown): DocumentData {
   }
   return doc;
 }
+
+/** A configured model connection (`provider_profiles`): never holds a key, only where the key is stored. */
+export type CredentialReference = {store: 'env' | 'os'; name: string};
+export interface ProviderProfile {
+  schema: string; id: string; provider: 'codex' | 'claude' | 'ollama' | 'compatible' | 'api'; kind: 'subscription' | 'local' | 'remote'; auth: string; transport: string;
+  endpoint: string; model: string; tools: boolean; vision: boolean; context_limit: number; credential: CredentialReference | null;
+  capabilities: Record<'streaming' | 'tools' | 'vision' | 'cancel', boolean>;
+}
+export type EvidenceStatus = 'declared' | 'tested' | 'live-verified' | 'unsupported';
+export interface ProviderCapabilities {
+  schema: string; statuses: EvidenceStatus[];
+  profiles: {id: string; provider: string; kind: string; declared: Record<string, boolean>; evidence: Record<string, EvidenceStatus>; credential: CredentialReference | null}[];
+}
+export type CredentialStatus = 'present' | 'missing' | 'unavailable' | 'invalid';
+/** A custom agent manifest as `agent_list` returns it (instructions are left out). */
+export interface AgentManifestRow {id: string; version: number; title: string; base: string; tools: string[]; profile: string; hash: string; requires: string[]; limits: Record<string, number>}

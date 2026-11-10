@@ -370,13 +370,17 @@ def make_handler(rec: "Record | Pool"):
                     if self.headers.get("Sec-Fetch-Site") != "same-origin":
                         return self._send(HTTPStatus.FORBIDDEN, {"error": "model checks must come from the portal"})
                     model, effort = args.get("model"), args.get("effort", "medium")
-                    if not isinstance(model, str) or not re.fullmatch(r"(codex|claude|ollama|compatible):[A-Za-z0-9_.:/-]{1,100}", model) \
+                    if not isinstance(model, str) or not re.fullmatch(r"(codex|claude|ollama|compatible|api):[A-Za-z0-9_.:/-]{1,100}", model) \
                             or effort not in ("low", "medium", "high", "xhigh", "max") \
                             or (not _takes_effort(model) and effort != "medium"):
                         return self._send(HTTPStatus.BAD_REQUEST, {"error": "choose a supported model and effort"})
                     # A user-requested transport check sends no record, source, file path or transcript.
                     profile=next((p for p in api.call('provider_profiles',pool.get(args.get('record'))) if p['id']==model),None)
+                    if model.startswith('api:') and not (profile and profile.get('credential')):
+                        return self._send(HTTPStatus.BAD_REQUEST, {"error": "Connect this API model in Settings first (endpoint, model and where its key is stored)."})
+                    # Only the credential *reference* goes to the worker; it reads the key itself, in its own process.
                     result = _engine({"action": "reply", "model": model, "effort": effort, **({'endpoint':profile['endpoint']} if profile and profile['endpoint'] else {}),
+                                      **({'credential':profile['credential']} if profile and profile.get('credential') else {}),
                                       "messages": [{"role": "user", "content": "Reply exactly READY."}],
                                       "context": {"purpose": "User-requested model connection check."}}, timeout=60)
                     out = {"ok": bool(result.get("ok")), "model": result.get("model", model),
@@ -386,6 +390,16 @@ def make_handler(rec: "Record | Pool"):
                         out["error"] = result.get("error") or "The model connection check failed."
                     return self._send(HTTPStatus.OK if out["ok"] else HTTPStatus.BAD_REQUEST,
                                       {"result": out, **({"error": out["error"]} if not out["ok"] else {})})
+                if path == '/services/credential':
+                    # Entering, revoking or checking a key is the person's act. The key travels only in this request body and the
+                    # worker's stdin; it is never put in the record, an event, a tool result, an argument list or a log.
+                    if not self._human(): return self._send(403, {'error': HUMAN_ONLY})
+                    operation = args.get('operation', 'status')
+                    if operation not in ('set', 'delete', 'status'): return self._send(400, {'error': 'unknown credential operation'})
+                    result = _engine({'action': 'credential', 'operation': operation, 'name': args.get('name'), 'reference': args.get('reference'),
+                                      **({'value': args.get('value')} if operation == 'set' else {})}, timeout=30)
+                    if not result.get('ok'): return self._send(400, {'error': result.get('error') or 'The credential could not be stored.'})
+                    return self._send(200, {'result': {k: result[k] for k in ('name', 'store', 'status') if k in result}})
                 if path in ("/services/speech", "/services/transcribe"):
                     if self.headers.get("Sec-Fetch-Site") != "same-origin":
                         return self._send(HTTPStatus.FORBIDDEN, {"error": "voice requests must come from the portal"})

@@ -190,7 +190,15 @@ opening does not modify existing records. Canonical identity is record identity 
 `source.registered`, `source.removed` and `source.paused` record explicit connection grants;
 `source.revision` references an immutable SHA-256 snapshot and exact passage locator. `source.report`
 retains completed understanding reports. Source roots are host metadata, never provider-selected paths.
-`provider.configured` records local endpoint capability profiles without credentials or inference.
+`provider.configured` records a model connection profile (subscription CLI, loopback local server or remote HTTPS API; subject
+`<provider>:<model>`) without inference. Its optional `credential` field is a reference, never a key: exactly
+`{"store": "env", "name": "<VARIABLE>"}` or `{"store": "os", "name": "ResearchOS:<label>"}` (a Windows Credential Manager entry).
+A remote (`api`) profile requires it; `codex` and `claude` profiles refuse it. The key is resolved at dispatch and is never stored;
+no event, result or log holds it. Entering a key writes only to the OS store (`/services/credential`, the person's own act) and
+appends no event. `agent.defined` (subject `agent:<name>@<version>`, actor `person`) records a custom agent manifest
+`ros.agent-manifest.v1`: `id`, `version`, `title`, `instructions`, `base` (`role:<name>` or `mode:<name>`), `tools` (a subset
+of the base grant, never a person-only tool), `profile` (a configured profile id), `result_schema`, `limits`, `requires` and the
+content `hash`. A version is immutable (the first event of a version is authoritative), and a manifest has no authority or credential field.
 `run.queued`, `run.state`, `run.output` and `run.step` preserve lifecycle, batched partial text and
 operation/result references. Usage and cost are unavailable unless reported by the provider.
 `notebook.requested` records explicit human execution permission and source revision;

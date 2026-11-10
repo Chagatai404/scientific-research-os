@@ -382,6 +382,17 @@ a cookie), plus the CSRF token; scientific decisions additionally bind subject r
 documents are served sandboxed (`serve._file(untrusted=True)`), and every path from a request or tool goes through
 `home.local_path`, which refuses network shares before anything touches them.
 
+To connect a model without code (a remote API, a local server or a subscription CLI), add a profile: the human tool
+`provider_configure` appends `provider.configured` with an endpoint (`https://` for `api`, loopback `http://` for `ollama` and
+`compatible`, none for `codex` and `claude`) and, for `api`, a credential reference `{store: env|os, name}` naming where the key
+lives (`ros/lib/credentials.py`). The key is never in a record: `runtime.bind_credential` resolves it at every dispatch and a missing
+one stops the run, with no fallback. Chats, the connection check and `agents_model` accept an `api:<model>` only when that profile
+exists (`conversation.send`); the check passes `ros.lib.dialogue` only the reference, and its worker reads the key. The key itself is
+typed only into the paired browser's `/services/credential` (set, delete, status), which writes the `ResearchOS:` namespace of the
+OS store through that worker's stdin. There is deliberately no tool that takes a key, so it cannot reach the CLI, MCP, a record or a
+log. A custom agent is saved with the human tool `agent_define` (`agent.defined`); `modes.agent_manifest` lets it only narrow a role
+or mode grant. Details: `docs/core-experience/PROVIDERS.md`.
+
 To add a provider, implement its adapter in `ros/lib/providers.py`, advertise verified capabilities,
 register it in `ADAPTERS`, and exercise streaming, tool results, interruption and malformed input
 with deterministic fixtures. Never run inference during discovery. Frozen worker entry points

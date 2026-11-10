@@ -328,7 +328,7 @@ class RuntimeRouting(Records):
         reply = Transport(
             sse({"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c1", "function": {"name": "source_preview", "arguments": json.dumps({"source": local, "path": "diary.md"})}}]}, "finish_reason": "tool_calls"}]}),
             sse(text_chunk("I cannot read it.", "stop", usage={"prompt_tokens": 3})))
-        # The chat interfaces do not offer `api:` models yet; the runtime is driven directly with a remote request.
+        # The runtime is driven directly with a remote request (chat acceptance of `api:` models: tests/test_ros_api_chat.py).
         with patch.dict(os.environ, {ENV: SENTINEL}), patch.object(providers, "remote_open", reply):
             runtime.execute(self.rec, sent, dict(sent["_engine"], model="api:m"))
         run = api.call("run_get", self.rec, run=sent["run"])

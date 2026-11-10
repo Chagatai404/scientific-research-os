@@ -44,6 +44,10 @@ export async function service<T>(name: string, args?: Record<string, unknown>): 
   if (!response.ok || body.result?.ok === false) throw new Error(body.error || body.result?.error || 'The local service is unavailable');
   return body.result as T;
 }
+/** The person's key-entry act. The key travels only in this request body to the local worker; it is never returned, stored in the record or logged. */
+export function credential(operation: 'set' | 'delete' | 'status', args: {name?: string; value?: string; reference?: {store: string; name: string}}) {
+  return service<{name: string; store: 'env' | 'os'; status: import('./contracts').CredentialStatus}>('credential', {operation, ...args});
+}
 export const readable = (id: string) => /^(handout|lesson|source|paper|visual):/.test(id) && !id.startsWith('bundle:');
 export function href(view: string, id = '', record = '', anchor = '', extra: Record<string, string> = {}) {
   const params = new URLSearchParams();

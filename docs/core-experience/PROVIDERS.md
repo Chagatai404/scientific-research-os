@@ -1,6 +1,6 @@
 # Providers, credentials and custom agents (S4)
 
-Version 1, backend only. People can run Research OS with their own subscription CLI login, their own remote API key or a
+Version 1 (backend in S4; chats, App settings and key entry in S4b). People can run Research OS with their own subscription CLI login, their own remote API key or a
 model on their own computer, and they can define their own agents. This document describes what the code does and how
 much of it has been verified. No live provider call was made for this slice. Everything marked `tested` below was run
 against deterministic fixtures (scripted processes, a monkeypatched HTTPS transport and loopback test servers). Nothing is
@@ -38,8 +38,9 @@ Rules that hold for every kind:
   `CODEX_API_KEY`, `CLAUDE_CODE_USE_BEDROCK` or `CLAUDE_CODE_USE_VERTEX` (`providers.PAID_ENV`,
   `providers.subscription_env`, also the default environment of `providers.launch`). A key that happens to be set therefore cannot turn a login-based run into an API-billed
   one. This document does not claim which variable each CLI prefers; the variables are removed so that it cannot happen.
-  The older one-shot reply path in `ros/lib/dialogue.py`, used by the portal's "Reply exactly READY" connection check,
-  still inherits the full environment (see the follow-ups).
+  The one-shot reply path in `ros/lib/dialogue.py`, used by the portal's "Reply exactly READY" connection check, passes the same
+  scrubbed environment (`providers.subscription_env()`) whenever a paid variable is set. With none set nothing would change, so it
+  inherits the environment as before.
 - **No fallback.** If a credential is missing or refused, or a required capability is absent, the run stops. No other
   profile, provider or key is tried.
 - **No invented cost.** The remote adapter returns `{"usage": <as reported by the service or null>, "cost": null}`.
@@ -98,8 +99,12 @@ as follows:
   quoted; only the HTTP status is.
 - **Platforms without a Credential Manager.** On a non-Windows platform, or where advapi32 is missing, the `os` store
   reports `unavailable` (`CredentialUnavailable`). It never silently falls back to `env`.
-- **Not yet covered.** Writing a key into the OS store is the desktop host's or a person's act; it has no agent tool. The
-  surface for it is a follow-up, listed below.
+- **Entering a key (S4b).** Writing a key into the OS store is the person's act and has no tool. The paired browser posts to
+  `/services/credential` with `operation` `set`, `delete` or `status`. `set` and `delete` take a name in the `ResearchOS:` namespace;
+  `status` takes any reference. The key is in that request body and then on the stdin of the `ros.lib.dialogue` worker, which calls
+  `credentials.os_store_write`. The answer is `{name, store, status}` and never the value, no event is appended, refusals never
+  repeat the input, and the Settings key field is cleared as soon as the key is sent. No CLI or MCP tool takes a key: a headless user
+  sets an environment variable and uses an `env` reference.
 
 ## Custom agents (`ros.agent-manifest.v1`)
 
@@ -156,21 +161,27 @@ A manifest has exactly these fields: `id` (`agent:<lowercase-name>`), `version` 
 
 All of these are `ValueError`s, so the existing CLI, MCP and HTTP error envelopes and the run's `failed` state carry them.
 
-## Follow-ups outside this slice's files
+## Using it (S4b)
 
-- **`api:` models in chats.** `ros/conversation.py`, `ros/serve.py`, `ros/home.py` and `ros/lib/dialogue.py` still accept
-  only `(codex|claude|ollama|compatible):` model ids, so a chat cannot yet select an `api:` model. It is refused, which
-  fails safe. The runtime routing is in place and tested by driving `runtime.execute` directly.
-- **Defining an agent.** This needs a human tool `agent_define`, and adding it requires changing the pinned human-tool set
-  in `tests/test_ros_m6.py`. Today, `execution.agent_define` is domain-only and runs are started with
-  `runtime.run_custom_agent`.
-- **Connection check.** `ros/lib/dialogue.py`'s one-shot CLI reply path should launch with `providers.subscription_env()`.
-  It is not in this slice's files.
+- **Chats.** `conversation.send` (the App, CLI `workspace_chat_send` and MCP) accepts `api:<model>` only when a profile with that id
+  and a credential reference exists. Otherwise it refuses before anything is queued ("Connect this API model in Settings first").
+  A missing or revoked key is found when the run starts and fails that run clearly; no other provider is tried. Code sessions still
+  need Codex or Claude Code. `agents_model` accepts `api:` ids too. Chat mode stays read-only for the graph (only learn and research
+  maintain it).
+- **Connection check.** `/services/model-check` accepts `api:` and passes the worker only the reference, endpoint and model.
+- **Defining an agent.** The human tool `agent_define` wraps `execution.agent_define`. It is person-only, so a custom agent (whose
+  tools can never include a human tool) cannot define or widen an agent. `agent_list` and `agent_get` read.
+- **Settings.** *Model providers* lists each profile with its kind, transport, where its data goes (this computer, a remote
+  service, your subscription), the key reference and whether the key is present, and each capability with its evidence status. It adds
+  an API connection (https endpoint, model id, Windows Credential Manager or environment variable name) and replaces or removes a
+  stored key. When no model works at all, Settings shows one guided choice (subscription, API key, model on this computer) instead of
+  an empty list. *Custom agents* lists manifests and defines one with a base role or mode.
+
+## Follow-ups
+
 - **Contracts.** `docs/core-experience/CONTRACTS.md` should record the v2 profile, credential reference and manifest
   schemas once they are reviewed.
-- **Desktop surface.** The desktop needs a UI to write and revoke `ResearchOS:` credential entries and to show
-  `credentials.status` (present, missing or unavailable) without the value.
-- **Documentation updates.**
-  - `references/DATA_MODEL.md` should document the `agent.defined` event and the `credential` field of
-    `provider.configured`.
-  - `docs/ARCHITECTURE.md` should describe the provider recipe for remote profiles, credential references and custom agents.
+- **Live smokes.** No Settings flow, key write or `api:` chat has run against a real service or the real Credential Manager from
+  the packaged App; fixtures and a patched store stand in for them.
+- **Custom agent tools.** The Settings form takes tool names as text and the backend rejects any outside the base grant. It does
+  not yet list a base's grant.
