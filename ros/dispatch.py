@@ -166,6 +166,22 @@ def allowance(rec: Record, now: datetime | None = None) -> dict:
             "left_this_hour": left, "per_hour": cfg["per_hour"], "auto": True}
 
 
+def attempts(rec: Record) -> dict[str, dict]:
+    """What the ledger says about each task's unattended runs: ``{task: {"runs", "model", "role", "started",
+    "ended": {"outcome", "detail", "at"} | None}}``. ``ended`` is None while the newest run has not ended, and a person's
+    retry clears it (the earlier outcome no longer describes the task)."""
+    def step(out, e):
+        task = e["subject"]
+        row = out.setdefault(task, {"runs": 0, "model": None, "role": None, "started": None, "ended": None, "retried": None})
+        if e["type"] == "dispatch.start":
+            row.update(runs=row["runs"] + 1, model=e["data"].get("model"), role=e["data"].get("role"), started=e["ts"], ended=None)
+        elif e["type"] == "dispatch.end":
+            row["ended"] = {"outcome": e["data"].get("outcome"), "detail": e["data"].get("detail", ""), "at": e["ts"]}
+        elif e["type"] == "dispatch.retry":
+            row.update(ended=None, retried=e["ts"])
+    return rec.fold("dispatch-attempts", ("dispatch.start", "dispatch.end", "dispatch.retry"), dict, step)
+
+
 def skipped(rec: Record) -> list[str]:
     return sorted(parked(rec))
 

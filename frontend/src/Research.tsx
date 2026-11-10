@@ -1,22 +1,21 @@
 import {Choice, MaterialPick} from './controls';
 import {useState, type FormEvent} from 'react';
 import {call, readCatalog, readWorkspace, workHref, entityHref, href, human, preference, savePreference} from './api';
-import type {Organization, QueueItem, QualifiedRef} from './contracts';
+import type {Organization, QualifiedRef} from './contracts';
 import {useResource} from './hooks';
 import {Empty, Notice} from './ui';
 import {Operations} from './Operations';
 import {distinctWork} from './WorkspaceOverview';
-import {ActivityBoard, type Activity} from './ActivityBoard';
+import {ResearchAgents, ResearchOutputs, type AgentControl, type NextAction, type ResearchAgent, type ResearchOutput} from './ActivityBoard';
 
-interface Claim {id: string; text?: string; verdict?: string; ownership?: string}
+export interface JourneyClaim {id: string; text?: string; author: string; auditors: string[]; independent: boolean; verdict: string; decision: string | null; ownership?: string; citations?: {recorded: string[]; unverified: string[]}}
+export interface JourneyQuestion {question: string; title: string; text?: string; stage: string; stage_label: string; stages: {key: string; label: string; state: 'done' | 'current' | 'todo'}[]; complete: boolean; plan: {experiment: string; state: string; revision: string} | null; claims: JourneyClaim[]; next_action: NextAction; blocked_reason: string; anomalies: string[]}
+export interface Pending {kind: string; subject: string; text?: string; question?: string | null; record?: string}
+/** The backend's `research_journey` read: every stage comes from that question's own recorded evidence. */
+export interface Journey {goal: string; record: string; workspace_id?: string | null; questions: JourneyQuestion[]; pending_decisions: Pending[]; agents: ResearchAgent[]; outputs: ResearchOutput[]; next_action: NextAction}
 
-const STAGES = ['Question', 'Gather evidence', 'Inspect evidence', 'Plan', 'Approve', 'Run', 'Review findings', 'Decide'];
-const CHECKS: [string, RegExp, string][] = [
-  ['Scout', /scout|literature|search/, 'searches the literature and authoritative sources'],
-  ['Verifier', /verif/, 'checks key claims against the cited source'],
-  ['Adversary', /advers|falsif/, 'tries to disprove the conclusion'],
-  ['Auditor', /audit|review/, 'reviews the claim from a fresh start'],
-];
+const FIRST_STAGES: JourneyQuestion['stages'] = [['question', 'Question'], ['hypothesis', 'Hypothesis'], ['plan', 'Plan approved'], ['experiment', 'Experiment'], ['result', 'Result'], ['claim', 'Claim'], ['audit', 'Independent audit'], ['decision', 'Your decision']].map(([key, label], i) => ({key, label, state: i === 0 ? 'current' as const : 'todo' as const}));
+const PLAN_LABEL: Record<string, string> = {awaiting: 'Waiting for your approval', approved: 'Approved for this exact revision', stale: 'Changed after you approved it: approve the new revision before anything runs', 'changes-requested': 'You asked for changes', rejected: 'You rejected this plan', missing: 'No plan'};
 const WHY: Record<string, string> = {
   approve: 'A plan is waiting for your approval. Nothing runs until you decide.',
   decide: 'A finding has been checked. Only you can accept, revise or reject it.',
@@ -27,16 +26,6 @@ const WHY: Record<string, string> = {
   'in-vault': 'An agent put this note in your vault before you could read it. Accept it, or take it out.',
 };
 const NEXT_LABEL: Record<string, string> = {approve: 'Review the plan', decide: 'Review the finding', defend: 'Defend the claim', commitment: 'Open the commitment', proposal: 'Answer the proposal', read: 'Read the handout', 'in-vault': 'Accept or take out'};
-
-/** Where the work stands, taken from what is recorded: waiting decisions first, then running work, then what is queued. */
-export function stageOf(queue: QueueItem[], activity: Activity | undefined, claims: Claim[]) {
-  const first = queue[0];
-  if (first) return {index: first.kind === 'approve' ? 4 : first.kind === 'decide' || first.kind === 'defend' ? 7 : 2, why: WHY[first.kind] || 'This needs your judgement.', next: first};
-  const kinds = [...(activity?.running || []), ...(activity?.next || [])].map(t => t.kind);
-  if (kinds.length) return {index: kinds.some(k => /job|run|compute/.test(k)) ? 5 : kinds.some(k => /plan|experiment/.test(k)) ? 3 : kinds.some(k => /scout|literature|source|evidence/.test(k)) ? 1 : 2, why: 'Your agent has work in progress. It will appear here when it needs you.', next: undefined};
-  if (claims.length) return {index: 6, why: 'Findings are recorded. Review them, or start another question.', next: undefined};
-  return {index: 0, why: 'Start with the question you want answered.', next: undefined};
-}
 
 /** A real human act with named fields. The tool binds it to the exact version of what you are looking at. */
 export function DecisionPanel({subject, kind, record}: {subject: string; kind: string; record: string}) {
@@ -60,16 +49,42 @@ export function DecisionPanel({subject, kind, record}: {subject: string; kind: s
     <button className="primary" disabled={busy || !by.trim()}>{busy ? 'Recording…' : 'Record my decision'}</button>{status && <p role="status" className="notice">{status}</p>}</form>;
 }
 
+/** The research of one scope, read from what is recorded for each question: its stage, plan approval, claims and audits,
+ *  what waits for you, and the agents with their real state. No raw event is shown by default. */
+export function JourneyView({journey, record, onControl, busy}: {journey: Journey; record: string; onControl?: (task: string, action: AgentControl['action']) => void; busy?: boolean}) {
+  const next = journey.next_action;
+  const lead = journey.questions.find(q => !q.complete) || journey.questions[0];
+  const trail = lead?.stages || FIRST_STAGES;
+  return <>
+    <ol className="stage-trail" aria-label="Research stages">{trail.map((s, i) => <li key={s.key} aria-current={s.state === 'current' ? 'step' : undefined} className={s.state === 'done' ? 'done' : ''}><span>{i + 1}</span>{s.label}</li>)}</ol>
+    <section className="next-card" aria-label="Goal and next step"><div className="eyebrow">Goal</div><h2>{journey.goal}</h2><div className="eyebrow">Next step</div>
+      <p><strong>{next.label}</strong></p>{next.actor === 'person' && next.subject ? <a className="button primary" href={href('node', next.subject, record)}>{NEXT_LABEL[next.kind || ''] || 'Open'} →</a> : <p className="muted">{next.actor === 'agent' ? 'Your agent does this; it will appear here when it needs you.' : 'Nothing needs you right now.'}</p>}</section>
+    <div className="section-title"><h2>Needs your judgement</h2><span>{journey.pending_decisions.length}</span></div>
+    {journey.pending_decisions.length ? <ul className="entry-list">{journey.pending_decisions.map((item, index) => <li key={item.subject + index}><a href={href('node', item.subject, item.record || record)}><span><strong>{item.text || 'An item that needs you'}</strong><small>{NEXT_LABEL[item.kind] || item.kind} · {WHY[item.kind] || 'Review the evidence before deciding'}{item.question === null ? ' · Not linked to a question yet' : ''}</small></span><span aria-hidden="true">→</span></a></li>)}</ul> : <Empty title="No decisions waiting"><p>Plans and findings will appear here when they need you.</p></Empty>}
+    <div className="section-title"><h2>Questions</h2><span>{journey.questions.length}</span></div>
+    {journey.questions.length ? journey.questions.map(q => <article key={q.question} className="question-card" aria-label={q.title}><h3>{q.title}</h3>
+      <ol className="stage-trail" aria-label={'Stages of ' + q.title}>{q.stages.map((s, i) => <li key={s.key} aria-current={s.state === 'current' ? 'step' : undefined} className={s.state === 'done' ? 'done' : ''}><span>{i + 1}</span>{s.label}</li>)}</ol>
+      <p><strong>{q.complete ? 'Decided' : q.stage_label}</strong>{q.complete ? '' : ` · ${q.next_action.actor === 'person' ? 'For you: ' : ''}${q.next_action.label}`}</p>
+      {q.blocked_reason && <p className="notice" role="status">{q.blocked_reason}</p>}
+      {q.plan && <p className="muted">Plan: {PLAN_LABEL[q.plan.state] || q.plan.state}{q.plan.revision ? ` (revision ${q.plan.revision.slice(0, 8)})` : ''}</p>}
+      {q.claims.map(c => <p key={c.id} className="muted"><a href={entityHref(c.id, record)}>{c.text || c.id}</a> · written by {c.author || 'unknown'} · {c.auditors.length ? `audited independently by ${c.auditors.join(', ')}` : 'not audited yet'} · {c.verdict} · {c.decision ? `you decided: ${c.decision}` : 'awaiting your decision'}{c.citations?.unverified.length ? ` · ${c.citations.unverified.length} citation(s) not recorded as sources here` : ''}</p>)}
+      {q.anomalies.length > 0 && <p className="muted">{q.anomalies[0]}</p>}</article>) : <Empty title="No research question yet"><p>Ask the first question below; it stays in this workspace.</p></Empty>}
+    <ResearchAgents agents={journey.agents} onControl={onControl} busy={busy}/>
+    <ResearchOutputs outputs={journey.outputs}/>
+  </>;
+}
+
 export function Research({record, material, workspaceId = '', materialRef}: {record: string; material: string; workspaceId?: string; materialRef?: string}) {
   const [version, setVersion] = useState(0);
   const scoped = useResource(`material-scope:${record}:${workspaceId}`, signal => workspaceId ? readWorkspace(record, workspaceId, signal) : Promise.resolve(null), record);
 
   const catalog = useResource(`workspace-catalog:${record}`, signal => workspaceId ? Promise.resolve(null) : readCatalog(record, signal), record);
-  const result = useResource(`research:${record}:${version}`, async signal => {
-    const [queue, claims, activity, org] = await Promise.all([call<QueueItem[]>('queue', {}, record, false, signal), call<Claim[]>('claims', {}, record, false, signal), call<Activity>('workspace_activity', {}, record, false, signal), call<Organization>('workspace_organization', {}, record, false, signal)]);
-    return {queue, claims, activity, org};
+  const result = useResource(`research:${record}:${workspaceId}:${version}`, async signal => {
+    const [journey, org] = await Promise.all([call<Journey>('research_journey', workspaceId ? {workspace_id: workspaceId} : {}, record, false, signal), call<Organization>('workspace_organization', {}, record, false, signal)]);
+    return {journey, org};
   }, record);
   const [question, setQuestion] = useState(''), [picked, setPicked] = useState(materialRef || material), [busy, setBusy] = useState(false), [status, setStatus] = useState('');
+  const [by, setBy] = useState(() => preference('researcher-name', '')), [acting, setActing] = useState(false);
   const data = result.data;
   const ready: {id: string; title: string; ref: QualifiedRef; detail?: string}[] = workspaceId ? distinctWork((scoped.data?.groups.sources || []).concat(scoped.data?.groups.handouts || []).filter(m => m.kind !== 'connection')).map(m => ({id: JSON.stringify(m.ref), title: m.title, ref: m.ref, detail: `${m.owner_record} · ${m.path?.split(/[\\/]/).at(-1) || m.ref.entity_id}`})) : (data?.org.library || []).filter(m => m.state === 'ready').map(m => ({...m, ref: {owner_record: record, entity_id: m.id}}));
   const chosen = ready.find(m => m.id === picked);
@@ -81,33 +96,31 @@ export function Research({record, material, workspaceId = '', materialRef}: {rec
       setStatus(`Your investigation is set up. ${out.for_you?.join(' ') || 'Your agent is preparing the first steps.'}`); setQuestion(''); setVersion(v => v + 1);
     } catch (e) {setStatus((e as Error).message);} finally {setBusy(false);}
   }
-  const stage = data ? stageOf(data.queue, data.activity, data.claims) : undefined;
+  async function control(task: string, action: AgentControl['action']) {
+    if (!by.trim()) {setStatus('Enter your name to use these controls.'); return;}
+    setActing(true); setStatus('');
+    try {
+      savePreference('researcher-name', by.trim());
+      await human('research_control', {task, action, by: by.trim()}, record);
+      setStatus('Done. Controls only act inside the plan you approved.'); setVersion(v => v + 1);
+    } catch (e) {setStatus((e as Error).message);} finally {setActing(false);}
+  }
+  const journey = data?.journey;
   return <div className="research-page"><div className="eyebrow">Move a question toward a defended answer</div><h1>Research</h1>
     <p className="lead muted">One question at a time. Each step says what is happening and what is waiting for you.</p>
     {!workspaceId && !!catalog.data?.workspaces.length && <section className="workspace-group" aria-label="Courses and projects"><h2>Courses and projects <small>{catalog.data.workspaces.length}</small></h2>
       <ul className="entry-list">{catalog.data.workspaces.map(w => <li key={w.workspace_id}><a href={href('research', '', w.record, '', {ws: w.workspace_id})}><span><strong>{w.title}</strong><small>{w.kind === 'general' ? 'General work' : w.kind === 'project' ? 'Project' : 'Course'} · open its research</small></span><span aria-hidden="true">→</span></a></li>)}</ul></section>}
     {!!workspaceId && !!scoped.data && <section className="workspace-group" aria-label="Research in this workspace"><h2>{scoped.data.workspace.title}: research work <small>{scoped.data.groups.research.length}</small></h2>
       {scoped.data.groups.research.length ? <ul className="entry-list">{scoped.data.groups.research.map(row => <li key={JSON.stringify(row.ref)}><a href={workHref(row.ref, workspaceId)}><span><strong>{row.title}</strong><small>{row.kind} · {row.owner_record}</small></span><span aria-hidden="true">→</span></a></li>)}</ul> : <p className="muted">No research work in this workspace yet.</p>}</section>}
-    {!data ? <Notice error={result.error} retry={result.retry}/> : <>
-      <ol className="stage-trail" aria-label="Research stages">{STAGES.map((name, i) => <li key={name} aria-current={i === stage!.index ? 'step' : undefined} className={i < stage!.index ? 'done' : ''}><span>{i + 1}</span>{name}</li>)}</ol>
-      <ul className="check-trail" aria-label="How your agent checks the work">{CHECKS.map(([name, match, what]) => {
-        const waiting = [...data.activity.running, ...data.activity.next].filter(t => match.test(t.kind)).length, done = data.activity.done.filter(t => match.test(t.kind)).length;
-        return <li key={name}><strong>{name}</strong><span>{what}</span><small>{waiting ? `${waiting} in progress or queued` : done ? `${done} finished` : 'Not needed yet'}</small></li>;})}</ul>
-      <section className="next-card" aria-label="Next step"><div className="eyebrow">Next step</div>
-        {stage!.next ? <><h2>{NEXT_LABEL[stage!.next.kind] || 'Review this'}</h2><p><strong>{stage!.next.headline || stage!.next.title || stage!.next.text || 'An item that needs you'}</strong></p><p className="muted">{stage!.why}</p><a className="button primary" href={href('node', stage!.next.subject, stage!.next.record || record)}>{NEXT_LABEL[stage!.next.kind] || 'Open'} →</a></>
-          : <><h2>{stage!.index === 0 ? 'What question are you investigating?' : STAGES[stage!.index]}</h2><p className="muted">{stage!.why}</p></>}</section>
-      <form className="goal-composer" onSubmit={start}><label htmlFor="research-question">{data.queue.length || data.claims.length ? 'Start another question' : 'What question are you investigating?'}</label>
+    {!data || !journey ? <Notice error={result.error} retry={result.retry}/> : <>
+      <JourneyView journey={journey} record={record} onControl={control} busy={acting}/>
+      {journey.agents.some(a => a.controls.some(c => c.allowed)) && <label className="field">Your name (recorded with a control)<input value={by} onChange={e => setBy(e.target.value)} maxLength={80} autoComplete="name"/></label>}
+      <form className="goal-composer" onSubmit={start}><label htmlFor="research-question">{journey.questions.length ? 'Start another question' : 'What question are you investigating?'}</label>
         <textarea id="research-question" rows={3} value={question} onChange={e => setQuestion(e.target.value)} required maxLength={2000} placeholder="For example: does the calorimeter response change with beam energy?"/>
         <div className="composer-footer"><MaterialPick label="Evidence to start from" items={ready} picked={picked} onPick={setPicked} none="Decide later"/>
           <button className="primary" disabled={busy || !question.trim()}>{busy ? 'Setting up…' : 'Start investigating'}</button></div>
         {!ready.length && <p className="muted">No readable material yet. <a href={href('library', '', record)}>Add material in the Library</a> to use it as evidence.</p>}</form>
       {status && <p role="status" className="notice">{status}</p>}
-      <div className="section-title"><h2>Needs your judgement</h2><span>{data.queue.length}</span></div>
-      {data.queue.length ? <ul className="entry-list">{data.queue.map((item, index) => <li key={item.subject + index}><a href={item.subject.startsWith('handout:') ? entityHref(item.subject, item.record || record) : href('node', item.subject, item.record || record)}><span><strong>{item.headline || item.title || item.text || 'An item that needs you'}</strong><small>{NEXT_LABEL[item.kind] || item.kind} · {item.reason || WHY[item.kind] || 'Review the evidence before deciding'}</small></span><span aria-hidden="true">→</span></a></li>)}</ul> : <Empty title="No decisions waiting"><p>Plans and findings will appear here when they need you.</p></Empty>}
-      <div className="section-title"><h2>Claims ledger</h2><span>{data.claims.length}</span></div>
-      {data.claims.length ? <ul className="entry-list">{data.claims.map(c => <li key={c.id}><a href={entityHref(c.id, record)}><span><strong>{c.text || 'A recorded claim'}</strong><small>{c.verdict || 'Not checked yet'} · {c.ownership || 'Not yet defended by you'}</small></span><span aria-hidden="true">↗</span></a></li>)}</ul> : <p className="muted">No claims yet.</p>}
-      <ActivityBoard value={data.activity} record={record}/>
       <details className="research-tools"><summary>Computation and sources (advanced)</summary><Operations record={record}/></details></>}
   </div>;
 }
-

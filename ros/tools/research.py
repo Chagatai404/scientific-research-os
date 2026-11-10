@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .. import graph, handouts, home, research as rsc
+from .. import dispatch, graph, handouts, home, research as rsc, workspaces
 from ..registry import P, iso_day, tool
 
 
@@ -42,9 +42,12 @@ def claim_status(rec, claim):
       author=P("string", "who (or which agent) produced it", True),
       assurance=P("string", "required assurance", enum=tuple(rsc.ASSURANCE)),
       numbers=P("array", "cited numbers: {value, file, column|key, tolerance}"),
-      artifacts=P("array", "files an auditor reads (paths)"), citations=P("array", "sources cited"))
-def add_claim(rec, key, text, project, author, assurance="internal", numbers=None, artifacts=None, citations=None):
-    return rsc.add_claim(rec, key, text, project, author, assurance, numbers, artifacts, citations)
+      artifacts=P("array", "files an auditor reads (paths)"), citations=P("array", "sources cited"),
+      experiment=P("string", "the experiment node that produced it: links the claim to that work"),
+      question=P("string", "the question node it answers: links the claim to that work"))
+def add_claim(rec, key, text, project, author, assurance="internal", numbers=None, artifacts=None, citations=None,
+              experiment=None, question=None):
+    return rsc.add_claim(rec, key, text, project, author, assurance, numbers, artifacts, citations, experiment, question)
 
 
 @tool("precheck", "Check every number a claim cites against its result file, before any audit.", writes=True,
@@ -111,3 +114,33 @@ def decide(rec, subject, outcome, by, rationale):
       claim=P("string", "claim id", True), by=P("string", "your name", True), reason=P("string", "the risk", True))
 def waive(rec, claim, by, reason):
     return rsc.waive(rec, claim, by, reason)
+
+
+def _dispatch_view(rec):
+    """What the dispatch ledger says about each task's runs, for the journey's honest statuses."""
+    model = dispatch.model(rec)
+    return {"attempts": dispatch.attempts(rec), "parked": dispatch.parked(rec), "allowance": dispatch.allowance(rec),
+            "auto": dispatch.kinds(rec), "why": {k: dispatch.why_waiting(k, model) for k in dispatch.NEVER}}
+
+
+@tool("research_journey", "The research of one workspace for the person: each question's stage from its own evidence, what needs "
+      "their judgement, agents with real status and scoped controls, and recent outputs.",
+      workspace_id=P("string", "selected stable workspace id (default: this record's)"),
+      question=P("string", "only this question node"))
+def research_journey(rec, workspace_id=None, question=None):
+    ident = workspaces.identity(rec, workspace_id) if workspace_id else None
+    if ident and ident["record"] != rec.root.name:
+        raise ValueError(f"{ident['title']} keeps its research in the record {ident['record']}: open it there")
+    hubs = None
+    if ident and ident.get("hub"):
+        hubs = {ident["hub"]["entity_id"], *(a["entity_id"] for a in ident.get("aliases", []))}
+    own = ident is None or home.config(rec.root).get("role") == "project"
+    return rsc.journey(rec, hubs, question, (ident or {}).get("title", ""), (ident or {}).get("workspace_id"), _dispatch_view(rec), own)
+
+
+@tool("research_control", "A person pauses, resumes, cancels or retries one research task, inside what was approved: it never "
+      "approves, decides or waives, opens no new work, and a run resumes or retries only under the current plan approval.",
+      human=True, task=P("string", "task id", True), action=P("string", "the control", True, rsc.CONTROLS),
+      by=P("string", "your name", True), note=P("string", "why"))
+def research_control(rec, task, action, by, note=""):
+    return rsc.control(rec, task, action, by, note, _dispatch_view(rec), dispatch.retry)

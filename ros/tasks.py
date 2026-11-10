@@ -5,7 +5,8 @@ tasks wait, and the portal says so. Tasks of kind ``job`` are not for agents: th
 build, a voice render) that the process serving the portal or MCP runs itself.
 
 Events: ``task.open`` (subject ``task:<id>``, data ``kind``, ``ref``, ``brief``), ``task.claim`` (data ``by``),
-``task.done`` (data ``result``) and ``task.cancel`` (data ``reason``). A claim older than ``CLAIM_TTL`` lapses, so a
+``task.done`` (data ``result``), ``task.cancel`` (data ``reason``), ``task.pause`` (data ``note``) and ``task.resume``.
+A paused task is neither open nor claimed: it cannot be claimed or handed out until it is resumed. A claim older than ``CLAIM_TTL`` lapses, so a
 crashed agent never holds work; there is no lock and no lease file. The first claim of an open task wins, even when
 two processes claim at once: later claims of a task that is still held are ignored when the log is read.
 
@@ -17,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import uuid
 
+from . import graph
 from .store import Record
 
 KINDS = {"grade", "answer", "visual", "narration", "animation", "video", "audit", "verify", "review", "item",
@@ -105,11 +107,16 @@ def _fold(rec: Record) -> dict[str, dict]:
                     t.get("by") == e["data"].get("by") or _lapsed(t["claimed"], e["ts"]))):
                 t.update(state="claimed", by=e["data"].get("by"), claimed=e["ts"])
             # else: a claim of a task someone else holds is ignored: the first claim wins
-        elif e["type"] == "task.done" and t["state"] in ("open", "claimed"):
+        elif e["type"] == "task.done" and t["state"] in ("open", "claimed", "paused"):
             t.update(state="done", result=e["data"].get("result"), done=e["ts"], by=e["actor"])
-        elif e["type"] == "task.cancel" and t["state"] in ("open", "claimed"):
-            t.update(state="cancelled", reason=e["data"].get("reason"))
-    return rec.fold("tasks", ("task.open", "task.claim", "task.done", "task.cancel"), dict, step)
+        elif e["type"] == "task.cancel" and t["state"] in ("open", "claimed", "paused"):
+            t.update(state="cancelled", reason=e["data"].get("reason"), cancelled_by=e["actor"])
+        elif e["type"] == "task.pause" and t["state"] in ("open", "claimed"):
+            t.update(paused_from=t["state"], state="paused", paused_by=e["actor"], paused_note=e["data"].get("note", ""),
+                     paused_at=e["ts"])
+        elif e["type"] == "task.resume" and t["state"] == "paused":
+            t.update(state=t.pop("paused_from", "open"), resumed_by=e["actor"])
+    return rec.fold("tasks", ("task.open", "task.claim", "task.done", "task.cancel", "task.pause", "task.resume"), dict, step)
 
 
 def _lapsed(claimed: str, now: str) -> bool:
@@ -128,6 +135,7 @@ def tasks(rec: Record, kind: str | None = None, state: str | None = "open") -> l
         t = dict(t)
         if t["state"] == "claimed" and t["claimed"] < cutoff:
             t["state"] = "open"  # the claim lapsed
+            t["lapsed"] = True
         if state is None or t["state"] == state:
             rows.append(t)
     return sorted(rows, key=lambda t: (t["opened"], t["id"]))
@@ -160,6 +168,9 @@ def claim(rec: Record, tid: str, by: str) -> dict:
     t = get(rec, tid)
     if t["state"] != "open" and not (t["state"] == "claimed" and t.get("by") == by):
         raise ValueError(f"{tid} is {t['state']}" + (f" by {t.get('by')}" if t.get("by") else ""))
+    blocked = run_gate(rec, t)
+    if blocked:
+        raise ValueError(f"{tid} cannot start: {blocked}")
     rec.append("task.claim", tid, {"by": by}, actor=by)
     t = get(rec, tid)
     if t["state"] == "claimed" and t.get("by") != by:  # another process claimed in the same instant and won
@@ -173,12 +184,89 @@ def finish(rec: Record, tid: str, result, by: str | None = None, *, owner_only: 
     t = get(rec, tid)
     if t["state"] in ("done", "cancelled"):
         raise ValueError(f"{tid} is already {t['state']}")
+    if owner_only and t["state"] == "paused":
+        raise ValueError(f"{tid} is paused by {t.get('paused_by')}; finish it after it is resumed")
+    if owner_only and run_gate(rec, t, finishing=True):
+        raise ValueError(f"{tid} cannot be finished: {run_gate(rec, t, finishing=True)}")
     if owner_only and t["state"] == "claimed" and by not in (None, t.get("by")):
         raise ValueError(f"{tid} is claimed by {t.get('by')}; a claim lapses after 30 minutes, then anyone may take it")
     rec.append("task.done", tid, {"result": result}, actor=by or t.get("by") or "agent")
     return get(rec, tid)
 
 
-def cancel(rec: Record, tid: str, reason: str) -> None:
+def cancel(rec: Record, tid: str, reason: str, by: str | None = None) -> None:
     if get(rec, tid)["state"] not in ("done", "cancelled"):
-        rec.append("task.cancel", tid, {"reason": reason})
+        rec.append("task.cancel", tid, {"reason": reason}, **({"actor": by} if by else {}))
+
+
+def pause(rec: Record, tid: str, by: str, note: str = "") -> dict:
+    """Pause an open or claimed task: it is not handed out or claimed until it is resumed. Pausing twice changes nothing."""
+    t = get(rec, tid)
+    if t["state"] == "paused":
+        return t
+    if t["state"] not in ("open", "claimed"):
+        raise ValueError(f"{tid} is {t['state']} and cannot be paused")
+    rec.append("task.pause", tid, {"note": note[:300]}, actor=by)
+    return get(rec, tid)
+
+
+def resume(rec: Record, tid: str, by: str) -> dict:
+    """Resume a paused task to the state it was in. A run task resumes only while its plan approval still holds."""
+    t = get(rec, tid)
+    if t["state"] != "paused":
+        raise ValueError(f"{tid} is {t['state']}, not paused")
+    blocked = run_gate(rec, t)
+    if blocked:
+        raise ValueError(f"{tid} cannot resume: {blocked}")
+    rec.append("task.resume", tid, {}, actor=by)
+    return get(rec, tid)
+
+
+# ---- the plan an experiment runs under -----------------------------------------------------------------------------
+def plan_approval(rec: Record, experiment: str) -> dict:
+    """Where an experiment plan stands with the person, for its *current* revision. ``approved`` only when the newest
+    approval is an approval of exactly this revision; an approval of an earlier revision is ``stale`` (the plan changed
+    after it), and a rejection or request for changes counts only for the revision it was given for."""
+    node = rec.node(experiment)
+    if not node or node.get("type") != "experiment":
+        return {"state": "missing", "revision": None, "approval": None, "approved_revision": None}
+    revision = graph.plan_revision(node)
+    events = rec.events(type="approval", subject=experiment)
+    last = events[-1] if events else None
+    if last is None:
+        state, given = "awaiting", None
+    else:
+        decision, given = last["data"].get("decision"), last["data"].get("revision")
+        if given != revision:
+            state = "stale" if decision == "approved" else "awaiting"
+        else:
+            state = {"approved": "approved", "rejected": "rejected",
+                     "changes-requested": "changes-requested"}.get(decision, "awaiting")
+    if state == "approved" and (node.get("authorization") != "approved" or node.get("approved_revision") != revision):
+        state = "stale"
+    return {"state": state, "revision": revision, "approval": last["id"] if last else None, "approved_revision": given}
+
+
+def run_gate(rec: Record, t: dict, finishing: bool = False) -> str:
+    """Why a ``run`` task may not start (or be finished) now, in a sentence; empty when it may. A run is bound to the
+    plan revision its approval was given for: a plan changed since, a plan not approved, a task opened for an earlier
+    revision, or a revision already run under another approval each stop it. Tasks that run nothing are not gated."""
+    if t["kind"] != "run" or not t.get("experiment"):
+        return ""
+    plan = plan_approval(rec, t["experiment"])
+    if plan["state"] == "stale":
+        return "the plan was changed after it was approved; its current revision needs your approval first"
+    if plan["state"] != "approved":
+        return f"the plan is not approved ({plan['state'].replace('-', ' ')}); nothing runs before you approve its current revision"
+    own = rec.event(t["approval"]) if t.get("approval") else None
+    if own is not None and own["data"].get("revision") != plan["revision"]:
+        return "this task was opened for an earlier revision of the plan; the current revision needs its own approval"
+    now = datetime.now(timezone.utc).strftime(FORMAT)
+    for other in _fold(rec).values():
+        if other["id"] == t["id"] or other["kind"] != "run" or other.get("experiment") != t["experiment"]:
+            continue
+        if other["state"] == "done" or (other["state"] == "claimed" and not _lapsed(other["claimed"], now)):
+            theirs = rec.event(other["approval"]) if other.get("approval") else None
+            if theirs is not None and theirs["data"].get("revision") == plan["revision"]:
+                return "this plan revision was already run under another approval; running it again needs a new approval"
+    return ""

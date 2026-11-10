@@ -42,11 +42,17 @@ OWNERSHIP_NEEDED = {"presentation", "submission"}
 # ---- the ledger ---------------------------------------------------------------------------------------------------
 def add_claim(rec: Record, key: str, text: str, project: str, author: str, assurance: str = "internal",
               numbers: list[dict] | None = None, artifacts: list[str] | None = None,
-              citations: list[str] | None = None) -> dict:
+              citations: list[str] | None = None, experiment: str | None = None,
+              question: str | None = None) -> dict:
     """A claim the project makes. ``numbers`` are ``{"value", "file", "column"|"key"}`` (paths relative to the project
-    root) and are checked deterministically before any audit; ``artifacts`` are the files auditors read."""
+    root) and are checked deterministically before any audit; ``artifacts`` are the files auditors read. ``experiment``
+    (the experiment that produced it) or ``question`` (the question it answers) links the claim to that work, so only
+    that work's stage reads it; a claim linked to neither counts for no question."""
     if assurance not in ASSURANCE:
         raise ValueError(f"assurance is one of {list(ASSURANCE)}")
+    for link, kind in ((experiment, "experiment"), (question, "question")):
+        if link and (rec.node(link) or {}).get("type") != kind:
+            raise ValueError(f"{link} is not a recorded {kind}")
     cid = key if key.startswith("claim:") else f"claim:{key}"
     old = rec.node(cid) or {}
     node = {**old, "id": cid, "type": "claim", "text": text, "project": project, "author": author,
@@ -55,6 +61,9 @@ def add_claim(rec: Record, key: str, text: str, project: str, author: str, assur
     rec.put_nodes([node])
     if not rec.edges(src=cid, type="part-of", dst=f"project:{project}"):
         rec.put_edge(cid, "part-of", f"project:{project}")
+    for link, relation in ((experiment, "results"), (question, "answers")):
+        if link and not any(e.get("relation") == relation for e in rec.edges(src=cid, type="relates", dst=link)):
+            rec.put_edge(cid, "relates", link, relation=relation)
     return node
 
 
@@ -158,7 +167,7 @@ def record_verdict(rec: Record, claim: str, step: str, verdict: str, by: str, no
         data["evidence"] = evidence
     rec.append("verdict", claim, data, actor=by)
     for t in tasks.tasks(rec, state=None):
-        if t.get("claim") == claim and t.get("step") == step and t["state"] in ("open", "claimed"):
+        if t.get("claim") == claim and t.get("step") == step and t["state"] in ("open", "claimed", "paused"):
             tasks.finish(rec, t["id"], {"verdict": verdict}, by=by)
     if verdict in ("PASS", "WARN") and status(rec, claim)["verdict"] in ("PASS", "WARN"):
         open_defence(rec, claim)  # the queue asks for a defence of a WARN claim too, so the items must exist
@@ -233,6 +242,10 @@ def approve(rec: Record, subject: str, decision: str, by: str, note: str = "") -
         raise ValueError("decision is approved, rejected or changes-requested")
     node = rec.node(subject)
     revision=graph.plan_revision(node) if node else None
+    last = (rec.events(type="approval", subject=subject) or [None])[-1]
+    if node and node.get("type") == "experiment" and last and last["data"].get("decision") == decision \
+            and last["data"].get("revision") == revision:
+        return {"subject": subject, "decision": decision, "repeat": True}  # the same answer for the same revision: no second effect
     rec.append("approval", subject, {"decision": decision, "note": note, 'revision':revision}, actor=by)
     if node and node.get("type") == "experiment":  # the research frontier reads the plan's own state
         authorization = {"approved": "approved", "rejected": "rejected",
@@ -375,7 +388,10 @@ def queue(rec: Record, as_of: date | None = None) -> list[dict]:
     """Everything waiting for the researcher, oldest first: plans to approve, claims to decide or defend, open
     commitments, proposals, and the old research records' human transitions."""
     out = []
-    approved = {e["subject"] for e in rec.events(type="approval")}
+    # an approval counts only for the plan revision it was given for: a plan revised since is waiting again
+    approved = {e["subject"] for e in rec.events(type="approval")
+                if tasks.plan_approval(rec, e["subject"])["state"] in ("approved", "rejected", "changes-requested")} \
+        | {e["subject"] for e in rec.events(type="approval") if not (rec.node(e["subject"]) or {}).get("type") == "experiment"}
     for n in rec.nodes(type="experiment"):
         if n.get("authorization") == "awaiting" and n["id"] not in approved:
             out.append({"kind": "approve", "subject": n["id"], "text": n.get("title") or n.get("text") or n["id"]})
@@ -407,3 +423,284 @@ def _claim(rec: Record, claim: str) -> dict:
         raise KeyError(f"no claim {claim}")
     node.setdefault("assurance", "internal")
     return node
+
+
+# ---- the journey: where each question stands, from its own recorded evidence ---------------------------------------
+JOURNEY = (("question", "Question"), ("hypothesis", "Hypothesis"), ("plan", "Plan approved"), ("experiment", "Experiment"),
+           ("result", "Result"), ("claim", "Claim"), ("audit", "Independent audit"), ("decision", "Your decision"))
+CONTROLS = ("pause", "resume", "cancel", "retry")
+SERVES_RESEARCH = ("scout", "verify", "audit", "run", "review", "item", "ingest")
+
+
+def _related(rec: Record, dst: str, relation: str, node_type: str) -> list[str]:
+    """Nodes of a type with an explicit ``relates`` edge of this relation into ``dst`` (never inferred from names)."""
+    return sorted(e["src"] for e in rec.edges(dst=dst, type="relates")
+                  if e.get("relation") == relation and (rec.node(e["src"]) or {}).get("type") == node_type)
+
+
+def _decision(rec: Record, subject: str) -> str | None:
+    events = rec.events(type="decision", subject=subject)
+    return events[-1]["data"].get("outcome") if events else None
+
+
+def _claim_row(rec: Record, cid: str, practice: "Practice") -> dict:
+    node, st = _claim(rec, cid), status(rec, cid, None, practice)
+    auditors = sorted({v["by"] for v in st["verdicts"].values() if v.get("by") and v["by"] != "ros"})
+    author = str(node.get("author") or "")
+    cites = [c for c in node.get("citations", []) if isinstance(c, str)]
+    recorded = [c for c in cites if rec.node(c)]
+    return {"id": cid, "text": node.get("text"), "author": author, "assurance": node["assurance"], "verdict": st["verdict"],
+            "missing": st["missing"], "ownership": st["ownership"], "auditors": auditors,
+            "independent": bool(auditors) and author.casefold() not in {a.casefold() for a in auditors},
+            "decision": _decision(rec, cid),
+            "citations": {"recorded": recorded, "unverified": [c for c in cites if c not in recorded]}}
+
+
+def _provider(model: str | None, by: str | None) -> str | None:
+    name = (model or by or "").removeprefix("agent:")
+    return name.split(":", 1)[0] if ":" in name else None
+
+
+def agent_row(rec: Record, t: dict, ctx: dict | None = None) -> dict:
+    """One agent task as the person needs it: identity, who holds it, its real status, why it is stuck, the next action
+    and the controls open to the person. ``ctx`` carries the dispatch ledger's view (``attempts``, ``parked``,
+    ``allowance``, ``auto`` kinds, ``why`` a kind waits); without it only the task's own record is used."""
+    ctx = ctx or {}
+    attempt = (ctx.get("attempts") or {}).get(t["id"]) or {}
+    parked = (ctx.get("parked") or {}).get(t["id"], "")
+    allowance, state = ctx.get("allowance") or {"ok": True, "reason": ""}, t["state"]
+    plan = tasks.plan_approval(rec, t["experiment"]) if t["kind"] == "run" and t.get("experiment") else None
+    gate = tasks.run_gate(rec, t) if state in ("open", "claimed", "paused") else ""
+    ended = attempt.get("ended") or {}
+    retried = attempt.get("retried") or ""
+    lapsed = bool(t.get("lapsed")) and not (retried and retried >= (t.get("claimed") or ""))
+    stopped_after_start = ended.get("at", "") >= (attempt.get("started") or "")
+    reason, nxt = "", {"actor": "agent", "label": "An agent takes this task"}
+    if state == "done":
+        base, nxt = "completed", {"actor": None, "label": "Finished"}
+    elif state == "cancelled":
+        base, reason = "cancelled", t.get("reason") or ""
+        nxt = {"actor": None, "label": "Cancelled; a new approval or question opens new work"}
+    elif state == "paused":
+        base, reason = "paused", f"Paused by {t.get('paused_by')}" + (f": {t['paused_note']}" if t.get("paused_note") else "")
+        nxt = {"actor": "person", "label": "Resume when you want the work to continue"}
+    elif state == "claimed" and ended.get("outcome") in ("interrupted", "unfinished") and stopped_after_start:
+        base, reason = "interrupted", ended.get("detail") or "The agent's run stopped before it finished the task"
+        nxt = {"actor": "person", "label": "Retry the task"}
+    elif state == "claimed" and ended.get("outcome") in ("failed", "refused") and stopped_after_start:
+        base, reason = "failed", ended.get("detail") or "The agent's run failed"
+        nxt = {"actor": "person", "label": "Retry the task"}
+    elif state == "claimed":
+        base, nxt = "running", {"actor": "agent", "label": "The agent is working; its result is checked before it counts"}
+    elif lapsed:
+        base, reason = "interrupted", "The agent stopped reporting and its claim lapsed"
+        nxt = {"actor": "person", "label": "Retry the task, or leave it for another agent"}
+    elif parked or ended.get("outcome") in ("failed", "refused"):
+        base, reason = "failed", parked or ended.get("detail") or "The last run failed"
+        nxt = {"actor": "person", "label": "Retry the task"} if parked else {"actor": "agent", "label": "It is taken again automatically"}
+    elif ended.get("outcome") == "interrupted":
+        base, reason = "interrupted", ended.get("detail") or "The last run was stopped"
+        nxt = {"actor": "person", "label": "Retry the task"}
+    elif t["kind"] in (ctx.get("auto") or ()) and not allowance.get("ok"):
+        base, reason = "blocked", allowance.get("reason") or "Agents are not available"
+        nxt = {"actor": "person", "label": "Choose an agent model or lift the pause in Settings"}
+    else:
+        base = "queued"
+        why = (ctx.get("why") or {}).get(t["kind"]) if t["kind"] not in (ctx.get("auto") or ()) else ""
+        nxt = {"actor": "agent", "label": "An agent client takes this task" + (f" ({why})" if why else "")}
+    shown = base
+    if gate and base in ("queued", "blocked", "failed", "interrupted"):
+        if plan and plan["state"] in ("awaiting", "stale"):
+            shown, reason = "waiting-human", gate
+            nxt = {"actor": "person", "label": "Approve the plan's current revision", "kind": "approve", "subject": t["experiment"]}
+        else:
+            shown, reason = "blocked", gate
+            nxt = {"actor": "agent" if plan and plan["state"] == "changes-requested" else "person",
+                   "label": "The plan must change before this runs"}
+    controls = []
+    for action in CONTROLS:
+        if action == "pause":
+            ok, why_not = base in ("queued", "running", "blocked"), (
+                "already paused" if base == "paused" else f"a {base} task cannot be paused")
+        elif action == "resume":
+            ok, why_not = base == "paused" and not gate, gate if base == "paused" else "only a paused task is resumed"
+        elif action == "cancel":
+            ok, why_not = base not in ("completed", "cancelled"), f"already {base}"
+        else:
+            ok = base in ("failed", "interrupted") and not gate
+            why_not = gate if base in ("failed", "interrupted") else "only a failed or interrupted task is retried"
+        controls.append({"action": action, "allowed": bool(ok), "reason": "" if ok else why_not})
+    by = t.get("by") if state in ("claimed", "done") else None
+    return {"task": t["id"], "kind": t["kind"], "label": (t.get("brief") or "")[:160], "question": t.get("question"),
+            "role": (tasks.GUIDE.get(t["kind"]) or {}).get("role"), "agent": by, "model": attempt.get("model"),
+            "provider": _provider(attempt.get("model"), by), "status": shown, "state": state, "blocked_reason": reason,
+            "warning": gate if gate and base == "running" else "", "next_action": nxt, "controls": controls,
+            "runs": attempt.get("runs", 0),
+            "scope": ({"experiment": t["experiment"], "revision": plan["revision"], "plan": plan["state"]}
+                      if plan else {k: t[k] for k in ("question", "claim", "step") if t.get(k)}),
+            "updated": t.get("done") or t.get("paused_at") or t.get("claimed") or t.get("opened")}
+
+
+def control(rec: Record, task: str, action: str, by: str, note: str = "", ctx: dict | None = None, retry=None) -> dict:
+    """A person's pause, resume, cancel or retry of one research task. It stays inside what was approved: resume and
+    retry of a run re-check the current plan approval, nothing opens a new task, and no approval, decision or waiver is
+    written. A repeated pause or cancel is a no-op."""
+    if action not in CONTROLS:
+        raise ValueError(f"a control is one of {', '.join(CONTROLS)}")
+    if not (by or "").strip():
+        raise ValueError("a control names who gives it")
+    t = tasks.get(rec, task)
+    if t["kind"] not in SERVES_RESEARCH:
+        raise ValueError(f"{task} is not research work")
+    row = agent_row(rec, t, ctx)
+    if (action == "pause" and t["state"] == "paused") or (action == "cancel" and t["state"] == "cancelled"):
+        return {"task": task, "action": action, "changed": False, "status": row["status"]}
+    entry = next(c for c in row["controls"] if c["action"] == action)
+    if not entry["allowed"]:
+        raise ValueError(entry["reason"] or f"{action} is not possible while the task is {row['status']}")
+    by = by.strip()
+    if action == "pause":
+        tasks.pause(rec, task, by, note)
+    elif action == "resume":
+        tasks.resume(rec, task, by)
+    elif action == "cancel":
+        tasks.cancel(rec, task, ("Cancelled by " + by + (": " + note if note else ""))[:300], by=by)
+    else:
+        if retry is None:
+            raise ValueError("retry needs the dispatcher's ledger")
+        retry(rec, task)
+    return {"task": task, "action": action, "changed": True, "status": agent_row(rec, tasks.get(rec, task), ctx)["status"]}
+
+
+def _question_view(rec: Record, q: str, practice: "Practice", ctx: dict | None) -> dict:
+    node = rec.node(q) or {}
+    hyps = _related(rec, q, "research_questions", "hypothesis")
+    exps = sorted({x for h in hyps for x in _related(rec, h, "hypotheses", "experiment")})
+    claim_ids = sorted({c for x in exps for c in _related(rec, x, "results", "claim")} | set(_related(rec, q, "answers", "claim")))
+    scope = {q, *hyps, *exps, *claim_ids}
+    rows = [t for t in tasks.tasks(rec, state=None) if t["kind"] in SERVES_RESEARCH and (
+        t.get("question") == q or t.get("experiment") in exps or t.get("claim") in claim_ids or t.get("ref") in scope)]
+    plans = {x: tasks.plan_approval(rec, x) for x in exps}
+    claims_ = [_claim_row(rec, c, practice) for c in claim_ids]
+    run_done = [t for t in rows if t["kind"] == "run" and t["state"] == "done" and t.get("experiment") in exps]
+    exp_nodes = {x: rec.node(x) or {} for x in exps}
+    flags = {
+        "question": True, "hypothesis": bool(hyps),
+        "plan": any(p["state"] == "approved" for p in plans.values()),
+        "experiment": bool(run_done) or any(n.get("status") == "completed" for n in exp_nodes.values()),
+        "result": any(t.get("result") not in (None, "", [], {}) for t in run_done)
+                  or any(n.get("result_validation") not in (None, "pending") for n in exp_nodes.values()),
+        "claim": bool(claims_), "audit": bool(claims_) and all(c["verdict"] != "PENDING" for c in claims_),
+        "decision": bool(claims_) and all(c["decision"] for c in claims_)}
+    states, earlier, anomalies, current = [], True, [], None
+    for key, label in JOURNEY:
+        if flags[key] and earlier:
+            state = "done"
+        else:
+            state = "current" if earlier else "todo"
+            if flags[key]:
+                anomalies.append(f"{label} evidence is recorded while an earlier step is not complete for its current revision")
+            if earlier:
+                current = key
+            earlier = False
+        states.append({"key": key, "label": label, "state": state})
+    revise = [c for c in claims_ if c["decision"] == "revise"]
+    stage = current or "decision"
+    blocked, nxt = "", {"actor": "agent", "label": "An agent continues this question"}
+    if stage == "hypothesis":
+        nxt = {"actor": "agent", "label": "An agent frames a hypothesis for this question"}
+    elif stage == "plan":
+        awaiting = next((x for x in exps if plans[x]["state"] in ("awaiting", "stale")), None)
+        changes = next((x for x in exps if plans[x]["state"] in ("changes-requested", "rejected")), None)
+        if awaiting:
+            stale = plans[awaiting]["state"] == "stale"
+            nxt = {"actor": "person", "kind": "approve", "subject": awaiting,
+                   "label": "Approve the revised plan" if stale else "Approve the plan, ask for changes or reject it"}
+            if stale:
+                blocked = "The plan changed after you approved it; nothing runs until you approve its current revision."
+        elif changes:
+            nxt = {"actor": "agent", "label": "An agent revises the plan as you asked", "subject": changes}
+            blocked = "You " + ("rejected" if plans[changes]["state"] == "rejected" else "asked for changes to") + " the current plan."
+        else:
+            nxt = {"actor": "agent", "label": "An agent writes the experiment plan with its scale ladder and compute budget"}
+    elif stage == "experiment":
+        nxt = {"actor": "agent", "label": "An agent runs the approved plan at its stated scale"}
+    elif stage == "result":
+        nxt = {"actor": "agent", "label": "An agent records the result with its files and parameters"}
+    elif stage == "claim":
+        nxt = {"actor": "agent", "label": "An agent records the claim with the numbers it cites"}
+    elif stage == "audit":
+        nxt = {"actor": "agent", "label": "A fresh agent audits the claim independently of its author"}
+    else:
+        waiting = next((c for c in claims_ if not c["decision"]), None)
+        bad = next((c for c in claims_ if c["verdict"] in ("FAIL", "BLOCKED", "ERROR") and not c["decision"]), None)
+        if bad:
+            blocked = f"The audit of {bad['id']} is {bad['verdict']}; it cannot be accepted until the checks pass."
+        if waiting:
+            defend = (waiting["verdict"] in ("PASS", "WARN") and waiting["assurance"] in OWNERSHIP_NEEDED
+                      and waiting["ownership"] not in ("owned", "waived"))
+            nxt = {"actor": "person", "kind": "defend" if defend else "decide", "subject": waiting["id"],
+                   "label": "Show you can defend the claim, or waive it" if defend else "Decide on the claim: accept, revise or reject"}
+        elif revise:
+            nxt = {"actor": "agent", "label": "An agent revises the claim as you asked", "subject": revise[0]["id"]}
+        else:
+            nxt = {"actor": None, "label": "Decided"}
+    if stage != "plan" and not blocked and any(p["state"] == "stale" for p in plans.values()):
+        blocked = "A plan changed after its approval; it needs your approval again."
+    focus = next((x for x in exps if plans[x]["state"] != "approved"), exps[0] if exps else None)
+    return {"question": q, "title": node.get("title") or q, "text": node.get("text"), "status": node.get("status"),
+            "stage": stage, "stage_label": dict(JOURNEY)[stage], "stages": states,
+            "complete": current is None and not revise,
+            "plan": {"experiment": focus, "state": plans[focus]["state"], "revision": plans[focus]["revision"]} if focus else None,
+            "plans": [{"experiment": x, **plans[x]} for x in exps],
+            "evidence": {"hypotheses": hyps, "experiments": exps, "claims": claim_ids},
+            "claims": claims_, "next_action": nxt, "blocked_reason": blocked, "anomalies": anomalies,
+            "agents": [agent_row(rec, t, ctx) for t in rows]}
+
+
+def journey(rec: Record, hubs: set[str] | None = None, question: str | None = None, title: str = "",
+            workspace_id: str | None = None, ctx: dict | None = None, own_record: bool = False) -> dict:
+    """The research of one scope for the person: each question's stage from its own explicitly linked evidence, what needs
+    their judgement, the agents working or stuck with real status and scoped controls, and recent outputs.
+    ``hubs`` limits the questions to those part of these hubs; None keeps every question of the record. In a record that
+    belongs to this one workspace (``own_record``) a decision waiting on work that no question links to is still listed,
+    with ``question`` None: a plan or claim waiting for the person is never hidden because its links are missing (it
+    changes no question's stage)."""
+    import json
+    practice = Practice(rec)
+    qs = [n["id"] for n in rec.nodes(type="question")
+          if (not hubs or any(e["dst"] in hubs for e in rec.edges(src=n["id"], type="part-of"))) and (not question or n["id"] == question)]
+    views = [_question_view(rec, q, practice, ctx) for q in qs]
+    owner = {}
+    for v in views:
+        owner[v["question"]] = v["question"]
+        for k in ("hypotheses", "experiments", "claims"):
+            owner.update({x: v["question"] for x in v["evidence"][k]})
+    waiting = queue(rec)
+    pending = [{**item, "question": owner[item["subject"]]} for item in waiting if item["subject"] in owner]
+    if own_record and not question:
+        pending += [{**item, "question": None} for item in waiting if item["subject"] not in owner]
+    seen, agents = set(), []
+    for v in views:
+        for a in v["agents"]:
+            if a["task"] not in seen:
+                seen.add(a["task"])
+                agents.append({**a, "question": a["question"] or v["question"]})
+    live = [a for a in agents if a["state"] not in ("done", "cancelled")]
+    ended = sorted((a for a in agents if a["state"] in ("done", "cancelled")), key=lambda a: a["updated"] or "", reverse=True)
+    outputs = []
+    for a in [x for x in ended if x["state"] == "done"][:6]:
+        done = tasks.get(rec, a["task"])
+        result = done.get("result")
+        outputs.append({"task": a["task"], "kind": a["kind"], "question": a["question"], "by": done.get("by"), "at": done.get("done"),
+                        "summary": (result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str))[:240]})
+    person = pending[0] if pending else None
+    own = next((v["next_action"] for v in views if v["next_action"].get("actor") == "person"), None)
+    if person:
+        top = {"actor": "person", "kind": person.get("kind"), "subject": person.get("subject"),
+               "label": own["label"] if own and own.get("subject") == person["subject"] else (person.get("text") or "A decision is waiting for you")}
+    else:
+        top = own or next((v["next_action"] for v in views if v["next_action"].get("actor") == "agent"), None) or {
+            "actor": None, "label": "Ask a research question to begin" if not views else "Nothing is waiting for you"}
+    return {"schema": "ros.research-journey.v1", "workspace_id": workspace_id, "record": rec.root.name, "goal": title or rec.root.name,
+            "questions": views, "pending_decisions": pending, "agents": live + ended[:8], "outputs": outputs, "next_action": top}
