@@ -343,6 +343,19 @@ in addition to the legacy browser check. See `docs/portal-redesign/ARCHITECTURE.
 Put it in `ros/lib/` with its own CLI (`python -m ros.lib.<name>`), import it lazily from the domain module that uses
 it, and make its absence a reported problem, not an exception that escapes.
 
+### Malformed tool calls (repair, loop breaker, narration guard)
+
+`Tool.call` in `ros/registry.py` repairs arguments mechanically before validating them: a JSON string for a declared array or
+object, a quoted boolean, integer or number, a string quoted twice. Each repair is logged and returned as
+`repaired: [{param, from_type, to_type}]` (values are never logged; a non-object result is wrapped as `{result, repaired}`).
+Never repaired: any `human=True` tool and the names in `registry.PROTECTED` (grade, verdict, approve, decide, waive, claims,
+learner answers, evidence and record-writing tools); a test checks that the set exists and is untouched. In a provider turn
+(`runtime.execute`, `guarded`) the same call (tool and argument hash) rejected once is not run again: the second time the model
+is told it was rejected twice, the third time the run fails with a readable reason (`TurnHalt`, a `BaseException`, so an
+adapter's `except Exception` cannot turn it into one more tool error). Narration guard: in learn and research turns, if the
+text after the last tool call is empty but the model wrote prose before it, the adapter is run once more with a system note to
+answer in its reply; adapters have no separate thinking channel, so the check is on the `emit`/tool boundary. Chat is not redirected.
+
 ### Supervision, diagnostics and network loss
 
 - **Logs.** `ros/desktop.py` configures the `ros` logger once (`backend.log` in `ROS_LOG_DIR`, rotating 2 MB x 5, every record and

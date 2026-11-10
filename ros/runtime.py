@@ -3,6 +3,7 @@
 One foreground worker; providers never receive human/session credentials or arbitrary paths.
 """
 from __future__ import annotations
+import hashlib
 import json
 import logging
 import threading
@@ -271,6 +272,20 @@ class Coordinator:
             threading.Thread(target=release_late, name='ros-execution-cleanup', daemon=True).start()
         return not retained
 
+class TurnHalt(BaseException):
+    """Ends a provider turn from inside a tool call. A BaseException so no adapter's ``except Exception`` turns it into one more tool
+    error for the model; ``execute`` converts it to the run's readable failure."""
+
+
+NARRATION_NOTE = ('\n\nSystem note: your last message ended without a reply to the person. Put your answer to them in your reply text '
+                  'now, in plain prose; do not narrate or call more tools unless you still need one.')
+
+
+def modes_with_reply(mode):
+    """Learn and research conversations: where a model is expected to teach or report in its reply, not around it."""
+    return mode in ('learn', 'research')
+
+
 def out_of_steps(steps):
     """What the model is told when it has used its tool calls: stop, and say plainly what is left, so the person can say "continue"."""
     return (f'tool step budget reached: the {steps} tool calls of this reply are used. Call no more tools. Say what you did, what you did not '
@@ -512,7 +527,7 @@ def execute(rec, result, request, legacy_engine=None):
         if shown['text']: set_status(None)
         budget['bytes'] += len(text)
         if budget['bytes'] > min(60000,limits['output']*6): raise providers.ProviderError('Output budget reached.')
-        buffer += text; output += text
+        buffer += text; output += text; turn['tail'] += text
         if len(buffer) > 500 or time.monotonic() - last > .4: flush()
     seen_native, before, recorded = [0], {'git': False}, [False]
     def record_change(partial=False):
@@ -597,6 +612,30 @@ def execute(rec, result, request, legacy_engine=None):
         value = redact(value, boundary['secret'])
         with _run_action(rec, run): api.call('run_step', rec, run=run, operation=operation, tool_name=name, result=value)
         return value
+    turn = {'tail': '', 'narrated': False, 'redirected': False, 'rejected': {}, 'halt': None}
+    def guarded(name, args, operation, hard=False):
+        """The provider-facing tool entry: tool_call plus the loop breaker. The same call (tool and arguments) rejected before is not
+        run again: the second time the model is told plainly to change it, the third time the turn ends as failed."""
+        if turn['tail'].strip(): turn['narrated'] = True
+        turn['tail'] = ''
+        if turn['halt']:
+            if hard: raise TurnHalt(turn['halt'])
+            raise ValueError(turn['halt'])
+        try: fingerprint = (name, hashlib.sha256(json.dumps(args, sort_keys=True, default=str).encode()).hexdigest())
+        except (TypeError, ValueError): fingerprint = (name, repr(type(args)))
+        before = turn['rejected'].get(fingerprint, 0)
+        if before >= 2:
+            turn['halt'] = f'The model sent the same rejected {name} call three times in a row, so the turn was stopped. Your message is saved; send it again or rephrase.'
+            if hard: raise TurnHalt(turn['halt'])
+            raise ValueError(turn['halt'])
+        if before == 1:
+            turn['rejected'][fingerprint] = 2
+            raise ValueError(f'This {name} call was rejected twice with the same arguments and was not run again. Change the arguments (or use a different tool) now; sending it a third time ends the turn.')
+        try: return tool_call(name, args, operation)
+        except providers.ProviderError: raise
+        except (ValueError, KeyError):
+            turn['rejected'][fingerprint] = 1
+            raise
     def run_role(spec, operation):
         """One independent role as its own bounded provider run: a fresh context (its instructions and the brief, never this
         conversation), its own tools, a report as the result. It runs outside the registry lock, on its own step budget, and
@@ -712,33 +751,44 @@ def execute(rec, result, request, legacy_engine=None):
                             set_status('Waiting for the internet connection to come back…')
                             if entry['cancel'].wait(5): raise providers.ProviderError('cancelled')
                     if output.strip(): emit('\n\n(connection lost — continuing)\n\n')
-                base_system = packet['system']
-                repeated = 0
-                for attempt in range(1, retries + 2):
-                    # A retry is a new process whose call ids restart from 1: they carry the attempt, so a new call is never answered
-                    # with the cached result of a different, earlier one (see tool_call).
-                    scope = f'a{attempt}:' if attempt > 1 else ''
-                    attempt_packet = dict(packet, status=set_status, system=base_system + (retry_note(attempt) if attempt > 1 else ''))
-                    try:
-                        if provider == 'claude':
-                            with ToolBridge(tool_call, packet['tools'], scope) as bridge:
-                                attempt_packet['bridge'] = bridge
-                                reported=providers.ADAPTERS[provider](attempt_packet, emit, tool_call, entry['cancel'], entry['owned'].append)
-                        else:
-                            scoped = lambda name, args, operation, scope=scope: tool_call(name, args, scope + operation)
-                            reported=providers.ADAPTERS[provider](attempt_packet, emit, scoped, entry['cancel'], entry['owned'].append)
-                        break
-                    except providers.TransientProviderError as exc:
-                        if entry['cancel'].is_set(): raise
-                        LOG.warning('run %s: attempt %d lost its connection: %s', run, attempt, providers.mask(exc))
-                        if exc.retry_limit is not None:
-                            # A request that timed out after it was sent may still be running at the service; a retry would be a second paid one.
-                            repeated += 1
-                            if repeated > exc.retry_limit:
-                                raise providers.ProviderError(f'{label[0].upper() + label[1:]} did not answer in time, twice. It is not asked again so that nothing is paid for twice. Your message is saved; send it again or say “continue”.') from exc
-                        if attempt > retries:
-                            raise providers.ProviderError(f'The connection to {label} was lost and did not come back after {retries} attempts. Your message is saved; send it again or say “continue”.') from exc
-                        wait_to_retry(attempt)
+                reported = None
+                def converse(nudge=''):
+                    nonlocal reported
+                    base_system = packet['system'] + nudge
+                    repeated = 0
+                    for attempt in range(1, retries + 2):
+                        # A retry is a new process whose call ids restart from 1: they carry the attempt, so a new call is never answered
+                        # with the cached result of a different, earlier one (see tool_call).
+                        scope = f'a{attempt}:' if attempt > 1 else ''
+                        attempt_packet = dict(packet, status=set_status, system=base_system + (retry_note(attempt) if attempt > 1 else ''))
+                        try:
+                            if provider == 'claude':
+                                with ToolBridge(guarded, packet['tools'], scope) as bridge:
+                                    attempt_packet['bridge'] = bridge
+                                    reported=providers.ADAPTERS[provider](attempt_packet, emit, guarded, entry['cancel'], entry['owned'].append)
+                            else:
+                                scoped = lambda name, args, operation, scope=scope: guarded(name, args, scope + operation, hard=True)
+                                reported=providers.ADAPTERS[provider](attempt_packet, emit, scoped, entry['cancel'], entry['owned'].append)
+                            break
+                        except TurnHalt as halt: raise ValueError(str(halt)) from None
+                        except providers.TransientProviderError as exc:
+                            if entry['cancel'].is_set(): raise
+                            LOG.warning('run %s: attempt %d lost its connection: %s', run, attempt, providers.mask(exc))
+                            if exc.retry_limit is not None:
+                                # A request that timed out after it was sent may still be running at the service; a retry would be a second paid one.
+                                repeated += 1
+                                if repeated > exc.retry_limit:
+                                    raise providers.ProviderError(f'{label[0].upper() + label[1:]} did not answer in time, twice. It is not asked again so that nothing is paid for twice. Your message is saved; send it again or say “continue”.') from exc
+                            if attempt > retries:
+                                raise providers.ProviderError(f'The connection to {label} was lost and did not come back after {retries} attempts. Your message is saved; send it again or say “continue”.') from exc
+                            wait_to_retry(attempt)
+                converse()
+                if turn['halt']: raise ValueError(turn['halt'])
+                if modes_with_reply(row['mode']) and not turn['redirected'] and not turn['tail'].strip() and (turn['narrated'] or output.strip()) and not entry['cancel'].is_set():
+                    # Narration guard: the model wrote prose around its tool calls but ended with no reply. Told once, to answer in its reply.
+                    turn['redirected'] = True; turn['narrated'] = False
+                    converse(NARRATION_NOTE)
+                    if turn['halt']: raise ValueError(turn['halt'])
                 set_status(None)
                 if reported and (reported.get('usage') is not None or reported.get('cost') is not None):api.call('run_usage',rec,run=run,usage=reported.get('usage'),cost=reported.get('cost'))
             flush()
