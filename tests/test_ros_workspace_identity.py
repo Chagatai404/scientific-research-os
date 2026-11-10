@@ -42,6 +42,18 @@ class WorkspaceIdentityTests(unittest.TestCase):
         self.assertEqual(home.projects(), before)
         self.assertEqual(api.call('workspace_identity', self.course)['workspace_id'], identity['workspace_id'])
 
+    def test_deleted_linked_workspace_leaves_catalog_and_returns_on_restore(self):
+        wid = api.call('workspace_identity', self.course)['workspace_id']
+        ids = lambda: [w['workspace_id'] for w in api.call('workspace_catalog', self.user)['workspaces']]
+        self.assertIn(wid, ids())
+        api.call('workspace_delete', self.user, workspace='stat303')
+        self.assertNotIn(wid, ids())
+        self.assertFalse([w for w in api.call('workspace_catalog', self.user)['workspaces']
+                          if 'course:stat303' in [a['entity_id'] for a in w['aliases']]])
+        api.call('graph_view', self.user, scope='personal')
+        api.call('workspace_restore', self.user, workspace='stat303')
+        self.assertIn(wid, ids())
+
     def test_explicit_assignment_groups_history_and_keeps_owner(self):
         wid = api.call('workspace_identity', self.course)['workspace_id']
         for ident, kind in [('conversation:old', 'conversation'), ('source:old', 'source'), ('handout:old', 'handout')]:

@@ -169,7 +169,20 @@ def _catalog(recs, snapshots=None):
                 'kind': 'general' if cfg.get('workspace_kind') == 'general' else 'record',
                 'hub': None, 'record': name, 'owner_record': name,
                 'title': titles[name], 'aliases': []}
-    return out
+    # A deleted workspace stays on disk (restorable) and its hub stays folded in Knowledge: hide every alias of it.
+    dead_ids, dead_hubs = graph.dead_workspaces(recs)
+    return {w: e for w, e in out.items()
+            if w not in dead_ids and (e.get('hub') or {}).get('entity_id') not in dead_hubs}
+
+
+def catalog(rec):
+    """Public read-only catalog of live workspaces keyed by workspace_id.
+
+    ``rec`` is a Record, or the already-open ``records()`` mapping."""
+    if isinstance(rec, dict):
+        return {w: dict(e) for w, e in _catalog(rec).items()}
+    with records(rec) as recs:
+        return {w: dict(e) for w, e in _catalog(recs).items()}
 
 
 def _selected(rec, catalog, workspace_id=None):

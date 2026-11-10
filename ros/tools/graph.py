@@ -18,10 +18,8 @@ def _hidden(recs):
 
 def _live(recs):
     """The workspaces still there: the catalog minus those the person deleted (a hub folded from Knowledge included)."""
-    dead_ids, dead_hubs = graph.dead_workspaces(recs)
-    catalog = workspaces._catalog(recs)
-    return {w: e for w, e in catalog.items()
-            if w not in dead_ids and (e.get("hub") or {}).get("entity_id") not in dead_hubs}, dead_hubs
+    _, dead_hubs = graph.dead_workspaces(recs)
+    return workspaces.catalog(recs), dead_hubs
 
 
 def _entry(rec, live, workspace_id):

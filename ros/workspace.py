@@ -534,6 +534,6 @@ def workspace_catalog(rec: Record) -> dict:
     """
     from . import workspaces
     with workspaces.records(rec) as recs:
-        found = [dict(v) for v in workspaces._catalog(recs).values() if v['kind'] != 'record']
+        found = [dict(v) for v in workspaces.catalog(recs).values() if v['kind'] != 'record']
     found.sort(key=lambda v: (v['kind'], v['title'].casefold(), v['workspace_id']))
     return {'schema': 'ros.workspace-catalog.v1', 'workspaces': found}
