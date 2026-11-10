@@ -154,6 +154,7 @@ addresses, decides, relates.
 | `dispatch.retry` | task | task. A person asked for a left-alone task to be tried again: its earlier failures and unfinished runs stop counting |
 | `dispatch.focus` | hub | hub, conversation. A person asked for this in a session: for six hours its tasks (and those of the capabilities part of it and their bundles) are dispatched first, and up to eight an hour beyond the hourly limit |
 | `workbench.repo` | record | repo. The person chose the folder a Code session's agent works in (`record_repo`) |
+| `conversation.compacted` | conversation | schema, method (`extractive-v1`), first, last, covered, digest (sha-256 of the covered turns), extends (the earlier compaction it grows), summary, references, local_only. Id is derived from the covered range, so repeating it writes nothing. Written when a send's history exceeds the model budget: the summary is model context only, never evidence, a claim or a decision, and every original turn stays |
 | `code.change` | change | conversation, run, files, commits: a Code session's change, recorded when its run completes |
 | `bundle.ready` | bundle | manifest digest |
 | `verdict` | claim | step, verdict, notes, checklist, evidence |

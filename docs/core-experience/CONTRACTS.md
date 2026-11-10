@@ -195,6 +195,19 @@ trimmed first. Selection creates no summary facts, learner evidence or approvals
 Recorded human acts are references whose validity/revision still needs checking.
 Source permissions and local-only taint continue to apply after client switches.
 
+### Conversation compaction (L4)
+
+When a conversation's history exceeds the model budget, `context_selection.select` replaces the older turns with one
+deterministic extractive summary (no model call): cited source/evidence ids and scope refs, the person's stated goals,
+questions asked, things said to be decided (labelled as not a recorded decision) and open items. The newest request
+stays whole and a recent tail stays verbatim. Sending a turn appends `conversation.compacted` (covered first/last,
+method, digest, references, `extends`); its id derives from the covered range, so repeats and other clients write
+nothing new and every client with the same budget sees the same summary. No original event is rewritten. The summary is
+model context only: `learn.evidence` never folds it and no grade, claim or approval reads it. `workspace_chat` returns
+`compaction: {id, through, covered, method}` and the Conversation view shows a divider "Earlier messages summarised for
+the model — full history kept", expandable to the original turns. A provider-written summary does not exist in this
+codebase; if added it must sit behind an explicit flag and use the same event with another `method`.
+
 ## Errors and downstream boundaries
 
 For this registry version, invalid scope/authority, ambiguous creation keys,

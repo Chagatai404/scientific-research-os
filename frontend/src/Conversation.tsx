@@ -1,5 +1,5 @@
 import {EffortSlider} from './controls';
-import {useEffect, useRef, useState, type FormEvent} from 'react';
+import {useEffect, useRef, useState, type FormEvent, type ReactNode} from 'react';
 import {call, human, href, preference, savePreference, service} from './api';
 import {RichText} from './Document';
 import {Graph} from './Graph';
@@ -18,7 +18,18 @@ import {ModeBadge, QuickStarts, SESSION_MODES, startModeOf} from './sessionModes
 import './classroom.css';
 
 
-interface Chat {conversation: string; title: string; mode?: string; messages: {id: string; role: string; text: string; model?: string;scope?:SourceRef[]}[]; pending: string[]; interrupted: number; lesson?: {lesson: string; record?: string | null} | null; plan?: {hub: string; record?: string | null} | null}
+interface Chat {conversation: string; title: string; mode?: string; messages: {id: string; role: string; text: string; model?: string;scope?:SourceRef[]}[]; pending: string[]; compaction?: {id: string; through: string; covered: number; method: string} | null; interrupted: number; lesson?: {lesson: string; record?: string | null} | null; plan?: {hub: string; record?: string | null} | null}
+
+/** Where the model's context was compacted: the turns up to `through` are summarised for the model, and all of them stay. */
+export function splitAtCompaction<T extends {id: string}>(messages: T[], through?: string | null) {
+  const at = through ? messages.findIndex(message => message.id === through) : -1;
+  return at < 0 ? null : {earlier: messages.slice(0, at + 1), later: messages.slice(at + 1)};
+}
+
+/** The divider at the cut. The original turns are behind it, unchanged; the summary itself is not shown as a message. */
+export function CompactionDivider({count, children}: {count: number; children: ReactNode}) {
+  return <details className="compaction-divider" style={{margin: '0.75rem 0', borderTop: '1px dashed currentColor', borderBottom: '1px dashed currentColor', padding: '0.25rem 0'}}><summary style={{cursor: 'pointer', fontSize: '0.85rem', textAlign: 'center', opacity: 0.75}}>Earlier messages summarised for the model — full history kept</summary><div className="compacted-turns" aria-label={'Original earlier messages (' + count + ')'}>{children}</div></details>;
+}
 
 /** The connection status the engine recorded for the running reply (a `status` step; empty text clears it). */
 function latestStatus(steps?: {tool: string; result: unknown}[]) {
@@ -183,7 +194,7 @@ export function Conversation({id, record, startMode, workspaceId = ''}: {id: str
   return <div className={'conversation-workspace ' + (id ? 'has-conversation' : 'graph-home')} data-testid={!id ? 'graph-home' : undefined}>
     {!id && !workspaceId && <Graph record={record} focus="" embedded />}
     {id && <div className="conversation-heading"><div><div className="eyebrow">An ongoing conversation</div><h1>{chat?.title || 'Let’s work through it'}</h1></div><a className="button" href={href(workspaceId ? 'chat' : 'overview', '', record, '', {ws: workspaceId})}>New conversation</a></div>}
-    {chat && <div className="messages" aria-label="Conversation messages">{chat.messages.map(message => <article className={'message ' + message.role} key={message.id}><div className="message-meta">{message.role === 'user' ? 'You' : message.role === 'error' ? 'Could not complete' : message.model?.split(':')[0] || 'Research OS'}</div><RichText text={message.text} prefix={message.id} record={record} />{message.role==='assistant'&&message.scope?.some(ref=>ref.kind==='media')&&<button onClick={async()=>{const ref=message.scope!.find(ref=>ref.kind==='media')!;try{await call('transcription_draft',{source:ref.sourceId,path:ref.relativePath,revision:ref.revision,text:message.text,by:message.model||'tutor'},record,true);setError('Transcription draft saved. Review it beside the original in Sources.');}catch(e){setError((e as Error).message);}}}>Save Transcription Draft</button>}{message.role === 'assistant' && capabilities.data?.voice.kokoro && <button className="read-message" disabled={!!speaking} onClick={() => speak(message.id, message.text)}>{speaking === message.id ? 'Preparing Kokoro audio…' : 'Listen · Kokoro'}</button>}</article>)}
+    {chat && <div className="messages" aria-label="Conversation messages">{(() => {const renderMessage = (message: Chat['messages'][number]) => <article className={'message ' + message.role} key={message.id}><div className="message-meta">{message.role === 'user' ? 'You' : message.role === 'error' ? 'Could not complete' : message.model?.split(':')[0] || 'Research OS'}</div><RichText text={message.text} prefix={message.id} record={record} />{message.role==='assistant'&&message.scope?.some(ref=>ref.kind==='media')&&<button onClick={async()=>{const ref=message.scope!.find(ref=>ref.kind==='media')!;try{await call('transcription_draft',{source:ref.sourceId,path:ref.relativePath,revision:ref.revision,text:message.text,by:message.model||'tutor'},record,true);setError('Transcription draft saved. Review it beside the original in Sources.');}catch(e){setError((e as Error).message);}}}>Save Transcription Draft</button>}{message.role === 'assistant' && capabilities.data?.voice.kokoro && <button className="read-message" disabled={!!speaking} onClick={() => speak(message.id, message.text)}>{speaking === message.id ? 'Preparing Kokoro audio…' : 'Listen · Kokoro'}</button>}</article>; const cut = splitAtCompaction(chat.messages, chat.compaction?.through); return cut ? <>{cut.earlier.length > 0 && <CompactionDivider count={cut.earlier.length}>{cut.earlier.map(renderMessage)}</CompactionDivider>}{cut.later.map(renderMessage)}</> : chat.messages.map(renderMessage);})()}
       {pending && activeRun && activeRun.steps.some(step => step.tool !== 'status') && <RunSteps steps={activeRun.steps.filter(step => step.tool !== 'status')} />}{pending && activeRun?.output && <div className="stream-output" aria-label="Partial response"><RichText text={activeRun.output} record={record}/></div>}{pending && <div className="thinking" role="status"><span className="pulse-dot" /> {activeRun?.state === 'queued' ? 'Queued for the foreground worker…' : latestStatus(activeRun?.steps) || 'Working on your question…'} <small>Your message is saved.</small></div>}{chat.interrupted > 0 && <p className="notice">A previous response was interrupted. You can send a follow-up to continue.</p>}<div ref={end} /></div>}
     {id && !chat?.lesson && chat?.plan && <PlanCard hub={chat.plan.hub} record={chat.plan.record || record} />}
     {id && chat?.lesson && <Player key={chat.lesson.lesson} id={chat.lesson.lesson} record={chat.lesson.record || record} embedded refresh={chat.messages.length} onAnswered={notify} />}

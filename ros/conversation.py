@@ -115,7 +115,10 @@ def _send(rec, text, model, conversation=None, effort="medium", key=None, mode=N
                "tasks": [{"kind": t["kind"], "brief": t.get("brief", "")[:500], "state": t["state"]} for t in tasks.tasks(rec)[:8]],
                "authority": "Human-only approval, decisions and waivers remain unchanged."}
     run = runs.enqueue(rec, key or request, conversation, request, model, mode, scope)
-    selection = context_selection.select(rec, conversation, text, execution.limits(rec)['context'] // 2)
+    budget = execution.limits(rec)['context'] // 2
+    # Older turns beyond the model's budget are summarised for the model only: an append-only event, the turns stay.
+    context_selection.record_compaction(rec, conversation, budget)
+    selection = context_selection.select(rec, conversation, text, budget)
     context.update(selection['context'])
     context['attachments'] = attachments
     if answered: context['answered'] = {"attempt": answered, "note": "The learner answered on the lesson card; the attempt is recorded. Do not call `answer`: call `next` and continue."}
@@ -138,10 +141,12 @@ def history(rec, conversation):
             pending.pop(data["request"], None)
             messages.append({"id": event["id"], "role": "assistant" if event["type"].endswith("response") else "error",
                              "text": data["text"], "model": data.get("model"), "effort": data.get("effort"), "ts": event["ts"], 'scope':scopes.get(data['request'],[])})
+    compacted = rec.events(type=context_selection.COMPACTED, subject=conversation, limit=1)
     listed = runs.for_conversation(rec, conversation)
     saved_runs = {r['request']: r for r in listed}
     active = [request for request in pending if saved_runs.get(request, {}).get('state') in ('queued', 'running', 'waiting_for_input', 'waiting_for_approval')]
     return {"conversation": conversation, "title": node["title"], "mode": node.get("mode", "chat"), "messages": messages[-100:], "pending": active,
+            "compaction": {"id": compacted[-1]["id"], "through": compacted[-1]["data"]["last"], "covered": compacted[-1]["data"]["covered"], "method": compacted[-1]["data"]["method"]} if compacted else None,
             "interrupted": len(pending) - len(active), "lesson": lesson(listed),
             "plan": {"hub": node["hub"], "record": node.get("hub_record")} if node.get("hub") else None}
 
