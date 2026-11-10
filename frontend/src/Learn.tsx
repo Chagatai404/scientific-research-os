@@ -1,12 +1,12 @@
 import {MaterialPick} from './controls';
 import {PreparedReading} from './PreparedReading';
-import {MediaArtifacts} from './MediaArtifacts';
+import {MediaArtifacts, type MediaReadiness} from './MediaArtifacts';
 import {Pedagogy} from './Pedagogy';
 import {AgentAction} from './AgentAction';
-import {useEffect, useRef, useState, type FormEvent} from 'react';
+import {useCallback, useEffect, useRef, useState, type FormEvent} from 'react';
 import {call, href, readWorkspace, preference, readDocument, savePreference} from './api';
-import type {AnswerResult, DocumentData, Entity, LibraryItem, LessonStep, Organization, Today, QualifiedRef} from './contracts';
-import {Classroom, DependencyPlan, type ClassroomMap} from './Classroom';
+import type {AnswerResult, DocumentData, Entity, LibraryItem, Organization, Today, QualifiedRef} from './contracts';
+import {Classroom, DependencyPlan, DRAFT_DELAY, isTeachable, mediumNotice, newAnswerKey, type ClassroomMap, type Step} from './Classroom';
 import './classroom.css';
 import {RichText, safeUrl} from './Document';
 import {useRecordRevision, useResource} from './hooks';
@@ -29,7 +29,7 @@ export function Learn({id, record, material = '', workspaceId = '', materialRef}
   useEffect(() => {setPicked(materialRef || material);}, [material, materialRef]);
   async function start(bundle: string) {
     setBusy(true); setError('');
-    try {const result = await call<{lesson: string}>('start', {bundle}, record, true); location.hash = href('session', result.lesson, record);}
+    try {const result = await call<{lesson: string}>('start', {bundle, ...(workspaceId ? {workspace_id: workspaceId} : {})}, record, true); location.hash = href('session', result.lesson, record);}
     catch (e) {setError((e as Error).message);} finally {setBusy(false);}
   }
   async function review() {
@@ -37,7 +37,7 @@ export function Learn({id, record, material = '', workspaceId = '', materialRef}
     try {
       const target = await call<{scope: string} | null>('review_scope', {}, record);
       if (!target) {setError('Nothing is due for review right now. Your list will refresh.'); setVersion(v => v + 1); return;}
-      const result = await call<{lesson: string}>('start', {scope: target.scope, title: 'Review'}, record, true); location.hash = href('session', result.lesson, record);
+      const result = await call<{lesson: string}>('start', {scope: target.scope, title: 'Review', ...(workspaceId ? {workspace_id: workspaceId} : {})}, record, true); location.hash = href('session', result.lesson, record);
     } catch (e) {setError((e as Error).message);} finally {setBusy(false);}
   }
   async function plan(event: FormEvent) {
@@ -50,13 +50,13 @@ export function Learn({id, record, material = '', workspaceId = '', materialRef}
   }
   if (id) return <Player key={record + id} id={id} record={record} />;
   if (!resource.data) return <Notice error={resource.error} retry={resource.retry} />;
-  const {today, bundles} = resource.data, nextReady = bundles.find(b => b.ready), lastSession = preference('last', '');
+  const {today, bundles} = resource.data, nextReady = bundles.find(b => b.ready) || bundles.find(isTeachable), lastSession = preference('last', '');
   return <div className="learn-page"><div className="eyebrow">Build understanding, one step at a time</div><h1>Learn</h1>
     <p className="lead muted">Say what you want to understand. You get a short check of what you know, a study path, and practice with feedback.</p>
     {error && <p className="notice error" role="alert">{error}</p>}
     <section className="next-card" aria-label="Recommended next step"><div className="eyebrow">Recommended next step</div>
       {today.due > 0 ? <><h2>Review {today.due} {today.due === 1 ? 'idea' : 'ideas'} you are about to forget</h2><p className="muted">Short retrieval practice now keeps what you learned. It takes a few minutes.</p><button className="primary" disabled={busy} onClick={review}>Start review</button></>
-        : nextReady ? <><h2>{nextReady.title}</h2><p className="muted">Prepared and ready for you.</p><button className="primary" disabled={busy} onClick={() => start(nextReady.id)}>Start lesson</button></>
+        : nextReady ? <><h2>{nextReady.title}</h2><p className="muted">{nextReady.ready ? 'Prepared and ready for you.' : 'The explanation and questions are ready. Voice, figures or animation are still being made; the lesson goes on in text.'}</p><button className="primary" disabled={busy} onClick={() => start(nextReady.id)}>Start lesson</button></>
         : today.next_lesson ? <><h2>{today.next_lesson.title}</h2><p className="muted">Your agent is still preparing this lesson{today.next_lesson.missing?.length ? ': ' + today.next_lesson.missing.slice(0, 3).join('; ') : ''}.</p><a className="button" href={href('activity', '', record)}>See progress</a></>
         : <><h2>What do you want to understand?</h2><p className="muted">Describe it below, or pick something from your Library.</p></>}
       {lastSession.startsWith('#session') && (!workspaceId || new URLSearchParams(lastSession.split('?')[1] || '').get('ws') === workspaceId) && <p><a href={lastSession}>Resume your last lesson →</a></p>}</section>
@@ -67,7 +67,7 @@ export function Learn({id, record, material = '', workspaceId = '', materialRef}
       {!ready.length && <p className="muted">No readable material yet. <a href={href('library', '', record)}>Add material in the Library</a> to study from it.</p>}</form>
     {setup && <p className="notice" role="status">{setup}</p>}
     <div className="summary-grid"><div><strong>{today.due}</strong><span>reviews due</span></div><div><strong>{today.waiting_answers}</strong><span>answers waiting for feedback</span></div></div>
-    <div className="section-title"><h2>Prepared lessons</h2><span>{bundles.length}</span></div>{bundles.length ? <ul className="entry-list">{bundles.map(bundle => <li key={bundle.id}><div className="lesson-entry"><div><strong>{bundle.title}</strong><small>{bundle.ready ? 'Ready to begin' : 'Being prepared. See Activity for progress.'}</small></div><button className={bundle.ready ? 'primary' : ''} disabled={!bundle.ready || busy} onClick={() => start(bundle.id)}>Start lesson</button></div></li>)}</ul> : <Empty title="No lessons yet"><p>Describe what you want to understand above. Preparation runs in the background and shows in Activity.</p></Empty>}
+    <div className="section-title"><h2>Prepared lessons</h2><span>{bundles.length}</span></div>{bundles.length ? <ul className="entry-list">{bundles.map(bundle => <li key={bundle.id}><div className="lesson-entry"><div><strong>{bundle.title}</strong><small>{bundle.ready ? 'Ready to begin' : isTeachable(bundle) ? 'Ready in text; voice, figures or animation are still being made.' : 'Being prepared. See Activity for progress.'}</small></div><button className={bundle.ready ? 'primary' : ''} disabled={!(bundle.ready || isTeachable(bundle)) || busy} onClick={() => start(bundle.id)}>Start lesson</button></div></li>)}</ul> : <Empty title="No lessons yet"><p>Describe what you want to understand above. Preparation runs in the background and shows in Activity.</p></Empty>}
     <a className="text-link" href={href('library', '', record, '', {tab: 'notes'})}>Read past sessions →</a></div>;
 }
 
@@ -80,9 +80,9 @@ const phaseOf = (action: string) => action === 'teach' ? 'teach' : action === 'c
  * figures, narration, animation), with the pedagogy actions. On the Learn page it fills the classroom; in a Learn
  * conversation it is the card above the composer, and `onAnswered` tells the tutor about the attempt it recorded. */
 export function Player({id, record, embedded = false, refresh = 0, onAnswered}: {id: string; record: string; embedded?: boolean; refresh?: number; onAnswered?: (attempt: string, said: string) => void}) {
-  const initial = useResource('step:' + record + ':' + id + (embedded ? ':' + refresh : ''), signal => call<LessonStep>('next', {lesson: id}, record, false, signal));
+  const initial = useResource('step:' + record + ':' + id + (embedded ? ':' + refresh : ''), signal => call<Step>('next', {lesson: id}, record, false, signal));
   const [confidence, setConfidence] = useState(0);
-  const [step, setStep] = useState<LessonStep | null>(null);
+  const [step, setStep] = useState<Step | null>(null);
   const [answer, setAnswer] = useState(() => preference('draft:' + record + ':' + id, ''));
   const [question, setQuestion] = useState(() => preference('question:' + record + ':' + id, ''));
   const [asking, setAsking] = useState(false);
@@ -96,13 +96,29 @@ export function Player({id, record, embedded = false, refresh = 0, onAnswered}: 
   const generation = useRef(0);
   const currentRef = useRef(step);
   const busyRef = useRef(busy);
+  const answerKey = useRef({item: '', key: ''});
+  const draftBase = useRef<string | undefined>(undefined);
+  const draftTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const keyFor = (shown: Step) => {if (shown.answer_key) return shown.answer_key; if (answerKey.current.item !== shown.item) answerKey.current = {item: shown.item || '', key: newAnswerKey()}; return answerKey.current.key;};
+  // The unsent answer is kept on the record, so the terminal, another window or a restarted app finds it; the browser copy is a fallback.
+  const saveDraft = useCallback((value: string, item?: string) => {
+    savePreference('draft:' + record + ':' + id, value);
+    if (!item) return;
+    clearTimeout(draftTimer.current);
+    draftTimer.current = setTimeout(() => {
+      call<{draft?: {id: string} | null; conflict?: boolean; other?: {text: string}}>('draft_save', {lesson: id, item, text: value, client: 'app', ...(draftBase.current ? {base: draftBase.current} : {})}, record, true)
+        .then(out => {draftBase.current = out.draft?.id ?? draftBase.current; if (out.conflict && out.other) setStatus('Another device saved a different draft: ' + out.other.text.slice(0, 200) + '. Both are kept.');})
+        .catch(() => {/* offline: the browser copy keeps it; the next edit saves again */});
+    }, DRAFT_DELAY);
+  }, [record, id]);
+  useEffect(() => () => clearTimeout(draftTimer.current), []);
   currentRef.current = step; busyRef.current = busy;
   // A new step from the tutor (a refresh in a conversation) replaces the card's step; a verdict on screen stays until Continue,
   // and a different step never inherits the previous answer draft or teaching segment.
   useEffect(() => {
     const next = initial.data, shown = currentRef.current;
     if (!next || busyRef.current) return;
-    if (!shown) setStep(next);
+    if (!shown) {setStep(next); if (next.draft?.text) {draftBase.current = next.draft.id; setAnswer(value => value || next.draft!.text);}}
     else if (result) return;
     else if (shown.item !== next.item || shown.action !== next.action) advance(next);
     else setStep(next);
@@ -122,7 +138,7 @@ export function Player({id, record, embedded = false, refresh = 0, onAnswered}: 
     // A tutor grade can release a pending answer. Other active steps remain learner-controlled.
     if (revision && currentRef.current?.action === 'wait' && !busyRef.current) {
       const expected = generation.current;
-      call<LessonStep>('next', {lesson: id}, record, false, signal).then(next => {
+      call<Step>('next', {lesson: id}, record, false, signal).then(next => {
         if (!signal.aborted && generation.current === expected && !busyRef.current && currentRef.current?.action === 'wait') setStep(next);
       }).catch(() => {/* Context refresh reports connectivity; the manual check remains available. */});
     }
@@ -136,7 +152,7 @@ export function Player({id, record, embedded = false, refresh = 0, onAnswered}: 
     setBusy(true); setStatus('');
     try {await action();} catch (e) {setStatus((e as Error).message);} finally {setBusy(false); busyRef.current = false;}
   }
-  function advance(next: LessonStep) {setStep(next); setResult(null); setSegment(0); setAnswer(''); setConfidence(0); savePreference('draft:' + record + ':' + id, '');}
+  function advance(next: Step) {clearTimeout(draftTimer.current); answerKey.current = {item: '', key: ''}; draftBase.current = next.draft?.id; setStep(next); setResult(null); setSegment(0); setAnswer(next.draft?.text || ''); setConfidence(0); savePreference('draft:' + record + ':' + id, next.draft?.text || '');}
   function answered(out: AnswerResult, said: string) {
     if (out.attempt && onAnswered) onAnswered(out.attempt, said + (confidence ? ` (confidence: ${CONFIDENCE[confidence - 1].toLowerCase()})` : ''));
   }
@@ -148,11 +164,13 @@ export function Player({id, record, embedded = false, refresh = 0, onAnswered}: 
       if (current.action === 'teach') {
         if (segment < (current.content?.segments?.length || 0) - 1) {setSegment(x => x + 1); return;}
         await call('teach', {lesson: id, capability: current.capability, mode: current.mode || 'explain'}, record, true);
-        advance(await call<LessonStep>('next', {lesson: id}, record)); return;
+        advance(await call<Step>('next', {lesson: id}, record)); return;
       }
-      if (current.action === 'wait') {advance(await call<LessonStep>('next', {lesson: id}, record)); return;}
+      if (current.action === 'wait') {advance(await call<Step>('next', {lesson: id}, record)); return;}
       const response = current.question?.kind === 'choice' ? Number(answer) : answer;
-      const next = await call<AnswerResult>('answer', {lesson: id, item: current.item, response, ...(confidence ? {confidence} : {})}, record, true);
+      const next = await call<AnswerResult>('answer', {lesson: id, item: current.item, response, key: keyFor(current), ...(confidence ? {confidence} : {})}, record, true);
+      answerKey.current = {item: '', key: ''}; clearTimeout(draftTimer.current);
+      if ((next as AnswerResult & {duplicate?: boolean}).duplicate) setStatus('Another device already answered this question. Its result is shown; your text was not sent twice.');
       setResult(next); answered(next, current.question?.kind === 'choice' ? (current.question.options?.[Number(answer)] ?? answer) : answer); setAnswer(value => {if (value !== answer) return value; savePreference('draft:' + record + ':' + id, ''); return '';});
     });
   }
@@ -170,16 +188,17 @@ export function Player({id, record, embedded = false, refresh = 0, onAnswered}: 
   const questionDock = <aside className="question-dock"><h2>Keep your question in context</h2><form onSubmit={ask}><label htmlFor="lesson-question">Your question</label><textarea id="lesson-question" required value={question} onChange={e => {setQuestion(e.target.value); savePreference('question:' + record + ':' + id, e.target.value);}} /><button disabled={busy}>Save question</button></form></aside>;
   const body = <>
     {current.title && context.title !== current.title && <h2>{current.title}</h2>}
+    {current.action === 'teach' && mediumNotice(current) && <p className="notice" role="status">{mediumNotice(current)}</p>}
     {current.action === 'wait' && <p>Your written answer is waiting for your tutor’s assessment. Check again when your tutor has graded it.</p>}
     {current.action === 'close' && <p className="lead">{current.reason}</p>}
     <form className="player" onSubmit={submit}>
       {current.action === 'teach' && <>{seg ? <><RichText text={seg.text} prefix={id + '-' + seg.id} record={record} />{image && <img className="lesson-figure" src={safeUrl(mediaBase + image, true, '', record)} alt={current.title || 'Lesson figure'} />}{seg.audio && <audio controls preload="metadata" src={safeUrl(mediaBase + seg.audio, true, '', record)} aria-label="Lesson narration" />}<p className="muted">{segment + 1} of {current.content?.segments?.length}</p></> : <p className="notice">This step needs a live explanation from your tutor. Prepared content is not available yet.</p>}</>}
       {current.question && <div className="prompt"><RichText text={current.question.prompt} record={record} /></div>}
-      {result ? <div className={'feedback ' + result.verdict} role="status"><h2>{result.verdict === 'correct' ? 'Correct' : result.verdict === 'pending' ? 'Saved for your tutor' : 'Let’s work through it'}</h2><RichText text={result.feedback || result.explanation || ''} record={record} /></div> : answering && (current.question?.kind === 'choice' ? <fieldset className="choices"><legend>Choose one</legend>{current.question.options?.map((option, index) => <label key={index}><input type="radio" name="answer" value={index} checked={answer === String(index)} required onChange={e => {setAnswer(e.target.value); savePreference('draft:' + record + ':' + id, e.target.value);}} /><RichText text={option} record={record} /></label>)}</fieldset> : <div><label htmlFor="lesson-answer">Your answer</label><textarea id="lesson-answer" value={answer} required onChange={e => {setAnswer(e.target.value); savePreference('draft:' + record + ':' + id, e.target.value);}} inputMode={current.question?.kind === 'numeric' ? 'decimal' : 'text'} /></div>)}
+      {result ? <div className={'feedback ' + result.verdict} role="status"><h2>{result.verdict === 'correct' ? 'Correct' : result.verdict === 'pending' ? 'Saved for your tutor' : 'Let’s work through it'}</h2><RichText text={result.feedback || result.explanation || ''} record={record} /></div> : answering && (current.question?.kind === 'choice' ? <fieldset className="choices"><legend>Choose one</legend>{current.question.options?.map((option, index) => <label key={index}><input type="radio" name="answer" value={index} checked={answer === String(index)} required onChange={e => {setAnswer(e.target.value); saveDraft(e.target.value, current.item);}} /><RichText text={option} record={record} /></label>)}</fieldset> : <div><label htmlFor="lesson-answer">Your answer</label><textarea id="lesson-answer" value={answer} required onChange={e => {setAnswer(e.target.value); saveDraft(e.target.value, current.item);}} inputMode={current.question?.kind === 'numeric' ? 'decimal' : 'text'} /></div>)}
       {answering && <fieldset className="confidence-scale"><legend>How sure are you?</legend>{CONFIDENCE.map((label, index) => <label key={label}><input type="radio" name="confidence" value={index + 1} checked={confidence === index + 1} onChange={() => setConfidence(index + 1)} />{label}</label>)}</fieldset>}
-      <div className="player-controls">{answering && <button type="button" disabled={busy} onClick={() => perform(async () => {const out = await call<AnswerResult>('answer', {lesson: id, item: current.item, dont_know: true}, record, true); setResult(out); answered(out, 'I don’t know.'); savePreference('draft:' + record + ':' + id, '');})}>I don’t know</button>}<button type="button" aria-expanded={asking} onClick={() => setAsking(!asking)}>Ask a question</button><button className="primary" disabled={busy}>{busy ? 'Saving…' : current.action === 'wait' ? 'Check for feedback' : 'Continue'}</button></div>
+      <div className="player-controls">{answering && <button type="button" disabled={busy} onClick={() => perform(async () => {const out = await call<AnswerResult>('answer', {lesson: id, item: current.item, dont_know: true, key: keyFor(current)}, record, true); answerKey.current = {item: '', key: ''}; clearTimeout(draftTimer.current); setResult(out); answered(out, 'I don’t know.'); savePreference('draft:' + record + ':' + id, '');})}>I don’t know</button>}<button type="button" aria-expanded={asking} onClick={() => setAsking(!asking)}>Ask a question</button><button className="primary" disabled={busy}>{busy ? 'Saving…' : current.action === 'wait' ? 'Check for feedback' : 'Continue'}</button></div>
     </form>
-    {current.action==='teach'&&<MediaArtifacts animation={current.content?.animation} clip={current.content?.clip} base={mediaBase} record={record}/>}<PreparedReading key={id} record={record} lesson={id} item={current.item}/><Pedagogy key={id+current.item} record={record} lesson={id} item={current.item}/><AgentAction record={record} text={"Work on the pending tutoring tasks for lesson " + id + ". Use the exact saved attempt for grading, preserve assistance attribution, answer saved questions, and finish tasks only after committing their results."}/>{status && <p className="notice" role="status">{status}</p>}
+    {current.action==='teach'&&<MediaArtifacts animation={current.content?.animation} clip={current.content?.clip} base={mediaBase} record={record} readiness={(current.content as {readiness?: MediaReadiness} | undefined)?.readiness}/>}<PreparedReading key={id} record={record} lesson={id} item={current.item}/><Pedagogy key={id+current.item} record={record} lesson={id} item={current.item}/><AgentAction record={record} text={"Work on the pending tutoring tasks for lesson " + id + ". Use the exact saved attempt for grading, preserve assistance attribution, answer saved questions, and finish tasks only after committing their results."}/>{status && <p className="notice" role="status">{status}</p>}
     <p className="quiet-note">Only assessed answers contribute to learning evidence. Reading and confidence do not establish mastery.</p>
   </>;
   const phase = phaseOf(current.action);

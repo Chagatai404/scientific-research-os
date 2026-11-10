@@ -31,8 +31,8 @@ class LessonView:
         return self.rec.node(self.lesson) or {}
 
     @cached_property
-    def _derived(self) -> tuple[list[dict], dict[str, set[str]], str | None]:
-        helped, taught, rows, by_attempt, mode = set(), {}, [], {}, None
+    def _derived(self) -> tuple[list[dict], dict[str, set[str]], str | None, dict[str, dict]]:
+        helped, taught, rows, by_attempt, mode, plan = set(), {}, [], {}, None, {}
         for e in self.rec.events(lesson=self.lesson):
             t, subject = e["type"], e["subject"]
             if t in ("hint", "reveal"):
@@ -41,14 +41,22 @@ class LessonView:
                 taught.setdefault(subject, set()).add(e["data"].get("mode", "explain"))
             elif t == "ask" and e["data"].get("mode"):
                 mode = e["data"]["mode"]
+            elif t == "journey.plan":
+                plan = e["data"].get("caps") or {}
             elif t == "attempt":
                 row = {"attempt": e["id"], "item": subject, "verdict": "pending", "helped": subject in helped,
-                       "ts": e["ts"], "taught": frozenset(taught)}
+                       "ts": e["ts"], "taught": frozenset(taught), "dont_know": bool(e["data"].get("dont_know"))}
                 rows.append(row)
                 by_attempt[e["id"]] = row
             elif t == "grade" and e["data"].get("attempt") in by_attempt:
                 by_attempt[e["data"]["attempt"]]["verdict"] = e["data"]["verdict"]
-        return rows, taught, mode
+        return rows, taught, mode, plan
+
+    @property
+    def prior(self) -> dict[str, dict]:
+        """What earlier evidence said about each capability when the lesson began (``journey.plan``), fixed for the
+        whole lesson: answers given in it never change this, they are read as outcomes. Empty for older lessons."""
+        return self._derived[3]
 
     @property
     def outcomes(self) -> list[dict]:
@@ -127,6 +135,12 @@ def bracket(view: LessonView, capability: str, budget: int = DEFAULT_BUDGET) -> 
         d = ids[o["item"]].get("difficulty", 1)
         if o["verdict"] == "correct" and not o["helped"] and (ceiling is None or d < ceiling):
             floor = d if floor is None else max(floor, d)
+    # Earlier graded answers (from the plan made when the lesson began) bound the search before any question is asked.
+    seed = view.prior.get(capability) or {}
+    if seed.get("ceiling") is not None:
+        ceiling = seed["ceiling"] if ceiling is None else min(ceiling, seed["ceiling"])
+    if seed.get("floor") is not None and (ceiling is None or seed["floor"] < ceiling):
+        floor = seed["floor"] if floor is None else max(floor, seed["floor"])
     pending = [o["item"] for o in mine if o["verdict"] == "pending"]
     used = {o["item"] for o in mine}
     lo = float("-inf") if floor is None else floor
@@ -138,4 +152,5 @@ def bracket(view: LessonView, capability: str, budget: int = DEFAULT_BUDGET) -> 
         target = diffs[(len(diffs) - 1) // 2] if floor is None or ceiling is None else (lo + hi) / 2
         nxt = min(candidates, key=lambda i: (abs(i.get("difficulty", 1) - target), i.get("difficulty", 1), i["id"]))
     return {"capability": capability, "floor": floor, "ceiling": ceiling, "asked": len(mine), "pending": pending,
-            "next": nxt["id"] if nxt else None, "done": nxt is None and not pending, "items": len(pool)}
+            "next": nxt["id"] if nxt else None, "done": nxt is None and not pending, "items": len(pool),
+            "seeded": bool(seed.get("floor") is not None or seed.get("ceiling") is not None)}

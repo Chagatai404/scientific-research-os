@@ -268,8 +268,11 @@ def bundles(rec: Record) -> list[dict]:
     for d in sorted(base.iterdir()) if base.is_dir() else []:
         if (d / "plan.json").exists():
             plan = load_plan(rec, d.name)
+            ready = is_ready(rec, d.name)
             out.append({"id": d.name, "title": plan.get("title"), "goal": plan.get("goal"),
-                        "nodes": len(plan.get("nodes", [])), "ready": is_ready(rec, d.name)})
+                        "nodes": len(plan.get("nodes", [])), "ready": ready,
+                        # words and questions pass although voice, figures or animation are still being made
+                        "teachable": ready or teachable(rec, d.name, media=False)["teachable"]})
     return out
 
 
@@ -374,8 +377,211 @@ def segments_for(rec: Record, bundle: str, node: str) -> dict | None:
     if n is None:
         return None
     clip = None if _clip_left_out(n.get("clip")) else n.get("clip")
+    d = bundle_dir(rec, bundle)
     return {"node": node, "title": n.get("title"), "segments": n.get("segments", []), "visuals": n.get("visuals", []),
-            "animation": n.get("animation"), "clip": clip, "base": f"bundles/{bundle}/"}
+            "animation": n.get("animation"), "clip": clip, "base": f"bundles/{bundle}/",
+            "code": [c for c in media_readiness(d, n, check_engines=False)["code"]["examples"]],
+            "readiness": media_readiness(d, n, check_engines=False)}
+
+
+# ---- what can be shown, and what the learner is shown ---------------------------------------------------------------
+# The first four rows of the gate are about words and questions; the rest are about media. A bundle whose words and
+# questions pass can be taught (start accepts it) while its voice, figures or animation are still being made: no engine
+# that is missing ever blocks the text or the assessment, and the lesson says plainly what is missing.
+TEXT_ROWS = ("narration", "claims", "check items", "probe items", "close items", "transfer item")
+MEDIA = ("text", "static-visual", "animation", "code")
+FALLBACK = {"animation": ("static-visual", "text"), "static-visual": ("text",), "code": ("text",), "text": ()}
+# What the idea is about decides the medium; the learner's own request for another kind of explanation decides first.
+NATURE_MEDIUM = {"relationship": "static-visual", "geometry": "static-visual", "structure": "static-visual",
+                 "comparison": "static-visual", "change": "animation", "process": "animation",
+                 "dynamics": "animation", "convergence": "animation", "sampling": "code", "simulation": "code",
+                 "computation": "code", "algorithm": "code", "definition": "text", "proof": "text",
+                 "derivation": "text", "concept": "text"}
+REQUEST_MEDIUM = {"visual": "static-visual", "physical-interpretation": "static-visual", "implementation": "code",
+                  "simpler": "text", "more-rigorous": "text", "derivation": "text", "analogy": "text",
+                  "worked-example": "text", "prerequisites": "text"}
+WHY = {"text": "Words and symbols carry the idea; a figure, animation or program would add nothing the explanation lacks.",
+       "static-visual": "One figure shows the relationship between the quantities at once.",
+       "animation": "Only movement over time shows how it changes.",
+       "code": "Running and varying a program shows behaviour that changes from run to run or comes from a computation, "
+               "which reading cannot."}
+_ENGINES: dict = {}
+
+
+def teachable(rec: Record, bundle: str, media: bool = True) -> dict:
+    """Whether a bundle can be taught now: words and questions pass the gate. ``ready`` is the full gate (voice, figures,
+    animation too); ``missing_media`` lists what is still being made. With ``media=False`` only the text rows run, which
+    is cheap enough for a list: no file is hashed."""
+    gate = Gate(rec, bundle_dir(rec, bundle), load_plan(rec, bundle), speech_text)
+    text, missing = [], []
+    for row in ROWS:
+        wanted = row.name in TEXT_ROWS
+        if not (wanted or media):
+            continue
+        for node in (gate.plan["nodes"] if row.per_node else [None]):
+            for problem in row.check(gate, node)[0]:
+                (text if wanted else missing).append(f"{row.name}{' / ' + node['id'] if node else ''}: {problem}")
+    return {"bundle": bundle, "teachable": not text, "ready": not text and not missing if media else None,
+            "missing_text": text, "missing_media": missing}
+
+
+def engines(refresh: bool = False) -> dict:
+    """Which optional engines this computer has, as honest states (nothing is installed or started). Cached for a minute:
+    probing a renderer runs it for its version."""
+    import time
+    now = time.monotonic()
+    if not refresh and _ENGINES.get("at") and now - _ENGINES["at"] < 60:
+        return _ENGINES["value"]
+    out = {}
+    try:
+        out["voice"] = {"state": "available" if voice_configured() else "unavailable",
+                        "note": "" if voice_configured() else "no voice engine is configured; narration is shown as text"}
+    except Exception as error:  # an engine that fails to report is a missing engine, not an error
+        out["voice"] = {"state": "unavailable", "note": f"voice engine check failed: {type(error).__name__}"}
+    try:
+        from .lib import animate
+        caps = animate.capabilities()
+        out["animation"] = {"state": "available" if caps.get("backends") else "unavailable",
+                            "backends": [b.get("backend") for b in caps.get("backends", [])],
+                            "note": "" if caps.get("backends") else "no animation renderer found; key-frame panels or a "
+                                                                    "static figure are shown instead"}
+    except Exception as error:
+        out["animation"] = {"state": "unavailable", "note": f"animation engine check failed: {type(error).__name__}"}
+    try:
+        from .lib import appcontainer
+        ok, why = appcontainer.available()
+        out["renderer"] = {"state": "available" if ok else "unavailable",
+                           "note": "" if ok else "the safe figure renderer is not available on this computer: " + str(why)}
+    except Exception as error:
+        out["renderer"] = {"state": "unavailable", "note": f"renderer check failed: {type(error).__name__}"}
+    out["code"] = {"state": "recorded-only",
+                   "note": "Research OS does not run lesson code itself; an example shows the execution an agent or the "
+                           "learner reported, with the hash of the code it ran"}
+    _ENGINES.update(at=now, value=out)
+    return out
+
+
+def code_provenance(d: Path, example: dict) -> dict:
+    """What is known about a code example: the file, its hash now, and the execution recorded for exactly that hash. An
+    example never claims to have run unless a recorded execution names the same code; Research OS runs nothing here."""
+    path = example.get("path")
+    out = {"path": path, "language": example.get("language", "python"), "sha256": example.get("sha256"),
+           "executed": False, "verified_by_research_os": False}
+    if not _file(d, path):
+        return {**out, "state": "missing", "note": "the code file is not in the bundle"}
+    actual = _sha(d / path)
+    if example.get("sha256") and example["sha256"] != actual:
+        return {**out, "state": "changed", "sha256_now": actual,
+                "note": "the code changed after it was recorded; any recorded run is for the old code"}
+    run = example.get("execution")
+    if not isinstance(run, dict) or not run:
+        return {**out, "state": "not-run", "sha256_now": actual,
+                "note": "shown as code to read; no execution was recorded"}
+    need = ("ran_at", "runtime", "exit_code", "ran_by")
+    if any(k not in run for k in need) or run.get("sha256") not in (None, actual):
+        return {**out, "state": "unproven", "sha256_now": actual,
+                "note": "an execution is recorded without " + ", ".join(k for k in need if k not in run)
+                        if any(k not in run for k in need) else "the recorded execution names different code"}
+    return {**out, "state": "run-recorded", "executed": run["exit_code"] == 0, "sha256_now": actual,
+            "execution": {k: run[k] for k in (*need, "output_sha256", "output_excerpt", "seed") if k in run},
+            "note": f"run by {run['ran_by']} on {run['ran_at']} ({run['runtime']}), exit code {run['exit_code']}; "
+                    "reported, not re-run by Research OS"}
+
+
+def media_readiness(d: Path, node: dict, check_engines: bool = True) -> dict:
+    """Per medium, what a learner can be shown for one node right now, with the reason when something is missing."""
+    segments = node.get("segments", [])
+    text = {"state": "ready" if segments and all((s.get("text") or "").strip() for s in segments) else "missing"}
+    if text["state"] == "missing":
+        text["note"] = "the node has no narration text yet"
+    visuals = node.get("visuals", [])
+    if not visuals:
+        visual = {"state": "not-planned"}
+    elif all(_file(d, v.get("path")) for v in visuals):
+        visual = {"state": "ready", "count": len(visuals)}
+    else:
+        visual = {"state": "not-rendered", "note": "the figure is not rendered yet; the explanation is in the text"}
+        if check_engines and engines()["renderer"]["state"] != "available":
+            visual["note"] += "; " + engines()["renderer"]["note"]
+    spoken = [s for s in segments if _file(d, s.get("audio"))]
+    audio = {"state": "ready" if segments and len(spoken) == len(segments) else "not-spoken"}
+    if audio["state"] != "ready" and check_engines and engines()["voice"]["state"] != "available":
+        audio["note"] = engines()["voice"]["note"]
+    anim = node.get("animation") or {}
+    if not node.get("dynamic") and not anim:
+        animation = {"state": "not-planned"}
+    elif all(_file(d, anim.get(k)) for k in ("video", "poster", "keyframes")):
+        animation = {"state": "ready" if anim.get("looked_at") else "unchecked",
+                     **({} if anim.get("looked_at") else {"note": "rendered, but its key frames were not looked at"})}
+    else:
+        animation = {"state": "not-rendered", "note": "the animation is not rendered; a static figure or the text "
+                                                       "carries the idea"}
+        if check_engines and engines()["animation"]["state"] != "available":
+            animation["note"] += "; " + engines()["animation"]["note"]
+    examples = [code_provenance(d, c) for c in node.get("code", []) if isinstance(c, dict)]
+    code = {"state": "not-planned" if not examples else "ready" if all(e["state"] != "missing" for e in examples)
+            else "missing", "examples": examples}
+    return {"text": text, "static-visual": visual, "narration-audio": audio, "animation": animation, "code": code}
+
+
+def choose_medium(goal: str, nature: str | None = None, requested: str | None = None, node: dict | None = None,
+                  directory: Path | None = None, probe_engines: bool = False) -> dict:
+    """Choose text, a static visual, an animation or runnable code for one learning goal, and say why. The words always
+    come first and always work; a medium that is not ready is replaced by the next one that is, and the result states
+    what was missing. ``requested`` is the learner's own ask (an explanation mode); it beats ``nature``, what the idea
+    is about (relationship, change, sampling ...). Deterministic: the same inputs give the same choice."""
+    if requested is not None and requested not in REQUEST_MEDIUM:
+        raise ValueError("requested is one of " + ", ".join(sorted(REQUEST_MEDIUM)))
+    if nature is not None and nature not in NATURE_MEDIUM:
+        raise ValueError("nature is one of " + ", ".join(sorted(NATURE_MEDIUM)))
+    if requested:
+        chosen, basis = REQUEST_MEDIUM[requested], f"the learner asked for the {requested} explanation"
+    elif node and node.get("dynamic"):
+        chosen, basis = "animation", "the prepared node is marked as dynamic"
+    elif nature:
+        chosen, basis = NATURE_MEDIUM[nature], f"the idea is about {nature}"
+    else:
+        chosen, basis = "text", "nothing about the idea asks for more than an explanation"
+    reason = f"{goal}: {basis}. {WHY[chosen]}"
+    ready = media_readiness(directory, node, check_engines=probe_engines) if directory is not None and node is not None else None
+    delivered, notes = chosen, []
+    if ready is not None:
+        for medium in (chosen, *FALLBACK[chosen]):
+            state = ready[medium]["state"]
+            if medium == "text" or state in ("ready", "unchecked"):
+                delivered = medium
+                break
+            notes.append(f"{medium}: {ready[medium].get('note') or state}")
+    elif chosen != "text":
+        delivered = "text"
+        notes.append(f"{chosen}: nothing is prepared for this part; it is explained in words")
+    out = {"goal": goal, "chosen": chosen, "delivered": delivered, "reason": reason, "text_first": True,
+           "blocks_teaching": False, "notes": notes}
+    if ready is not None:
+        out["readiness"] = ready
+    if delivered != chosen:
+        out["reason_delivered"] = f"{chosen} is not ready; {delivered} is shown instead and the lesson goes on"
+    return out
+
+
+def attach_code(rec: Record, bundle: str, node: str, path: str, language: str = "python",
+                execution: dict | None = None) -> dict:
+    """Record a code example of a node (a file already in the bundle) with its hash, and the execution somebody reported
+    for exactly that code. Nothing is run here."""
+    d, plan = bundle_dir(rec, bundle), load_plan(rec, bundle)
+    target = next((n for n in plan["nodes"] if n["id"] == node), None)
+    if target is None:
+        raise KeyError(f"no node {node} in {bundle}")
+    if not _file(d, path):
+        raise ValueError("the code file must already be in the bundle (bundle_file)")
+    entry = {"path": path, "language": language, "sha256": _sha(d / path)}
+    if execution:
+        if not isinstance(execution, dict) or any(k not in execution for k in ("ran_at", "runtime", "exit_code", "ran_by")):
+            raise ValueError("an execution needs ran_at, runtime, exit_code and ran_by")
+        entry["execution"] = {**execution, "sha256": entry["sha256"]}
+    target["code"] = [c for c in target.get("code", []) if c.get("path") != path] + [entry]
+    save_plan(rec, bundle, plan)
+    return code_provenance(d, entry)
 
 
 # ---- helpers ------------------------------------------------------------------------------------------------------
