@@ -42,11 +42,13 @@ def select(rec, conversation, query, budget=8000):
         data = event['data']
         text = data.get('text', '')
         room = message_budget - used
-        if room < 180: continue
+        newest_person = index == len(candidates)-1 and event['type'] == 'conversation.message'
+        if newest_person: room = max(room, len(text))  # the person's current message is never cut
+        elif room < 180: continue
         # Even a single long turn cannot silently overflow the bound.
         if len(text) > room:
             if index not in (0, len(candidates)-1): continue
-            if index == len(candidates)-1:
+            if index == len(candidates)-1:  # newest assistant turn only
                 half = max(0, (room-80)//2)
                 text = text[:half] + '\n[Middle omitted; original remains in the record.]\n' + text[-half:]
             else:
@@ -107,7 +109,8 @@ def select(rec, conversation, query, budget=8000):
         refs.pop(); selection['omitted_evidence'] += 1
     while len(json.dumps(result, ensure_ascii=False)) > budget:
         longest = next((row for row in result['messages'][:-1] if len(row['content']) > 80), None)
-        if longest is None: longest = result['messages'][-1] if result['messages'] else None
+        if longest is None and result['messages'] and selection['selected'][-1].get('role', result['messages'][-1]['role']) != 'user':
+            longest = result['messages'][-1]
         if longest and len(longest['content']) > 80:
             keep = max(80, len(longest['content']) // 2)
             if longest is result['messages'][-1]:
