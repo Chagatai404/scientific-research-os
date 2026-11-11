@@ -168,6 +168,7 @@ ACTIVE = {}
 SCHEDULED = set()  # submissions not yet inside execute/engine_process
 # Retrying a model turn that lost its connection: pauses before attempts 2, 3 and 4 of a reply (3 retries = "attempt k of 3" after the first).
 RETRY_DELAYS = (5, 20, 60)
+HEARTBEAT_EVERY = 10  # seconds between a running turn's proofs of life (runs.STALE_AFTER is how long silence is tolerated)
 ONLINE_WAIT = 120  # how long a retry waits for the internet to come back before trying anyway
 LOCK = threading.Lock()
 FOREGROUND = threading.Semaphore(1)
@@ -307,6 +308,9 @@ class TurnHalt(BaseException):
     error for the model; ``execute`` converts it to the run's readable failure."""
 
 
+STEER_NOTE = ('\n\nSystem note: while you were replying, the person sent you this message (their own words): {said}. Take it into account now and '
+              'continue your reply from where it stopped; do not repeat what you already wrote. What you already wrote: {written}')
+STEERING_KEY = 'message_from_the_person_while_you_work'
 NARRATION_NOTE = ('\n\nSystem note: your last message ended without a reply to the person. Put your answer to them in your reply text '
                   'now, in plain prose; do not narrate or call more tools unless you still need one.')
 
@@ -452,6 +456,10 @@ def launch_operation(rec,result):
         threading.Thread(target=execute_operation,args=(rec,identifier),daemon=True).start()
     return result
 
+def runs_sweep(rec):
+    """Turns whose worker stopped heartbeating become interrupted, wherever that worker ran (also when a recycled process id looks alive)."""
+    return api.call('run_sweep', rec)['interrupted']
+
 def recover(rec):
     import os
     def live(row):
@@ -461,6 +469,7 @@ def recover(rec):
         if not isinstance(pid, int) or pid == os.getpid(): return False
         return process_alive(pid)
     counts={'operations':0,'runs':0,'notebooks':0}
+    counts['runs']+=len(runs_sweep(rec))
     for row in api.call('operation_list',rec):
         if row['state'] in ('queued', 'running') and not live(row):
             counts['operations']+=1
@@ -638,10 +647,16 @@ def execute(rec, result, request, legacy_engine=None):
             _stop_entry(entry)
             raise ValueError('run cancelled')
     def watch_cancel():
+        beat = time.monotonic()
         while not watch_stop.wait(.1):
             try: check_cancel()
             except ValueError: return
             except Exception: LOG.warning('run %s: cancellation state could not be read', run, exc_info=True)
+            if time.monotonic() - beat >= HEARTBEAT_EVERY:
+                beat = time.monotonic()
+                # Silence from the model (thinking, a long tool) is not silence from the worker: this proves the turn is alive.
+                try: api.call('run_heartbeat', rec, run=run)
+                except Exception: LOG.warning('run %s: a heartbeat could not be recorded', run, exc_info=True)
     watcher = threading.Thread(target=watch_cancel, name='ros-run-cancel', daemon=True)
     watcher.start()
     buffer, output, last = '', '', time.monotonic()
@@ -655,7 +670,7 @@ def execute(rec, result, request, legacy_engine=None):
     opened = {}
     def flush():
         nonlocal buffer, last
-        if buffer: api.call('run_output', rec, run=run, text=buffer); buffer = ''; last = time.monotonic()
+        if buffer: api.call('run_output', rec, run=run, text=buffer, final=True); buffer = ''; last = time.monotonic()  # after a stop it still lands
     shown = {'text': None, 'count': 0}
     def set_status(text):
         """What the person sees instead of "Working on your question…" while the connection is in trouble, kept as a `status` step of
@@ -783,11 +798,19 @@ def execute(rec, result, request, legacy_engine=None):
         if before == 1:
             turn['rejected'][fingerprint] = 2
             raise ValueError(f'This {name} call was rejected twice with the same arguments and was not run again. Change the arguments (or use a different tool) now; sending it a third time ends the turn.')
-        try: return tool_call(name, args, operation)
+        try: value = tool_call(name, args, operation)
         except providers.ProviderError: raise
         except (ValueError, KeyError):
             turn['rejected'][fingerprint] = 1
             raise
+        return steered(value)
+    def steered(value):
+        """The person's steering messages, given to the model with the result of this tool call (never stored in the committed step)."""
+        try: said_now = [item['text'] for item in api.call('run_steer_take', rec, run=run)]
+        except Exception:
+            LOG.warning('run %s: steering messages could not be read', run, exc_info=True); return value
+        if not said_now: return value
+        return dict(value, **{STEERING_KEY: said_now}) if isinstance(value, dict) else {'result': value, STEERING_KEY: said_now}
     def run_role(spec, operation):
         """One independent role as its own bounded provider run: a fresh context (its instructions and the brief, never this
         conversation), its own tools, a report as the result. It runs outside the registry lock, on its own step budget, and
@@ -944,6 +967,14 @@ def execute(rec, result, request, legacy_engine=None):
                     # Narration guard: the model wrote prose around its tool calls but ended with no reply. Told once, to answer in its reply.
                     turn['redirected'] = True; turn['narrated'] = False
                     converse(NARRATION_NOTE)
+                    if turn['halt']: raise ValueError(turn['halt'])
+                for _ in range(2):
+                    # No tool boundary came: a steering message is handed over after the turn, in this same run, never as a parallel one.
+                    try: late = [item['text'] for item in api.call('run_steer_take', rec, run=run)]
+                    except Exception: LOG.warning('run %s: steering messages could not be read', run, exc_info=True); break
+                    if not late or entry['cancel'].is_set(): break
+                    if output.strip(): emit('\n\n')
+                    converse(STEER_NOTE.format(said=json.dumps(late, ensure_ascii=False), written=json.dumps(output[-1500:], ensure_ascii=False)))
                     if turn['halt']: raise ValueError(turn['halt'])
                 set_status(None)
                 if reported and (reported.get('usage') is not None or reported.get('cost') is not None):api.call('run_usage',rec,run=run,usage=reported.get('usage'),cost=reported.get('cost'))

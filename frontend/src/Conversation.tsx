@@ -1,11 +1,11 @@
 import {EffortSlider} from './controls';
-import {useEffect, useRef, useState, type FormEvent, type ReactNode} from 'react';
+import {Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode} from 'react';
 import {call, human, href, preference, savePreference, service} from './api';
 import {RichText} from './Document';
 import {Graph} from './Graph';
 import {Menu} from './overlay';
 import {AttachMenu, chipKind, chipName, loadAttachments, saveAttachments, MAX_ATTACHMENTS, type Attached} from './AttachMenu';
-import {useResource} from './hooks';
+import {useRecordRevision, useResource} from './hooks';
 import type {SourceRef} from './desktop';
 import type {QualifiedRef} from './contracts';
 import type {Run} from './Workbench';
@@ -18,7 +18,44 @@ import {ModeBadge, QuickStarts, SESSION_MODES, startModeOf} from './sessionModes
 import './classroom.css';
 
 
-interface Chat {conversation: string; title: string; mode?: string; messages: {id: string; role: string; text: string; model?: string;scope?:SourceRef[]}[]; pending: string[]; compaction?: {id: string; through: string; covered: number; method: string} | null; interrupted: number; lesson?: {lesson: string; record?: string | null} | null; plan?: {hub: string; record?: string | null} | null}
+/** The reply that is running in a conversation, as the record states it (so a reloaded or reopened window finds it again). */
+export interface RunningTurn {run: string; request: string; state: string; cursor: number; steers: {text: string; delivered: boolean}[]}
+/** What a stopped, interrupted or failed reply had already written: kept in the run, shown after the message it answered. */
+export interface PartialReplyData {request: string; run: string; state: string; text: string; after?: string | null}
+export interface Retryable {request: string; run: string; state: string}
+interface Chat {conversation: string; title: string; mode?: string; messages: {id: string; role: string; text: string; model?: string;scope?:SourceRef[]; steer?: boolean; retried?: boolean}[]; pending: string[]; compaction?: {id: string; through: string; covered: number; method: string} | null; interrupted: number; lesson?: {lesson: string; record?: string | null} | null; plan?: {hub: string; record?: string | null} | null; running?: RunningTurn | null; partial?: PartialReplyData[]; retryable?: Retryable | null}
+
+/** The output of one running turn, read from a cursor: `cursor` is how many characters have been shown. */
+export interface FollowState {run: string; cursor: number; text: string}
+export interface FollowTail {run: string; text: string; cursor: number; truncated?: boolean; reset?: boolean}
+
+/** Join a `run_follow` answer to what is already shown. An answer to an older request (`after` is not the current cursor), to another
+ * run, or one that adds nothing is ignored, so text is never shown twice and never skipped; a cursor older than the kept tail replaces the text. */
+export function mergeFollow(state: FollowState, tail: FollowTail, after: number): FollowState {
+  if (tail.run !== state.run) return state;
+  if (tail.reset || tail.truncated) return {run: state.run, cursor: tail.cursor, text: tail.text};
+  if (after !== state.cursor || tail.cursor <= state.cursor) return state;
+  return {run: state.run, cursor: tail.cursor, text: state.text + tail.text};
+}
+
+const PARTIAL_LABEL: Record<string, string> = {cancelled: 'Stopped', interrupted: 'Interrupted', failed: 'Did not finish'};
+
+/** What a stopped reply had written, kept visible. It is the model's partial text, never a recorded reply. */
+export function PartialReply({partial, record}: {partial: PartialReplyData; record: string}) {
+  return <article className="message partial" aria-label="Partial reply"><div className="message-meta">{PARTIAL_LABEL[partial.state] || 'Stopped'} — partial reply kept</div><RichText text={partial.text} prefix={'partial-' + partial.run} record={record} /></article>;
+}
+
+/** The last reply did not finish: say so and offer to run the same message again. The failed attempt stays above. */
+export function RetryNotice({retryable, interrupted, busy, onRetry}: {retryable?: Retryable | null; interrupted: number; busy: boolean; onRetry: () => void}) {
+  if (!retryable && !interrupted) return null;
+  return <p className="notice" role="status">{retryable ? 'The last reply did not finish. Your message is saved.' : 'A previous response was interrupted. You can send a follow-up to continue.'}{retryable && <> <button type="button" className="retry-reply" disabled={busy} onClick={onRetry}>Retry reply</button></>}</p>;
+}
+
+/** Steering messages waiting for the model's next step. */
+export function SteerQueue({steers}: {steers?: {text: string; delivered: boolean}[]}) {
+  const waiting = (steers || []).filter(s => !s.delivered);
+  return waiting.length ? <p className="notice steer-queue" role="status">{waiting.length === 1 ? 'Your steering message is waiting' : waiting.length + ' steering messages are waiting'} for the reply’s next step; it will not start a new reply.</p> : null;
+}
 
 /** Where the model's context was compacted: the turns up to `through` are summarised for the model, and all of them stay. */
 export function splitAtCompaction<T extends {id: string}>(messages: T[], through?: string | null) {
@@ -35,6 +72,32 @@ export function CompactionDivider({count, children}: {count: number; children: R
 function latestStatus(steps?: {tool: string; result: unknown}[]) {
   const last = steps?.filter(step => step.tool === 'status').at(-1);
   return (last?.result as {text?: string} | undefined)?.text || '';
+}
+
+/** Follow a running turn's output from its cursor. Starting at zero on mount makes a reload or a reopened window show everything once; every later
+ * read asks only for what comes after the characters already shown. */
+function useRunFollow(record: string, run: string | undefined) {
+  const [state, setState] = useState<FollowState>({run: run || '', cursor: 0, text: ''});
+  const current = useRef(state); current.current = state;
+  const revision = useRecordRevision(record, true);
+  useEffect(() => {
+    if (!run) return;
+    if (current.current.run !== run) {const fresh = {run, cursor: 0, text: ''}; current.current = fresh; setState(fresh);}
+    let cancelled = false, timer: ReturnType<typeof setTimeout> | undefined;
+    async function read() {
+      const after = current.current.cursor;
+      try {
+        const tail = await call<FollowTail & {done?: boolean}>('run_follow', {run, after}, record);
+        if (cancelled) return;
+        const next = mergeFollow(current.current, tail, after);
+        if (next !== current.current) {current.current = next; setState(next);}
+        if (!tail.done) timer = setTimeout(read, 1500);
+      } catch { if (!cancelled) timer = setTimeout(read, 3000); }
+    }
+    void read();
+    return () => {cancelled = true; clearTimeout(timer);};
+  }, [record, run, revision]);
+  return run && state.run === run ? state.text : '';
 }
 
 export function Conversation({id, record, startMode, workspaceId = ''}: {id: string; record: string; startMode?: string; workspaceId?: string}) {
@@ -82,7 +145,31 @@ export function Conversation({id, record, startMode, workspaceId = ''}: {id: str
     } catch(e) {setError((e as Error).message);}
   }
   const pending = sending || (!!chat?.pending.length && (!activeRun || !['completed','failed','cancelled','interrupted'].includes(activeRun.state)));
-  async function stop() {try {if (activeRun) {await service('run-cancel', {run: activeRun.id, record}); runs.retry();}} catch (e) {setError((e as Error).message);}}
+  // The running turn comes from the conversation's own record, so a reloaded or reopened window finds it without the run list.
+  const turn = chat?.running || null;
+  const turnRun = turn?.run || (pending ? activeRun?.id : undefined);
+  const streamed = useRunFollow(record, turnRun);
+  const canSteer = !!id && !!turn && !sending;
+  const [refresh, setRefresh] = useState(0);
+  const [steering, setSteering] = useState(false);
+  async function stop() {try {if (turnRun) {await service('run-cancel', {run: turnRun, record}); runs.retry(); setRefresh(x => x + 1);}} catch (e) {setError((e as Error).message);}}
+  const owner = workspaceId ? {workspace_id: workspaceId, ref: {owner_record: record, entity_id: id}} : {};
+  async function steer() {
+    const value = text.trim(); if (!value || !canSteer || steering) return;
+    setSteering(true); setError('');
+    try {
+      await call('workspace_chat_steer', {...owner, conversation: id, text: value}, record, true);
+      savePreference(draftKey, ''); setText(''); setRefresh(x => x + 1);
+    } catch (e) {setError((e as Error).message);} finally {setSteering(false);}
+  }
+  async function retryReply() {
+    if (!chat?.retryable || steering) return;
+    setSteering(true); setError('');
+    try {
+      await call('workspace_chat_retry', {...owner, conversation: id, run: chat.retryable.run}, record, true);
+      runs.retry(); setRefresh(x => x + 1);
+    } catch (e) {setError((e as Error).message);} finally {setSteering(false);}
+  }
   function releaseMicrophone() {
     acquisition.current++;
     const capture = recorder.current;
@@ -102,9 +189,9 @@ export function Conversation({id, record, startMode, workspaceId = ''}: {id: str
       catch (e) {if (!cancelled) setError((e as Error).message);}
     }
     refresh(); return () => {cancelled = true; clearTimeout(timer);};
-  }, [id, record, sending, activeRun?.state]);
+  }, [id, record, sending, activeRun?.state, refresh]);
   useEffect(() => {const container=end.current?.closest('main');if(!container)return;const scrolled=()=>{follow.current=container.scrollTop+container.clientHeight>=container.scrollHeight-160;if(follow.current)setNewOutput(false);};container.addEventListener('scroll',scrolled,{passive:true});return()=>container.removeEventListener('scroll',scrolled);}, [id,!!chat]);
-  useEffect(() => {if (follow.current) end.current?.scrollIntoView({block: 'nearest', behavior: 'auto'});else setNewOutput(true);}, [chat?.messages.length, activeRun?.output]);
+  useEffect(() => {if (follow.current) end.current?.scrollIntoView({block: 'nearest', behavior: 'auto'});else setNewOutput(true);}, [chat?.messages.length, streamed || activeRun?.output]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -116,7 +203,9 @@ export function Conversation({id, record, startMode, workspaceId = ''}: {id: str
     if (last?.role === 'assistant' && voiceAuto && capabilities.data?.voice.kokoro && last.id !== seen.current) {seen.current = last.id; speak(last.id, last.text);}
   }, [chat?.messages, voiceAuto, capabilities.data]);
   async function send(event: FormEvent) {
-    event.preventDefault(); if (!text.trim() || pending || submitting.current || !models.selected || openingMicrophone || recording || transcribing) return;
+    event.preventDefault();
+    if (pending && canSteer) {void steer(); return;}  // a message while a reply runs steers that reply; it never starts a second one
+    if (!text.trim() || pending || submitting.current || !models.selected || openingMicrophone || recording || transcribing) return;
     submitting.current = true;
     setSending(true); setError('');
     const value = text.trim(), submittedDraft = text;
@@ -194,8 +283,8 @@ export function Conversation({id, record, startMode, workspaceId = ''}: {id: str
   return <div className={'conversation-workspace ' + (id ? 'has-conversation' : 'graph-home')} data-testid={!id ? 'graph-home' : undefined}>
     {!id && !workspaceId && <Graph record={record} focus="" embedded />}
     {id && <div className="conversation-heading"><div><div className="eyebrow">An ongoing conversation</div><h1>{chat?.title || 'Let’s work through it'}</h1></div><a className="button" href={href(workspaceId ? 'chat' : 'overview', '', record, '', {ws: workspaceId})}>New conversation</a></div>}
-    {chat && <div className="messages" aria-label="Conversation messages">{(() => {const renderMessage = (message: Chat['messages'][number]) => <article className={'message ' + message.role} key={message.id}><div className="message-meta">{message.role === 'user' ? 'You' : message.role === 'error' ? 'Could not complete' : message.model?.split(':')[0] || 'Research OS'}</div><RichText text={message.text} prefix={message.id} record={record} />{message.role==='assistant'&&message.scope?.some(ref=>ref.kind==='media')&&<button onClick={async()=>{const ref=message.scope!.find(ref=>ref.kind==='media')!;try{await call('transcription_draft',{source:ref.sourceId,path:ref.relativePath,revision:ref.revision,text:message.text,by:message.model||'tutor'},record,true);setError('Transcription draft saved. Review it beside the original in Sources.');}catch(e){setError((e as Error).message);}}}>Save Transcription Draft</button>}{message.role === 'assistant' && capabilities.data?.voice.kokoro && <button className="read-message" disabled={!!speaking} onClick={() => speak(message.id, message.text)}>{speaking === message.id ? 'Preparing Kokoro audio…' : 'Listen · Kokoro'}</button>}</article>; const cut = splitAtCompaction(chat.messages, chat.compaction?.through); return cut ? <>{cut.earlier.length > 0 && <CompactionDivider count={cut.earlier.length}>{cut.earlier.map(renderMessage)}</CompactionDivider>}{cut.later.map(renderMessage)}</> : chat.messages.map(renderMessage);})()}
-      {pending && activeRun && activeRun.steps.some(step => step.tool !== 'status') && <RunSteps steps={activeRun.steps.filter(step => step.tool !== 'status')} />}{pending && activeRun?.output && <div className="stream-output" aria-label="Partial response"><RichText text={activeRun.output} record={record}/></div>}{pending && <div className="thinking" role="status"><span className="pulse-dot" /> {activeRun?.state === 'queued' ? 'Queued for the foreground worker…' : latestStatus(activeRun?.steps) || 'Working on your question…'} <small>Your message is saved.</small></div>}{chat.interrupted > 0 && <p className="notice">A previous response was interrupted. You can send a follow-up to continue.</p>}<div ref={end} /></div>}
+    {chat && <div className="messages" aria-label="Conversation messages">{(() => {const renderMessage = (message: Chat['messages'][number]) => <Fragment key={message.id}><article className={'message ' + message.role + (message.steer ? ' steer' : '')}><div className="message-meta">{message.role === 'user' ? (message.steer ? 'You · steering the reply' : 'You') : message.role === 'error' ? 'Could not complete' : message.model?.split(':')[0] || 'Research OS'}</div><RichText text={message.text} prefix={message.id} record={record} />{message.role==='assistant'&&message.scope?.some(ref=>ref.kind==='media')&&<button onClick={async()=>{const ref=message.scope!.find(ref=>ref.kind==='media')!;try{await call('transcription_draft',{source:ref.sourceId,path:ref.relativePath,revision:ref.revision,text:message.text,by:message.model||'tutor'},record,true);setError('Transcription draft saved. Review it beside the original in Sources.');}catch(e){setError((e as Error).message);}}}>Save Transcription Draft</button>}{message.role === 'assistant' && capabilities.data?.voice.kokoro && <button className="read-message" disabled={!!speaking} onClick={() => speak(message.id, message.text)}>{speaking === message.id ? 'Preparing Kokoro audio…' : 'Listen · Kokoro'}</button>}</article>{chat.partial?.filter(p => p.after === message.id).map(p => <PartialReply key={p.run} partial={p} record={record} />)}</Fragment>; const cut = splitAtCompaction(chat.messages, chat.compaction?.through); return cut ? <>{cut.earlier.length > 0 && <CompactionDivider count={cut.earlier.length}>{cut.earlier.map(renderMessage)}</CompactionDivider>}{cut.later.map(renderMessage)}</> : chat.messages.map(renderMessage);})()}
+      {pending && activeRun && activeRun.steps.some(step => step.tool !== 'status') && <RunSteps steps={activeRun.steps.filter(step => step.tool !== 'status')} />}{pending && (streamed || activeRun?.output) && <div className="stream-output" aria-label="Partial response"><RichText text={streamed || activeRun?.output || ''} record={record}/></div>}{pending && <div className="thinking" role="status"><span className="pulse-dot" /> {activeRun?.state === 'queued' ? 'Queued for the foreground worker…' : latestStatus(activeRun?.steps) || 'Working on your question…'} <small>Your message is saved.</small></div>}{pending && <SteerQueue steers={chat.running?.steers} />}{!pending && <RetryNotice retryable={chat.retryable} interrupted={chat.interrupted} busy={steering} onRetry={retryReply} />}<div ref={end} /></div>}
     {id && !chat?.lesson && chat?.plan && <PlanCard hub={chat.plan.hub} record={chat.plan.record || record} />}
     {id && chat?.lesson && <Player key={chat.lesson.lesson} id={chat.lesson.lesson} record={chat.lesson.record || record} embedded refresh={chat.messages.length} onAnswered={notify} />}
     <div className="session-dock">{!id && <div className="mode-picker" role="group" aria-label="Session type">{SESSION_MODES.map(m => <button type="button" key={m.id} aria-pressed={mode === m.id} title={m.hint} onClick={() => setMode(m.id)}>{m.label}</button>)}<small className="muted">{SESSION_MODES.find(m => m.id === mode)?.hint}</small>{mode === 'build' && <RepoPicker record={record} />}</div>}{id && chat && <ModeBadge mode={chat.mode} record={record} />}{!id && !workspaceId && <QuickStarts record={record} />}{newOutput &&<button type="button" onClick={()=>{follow.current=true;setNewOutput(false);end.current?.scrollIntoView({block:"nearest"});}}>New Output ↓</button>}{attachments.length > 0 && <ul className="attachment-chips" aria-label="Attached to this message">{attachments.map((attachment, index) => <li className="attachment-chip" key={attachment.sourceId + attachment.relativePath + attachment.revision}><span className="chip-name" title={attachment.relativePath}>{chipName(attachment)}</span><small>{chipKind(attachment)} · {attachment.localOnly ? 'Stays on this computer' : 'May be sent to the chosen model'}</small>
@@ -205,7 +294,7 @@ export function Conversation({id, record, startMode, workspaceId = ''}: {id: str
         <Menu kind="model" label="Language model" buttonLabel={'Language model: ' + modelLabel(currentModel, capabilities.data?.models)} buttonClassName="model-picker" up button={<>{modelLabel(currentModel, capabilities.data?.models)} <span aria-hidden="true">⌄</span></>}>{close => <div className="model-options" role="group" aria-label="Language model">{capabilities.data?.models.map(m => <button key={m.id} type="button" aria-pressed={currentModel === m.id} onClick={() => {models.update(m.id); close();}}><span>{m.label}</span><small>{m.provider}</small></button>)}<a className="manage-models" href={href('settings', '', record)} onClick={close}>Manage models →</a>{!capabilities.data?.models.length && <p>Install and sign in to Codex or Claude, or start a local Ollama model.</p>}</div>}</Menu>
         <EffortSlider model={models.selected} effort={models.selectedEffort} onChange={effort => models.update(currentModel, effort)} />
         <button className={'microphone ' + (recording ? 'recording' : '')} type="button" aria-label={recording ? 'Stop recording' : 'Dictate your question'} aria-pressed={recording} disabled={openingMicrophone || transcribing || !capabilities.data?.voice.whisper} onClick={dictate}>{recording ? '■ Stop' : transcribing ? 'Transcribing…' : '◉ Voice'}</button>
-        <button type="button" className="voice-toggle" aria-pressed={voiceAuto} disabled={!capabilities.data?.voice.kokoro} onClick={() => {setVoiceAuto(!voiceAuto); savePreference('read-replies', voiceAuto ? 'off' : 'on');}}>♫ {voiceAuto ? 'Read replies on' : capabilities.data?.voice.kokoro ? 'Kokoro ready' : 'Voice unavailable'}</button></div>{pending && <button type="button" onClick={stop} disabled={!activeRun}>Stop</button>}<button className="primary send-message" disabled={pending || !models.selected || openingMicrophone || recording || transcribing} aria-label="Send message">{pending ? 'Working…' : 'Send ↑'}</button></div>
+        <button type="button" className="voice-toggle" aria-pressed={voiceAuto} disabled={!capabilities.data?.voice.kokoro} onClick={() => {setVoiceAuto(!voiceAuto); savePreference('read-replies', voiceAuto ? 'off' : 'on');}}>♫ {voiceAuto ? 'Read replies on' : capabilities.data?.voice.kokoro ? 'Kokoro ready' : 'Voice unavailable'}</button></div>{pending && <button type="button" onClick={stop} disabled={!turnRun}>Stop</button>}<button className="primary send-message" disabled={(pending ? !canSteer || !text.trim() || steering : !models.selected) || openingMicrophone || recording || transcribing} aria-label={pending && canSteer ? 'Send steering message' : 'Send message'}>{pending ? (canSteer ? 'Steer ↑' : 'Working…') : 'Send ↑'}</button></div>
     </form>
     {note && <p className="notice" role="status">{note} <button type="button" onClick={() => setNote('')}>Dismiss</button></p>}
     <p className={'composer-caption' + (!recording && !transcribing && !(capabilities.data && (!capabilities.data.models.length || !models.selected)) ? ' idle' : '')} role="status">{recording ? 'Listening locally. Stop when you’re ready; review the transcript before sending.' : transcribing ? 'Transcribing locally. Review the transcript before sending.' : capabilities.data && !capabilities.data.models.length ? 'No model available. Open Settings to connect a provider.' : capabilities.data && !models.selected ? 'The selected model is unavailable. Choose a model in Settings.' : 'Enter to send · Shift Enter for a new line'}</p>

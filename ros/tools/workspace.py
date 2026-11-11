@@ -85,6 +85,24 @@ def chat_send(rec, text, model, conversation=None, effort="medium", key=None, mo
         result = chat.send(owner, text, model, conversation, effort, key, mode, scope, answered, workspace=selected)
         return dict(result, **metadata, ref={'owner_record': owner.root.name, 'entity_id': result['conversation']})
 
+@tool("workspace_chat_steer", "Send a short steering message to the reply that is running in a conversation: recorded as the person's message, handed to the model at its next tool boundary (or right after the turn), never a parallel turn.",
+      writes=True, conversation=P("string", "conversation id"), text=P("string", "the steering message, up to 2000 characters", True),
+      ref=P('object', 'qualified existing conversation reference'), workspace_id=P('string', 'selected logical workspace'))
+def chat_steer(rec, text, conversation=None, ref=None, workspace_id=None):
+    with _chat_owner(rec, conversation, ref, workspace_id) as (owner, conversation, metadata):
+        if not conversation: raise ValueError('conversation or qualified ref is required')
+        result = chat.steer(owner, conversation, text)
+        return dict(result, **metadata, ref={'owner_record': owner.root.name, 'entity_id': conversation})
+
+@tool("workspace_chat_retry", "Run the person's last message again after its reply failed or was interrupted, without the failed tail in the model's context. Once per failed run; the failed attempt stays in the record.",
+      writes=True, conversation=P("string", "conversation id"), run=P("string", "the failed or interrupted run to retry", True),
+      ref=P('object', 'qualified existing conversation reference'), workspace_id=P('string', 'selected logical workspace'))
+def chat_retry(rec, run, conversation=None, ref=None, workspace_id=None):
+    with _chat_owner(rec, conversation, ref, workspace_id) as (owner, conversation, metadata):
+        if not conversation: raise ValueError('conversation or qualified ref is required')
+        result = chat.retry(owner, conversation, run)
+        return dict(result, **metadata, ref={'owner_record': owner.root.name, 'entity_id': conversation})
+
 @tool('workspace_watched', 'The files of the records joined to this one (Knowledge and its projects) that a live view of this workspace watches, since its map spans them.')
 def watched(rec):
     own = [rec.events_path, rec.nodes_path, rec.edges_path]

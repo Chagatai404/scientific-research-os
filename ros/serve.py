@@ -581,7 +581,12 @@ def make_handler(rec: "Record | Pool"):
                     elif sizes != last:
                         with api.LOCK, target.reading():
                             if getattr(self.server, 'closing', False): break
-                            delta = target.since(cursor, types=('run.queued', 'run.state', 'run.output', 'run.step','run.usage', 'conversation.message', 'conversation.response', 'conversation.error'))
+                            delta = target.since(cursor, types=('run.queued', 'run.state', 'run.output', 'run.step','run.usage', 'run.heartbeat', 'conversation.message', 'conversation.response', 'conversation.error'))
+                        if cursor is not None and not delta['nodes'] and not delta['edges'] and delta['events'] and all(e['type'] == 'run.heartbeat' for e in delta['events']):
+                            # A running turn's proof of life changes nothing a view shows: no view refreshes for it.
+                            cursor = delta['cursor']; last = sizes
+                            self.wfile.write(b": keep-alive\n\n"); self.wfile.flush(); time.sleep(0.5); continue
+                        delta['events'] = [e for e in delta['events'] if e['type'] != 'run.heartbeat']
                         run_only = cursor is not None and not delta['nodes'] and not delta['edges'] and delta['events'] and all(e['type'].startswith('run.') for e in delta['events'])
                         cursor = delta['cursor']
                         if run_only:

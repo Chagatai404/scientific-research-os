@@ -22,7 +22,9 @@ def send(rec, text, model, conversation=None, effort="medium", key=None, mode=No
         return _send(rec, text, model, conversation, effort, key, mode, scope, answered, workspace)
 
 
-def _send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None, answered=None, workspace=None):
+def _send(rec, text, model, conversation=None, effort="medium", key=None, mode=None, scope=None, answered=None, workspace=None, retry=None):
+    # A turn whose worker stopped beating is over: commit that before deciding whether a reply is running.
+    runs.sweep(rec)
     # A conversation keeps the mode it was started in; a follow-up that names another mode is refused, never downgraded.
     kept = (rec.node(conversation) or {}).get("mode", "chat") if conversation else None
     if mode and kept and mode != kept: raise ValueError(f'this conversation is in {kept} mode; start a new conversation for {mode}')
@@ -89,7 +91,10 @@ def _send(rec, text, model, conversation=None, effort="medium", key=None, mode=N
             raise ValueError("answered names the learner's attempt in a lesson of this learn or defend conversation")
     if conversation:
         if (rec.node(conversation) or {}).get("type") != "conversation": raise KeyError("no such conversation")
-        if history(rec, conversation)["pending"]: raise ValueError("a response is still running in this conversation")
+        running = history(rec, conversation)
+        if running["pending"]:
+            turn = running["running"] or {}
+            raise ValueError(f"a reply is already running in this conversation ({turn.get('run', 'run unknown')}); nothing was sent. Wait for it, stop it, or send a short steering message to it instead.")
         if not model.startswith(('ollama:', 'compatible:')) and any(e['data'].get('local_only') for e in rec.events(type='conversation.message', subject=conversation)):
             raise ValueError('This conversation includes local-only content and derived responses. Start a separate conversation for a cloud provider.')
     else:
@@ -105,11 +110,15 @@ def _send(rec, text, model, conversation=None, effort="medium", key=None, mode=N
             if workspace.get('hub'):
                 where.update(hub=workspace['hub']['entity_id'], hub_record=workspace['hub']['owner_record'])
         rec.put_node(conversation, "conversation", title=text[:100], model=model, mode=mode, **where)
-    request = "message:" + uuid.uuid4().hex
+    request = retry or "message:" + uuid.uuid4().hex
     for permission in permissions:execution.consume_vision_permission(rec,permission,request)
     scope=[{k:v for k,v in ref.items() if k!='visionPermission'} for ref in scope or []]
     sensitive = any(sources.get(rec, ref['sourceId'])['localOnly'] for ref in (scope or []))
-    rec.append("conversation.message", conversation, {"request": request, "text": text, "model": model, "effort": selected_effort, 'mode': mode, 'scope': scope or [], 'local_only': sensitive, **({'answered': answered} if answered else {})}, actor="person")
+    if retry:
+        # The person's message is already in the record: the retry reopens that request so a new reply can be recorded for it.
+        rec.append("conversation.retry", conversation, {"request": request, "run": key[len('retry:'):]}, actor="person")
+    else:
+        rec.append("conversation.message", conversation, {"request": request, "text": text, "model": model, "effort": selected_effort, 'mode': mode, 'scope': scope or [], 'local_only': sensitive, **({'answered': answered} if answered else {})}, actor="person")
     context = {"record": rec.root.name, "goal": (rec.node(conversation) or {}).get("title"),
                "setup": {k: v for k, v in (setup or {}).items() if k in ("kind", "record", "hub", "for_you")},
                "tasks": [{"kind": t["kind"], "brief": t.get("brief", "")[:500], "state": t["state"]} for t in tasks.tasks(rec)[:8]],
@@ -129,23 +138,43 @@ def _send(rec, text, model, conversation=None, effort="medium", key=None, mode=N
 def history(rec, conversation):
     node = rec.node(conversation)
     if not node or node["type"] != "conversation": raise KeyError("no such conversation")
-    messages, pending, scopes = [], {}, {}
+    messages, pending, scopes, asked, last_error = [], {}, {}, {}, {}
+    last_asked = None
     for event in rec.events(type="conversation", subject=conversation):
         data = event["data"]
         if event["type"] == "conversation.message":
             scopes[data['request']]=data.get('scope',[])
             messages.append({"id": event["id"], "role": "user", "text": data["text"], "model": data["model"],
-                             "effort": data.get("effort", "medium" if takes_effort(data["model"]) else None), "ts": event["ts"], 'scope':data.get('scope',[])})
+                             "effort": data.get("effort", "medium" if takes_effort(data["model"]) else None), "ts": event["ts"], 'scope':data.get('scope',[]),
+                             **({'steer': True} if data.get('steer') else {})})
+            if data.get('steer'): continue  # a steering message joins a running reply; it is never a turn of its own
+            asked[data['request']] = event["id"]; last_asked = data['request']
             pending[data["request"]] = event["ts"]
+        elif event["type"] == "conversation.retry":
+            pending[data["request"]] = event["ts"]
+            if data["request"] in last_error: messages[last_error[data["request"]]]['retried'] = True
         elif event["type"] in ("conversation.response", "conversation.error"):
             pending.pop(data["request"], None)
+            if event["type"] == "conversation.error": last_error[data["request"]] = len(messages)
             messages.append({"id": event["id"], "role": "assistant" if event["type"].endswith("response") else "error",
                              "text": data["text"], "model": data.get("model"), "effort": data.get("effort"), "ts": event["ts"], 'scope':scopes.get(data['request'],[])})
     compacted = rec.events(type=context_selection.COMPACTED, subject=conversation, limit=1)
-    listed = runs.for_conversation(rec, conversation)
-    saved_runs = {r['request']: r for r in listed}
-    active = [request for request in pending if saved_runs.get(request, {}).get('state') in ('queued', 'running', 'waiting_for_input', 'waiting_for_approval')]
+    listed = [runs.view(r) for r in runs.for_conversation(rec, conversation)]  # newest first; a turn that stopped beating reads as interrupted
+    saved_runs = {r['request']: r for r in reversed(listed)}  # the newest attempt of a request wins
+    active = [request for request in pending if saved_runs.get(request, {}).get('state') in runs.ACTIVE]
+    turn = next((r for r in listed if r['state'] in runs.ACTIVE), None)
+    live = None
+    if turn:
+        waiting = runs.steers(rec, turn['id'])
+        live = {"run": turn['id'], "request": turn['request'], "state": turn['state'], "cursor": turn['output_length'], "updated": turn.get('updated'),
+                "steers": [{"text": s['text'], "delivered": s['delivered'], "ts": s['ts']} for s in waiting]}
+    # What a stopped, interrupted or failed reply had written stays visible (the run keeps it; the conversation records no reply for it).
+    partial = [{"request": r['request'], "run": r['id'], "state": r['state'], "text": r['output'], "after": asked.get(r['request']), "model": r.get('model')}
+               for r in reversed(listed) if r['state'] in ('failed', 'cancelled', 'interrupted') and r.get('output', '').strip()][-5:]
+    last = saved_runs.get(last_asked)
+    retryable = {"request": last_asked, "run": last['id'], "state": last['state']} if last and not live and last['state'] in ('failed', 'interrupted') else None
     return {"conversation": conversation, "title": node["title"], "mode": node.get("mode", "chat"), "messages": messages[-100:], "pending": active,
+            "running": live, "partial": partial, "retryable": retryable,
             "compaction": {"id": compacted[-1]["id"], "through": compacted[-1]["data"]["last"], "covered": compacted[-1]["data"]["covered"], "method": compacted[-1]["data"]["method"]} if compacted else None,
             "interrupted": len(pending) - len(active), "lesson": lesson(listed),
             "plan": {"hub": node["hub"], "record": node.get("hub_record")} if node.get("hub") else None}
@@ -166,13 +195,55 @@ def complete(rec, conversation, request, text, model, error=False):
     if not rec.node(conversation): raise KeyError("no such conversation")
     events = rec.events(type="conversation", subject=conversation)
     if not any(e["type"] == "conversation.message" and e["data"].get("request") == request for e in events): raise ValueError("no such message request")
-    if any(e["type"] in ("conversation.response", "conversation.error") and e["data"].get("request") == request for e in events): return {"recorded": False}
+    open_ = False
+    for e in events:  # in order: a retry reopens a request whose failed attempt stays in the record
+        if e["data"].get("request") != request: continue
+        if e["type"] in ("conversation.message", "conversation.retry"): open_ = True
+        elif e["type"] in ("conversation.response", "conversation.error"): open_ = False
+    if not open_: return {"recorded": False}
     original = next(e["data"] for e in events if e["type"] == "conversation.message" and e["data"].get("request") == request)
     if model == "codex:default": model = "codex:gpt-6.1-sol"
     rec.append("conversation.error" if error else "conversation.response", conversation,
                {"request": request, "text": str(text)[:60000], "model": model,
                 "effort": original.get("effort", "medium" if takes_effort(original["model"]) else None)}, actor=model)
     return {"recorded": True}
+
+def retry(rec, conversation, run, workspace=None):
+    """Run the person's last message again after its reply failed or was interrupted. The failed attempt stays in the record; the new
+    run sees the conversation as it was before it (the failed tail is never part of the model's context). One retry per failed run."""
+    with _file_lock(rec.root / '.conversation-turn.lock'):
+        rec.refresh()
+        runs.sweep(rec, conversation)
+        if (rec.node(conversation) or {}).get("type") != "conversation": raise KeyError("no such conversation")
+        failed = runs.get(rec, run)
+        if failed['conversation'] != conversation: raise ValueError('this turn belongs to a different conversation')
+        previous = runs.by_key(rec, 'retry:' + run)
+        if previous: return {"conversation": conversation, "request": previous['request'], "run": previous['id'], "state": previous['state'], "duplicate": True}
+        now = history(rec, conversation)
+        if now['running']: raise ValueError(f"a reply is already running in this conversation ({now['running']['run']}); nothing was sent.")
+        if not now['retryable'] or now['retryable']['run'] != run:
+            raise ValueError('only the failed or interrupted reply at the end of a conversation can be retried; send a new message instead')
+        original = next(e['data'] for e in rec.events(type='conversation.message', subject=conversation) if e['data'].get('request') == failed['request'])
+        return _send(rec, original['text'], original['model'], conversation, original.get('effort') or 'medium', 'retry:' + run, original.get('mode'),
+                     original.get('scope') or [], original.get('answered'), workspace, retry=failed['request'])
+
+
+def steer(rec, conversation, text):
+    """A short message from the person to a reply that is running: recorded as their message, queued on that turn, handed to the model
+    at its next tool boundary (or right after the turn). It never starts a turn of its own."""
+    text = str(text).strip()
+    if not text or len(text) > 2000: raise ValueError('a steering message is between 1 and 2000 characters')
+    with _file_lock(rec.root / '.conversation-turn.lock'):
+        rec.refresh()
+        runs.sweep(rec, conversation)
+        if (rec.node(conversation) or {}).get("type") != "conversation": raise KeyError("no such conversation")
+        turn = next((r for r in runs.for_conversation(rec, conversation) if r['state'] in runs.ACTIVE), None)
+        if not turn: raise ValueError('no reply is running in this conversation; send your message instead')
+        message = uuid.uuid4().hex
+        queued = runs.steer(rec, turn['id'], text, message)
+        rec.append("conversation.message", conversation, {"request": "steer:" + uuid.uuid4().hex, "text": text, "model": turn['model'], "effort": None, 'mode': turn['mode'], 'scope': [], 'local_only': False, 'steer': turn['id']}, actor="person", id=message)
+        return {"conversation": conversation, "run": turn['id'], "steer": queued['steer'], "message": message, "state": turn['state']}
+
 
 def cloud_guard(rec):
     # Context/director queries can include linked records. Inspect indexed restriction facts,
