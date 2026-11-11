@@ -47,8 +47,8 @@ def _snapshot(rec):
 def inventory(rec, linked_records=()):
     """Preview explicit hub ownership and unresolved candidates across linked records.
 
-    Returns ``hubs``, ``mapped``, ``ambiguous``, ``unassigned`` and
-    ``excluded_records``. Each work row has a physical ``ref``, candidate hub
+    Returns ``hubs``, ``mapped``, ``ambiguous``, ``unassigned``, ``personal`` (marked user-level
+    knowledge) and ``excluded_records``. Each work row has a physical ``ref``, candidate hub
     ``owners`` and the metadata ``basis``. Only one explicit owner is mapped;
     title matches are always ambiguous candidates. A chosen organization parent
     overrides historical part-of placement, including an explicitly empty Inbox.
@@ -67,7 +67,7 @@ def inventory(rec, linked_records=()):
     included = {name: r for name, r in records.items() if name == anchor or
                 (user and (name == user or cfg[name].get('user') == user))}
     out = {'version': 1, 'hubs': [], 'mapped': [], 'ambiguous': [], 'unassigned': [],
-           'excluded_records': sorted(set(records) - set(included))}
+           'personal': [], 'excluded_records': sorted(set(records) - set(included))}
     with ExitStack() as stack:
         for r in included.values():
             stack.enter_context(r.reading())
@@ -86,6 +86,12 @@ def inventory(rec, linked_records=()):
                 aliases[name, ident] = key
                 if key not in hubs or name == owner:
                     hubs[key] = {'ref': _ref(*key), 'title': st['names'].get(ident) or row.get('title', ident)}
+        marked = set()
+        for name, r in included.items():
+            def mark(rows, event):
+                ref = event['data']['ref']
+                (rows.add if event['data'].get('personal') else rows.discard)((ref['owner_record'], ref['entity_id']))
+            marked |= r.fold('workspace-inventory.personal.v1', ('workspace.personal',), set, mark)
         out['hubs'] = [hubs[k] for k in sorted(hubs)]
 
         def owners(name, ident, seen):
@@ -143,7 +149,10 @@ def inventory(rec, linked_records=()):
                         result.update(owners=[h['ref'] for h in candidates], basis=['title_candidate'],
                                       reason='title_is_not_ownership')
                         out['ambiguous'].append(result)
+                    elif (name, ident) in marked:
+                        result['basis'] = ['personal_marker']
+                        out['personal'].append(result)
                     else:
                         out['unassigned'].append(result)
-    out['counts'] = {key: len(out[key]) for key in ('hubs', 'mapped', 'ambiguous', 'unassigned')}
+    out['counts'] = {key: len(out[key]) for key in ('hubs', 'mapped', 'ambiguous', 'unassigned', 'personal')}
     return out

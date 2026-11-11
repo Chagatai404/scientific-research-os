@@ -9,7 +9,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from ros import api, context, home, library, organization
+from ros import workspaces, api, context, home, library, organization
 from ros.store import Record, make_event
 
 
@@ -74,6 +74,21 @@ class WorkspaceIdentityTests(unittest.TestCase):
         self.assertEqual(resolved['workspace_id'], wid)
         api.call('workspace_member_assign', self.course, workspace_id=wid, members=refs, assigned=False)
         self.assertFalse(api.call('workspace_overview', self.course)['groups']['sessions'])
+
+    def test_archived_work_is_only_counted_and_cleared_membership_restores_legacy(self):
+        wid = api.call('workspace_identity', self.course)['workspace_id']
+        self.user.put_node('conversation:old', 'conversation', title='STAT303 old work')
+        ref = {'owner_record': 'knowledge', 'entity_id': 'conversation:old'}
+        api.call('workspace_member_assign', self.course, workspace_id=wid, members=[ref])
+        organization.archive(self.user, 'conversation:old')
+        out = api.call('workspace_overview', self.course)
+        self.assertFalse(out['groups']['sessions'])
+        self.assertEqual(out['archived_count'], 1)
+        self.assertEqual(out['archived'][0]['ref']['entity_id'], 'conversation:old')
+        organization.archive(self.user, 'conversation:old', False)
+        self.assertEqual(len(api.call('workspace_overview', self.course)['groups']['sessions']), 1)
+        self.user.append('workspace.member.cleared', wid, {'ref': ref}, actor='person')
+        self.assertFalse(workspaces._members(self.user))
 
     def test_titles_never_assign_and_unlinked_records_are_refused(self):
         self.user.put_node('source:candidate', 'source', title='STAT303 notes')
@@ -220,7 +235,7 @@ class WorkspaceIdentityTests(unittest.TestCase):
             self.assertEqual(nodes.call_count, 0, 'row rendering must use the request metadata snapshot')
             self.assertLessEqual(materials.call_count, 4, 'material folds scale with records, not rows')
             self.assertLessEqual(preferences.call_count, 4, 'display preference folds scale with records, not rows')
-            self.assertLessEqual(folds.call_count, 13)
+            self.assertLessEqual(folds.call_count, 15)
             self.assertEqual(out['counts']['sources'], 151)
             self.assertEqual(out['counts']['handouts'], 3)
             self.assertFalse(out['missing'])

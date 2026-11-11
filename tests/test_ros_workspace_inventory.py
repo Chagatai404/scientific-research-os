@@ -58,6 +58,14 @@ class WorkspaceInventoryTests(unittest.TestCase):
         self.assertEqual(len([h for h in out['hubs'] if h['ref']['entity_id'] == 'course:stat303']), 1)
         self.assertFalse(any(r['ref']['owner_record'] == 'stat303' for r in out['mapped']))
 
+    def test_personal_marker_moves_unassigned_to_personal(self):
+        ref = self.inventory()['unassigned'][0]['ref']
+        self.knowledge.append('workspace.personal', ref['entity_id'], {'ref': ref, 'personal': True}, actor='person')
+        out = self.inventory()
+        self.assertEqual([r['ref'] for r in out['personal']], [ref])
+        self.assertNotIn(ref, [r['ref'] for r in out['unassigned']])
+        self.assertEqual(out['counts']['personal'], 1)
+
     def test_title_matches_and_conflicting_membership_never_assign_ownership(self):
         out = self.inventory()
         ambiguous = {r['ref']['entity_id']: r for r in out['ambiguous']}

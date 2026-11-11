@@ -38,6 +38,15 @@ creation stores `workspace_key`; these metadata fields are identity/organization
 an earlier assignment. The canonical workspace owner's record holds the preference, while the entity's original
 record/files/history stay intact. This is navigation membership, never a scientific edge or new learning evidence.
 
+`workspace.member.cleared` (subject logical workspace id, actor `person`, append-only) stores `ref`; it removes the
+newest preference for that qualified entity so legacy placement applies again. Older records stay readable.
+
+`workspace.personal` (subject entity id, actor `person`) stores `ref` and `personal` boolean: user-level knowledge
+with no course or project workspace; the inventory reports it under `personal`, not `unassigned`.
+
+`workspace.migration.applied` (subject `migration-...`) is the ledger of one organization migration and its `writes`;
+`workspace.migration.rolled_back` records its rollback with the `skipped` writes that changed since.
+
 `capability.equivalence` (subject alias capability id, actor `person`) stores qualified revision-bound `alias`
 and `canonical` refs, `evidence` and `verified_by`. Revisions are SHA-256 of actual canonical node JSON, independent
 of external display aliases. Only explicit verification establishes equivalence; matching titles do not. A changed

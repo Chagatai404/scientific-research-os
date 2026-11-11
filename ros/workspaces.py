@@ -282,8 +282,11 @@ def _ensure(rec, kind, title, key):
 def _members(rec):
     def step(out, event):
         data = event['data']
-        out[_key(data['ref'])] = dict(data, workspace_id=event['subject'])
-    return rec.fold('workspace.members.v1', ('workspace.member.assigned',), dict, step)
+        if event['type'] == 'workspace.member.cleared':
+            out.pop(_key(data['ref']), None)  # back to legacy placement
+        else:
+            out[_key(data['ref'])] = dict(data, workspace_id=event['subject'])
+    return rec.fold('workspace.members.v1', ('workspace.member.assigned', 'workspace.member.cleared'), dict, step)
 
 
 def _group(kind):
@@ -358,7 +361,7 @@ def overview(rec, workspace_id=None):
                 rows[_key(entry['ref'])] = dict(entry, provenance={'basis': entry['basis'], 'assignment': 'legacy'})
         # An isolated record scope contains its own physical work, with qualified owners.
         if not hub:
-            for entry in inventory['mapped'] + inventory['ambiguous'] + inventory['unassigned']:
+            for entry in inventory['mapped'] + inventory['ambiguous'] + inventory['unassigned'] + inventory['personal']:
                 if entry['ref']['owner_record'] == workspace['record']:
                     rows[_key(entry['ref'])] = dict(entry, provenance={'basis': ['physical_record'], 'assignment': 'legacy'})
         preferences = _members(recs[workspace['owner_record']])
@@ -371,7 +374,7 @@ def overview(rec, workspace_id=None):
             elif key in rows and membership['workspace_id'] == wid:
                 rows.pop(key)
         groups = {name: [] for name in GROUPS}
-        missing = []
+        missing, archived = [], []
         for key, entry in sorted(rows.items()):
             owner = recs.get(key[0])
             if owner is None:
@@ -383,11 +386,15 @@ def overview(rec, workspace_id=None):
                 missing.append(entry['ref'])
                 continue
             row.update(workspace_id=wid, provenance=entry['provenance'])
+            if key[1] in snapshots[key[0]][2]['archived']:
+                archived.append(row)
+                continue
             groups[entry.get('group') or _group(row['kind'])].append(row)
         for values in groups.values():
             values.sort(key=lambda r: (r['title'].casefold(), r['ref']['owner_record'], r['ref']['entity_id']))
         return {'schema': 'ros.workspace-overview.v1', 'workspace': workspace,
-                'workspace_id': wid, 'groups': groups, 'counts': {k: len(v) for k, v in groups.items()}, 'missing': missing}
+                'workspace_id': wid, 'groups': groups, 'counts': {k: len(v) for k, v in groups.items()}, 'missing': missing,
+                'archived': archived, 'archived_count': len(archived)}
 
 
 def work_resolve(rec, ref, workspace_id=None):

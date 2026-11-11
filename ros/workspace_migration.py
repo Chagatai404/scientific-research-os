@@ -23,9 +23,10 @@ LEDGER = 'workspace.migration.applied'
 UNDONE = 'workspace.migration.rolled_back'
 PERSONAL = 'workspace.personal'
 MEMBER = 'workspace.member.assigned'
+CLEARED = 'workspace.member.cleared'
 ARCHIVE = 'organization.archived'
 WRITES = (MEMBER, PERSONAL, ARCHIVE)
-OWNED = (*WRITES, LEDGER, UNDONE)
+OWNED = (*WRITES, CLEARED, LEDGER, UNDONE)
 # Learning and assessment history the migration must leave exactly as it was.
 LEARNING = (*evidence.TYPES, 'lesson', 'decision', 'approval', 'waiver', 'assessment')
 DERIVED = ('index.sqlite', 'index.sqlite-wal', 'index.sqlite-shm', 'index.sqlite-journal', '.write.lock', '.index.lock')
@@ -288,8 +289,11 @@ def rollback_migration(rec, migration_id):
                 if prior:
                     subject, data = prior['workspace_id'], prior['data']
                 else:
-                    # The item was not shown in this workspace before, so a removal from it shows exactly what was.
-                    subject, data = w['subject'], dict(w['data'], assigned=False)
+                    # No preference existed before: clearing restores exactly the legacy placement.
+                    by_record.setdefault(w['record'], []).append(make_event(
+                        CLEARED, w['subject'], {'ref': w['data']['ref']}, actor='person', source=source,
+                        id=_event_id(migration_id, 'undo', n)))
+                    continue
             elif w['type'] == PERSONAL:
                 if workspaces._key(w['data']['ref']) not in marked:
                     skipped.append({'id': w['id'], 'reason': 'changed_since'})
@@ -359,7 +363,7 @@ def _status(recs, user, catalog, visible, snapshots):
     hubs = [w for w, e in catalog.items() if e.get('hub')]
     marked = personal(anchor)
     out = {'in_workspace': 0, 'personal': 0, 'archived': 0, 'ambiguous': 0, 'unassigned': 0}
-    for bucket in ('mapped', 'ambiguous', 'unassigned'):
+    for bucket in ('mapped', 'ambiguous', 'unassigned', 'personal'):
         for row in inv[bucket]:
             key = _key(row['ref'])
             if key[1] in snapshots[key[0]][2]['archived']:
