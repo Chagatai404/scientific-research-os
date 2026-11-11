@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased: persistent workspace continuity
+## 1.8.0: one workspace per course and project, a living graph, your own models, research and experiments in the app
 
 ### Security
 
