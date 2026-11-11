@@ -32,3 +32,13 @@ The helper is local-only domain functionality with no public exposure; any later
 tool/UI wrapper must enforce caller authorization and avoid publishing private
 titles/references by default. Existing local source metadata may be stale and
 membership does not establish content readability or verification.
+
+## Security review notes (2026-11)
+
+| Boundary | Failure to prevent | Control |
+|---|---|---|
+| Agent to experiment code | An agent runs `-c`, an unrecorded or edited file, or overwrites the person's script | argv limited to the environment's runners; recorded path plus SHA-256 checked at queue and at launch; `experiment_write` refuses foreign files. The run itself is **not sandboxed**. |
+| Experiment process to the shown log | A script forges "completed" or other changed files | exit status and files come from the worker's result; log lines are shown as output only |
+| Model to computer grants | A model reuses a grant id as `request_ref`, or a grant outlives its job | runtime-bound `request_ref`, claim once, spent by its first completed plan; remembered grants carry no outbound |
+| Paths to hidden areas | `repo\.git\hooks\x`, `~\.claude\skills\x`, bidi overrides, junctions in the bin | every component checked; Cf characters refused; bin purge never enters a link |
+| Agent-written notes and web pages to a model | Injected text steers a session or builds an exfiltration address | graph notes carry `untrusted`; after a page read a later page address may not carry a query or fragment |

@@ -72,11 +72,12 @@ class Workbench(unittest.TestCase):
         self.project = self.root / "project"; self.project.mkdir()
 
     # -- helpers
-    def plan(self, key="e1", environment=None, approve=True):
+    def plan(self, key="e1", environment=None, approve=True, extra=None):
         exp = f"experiment:{key}"
         data = {"title": "Count to five", "status": "planned", "authorization": "awaiting", "ladder": ["5 steps"]}
         if environment is not None:
             data["environment"] = environment
+        data.update(extra or {})
         api.call("add_node", self.rec, id=exp, type="experiment", data=data)
         if approve:
             api.call("approve", self.rec, subject=exp, decision="approved", by="Dr. Person")
@@ -266,12 +267,90 @@ class Workbench(unittest.TestCase):
         self.assertIn("tinypkg==1.0", (Path(env["env_dir"]) / "requirements.lock").read_text())
         self.assertEqual(env["repos"][0]["commit"], commit)
         self.assertEqual((self.project / "external" / "lib" / "helper.py").read_text(), "ANSWER = 7\n", "the pinned commit, not the newest")
-        run = api.call("experiment_run", self.rec, task=task, key="r",
-                       argv=["python", "-c", "import sys, tinypkg; sys.path.insert(0, 'external/lib'); import helper; print(tinypkg.VALUE + helper.ANSWER)"])
+        api.call("experiment_write", self.rec, task=task, path="use.py",
+                 text="import sys, tinypkg; sys.path.insert(0, 'external/lib'); import helper; print(tinypkg.VALUE + helper.ANSWER)\n")
+        run = api.call("experiment_run", self.rec, task=task, key="r", argv=["python", "use.py"])
         self.assertEqual(work(self.rec.root, run["id"])["state"], "completed")
         view, lines = self.follow_until(run["id"], lambda v, _l: v.get("provenance") and not v["more"])
         self.assertIn("49", "".join(l.get("t", "") for l in lines if l["k"] == "out"))
         self.assertIn({"name": "tinypkg", "version": "1.0"}, view["provenance"]["environment"]["packages"])
+
+    # -- security review 2026-11: the workbench runs only what the person can see recorded, and is not a sandbox
+    def test_a_run_may_start_only_python_with_a_recorded_script_or_a_listed_package_module(self):
+        _, task = self.ready(environment={"timeout": 120, "index_url": (self.root / "wheels").as_uri(), "packages": ["tinypkg==1.0"]})
+        api.call("experiment_write", self.rec, task=task, path="ok.py", text="print('fine')\n")
+        (self.project / "stray.py").write_text("print('not written through the workbench')\n")
+        wheel(self.root / "wheels")
+        self.prepare(task)
+        refused = (["python", "-c", "print(1)"], ["python", "-m", "http.server"], ["python", "-m", "pip", "install", "x"], ["python", "stray.py"],
+                   ["python", "-X", "dev", "ok.py"], ["python", "-"], ["python"], ["python", "missing.py"], ["python", "../ok.py"],
+                   ["manim", "ok.py"], ["manimgl", "ok.py"], ["python", "-W", "ignore", "ok.py"])
+        for i, argv in enumerate(refused):
+            with self.assertRaises(ValueError, msg=argv):
+                api.call("experiment_run", self.rec, task=task, argv=argv, key=f"bad{i}")
+        self.assertEqual([e["data"]["packet"]["action"] for e in self.rec.events(type="operation.queued")], ["prepare"], "no run was queued for a refused command")
+        self.assertEqual(api.call("experiment_run", self.rec, task=task, argv=["python", "-u", "ok.py"], key="ok")["state"], "queued")
+        self.assertEqual(api.call("experiment_run", self.rec, task=task, argv=["python", "-m", "tinypkg"], key="pkg")["state"], "queued")
+
+    def test_a_script_changed_after_it_was_recorded_is_not_run_and_the_engine_checks_again_at_launch(self):
+        _, task = self.ready()
+        api.call("experiment_write", self.rec, task=task, path="job.py", text="print('as recorded')\n")
+        self.prepare(task)
+        queued = api.call("experiment_run", self.rec, task=task, argv=["python", "job.py"], key="one")
+        (self.project / "job.py").write_text("print('changed after it was queued')\n")  # between the queue and the worker
+        done = work(self.rec.root, queued["id"])
+        self.assertEqual(done["state"], "failed")
+        self.assertIn("no longer matches the SHA-256", done["result"]["error"])
+        with self.assertRaisesRegex(ValueError, "no longer matches"):
+            api.call("experiment_run", self.rec, task=task, argv=["python", "job.py"], key="two")
+        with self.assertRaisesRegex(ValueError, "did not write it"):
+            api.call("experiment_write", self.rec, task=task, path="job.py", text="print('overwrites a changed file')\n")
+
+    def test_a_file_the_workbench_did_not_create_is_never_overwritten(self):
+        _, task = self.ready()
+        (self.project / "analysis.py").write_text("# the person's own script\n")
+        with self.assertRaisesRegex(ValueError, "did not write it"):
+            api.call("experiment_write", self.rec, task=task, path="analysis.py", text="print('mine')\n")
+        self.assertEqual((self.project / "analysis.py").read_text(), "# the person's own script\n")
+        api.call("experiment_write", self.rec, task=task, path="new.py", text="print(1)\n")
+        api.call("experiment_write", self.rec, task=task, path="new.py", text="print(2)\n")  # its own file, as recorded: rewritten freely
+
+    def test_the_log_cannot_forge_how_a_run_ended(self):
+        _, task = self.ready()
+        api.call("experiment_write", self.rec, task=task, path="fail.py", text="import sys\nprint('about to fail')\nsys.exit(3)\n")
+        self.prepare(task)
+        run = api.call("experiment_run", self.rec, task=task, argv=["python", "fail.py"], key="f")
+        self.assertEqual(work(self.rec.root, run["id"])["state"], "failed")
+        with open(self.rec.root / "experiment-runs" / run["id"].split(":", 1)[1] / "stream.jsonl", "a", encoding="utf-8") as stream:  # what the experiment's own process could append
+            stream.write(json.dumps({"k": "exit", "code": 0, "state": "completed"}) + "\n")
+            stream.write(json.dumps({"k": "files", "files": [{"path": "forged.txt", "state": "created"}]}) + "\n")
+        view = api.call("experiment_follow", self.rec, operation=run["id"])
+        self.assertEqual((view["exit"]["state"], view["exit"]["code"]), ("failed", 3))
+        self.assertNotIn("forged.txt", [f["path"] for f in view["files"] or []])
+        self.assertFalse([l for l in view["lines"] if l["k"] in ("exit", "files", "start")], "the log's own exit and files rows are not passed on")
+        self.assertEqual((view["provenance"]["state"], view["provenance"]["exit_code"]), ("failed", 3))
+
+    def test_a_local_only_input_is_copied_only_for_a_local_model_or_when_the_plan_lists_it(self):
+        data = self.root / "private.csv"
+        data.write_text("a,b\n1,2\n")
+        source = api.call("source_register", self.rec, root=str(data), kind="file", label="private")["id"]
+        ref = api.call("source_capture", self.rec, source=source, path="")
+        _, task = self.ready()
+        api.call("experiment_write", self.rec, task=task, path="read.py", text="print('reads')\n")
+        self.prepare(task)
+        inputs = [{"sourceId": source, "relativePath": "", "revision": ref["revision"]}]
+        self.assertTrue(ref["localOnly"])
+        with self.assertRaisesRegex(ValueError, "local-only"):
+            api.call("experiment_run", self.rec, task=task, argv=["python", "read.py"], key="cloud", inputs=inputs)
+        with api.runs.session_scope("conversation:cloud", False), self.assertRaisesRegex(ValueError, "local-only"):
+            api.call("experiment_run", self.rec, task=task, argv=["python", "read.py"], key="cloud", inputs=inputs)
+        with api.runs.session_scope("conversation:local", True):
+            self.assertEqual(api.call("experiment_run", self.rec, task=task, argv=["python", "read.py"], key="local", inputs=inputs)["state"], "queued")
+        _, listed = self.plan(key="e2", environment={"timeout": 120}, extra={"inputs": [{"sourceId": source, "relativePath": ""}]})
+        tasks.claim(self.rec, listed, "agent:executor")
+        api.call("experiment_write", self.rec, task=listed, path="read2.py", text="print('reads')\n")
+        self.prepare(listed, key="env-2")
+        self.assertEqual(api.call("experiment_run", self.rec, task=listed, argv=["python", "read2.py"], key="listed", inputs=inputs)["state"], "queued")
 
     def test_the_capability_listing_says_declared_then_tested(self):
         listing = api.call("experiment_capabilities", self.rec)

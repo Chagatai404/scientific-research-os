@@ -474,10 +474,7 @@ def _command(argv: list[str], folder: Path, env_dir: Path) -> list[str]:
         if not found:
             raise ValueError(f"{head} is not installed in this environment; list it in the plan's packages.")
         return [str(found[0]), *argv[1:]]
-    target = (folder / head).resolve(strict=True)
-    if not target.is_relative_to(folder) or not target.is_file() or target.suffix.lower() in {".bat", ".cmd", ".ps1"}:
-        raise ValueError("A program must be a file inside the project folder (no shell scripts).")
-    return [str(target), *argv[1:]]
+    raise ValueError("A run starts with python, manim or manimgl (the environment's own); no other program is run.")
 
 
 def run_experiment(packet: dict) -> dict:
@@ -492,6 +489,10 @@ def run_experiment(packet: dict) -> dict:
         if not venv_python(env_dir).is_file():
             raise ValueError("The environment is missing; prepare it again.")
         argv = _command(list(packet["argv"]), folder, env_dir)
+        for row in packet.get("verify") or []:  # every script the workbench recorded is still the one recorded, right before it can run
+            now = hashes(folder, [row["path"]])[0]
+            if now.get("sha256") != row["sha256"]:
+                raise ValueError(f"{row['path']} no longer matches the SHA-256 recorded when it was written; nothing was run.")
         scripts = list(dict.fromkeys([*packet.get("code", []), *[a for a in packet["argv"][1:2] if a.endswith(".py")]]))
         code = hashes(folder, [(cwd / s).resolve().relative_to(folder).as_posix() if (cwd / s).resolve().is_relative_to(folder) else s
                                for s in scripts])

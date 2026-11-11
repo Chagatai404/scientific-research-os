@@ -182,6 +182,7 @@ MAX_SCRIPT = 200_000
 MAX_TIMEOUT = 7200
 MAX_OUTPUT = 2 * 1024 * 1024
 RUNNERS = ("python", "manim", "manimgl")
+FLAGS = frozenset({"-u", "-B", "-O", "-OO", "-I", "-E", "-s", "-S", "-b", "-bb", "-q"})  # interpreter flags that change no code that runs
 TERMINAL = ("completed", "failed", "interrupted")
 PACKAGE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*(\[[A-Za-z0-9._,-]+\])?((===?|>=|<=|~=|!=|<|>)[A-Za-z0-9.*+!_-]+"
                      r"(,(===?|>=|<=|~=|!=|<|>)[A-Za-z0-9.*+!_-]+)*)?")
@@ -229,6 +230,79 @@ def _inside_real(folder: Path, rel: str, create: bool = False) -> Path:
     if not (parent == folder or folder in parent.parents):
         raise ValueError(f"{rel} leaves the project folder")
     return current
+
+
+def _package_name(spec: str) -> str:
+    return re.split(r"[\[=<>!~ ;,]", spec, maxsplit=1)[0].lower().replace("_", "-")
+
+
+def _written(rec: Record, experiment: str) -> dict:
+    """The newest recorded write of each path by this experiment's run tasks: ``{path: sha256}``."""
+    latest = {}
+    for e in rec.events(types=("experiment.file",)):
+        if e["data"].get("experiment") == experiment:
+            latest[e["data"]["path"]] = e["data"]["sha256"]
+    return latest
+
+
+def _recorded_script(rec: Record, experiment: str, folder: Path, rel: str, what: str) -> str:
+    """``rel`` (relative to the project folder) is a file this experiment wrote through ``experiment_write`` and it still has the
+    recorded SHA-256; returns the hash."""
+    recorded = _written(rec, experiment).get(rel)
+    if recorded is None:
+        raise ValueError(f"{what} {rel} was not written through experiment_write for this experiment, so it is not run: an agent runs only "
+                         "the scripts the person can see recorded with their hashes")
+    target = _inside_real(folder, rel)
+    if not target.is_file() or _sha(target.read_bytes()) != recorded:
+        raise ValueError(f"{what} {rel} no longer matches the SHA-256 recorded when it was written; write it again with experiment_write")
+    return recorded
+
+
+def _command(rec: Record, experiment: str, folder: Path, work: str, argv: list, spec: dict) -> list[dict]:
+    """What the plan lets this command run, or the reason it may not: the environment's own ``python`` (a script written through
+    ``experiment_write``, or ``-m`` of a package the plan lists), or ``manim``/``manimgl`` when the plan lists it and with a script written
+    through ``experiment_write``. Never ``-c``, another program, an unrecorded or changed script. Returns the scripts it launches as
+    ``[{path, sha256}]``."""
+    head, listed = argv[0], {_package_name(p) for p in spec["packages"]}
+    if head not in RUNNERS:
+        raise ValueError("a run starts with python, manim or manimgl (the environment's own); no other program and no shell is run")
+
+    def folder_path(arg: str) -> str:
+        return _relative((work + "/" if work else "") + arg, "script")
+
+    launched, module = [], None
+    if head == "python":
+        i = 1
+        while i < len(argv) and argv[i].startswith("-") and module is None:
+            if argv[i] == "-m":
+                module = argv[i + 1] if i + 1 < len(argv) else ""
+                if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.]*", module) or module.split(".")[0].lower().replace("_", "-") not in listed:
+                    raise ValueError("python -m runs only a package the approved plan lists; write a script with experiment_write instead")
+            elif argv[i] not in FLAGS:
+                raise ValueError(f"python {argv[i]} is not run: -c and other options that run code are refused; write the code as a script "
+                                 "with experiment_write")
+            i += 1
+        if module is None:
+            if i >= len(argv) or not argv[i].endswith(".py"):
+                raise ValueError("python runs a .py script written through experiment_write")
+            rel = folder_path(argv[i])
+            launched.append({"path": rel, "sha256": _recorded_script(rec, experiment, folder, rel, "the script")})
+    elif head not in listed:
+        raise ValueError(f"{head} is not listed in the approved plan's packages")
+    if head != "python" or module is not None:  # a tool or a package module reads scripts from its arguments: each one that exists is recorded
+        for arg in argv[1:]:
+            if arg.startswith("-") or not arg.endswith(".py"):
+                continue
+            rel = folder_path(arg)
+            try:
+                exists = _inside_real(folder, rel).is_file()
+            except OSError:
+                exists = False
+            if exists:
+                launched.append({"path": rel, "sha256": _recorded_script(rec, experiment, folder, rel, "the script")})
+        if head != "python" and not launched:
+            raise ValueError(f"{head} runs a scene script written through experiment_write; name it in the command")
+    return launched
 
 
 def environment_spec(node: dict) -> dict:
@@ -341,6 +415,9 @@ def experiment_write(rec: Record, task: str, path: str, text: str) -> dict:
     if target.exists() and not target.is_file():
         raise ValueError(f"{rel} is a folder")
     previous = target.read_bytes() if target.is_file() else None
+    if previous is not None and _written(rec, t["experiment"]).get(rel) != _sha(previous):
+        raise ValueError(f"{rel} already exists and this experiment did not write it (or it changed since): the workbench never overwrites a "
+                         "file it did not create. Choose another name.")
     raw = text.encode("utf-8")
     with target.open("wb") as stream:
         stream.write(raw)
@@ -398,23 +475,33 @@ def experiment_environment(rec: Record, task: str, key: str, packages: list | No
     return _queue(rec, t, op, packet, _digest([spec, env_key]), header)
 
 
+def _plan_lists(node: dict, ref: dict) -> bool:
+    """Whether the approved plan names this input (``inputs``: [{sourceId, relativePath, revision?}]) explicitly."""
+    raw = node.get("inputs")
+    if raw is None and isinstance(node.get("plan"), dict):
+        raw = node["plan"].get("inputs")
+    return any(isinstance(r, dict) and r.get("sourceId") == ref["sourceId"] and r.get("relativePath", "") == ref["relativePath"]
+               and r.get("revision") in (None, ref["revision"]) for r in raw or [])
+
+
 def experiment_run(rec: Record, task: str, argv: list, key: str, cwd: str = "", timeout: int | None = None,
                    parameters: dict | None = None, inputs: list | None = None) -> dict:
     """Queue one run of the approved experiment in the project folder, in the environment prepared for it. ``argv`` starts with
-    ``python`` (the environment's), ``manim``/``manimgl`` (installed in it) or a program inside the folder; no shell."""
+    ``python`` (the environment's: a script written through ``experiment_write``, or ``-m`` of a package the plan lists) or
+    ``manim``/``manimgl`` (listed in the plan, with a script written through ``experiment_write``); no shell, no ``-c``, no other
+    program. The engine checks every recorded script's SHA-256 again at launch.
+
+    This is not a sandbox: the run is the person's own process with the person's rights (docs/core-experience/CONTRACTS.md)."""
     t, node, plan, folder = _authorized(rec, task)
     spec = environment_spec(node)
     if not isinstance(key, str) or not key.strip() or len(key) > 200:
         raise ValueError("give the run a key (the same key delivered again is the same run)")
     if not isinstance(argv, list) or not 1 <= len(argv) <= 64 or any(not isinstance(a, str) or len(a) > 2000 or "\0" in a for a in argv):
         raise ValueError("argv is a list of 1 to 64 arguments; no shell is used")
-    if argv[0] not in RUNNERS:
-        _relative(argv[0], "program")
-        if PurePosixPath(argv[0]).suffix.lower() in SHELLS:
-            raise ValueError("shell and batch scripts are not run; use python or a program built in the folder")
     work = _relative(cwd, "working folder") if cwd else ""
     if work and not _inside_real(folder, work).is_dir():
         raise ValueError(f"{work} is not a folder in the project")
+    launched = _command(rec, t["experiment"], folder, work, argv, spec)
     limit = spec["timeout"] if timeout is None else timeout
     if not isinstance(limit, int) or not 1 <= limit <= spec["timeout"]:
         raise ValueError(f"the run's timeout is 1 to {spec['timeout']} seconds (the plan's limit)")
@@ -440,6 +527,9 @@ def experiment_run(rec: Record, task: str, argv: list, key: str, cwd: str = "", 
         if ref["revision"] != value["revision"]:
             raise ValueError("an input changed since it was chosen; capture and review its new revision")
         if value["localOnly"]:
+            if not (execution.session_local() or _plan_lists(node, ref)):
+                raise ValueError("this input is local-only: it is copied into a run only when the run's model keeps data on this computer or "
+                                 "the approved plan lists it in its inputs ({sourceId, relativePath})")
             rec.append("source.derived_private", t["experiment"], {"origin": rec.root.name})
         captured.append({**ref, "snapshot": str(rec.root / "source-snapshots" / value["revision"]),
                          "name": f"{i}-" + (PurePosixPath(ref["relativePath"]).name or "input")})
@@ -450,6 +540,7 @@ def experiment_run(rec: Record, task: str, argv: list, key: str, cwd: str = "", 
     packet = {"action": "run", "task": task, "experiment": t["experiment"], "revision": plan["revision"], "folder": str(folder),
               "env_dir": env["env_dir"], "run_dir": str(rec.root / RUNS / op.split(":", 1)[1]), "argv": argv, "cwd": work,
               "timeout": limit, "max_output": MAX_OUTPUT, "code": [s["path"] for s in _scripts(rec, task)], "inputs": captured,
+              "verify": [{"path": s["path"], "sha256": s["sha256"]} for s in _scripts(rec, task)],
               "parameters": parameters or {}, "lock_sha256": env.get("lock_sha256"), "environment": environment}
     return _queue(rec, t, op, packet, fingerprint, header)
 
@@ -499,18 +590,22 @@ def experiment_follow(rec: Record, operation: str, cursor: int = 0) -> dict:
         for line in chunk["lines"]:
             if line.get("k") == "start" and head is None:
                 head = line
-            elif line.get("k") == "files":
-                files = line.get("files")
-            elif line.get("k") == "exit":
-                exit_line = line
         if chunk["offset"] >= nxt and budget > 0:
-            lines.extend(chunk["lines"])
+            lines.extend(l for l in chunk["lines"] if l.get("k") in ("out", "err", "note"))  # the start, files and exit rows are the worker's, not the log's
             budget -= chunk["end"] - chunk["offset"]
             nxt = chunk["end"]
     total = chunks[-1]["end"] if chunks else 0
     result = row.get("result") or {}
-    if files is not None and result.get("files"):
-        files = result["files"]  # the same rows, with their diffs
+    # What the experiment's own process could write into the log is only ever shown as output: the end of the run and the files it changed
+    # come from what the worker recorded (its exit status and the folder's before/after), never from a line of the log.
+    exit_line = None
+    if row["state"] in TERMINAL:
+        exit_line = {"k": "exit", "code": result.get("exit_code"), "state": result.get("state") or row["state"], "seconds": result.get("seconds")}
+        files = [{k: v for k, v in f.items() if k != "diff"} for f in result["files"]] if isinstance(result.get("files"), list) else None
+    else:
+        files = None
+    if row["state"] in TERMINAL and isinstance(result.get("files"), list):
+        files = result["files"]  # the worker's rows, with their diffs
     out = {"operation": operation, "action": packet["action"], "task": packet.get("task"), "experiment": packet.get("experiment"),
            "revision": packet.get("revision"), "state": row["state"], "cursor": nxt, "more": nxt < total, "lines": lines,
            "header": head, "files": files, "exit": exit_line,

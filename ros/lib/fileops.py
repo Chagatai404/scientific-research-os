@@ -582,24 +582,35 @@ def _restore(p, hooks):
     return _copy(dict(p, on_collision='replace', home=None), hooks, src=p['src'], src_root=p['src_root'])
 
 
+def _purge_inside(folder):
+    """Empty one real folder. Every child is looked at with ``lstat`` (never ``is_dir``, which follows a junction on older Pythons): a
+    symlink, junction or other reparse point is removed as the entry it is and never entered, so what it points at is untouched."""
+    with os.scandir(folder) as found:
+        children = [(entry.path, entry.name) for entry in found]
+    for child, _name in children:
+        try:
+            st = os.lstat(child)
+        except OSError:
+            continue
+        if stat.S_ISLNK(st.st_mode) or getattr(st, 'st_file_attributes', 0) & REPARSE:
+            try:
+                os.unlink(child)
+            except OSError:
+                os.rmdir(child)  # a junction is removed as a folder entry, never entered
+        elif stat.S_ISDIR(st.st_mode):
+            _purge_inside(child)
+            os.rmdir(child)
+        else:
+            os.unlink(child)
+
+
 def purge_entry(bin_root, entry):
     """Remove one bin entry (its folder: the item and its manifest) once its retention ended. Only a plain folder directly in the
     bin is removed; a link found inside is removed itself, never followed. Returns whether it was removed."""
     path = os.path.join(bin_root, entry)
     if os.path.dirname(os.path.normpath(path)) != os.path.normpath(bin_root) or not os.path.isdir(path) or is_link(path):
         return False
-    for folder, dirs, files in os.walk(path, topdown=False, followlinks=False):
-        for name in files + dirs:
-            child = os.path.join(folder, name)
-            if is_link(child):
-                try:
-                    os.unlink(child)
-                except OSError:
-                    os.rmdir(child)  # a junction is removed as a folder entry, never entered
-            elif os.path.isdir(child):
-                os.rmdir(child)
-            else:
-                os.unlink(child)
+    _purge_inside(path)
     os.rmdir(path)
     return True
 

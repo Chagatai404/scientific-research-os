@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from ros import api, execution, library
+from ros import api, execution, library, runtime
 from ros.lib import credentials, desktop_operations, web
 from ros.store import Record
 
@@ -344,6 +344,27 @@ def real_page(url, text='The variance is 35/12.'):
     return {'ok': True, 'url': url, 'final_url': url, 'text': text, 'title': 'T', 'raw_sha256': hashlib.sha256(text.encode()).hexdigest(),
             'fetched_at': '2026-11-10T00:00:00Z', 'content_type': 'text/html', 'truncated': False}
 
+
+class PageTaintTests(unittest.TestCase):
+    """Once a reply has read a public page, text on that page can ask for a later address: a query string or fragment is how text is
+    carried out in an address. The run is marked by its first web_read and may read only plain addresses afterwards."""
+
+    def test_after_a_page_was_read_a_later_address_may_not_carry_a_query_or_fragment(self):
+        taint = {'sources': False}
+        runtime.outbound_guard('web_read', {'url': 'https://example.org/a?q=first'}, taint)  # nothing read yet: allowed
+        self.assertTrue(taint['web'])
+        runtime.outbound_guard('web_read', {'url': 'https://example.org/page/2'}, taint)
+        for url in ('https://example.org/x?secret=abc', 'https://example.org/x#frag', 'https://evil.example/?d=1', 'https://example.org/x?'):
+            with self.assertRaisesRegex(ValueError, 'query string or a fragment'):
+                runtime.outbound_guard('web_read', {'url': url}, taint)
+        runtime.outbound_guard('web_search', {'query': 'public words'}, taint)  # searches follow the existing rules
+        runtime.outbound_guard('source_preview', {'url': 'https://x/?y=1'}, taint)  # a tool that sends nothing out is not judged here
+
+    def test_the_existing_file_content_taint_still_refuses_every_outbound_tool(self):
+        taint = {'sources': True}
+        for name in ('web_read', 'web_search', 'literature_search', 'literature_discover'):
+            with self.assertRaisesRegex(ValueError, 'read your files'):
+                runtime.outbound_guard(name, {'url': 'https://example.org/'}, taint)
 
 class WorkerOnlyResultTests(unittest.TestCase):
     """`operation_finish` is a public tool, so a client could finish a queued web operation with page text or search results it made up.

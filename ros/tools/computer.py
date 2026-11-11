@@ -18,7 +18,7 @@ def inspect(rec, root, path='', workspace_id=None, app=None):
 
 @tool('computer_plan', 'Propose or revise a computer plan: steps with real paths and operations (copy, move, rename, mkdir, trash, delete_permanent) or a payment (spend). Returns authorized when a grant covers it, otherwise awaiting_approval with a preview for the person; a plan never grants itself anything.',
       writes=True, steps=P('array', 'steps {id, op, src?, dst?, on_collision: stop|rename|replace, verify: sha256}; a payment {id, op: spend, amount, currency, payee, purpose}', True),
-      request_ref=P('string', "the request this plan answers: the conversation, or the request id of the person's grant", True),
+      request_ref=P('string', "the request this plan answers; a model session's runtime replaces it with the session's own reference", True),
       workspace_id=P('string', 'selected workspace id; default the selected course or project, else General work'),
       plan=P('string', 'an existing plan id to revise'))
 def plan(rec, steps, request_ref, workspace_id=None, plan=None):
@@ -63,9 +63,10 @@ def approve(rec, plan, revision, decision, remember=False, permanent=False):
       ops=P('array', 'operation classes: inspect, copy, move, rename, mkdir, trash, replace, outbound', True),
       workspace_id=P('string', 'selected workspace id; default the selected course or project, else General work'),
       apps=P('array', 'app identities (not part of computer work)'), outbound=P('array', 'what may leave the computer: {kind: synced_root, target}'),
-      standing=P('boolean', 'for this workspace: later plans inside it run without asking'))
-def grant(rec, roots, ops, workspace_id=None, apps=None, outbound=None, standing=False):
-    return computer.grant(rec, roots, ops, workspace_id, apps, outbound, standing)
+      standing=P('boolean', 'for this workspace: later plans inside it run without asking'),
+      request=P('string', 'the one request (conversation id) a non-standing grant is for; omitted, the first session that plans inside it is bound to it'))
+def grant(rec, roots, ops, workspace_id=None, apps=None, outbound=None, standing=False, request=None):
+    return computer.grant(rec, roots, ops, workspace_id, apps, outbound, standing, request)
 
 
 @tool('computer_revoke', "Revoke a computer grant (a person's act): work under it stops before its next action.", human=True,

@@ -12,8 +12,10 @@ from unittest.mock import patch
 
 from ros import api, cli, home, mcp, modes, runtime
 from ros.lib import providers
+from ros import execution
 from ros.store import Record
-from test_ros_computer_files import ComputerFixture
+from ros.lib import fileops
+from test_ros_computer_files import ComputerFixture, junction
 
 HUMAN = {'computer_approve', 'computer_grant', 'computer_revoke', 'computer_undo', 'computer_cancel'}
 AGENT = {'computer_capabilities', 'computer_inspect', 'computer_plan', 'computer_run', 'computer_status', 'computer_bin'}
@@ -187,16 +189,21 @@ class Grants(ComputerFixture, unittest.TestCase):
 
     def test_credentials_profile_data_and_the_home_are_never_touched(self):
         api.call('computer_grant', self.user, roots=[{'path': str(self.src), 'access': 'write'}, {'path': str(self.dst), 'access': 'write'}],
-                 ops=['copy'], standing=True)
+                 ops=['copy', 'inspect'], standing=True)
         for name in ('.env', 'id_rsa', 'aws_credentials.txt', 'server.pem'):
             secret = self.write(self.src / name, b'TOKEN=abc')
             refused = self.plan([{'id': 'c', 'op': 'copy', 'src': str(secret), 'dst': str(self.dst)}], request_ref='r:' + name)
             self.assertEqual(refused['code'], 'scope_denied', name)
         nested = self.write(self.src / '.ssh' / 'config', b'Host x')
-        self.assertEqual(self.plan([{'id': 'c', 'op': 'copy', 'src': str(nested), 'dst': str(self.dst)}])['status'], 'awaiting_approval')
-        with self.assertRaisesRegex(ValueError, 'scope_denied'):
-            unit = self.plan([{'id': 'c', 'op': 'copy', 'src': str(nested), 'dst': str(self.dst)}])
-            api.call('computer_run', self.user, plan=unit['plan'], revision=unit['revision'])
+        refused = self.plan([{'id': 'c', 'op': 'copy', 'src': str(nested), 'dst': str(self.dst)}])
+        self.assertEqual((refused['status'], refused['code']), ('refused', 'scope_denied'), 'a file inside a hidden folder is refused at the plan')
+        for path in (self.dst / '.git' / 'hooks' / 'pre-commit', self.dst / '.claude' / 'skills' / 'x' / 'SKILL.md', self.dst / 'ok' / '.vscode' / 'tasks.json'):
+            ok = self.write(self.src / 'fine.txt')
+            self.assertEqual(self.plan([{'id': 'c', 'op': 'copy', 'src': str(ok), 'dst': str(path)}])['code'], 'scope_denied', str(path))
+            self.assertEqual(self.plan([{'id': 'c', 'op': 'mkdir', 'dst': str(path.parent)}])['code'], 'scope_denied', str(path.parent))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with self.assertRaisesRegex(ValueError, 'scope_denied.*hidden'):  # a root or an anchor under a hidden folder is refused too
+                api.call('computer_grant', self.user, roots=[{'path': str(path.parent), 'access': 'write'}], ops=['copy'])
         profile = self.write(self.base / 'AppData' / 'Roaming' / 'cookies.txt', b'session')
         self.assertEqual(self.plan([{'id': 'c', 'op': 'copy', 'src': str(profile), 'dst': str(self.dst)}])['code'], 'scope_denied')
         inside_home = self.write(home.home() / 'loot.txt', b'x')
@@ -250,6 +257,111 @@ class Grants(ComputerFixture, unittest.TestCase):
         self.assertEqual((move['status'], move['diff']['ops']), ('awaiting_approval', ['move']), 'a wider plan waits')
         self.assertIsNone(api.call('computer_capabilities', self.user)['decisions']['standing_grants_expire_after'])
 
+
+
+
+class SessionBoundGrants(ComputerFixture, unittest.TestCase):
+    """Security review, 2026-11: what a model's plan may claim, and what a grant does after it has done its work."""
+
+    def setUp(self):
+        super().setUp()
+        api.call('workspace_ensure', self.user, kind='general', title='General work', key='general')
+
+    def copy_plan(self, name, request_ref='request:from-the-model'):
+        source = self.write(self.src / name, name.encode())
+        return self.plan([{'id': 'c', 'op': 'copy', 'src': str(source), 'dst': str(self.dst)}], request_ref=request_ref)
+
+    def test_a_one_request_grant_is_bound_by_the_runtime_session_not_by_a_model_argument_and_is_spent_by_its_first_plan(self):
+        grant = self.grant(standing=False)
+        self.assertIsNone(grant['request_ref'])
+        self.assertEqual(self.copy_plan('a.txt', request_ref=grant['id'])['status'], 'awaiting_approval', 'the grant id, read from computer_list, is not a key')
+        with execution.session_scope('conversation:c1'):
+            view = self.copy_plan('a.txt', request_ref='the model wrote anything here')
+            self.assertEqual((view['status'], view['request_ref']), ('authorized', 'conversation:c1'))
+        with execution.session_scope('conversation:c2'):
+            self.assertEqual(self.copy_plan('b.txt')['status'], 'awaiting_approval', 'another session does not share the grant')
+        unit = self.go(view)
+        self.assertEqual(self.unit(unit['id'])['state'], 'completed', self.unit(unit['id']))
+        self.assertEqual(api.call('computer_status', self.user, plan=view['plan'])['status'], 'authorized', 'its own plan stays readable and retryable')
+        with execution.session_scope('conversation:c1'):
+            later = self.copy_plan('c.txt')
+            self.assertEqual(later['status'], 'awaiting_approval', 'the grant is spent once its first plan has completed')
+        with self.assertRaisesRegex(ValueError, 'scope_denied'):
+            api.call('computer_run', self.user, plan=later['plan'], revision=later['revision'])
+
+    def test_through_a_real_computer_turn_the_runtime_binds_the_request_whatever_the_model_writes(self):
+        self.grant(standing=False)
+        source = self.write(self.src / 'notes.md', b'notes')
+        seen = {}
+
+        def provider(request, emit, tool, cancel, own):
+            seen['plan'] = tool('computer_plan', {'steps': [{'id': 'c', 'op': 'copy', 'src': str(source), 'dst': str(self.dst)}],
+                                                  'request_ref': 'computer-grant:general-work:chosen-by-the-model'}, 'op-1')
+            emit('Planned.')
+            return {}
+        sent = api.call('workspace_chat_send', self.user, text='Copy my notes', model='ollama:fixture', mode='computer')
+        with patch.dict(providers.ADAPTERS, {'ollama': provider}):
+            runtime.execute(self.user, sent, sent['_engine'])
+        self.assertEqual(seen['plan']['request_ref'], 'conversation:' + sent['conversation'])
+        self.assertEqual(seen['plan']['status'], 'authorized', 'the first plan of the session claimed the grant the person made')
+
+    def test_a_grant_the_person_bound_to_a_conversation_serves_only_that_conversation(self):
+        self.grant(standing=False, request='conversation:mine')
+        with execution.session_scope('conversation:other'):
+            self.assertEqual(self.copy_plan('a.txt')['status'], 'awaiting_approval')
+        with execution.session_scope('conversation:mine'):
+            self.assertEqual(self.copy_plan('a.txt')['status'], 'authorized')
+        with self.assertRaisesRegex(ValueError, 'request'):
+            self.grant(standing=True, request='conversation:mine')
+
+    def test_a_remembered_grant_never_carries_outbound(self):
+        synced = self.dst / 'OneDrive'
+        synced.mkdir()
+        with patch.dict(os.environ, {'OneDrive': str(synced)}):
+            first = self.write(self.src / 'one.txt', b'1')
+            view = self.plan([{'id': 'c', 'op': 'copy', 'src': str(first), 'dst': str(synced)}])
+            self.assertEqual(view['status'], 'awaiting_approval')
+            api.call('computer_approve', self.user, plan=view['plan'], revision=view['revision'], decision='approve', remember=True)
+            standing = [g for g in self.gw().events(type='computer.grant') if g['data'].get('standing')]
+            self.assertEqual([g['data']['outbound'] for g in standing], [[]])
+            second = self.write(self.src / 'two.txt', b'2')
+            later = self.plan([{'id': 'c', 'op': 'copy', 'src': str(second), 'dst': str(synced)}], request_ref='request:later')
+            self.assertEqual(later['status'], 'awaiting_approval')
+            with self.assertRaisesRegex(ValueError, 'scope_denied|outbound_not_granted'):
+                api.call('computer_run', self.user, plan=later['plan'], revision=later['revision'])
+
+    def test_invisible_formatting_characters_are_refused_in_paths_and_payments(self):
+        source = self.write(self.src / 'invoice.txt', b'x')
+        for tricked in (str(self.dst / 'report‮txt.exe'), str(self.dst / 'a​b')):
+            self.assertEqual(self.plan([{'id': 'c', 'op': 'copy', 'src': str(source), 'dst': tricked}])['code'], 'path_outside_root', tricked)
+        for field in ('payee', 'purpose'):
+            step = {'id': 'p', 'op': 'spend', 'amount': 5, 'currency': 'EUR', 'payee': 'Acme', 'purpose': 'books', field: 'gnu‮qoo'}
+            self.assertEqual(self.plan([step])['code'], 'scope_denied', field)
+
+    def test_an_approval_does_not_open_names_for_listing_and_a_plan_of_an_unlinked_record_is_not_reachable(self):
+        source = self.write(self.src / 'a.txt', b'a')
+        view = self.plan([{'id': 'c', 'op': 'copy', 'src': str(source), 'dst': str(self.dst)}])
+        api.call('computer_approve', self.user, plan=view['plan'], revision=view['revision'], decision='approve', remember=True)
+        with self.assertRaisesRegex(ValueError, 'inspect'):
+            api.call('computer_inspect', self.user, root=str(self.src))
+        stranger = Record(home.init('stranger'))
+        self.addCleanup(stranger.close)
+        for name, args in (('computer_status', {'plan': 'computer-plan:stranger:abc'}), ('computer_run', {'plan': 'computer-plan:stranger:abc', 'revision': 'x'})):
+            with self.assertRaisesRegex(ValueError, 'not linked'):
+                api.call(name, self.user, **args)
+
+    def test_purging_a_bin_entry_never_enters_a_junction_or_a_link(self):
+        outside = self.base / 'outside'
+        outside.mkdir()
+        precious = self.write(outside / 'precious.txt', b'keep')
+        bin_root = self.base / 'bin'
+        entry = bin_root / 'entry'
+        (entry / 'sub').mkdir(parents=True)
+        self.write(entry / 'sub' / 'item.txt', b'x')
+        junction(outside, entry / 'sub' / 'link')
+        self.assertTrue(fileops.purge_entry(str(bin_root), 'entry'))
+        self.assertFalse(entry.exists())
+        self.assertEqual(precious.read_bytes(), b'keep', 'what the junction pointed at was not touched')
 
 if __name__ == '__main__':
     unittest.main()

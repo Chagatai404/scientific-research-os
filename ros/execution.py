@@ -298,6 +298,24 @@ def worker_scope():
     try:yield
     finally:_WORKER.depth -= 1
 
+@contextmanager
+def session_scope(ref, local=False):
+    """The block in which the runtime calls a tool for one model session: ``ref`` names the session (``conversation:<id>``) and
+    ``local`` says its provider keeps data on this computer (``runtime.is_local``). Both come from the runtime, never from a tool
+    argument, so a model cannot choose them; a call outside the block (a person's or another client's) has neither."""
+    previous = getattr(_WORKER, 'session', None)
+    _WORKER.session = {'ref': ref, 'local': bool(local)}
+    try:yield
+    finally:_WORKER.session = previous
+
+def session_ref():
+    """The runtime-bound session reference of this thread's tool call, or None."""
+    return (getattr(_WORKER, 'session', None) or {}).get('ref')
+
+def session_local():
+    """Whether the runtime says this thread's tool call runs for a provider that keeps data on this computer."""
+    return bool((getattr(_WORKER, 'session', None) or {}).get('local'))
+
 def in_worker():
     """Whether this thread is inside ``worker_scope``: the operations worker recording what its engine returned."""
     return bool(getattr(_WORKER,'depth',0))

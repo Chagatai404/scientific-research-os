@@ -28,6 +28,9 @@ class Placement(unittest.TestCase):
         env = patch.dict(os.environ, {'ROS_HOME': str(base / 'home'), 'ROS_NO_VAULT': '1'})
         env.start()
         self.addCleanup(env.stop)
+        trusted = patch.object(computer, 'TRUSTED_PARENTS', (str(TEMP),))  # the disposable folders sit under the repository's dot folders
+        trusted.start()
+        self.addCleanup(trusted.stop)
         self.folder = base / 'downloads'
         self.folder.mkdir()
         self.user = Record(home.init('knowledge'))

@@ -1,6 +1,15 @@
 """Tools for durable runs, bounded output checkpoints and operation references."""
-from .. import runs
+from .. import execution, runs
 from ..registry import P, tool
+
+# The runtime's session scope (ros/execution.py ``session_scope``): it reaches it through ``api``, never by importing the domain.
+session_scope = execution.session_scope
+
+
+def _worker(what):
+    if not execution.in_worker():
+        raise ValueError(f'Only the operations worker {what}: a client cannot keep a turn alive or take the person\'s steering messages.')
+
 
 @tool('run_list', 'Read saved runs including explicit terminal states and committed tool results.', limit=P('integer', 'maximum rows'))
 def listing(rec, limit=100): return runs.listing(rec, limit)
@@ -21,13 +30,17 @@ def transition(rec, run, state, detail=''): return runs.transition(rec, run, sta
 def output(rec, run, text, final=False): return runs.output(rec, run, text, final)
 
 @tool('run_heartbeat', 'Record that the worker of a running turn is alive. A turn silent for too long reads as interrupted; a finished turn is never revived.', writes=True, run=P('string', 'run id', True))
-def heartbeat(rec, run): return runs.heartbeat(rec, run)
+def heartbeat(rec, run):
+    _worker('records a turn\'s heartbeat')
+    return runs.heartbeat(rec, run)
 
 @tool('run_follow', 'Read the output of a run from a cursor (characters already seen), with its state, so a reloaded or reopened client resumes without repeated or missing text.', run=P('string', 'run id', True), after=P('integer', 'cursor returned by the previous read; 0 to start'))
 def follow(rec, run, after=0): return runs.follow(rec, run, after)
 
 @tool('run_steer_take', 'Claim the steering messages the person queued on a running turn, once each, to give to the model at a tool boundary.', writes=True, run=P('string', 'run id', True))
-def steer_take(rec, run): return runs.take_steers(rec, run)
+def steer_take(rec, run):
+    _worker('claims steering messages')
+    return runs.take_steers(rec, run)
 
 @tool('run_step', 'Record a committed operation result exactly once for its operation identifier.', writes=True, run=P('string', 'run id', True), operation=P('string', 'idempotency key', True), tool_name=P('string', 'tool name', True), result=P('any', 'canonical result', True))
 def step(rec, run, operation, tool_name, result): return runs.step(rec, run, operation, tool_name, result)

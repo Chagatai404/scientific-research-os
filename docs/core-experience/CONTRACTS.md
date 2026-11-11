@@ -277,6 +277,15 @@ Code: `ros/computer.py` (domain), `ros/tools/computer.py` (tools), `ros/lib/file
   grant or a standing permission.
 - Startup recovery: a unit whose owner stopped is checked against the files step by step (runtime recovery, `computer_recover`) before it is
   marked interrupted.
+- Hidden names: a plan path, a granted root or the anchor an approval derives is refused when **any** component is hidden
+  (`.git`, `.claude`, `.ssh`, `node_modules`, secrets, profile data), not just the last one. `computer.TRUSTED_PARENTS` (empty;
+  a test fixture's own base) is the only exemption, and no tool or record can set it.
+- One-request grants: a model session never chooses its `request_ref`. The runtime binds it (`execution.session_scope`,
+  `conversation:<id>`); the first such plan inside a one-request grant claims it (`computer.grant.claimed`), or the person
+  names the request with `computer_grant(request=...)`. Its first plan to complete spends it (later plans wait for approval).
+  A remembered grant (`computer_approve remember`) never carries `outbound`. `computer_inspect` needs a grant made with the
+  `inspect` operation, never an approval's widened roots. Characters of Unicode category Cf (direction overrides) are refused in
+  paths, payees and purposes. `computer_status`, `computer_run` and the person's acts reach only records linked to the caller's.
 
 ## Experiment workbench (S8D)
 
@@ -291,11 +300,22 @@ cursor), `experiment_stop` (person), `experiment_runs`, `experiment_capabilities
   plus a full commit) must be listed in the approved plan's `environment`. Anything else is refused before download.
 - Output is bounded and ordered by offset; `experiment.provenance` records where code and inputs came from, never a claim
   of verification.
+- **Not a sandbox.** A run is the person's own process with the person's rights; the workbench narrows what an *agent* can start,
+  it does not contain what a started script does. `experiment_run` starts only the environment's `python` with a script
+  written through `experiment_write` for that experiment (recorded path and SHA-256, checked again by the engine at launch), or
+  `python -m <package the plan lists>`, or a listed `manim`/`manimgl` with such a script. `-c`, other interpreter options, other
+  programs and unrecorded or changed files are refused. `experiment_write` never overwrites a file it did not create. A
+  local-only input is copied into a run only when the run's provider is local (`execution.session_scope`) or the approved plan
+  lists it in `inputs`. The live log and `STOP` file live under the record, outside the project folder; what the run's process
+  could still append there is shown only as output: `experiment_follow` takes the exit status and the changed files from the
+  worker's recorded result.
 
 ## Turn liveness (L2)
 
 Code: `ros/runs.py`, `ros/conversation.py`, `ros/runtime.py`; tools `run_*` (`run_follow`, `run_steer_take`, `run_heartbeat`).
 
+- `run_heartbeat` and `run_steer_take` are the operations worker's (`execution.worker_scope`); `workspace_chat_steer` and
+  `workspace_chat_retry` are the person's own acts (`human=True`).
 - One active turn per conversation: a send while a reply runs is refused with the active run named. Steering is the way to
   add to it.
 - Heartbeat: a running worker writes `run.heartbeat` about every 10 s (`runtime.HEARTBEAT_EVERY`). After 120 s

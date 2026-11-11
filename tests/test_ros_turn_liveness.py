@@ -78,12 +78,20 @@ class Liveness(unittest.TestCase):
 
     def test_a_heartbeat_is_a_record_event_that_keeps_the_turn_alive_and_not_a_terminal_one(self):
         sent = self.start()
-        beat = api.call("run_heartbeat", self.rec, run=sent["run"])
+        with self.assertRaisesRegex(ValueError, "operations worker"):
+            api.call("run_heartbeat", self.rec, run=sent["run"])  # a client cannot keep a turn alive
+        with self.assertRaisesRegex(ValueError, "operations worker"):
+            api.call("run_steer_take", self.rec, run=sent["run"])  # nor take the person's steering messages
+        for name in ("workspace_chat_steer", "workspace_chat_retry"):
+            self.assertTrue(api.TOOLS[name].human, name)  # steering and retrying are the person's own acts
+        with api.execution.worker_scope():
+            beat = api.call("run_heartbeat", self.rec, run=sent["run"])
         self.assertTrue(beat["recorded"])
         self.assertEqual(len(self.rec.events(type="run.heartbeat", subject=sent["run"])), 1)
         self.assertEqual(api.call("run_get", self.rec, run=sent["run"])["state"], "running")
         api.call("run_transition", self.rec, run=sent["run"], state="completed")
-        self.assertFalse(api.call("run_heartbeat", self.rec, run=sent["run"])["recorded"])  # never revives a finished turn
+        with api.execution.worker_scope():
+            self.assertFalse(api.call("run_heartbeat", self.rec, run=sent["run"])["recorded"])  # never revives a finished turn
         self.assertEqual(api.call("run_get", self.rec, run=sent["run"])["state"], "completed")
 
     def test_the_worker_beats_while_the_model_is_silent(self):
