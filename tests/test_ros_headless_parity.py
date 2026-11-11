@@ -9,11 +9,12 @@ import sys
 import time
 from pathlib import Path
 import tempfile
+from ros import execution as ros_execution
 import threading
 import unittest
 from unittest.mock import patch
 
-from ros import api, cli, home, mcp, runtime, serve
+from ros import api, cli, home, mcp, runtime, serve, tasks
 from ros.lib import providers
 from ros.store import Record
 
@@ -251,3 +252,131 @@ rec.close(); api.release()
             self.assertEqual(cli.main(['--project', 'fixture', 'run_cancel', '--run', sent['run']]), 3)
         self.assertEqual(api.call('run_get', self.rec, run=sent['run'])['state'], 'queued')
 
+
+class ExperimentWorkerPath(unittest.TestCase):
+    """An approved experiment runs through the real worker path (runtime.execute_operation, the real ``ros.lib.environments`` child),
+    started by each interface the way it starts any queued operation."""
+    LOOP = "import time\nfor i in range(600):\n    print('tick', i, flush=True)\n    time.sleep(0.1)\n"
+    COUNT = "import pathlib\nfor i in range(3):\n    print('step', i)\npathlib.Path('out.txt').write_text('done\\n')\n"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
+        self.env = patch.dict(os.environ, ROS_HOME=str(Path(self.tmp.name) / 'home'), ROS_NO_VAULT='1', UV_CACHE_DIR=str(Path(self.tmp.name) / 'uv'))
+        self.env.start(); self.addCleanup(self.env.stop)
+        self.rec = Record(home.init('fixture')); self.addCleanup(self.rec.close); self.addCleanup(api.release)
+        self.project = Path(self.tmp.name) / 'project'; self.project.mkdir()
+        api.call('record_repo', self.rec, folder=str(self.project))
+        self.exp = 'experiment:e1'
+        api.call('add_node', self.rec, id=self.exp, type='experiment', data={'title': 'Count', 'status': 'planned', 'authorization': 'awaiting', 'ladder': ['3 steps'], 'environment': {'timeout': 120}})
+        self.task = None
+
+    def approve(self):
+        api.call('approve', self.rec, subject=self.exp, decision='approved', by='Dr. Person')
+        approval = self.rec.events(type='approval', subject=self.exp)[-1]['id']
+        self.task = tasks.open_task(self.rec, 'run', self.exp, 'Run the approved experiment', data={'experiment': self.exp, 'approval': approval}, key=approval)
+        tasks.claim(self.rec, self.task, 'agent:executor')
+        api.call('experiment_write', self.rec, task=self.task, path='count.py', text=self.COUNT)
+        api.call('experiment_write', self.rec, task=self.task, path='loop.py', text=self.LOOP)
+        queued = api.call('experiment_environment', self.rec, task=self.task, key='env')
+        done = runtime.execute_operation(self.rec, queued.pop('_operation'))  # the worker's own entry point
+        self.assertEqual(done['state'], 'completed', done.get('result'))
+
+    def args(self, script, key):
+        return {'task': self.task, 'argv': ['python', script], 'key': key}
+
+    def test_unapproved_run_is_refused_and_forged_finish_or_start_is_refused(self):
+        with self.assertRaises((ValueError, KeyError)):
+            api.call('experiment_run', self.rec, task='task:none', argv=['python', 'count.py'], key='k')
+        self.assertFalse(self.rec.events(type='operation.queued'))
+        self.approve()
+        queued = api.call('experiment_run', self.rec, **self.args('count.py', 'forged'))
+        op = queued['_operation']
+        self.assertIn('experiment', ros_execution.WORKER_ONLY)
+        for name, args in (('operation_finish', {'identifier': op, 'result': {'ok': True, 'state': 'completed', 'exit_code': 0}}), ('operation_start', {'identifier': op})):
+            with self.assertRaisesRegex(ValueError, 'Only the operations worker'):
+                api.call(name, self.rec, **args)
+        self.assertEqual(next(r for r in api.call('operation_list', self.rec) if r['id'] == op)['state'], 'queued')
+        server = serve.start(self.rec, 0)
+        try:
+            connection = http.client.HTTPConnection('127.0.0.1', server.server_address[1], timeout=10)
+            connection.request('POST', '/api/operation_finish', json.dumps({'identifier': op, 'result': {'ok': True}}), {'X-ROS': '1'})
+            response = connection.getresponse(); response.read(); connection.close()
+            self.assertGreaterEqual(response.status, 400)
+        finally: server.shutdown(); server.server_close()
+        self.assertEqual(next(r for r in api.call('operation_list', self.rec) if r['id'] == op)['state'], 'queued')
+
+    def check_finished(self, op):
+        view = api.call('experiment_follow', self.rec, operation=op)
+        text = ''.join(l.get('t', '') for l in view['lines'] if l['k'] == 'out')
+        while view['more']:
+            view = api.call('experiment_follow', self.rec, operation=op, cursor=view['cursor'])
+            text += ''.join(l.get('t', '') for l in view['lines'] if l['k'] == 'out')
+        view = api.call('experiment_follow', self.rec, operation=op)
+        self.assertEqual(view['state'], 'completed', view)
+        self.assertEqual(view['provenance']['state'], 'completed')
+        self.assertEqual([o['path'] for o in view['provenance']['outputs']], ['out.txt'])
+        self.assertEqual((self.project / 'out.txt').read_text(), 'done\n')
+        self.assertIn('step 2', text)
+
+    def test_cli_runs_an_approved_experiment_in_the_worker(self):
+        self.approve()
+        with contextlib.redirect_stdout(io.StringIO()) as stdout:
+            code = cli.main(['--project', 'fixture', '--json', 'experiment_run', '--task', self.task, '--argv', json.dumps(['python', 'count.py']), '--key', 'cli'])
+        self.assertEqual(code, 0, stdout.getvalue())
+        result = json.loads(stdout.getvalue()); self.assertNotIn('_operation', result)
+        self.check_finished(result['id'])
+
+    def test_mcp_runs_an_approved_experiment_in_the_worker_and_cannot_stop_it(self):
+        self.approve()
+        message = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call', 'params': {'name': 'experiment_run', 'arguments': self.args('count.py', 'mcp')}}
+        stdout = io.StringIO()
+        mcp.serve('fixture', stdin=io.StringIO(json.dumps(message) + '\n'), stdout=stdout, automate=False)
+        self.assertNotIn('_operation', stdout.getvalue())
+        op = next(r['id'] for r in api.call('operation_list', self.rec) if r['kind'] == 'experiment' and r['id'] in {x['operation'] for x in api.call('experiment_runs', self.rec, task=self.task) if x['action'] == 'run'})
+        self.check_finished(op)
+        server = mcp.Server('fixture')
+        try: self.assertNotIn('experiment_stop', [row['name'] for row in server.tools()])
+        finally: server.close()
+
+    def test_http_follows_a_run_live_stops_it_and_records_provenance(self):
+        self.approve()
+        server = serve.start(self.rec, 0)
+        server.desktop_credential = 'person-session'  # the app's own session: the only HTTP caller of a human tool
+        def post(name, body, person=True):
+            connection = http.client.HTTPConnection('127.0.0.1', server.server_address[1], timeout=30)
+            connection.request('POST', '/api/' + name, json.dumps(body), {'X-ROS': '1', **({'X-ROS-Session': 'person-session'} if person else {})})
+            response = connection.getresponse(); value = json.loads(response.read()); connection.close()
+            if not person: return response.status
+            self.assertEqual(response.status, 200, value)
+            return value['result']
+        try:
+            run = post('experiment_run', self.args('loop.py', 'http'))
+            self.assertNotIn('_operation', run)
+            cursor, text, deadline, view = 0, '', time.monotonic() + 60, {}
+            while 'tick 2\n' not in text and time.monotonic() < deadline:
+                view = post('experiment_follow', {'operation': run['id'], 'cursor': cursor})
+                cursor = view['cursor']; text += ''.join(l.get('t', '') for l in view['lines'] if l['k'] == 'out')
+                time.sleep(.1)
+            self.assertIn('tick 2\n', text, view)
+            self.assertEqual(view['state'], 'running')  # live: the log is read while the run is still going
+            self.assertEqual(post('experiment_stop', {'operation': run['id']}, person=False), 403)  # an agent's client cannot stop it
+            started = time.monotonic()
+            self.assertTrue(post('experiment_stop', {'operation': run['id']})['stopped'])
+            while time.monotonic() - started < 40:
+                view = post('experiment_follow', {'operation': run['id'], 'cursor': cursor}); cursor = view['cursor']
+                if view['state'] == 'interrupted' and view.get('provenance'): break
+                time.sleep(.1)
+            self.assertEqual(view['state'], 'interrupted', view)
+            self.assertEqual((view['provenance']['state'], view['provenance']['stopped_by']), ('stopped', 'person'))
+            server.pool.coordinator.close()
+        finally: server.shutdown(); server.server_close()
+
+    def test_recover_marks_a_crashed_experiment_interrupted(self):
+        self.approve()
+        queued = api.call('experiment_run', self.rec, **self.args('count.py', 'crash'))
+        with api.execution.worker_scope(): api.call('operation_start', self.rec, identifier=queued['_operation'])
+        with patch.object(runtime, 'process_alive', return_value=False):
+            self.assertGreaterEqual(runtime.recover(self.rec)['operations'], 1)
+        row = next(r for r in api.call('operation_list', self.rec) if r['id'] == queued['id'])
+        self.assertEqual(row['state'], 'interrupted')
+        self.assertEqual(api.call('experiment_follow', self.rec, operation=queued['id'])['provenance']['state'], 'interrupted')

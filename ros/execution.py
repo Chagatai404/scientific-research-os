@@ -287,7 +287,7 @@ def operation_start(rec,identifier):
 # ``worker_scope``. The scope belongs to one thread and one block: no other thread, and no later call in this one, is let through.
 # Computer work (ros/computer.py) is the same: a client could otherwise finish a unit with a forged "verified" result, or claim it and
 # leave it wedged in `running`; so its kinds are also started only by the worker (WORKER_STARTS).
-WORKER_STARTS = frozenset({'computer_exec'})
+WORKER_STARTS = frozenset({'computer_exec','experiment'})  # an experiment (ros/workbench.py) runs trusted code: only the worker starts or finishes it
 WORKER_ONLY = frozenset({'web_search','web_read'}) | WORKER_STARTS
 _WORKER = threading.local()
 

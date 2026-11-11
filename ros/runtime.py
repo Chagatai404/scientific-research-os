@@ -175,6 +175,7 @@ FOREGROUND = threading.Semaphore(1)
 INDEX_JOBS = {}
 INDEX_WORKER = threading.Semaphore(1)
 ENGINE_WORKER = threading.Semaphore(1)
+EXPERIMENT_WORKER = threading.Semaphore(1)  # an experiment may run for hours: it never holds up searches, reads or file steps
 
 
 def _stop_entry(entry):
@@ -523,7 +524,7 @@ def engine_process(rec,key,argv,packet,timeout,parent_entry=None):
         if (str(rec.root),key) in ACTIVE:raise ValueError('this engine request is already running')
         ACTIVE[(str(rec.root),key)]=entry
     try:
-        with ENGINE_WORKER:
+        with (EXPERIMENT_WORKER if packet.get('kind')=='experiment' else ENGINE_WORKER):
             if entry['cancel'].is_set():return {'ok':False,'interrupted':True,'error':'Engine request cancelled'}
             import os, subprocess, sys
             env=child_env(rec,keep=search_credential(packet),PYTHONUTF8='1',PYTHONIOENCODING='utf-8')

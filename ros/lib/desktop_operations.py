@@ -110,6 +110,9 @@ def run(kind,packet,hooks=None):
         return winui.run(packet)
     if kind=='literature':return search(packet)
     if kind=='compute':return compute(packet)
+    if kind=='experiment':
+        from . import environments  # the experiment workbench's engine (ros/workbench.py): prepare, run, capabilities
+        return environments.run(packet)
     if kind in ('web_search','web_read'):
         from . import web  # public web engines; loopback is never allowed from a packet
         return web.search(packet) if kind=='web_search' else web.read(packet)
