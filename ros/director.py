@@ -23,11 +23,11 @@ import os
 import re
 import sys
 
-from . import __version__, automation, context, graph, handouts, home, install, prepare, research, roadmap, tasks, vault, workspaces
+from . import __version__, automation, computer, context, graph, handouts, home, install, prepare, research, roadmap, tasks, vault, workspaces
 from .learn import schedule
 from .store import Record, event_id
 
-KINDS = ("auto", "course", "topic", "research", "review", "continue")
+KINDS = ("auto", "course", "topic", "research", "review", "continue", "computer")
 LEARN = re.compile(r"\b(teach|learn|study|tutor|explain|understand|lecture|course|revise|prepare for|exam|midterm|final)\b", re.I)
 RESEARCH = re.compile(r"\b(investigate|research|find out|is it true|does|do|whether|compare|simulate|experiment|hypothes|"
                       r"literature|measure|why (?:does|do|is)|how (?:does|do|much))\b", re.I)
@@ -149,6 +149,9 @@ def engage(rec: Record, intent: str, kind: str = "auto", target: str | None = No
         raise ValueError(f"say what the {kind} is: pass target or write it in the intent")
     if deadline:
         date.fromisoformat(deadline)
+    if kind == "computer":
+        # Computer work never creates a course, project or user record: it goes where §7 of COMPUTER-ADAPTERS.md places it.
+        return _computer(rec, text, target, title, deadline, pace, materials, workspace_id=workspace_id)
     selected = None
     if workspace_id or home.config(rec.root).get('role') == 'project':
         selected = workspaces.identity(rec, workspace_id)
@@ -308,7 +311,42 @@ def _continue(user: Record, text, target, title, deadline, pace, materials, prov
             "portal": portal_url("director", user.root.name), "_tasks": []}
 
 
-PLAYBOOKS = {"course": _course, "topic": _topic, "research": _research, "review": _review, "continue": _continue}
+def _computer(user: Record, text, target, title, deadline, pace, materials, workspace_id=None, provenance=None):
+    """Something to do on the person's computer. It goes to the selected workspace, else the course or project the request names,
+    else General work; an ambiguous name returns the choices and General work that does not exist yet returns the portal link:
+    neither creates anything. Otherwise it opens (or, for the same words, reuses) a `computer` conversation in that workspace's
+    record, where the person and the agent make the plan. ``user`` is the record engage was called on."""
+    if not text:
+        raise ValueError("say what to do on the computer")
+    where = computer.place(user, workspace_id, target, text)
+    base = {"playbook": "computer", "kind": "computer", "status": where["status"], "agent_tasks": [], "material_refs": []}
+    if where["status"] == "ambiguous":
+        return dict(base, matches=where["matches"], for_you=["Choose which workspace this is for; nothing was created."])
+    if where["status"] == "missing":
+        return dict(base, workspace_id=computer.GENERAL, portal=portal_url("director"),
+                    for_you=["Start it with \"Do on my computer\" in the app: choosing the folders there creates General work and "
+                             "grants this request. Nothing was created."])
+    ident = where["workspace"]
+    conversation = "conversation:computer-" + hashlib.sha256(f"{ident['workspace_id']}|{text}".encode("utf-8")).hexdigest()[:12]
+    owner = ident["record"]
+    destination = user if owner == user.root.name else Record(home.home() / "projects" / owner)
+    try:
+        if destination.node(conversation) is None:
+            destination.put_node(conversation, "conversation", title=text[:100], mode="computer", workspace_id=ident["workspace_id"])
+        destination.append("intent", conversation, {"intent": text, "kind": "computer", "workspace_id": ident["workspace_id"]}, actor="person",
+                           id=event_id("intent", f"{owner}|computer|{ident['workspace_id']}|{text}"))
+    finally:
+        if destination is not user:
+            destination.close()
+    return dict(base, workspace_id=ident["workspace_id"], record=owner, owner_record=owner, selected_record=owner,
+                workspace_owner_record=ident["owner_record"], conversation=conversation,
+                portal=portal_url(f"conversation/{conversation}", owner),
+                for_you=["Say what to do in this conversation. The agent proposes a plan with the exact files; nothing on your computer "
+                         "changes until you approve it in the app or have granted it there."])
+
+
+PLAYBOOKS = {"course": _course, "topic": _topic, "research": _research, "review": _review, "continue": _continue,
+             "computer": _computer}
 
 
 def _vault_folder(rec: Record) -> dict:

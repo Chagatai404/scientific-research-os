@@ -226,6 +226,11 @@ def operation_queue(rec,kind,packet):
     rec.append('operation.queued',identifier,{'kind':kind,'packet':packet,'owner_pid':os.getpid()})
     return {'id':identifier,'state':'queued','_operation':identifier}
 
+def operation_queue_once(rec,kind,identifier,packet):
+    """Queue an operation under a deterministic id (written with ``append_once``): two clients that compute the same id queue it
+    once. Returns whether this call queued it."""
+    return rec.append_once(make_event('operation.queued',identifier,{'kind':kind,'packet':packet,'owner_pid':os.getpid()},id='operation-queued:'+identifier))
+
 def literature_search(rec,query,engine='crossref',limit=8):
     with context.linked(rec) as linked:
         if any(r.events(type='source.derived_private',limit=1) for r in linked):raise ValueError('Public searches cannot disclose a context containing local-only derived material.')
@@ -268,6 +273,7 @@ def compute_request(rec,experiment,by,reason):
 def operation_start(rec,identifier):
     row=next((r for r in operations(rec) if r['id']==identifier),None)
     if not row or row['state']!='queued':raise ValueError('Operation already started or terminal.')
+    if row['kind'] in WORKER_STARTS and not getattr(_WORKER,'depth',0):raise ValueError('Only the operations worker starts computer work.')
     if row['kind']=='compute':
         node=rec.node(row['packet']['experiment']) or {}
         if node.get('authorization')!='approved' or node.get('approved_revision')!=row['packet']['revision'] or graph.plan_revision(node)!=row['packet']['revision']:raise ValueError('Plan changed after execution permission; review the new revision.')
@@ -279,7 +285,10 @@ def operation_start(rec,identifier):
 # `operation_finish` is a public tool, so without this a client could finish a queued `web_read` with text it made up and `web_capture` would
 # keep it. These kinds are finished only from the operations worker (runtime.execute_operation, runtime.recover), which wraps the call in
 # ``worker_scope``. The scope belongs to one thread and one block: no other thread, and no later call in this one, is let through.
-WORKER_ONLY = frozenset({'web_search','web_read'})
+# Computer work (ros/computer.py) is the same: a client could otherwise finish a unit with a forged "verified" result, or claim it and
+# leave it wedged in `running`; so its kinds are also started only by the worker (WORKER_STARTS).
+WORKER_STARTS = frozenset({'computer_exec'})
+WORKER_ONLY = frozenset({'web_search','web_read'}) | WORKER_STARTS
 _WORKER = threading.local()
 
 @contextmanager
@@ -289,10 +298,14 @@ def worker_scope():
     try:yield
     finally:_WORKER.depth -= 1
 
+def in_worker():
+    """Whether this thread is inside ``worker_scope``: the operations worker recording what its engine returned."""
+    return bool(getattr(_WORKER,'depth',0))
+
 def operation_finish(rec,identifier,result):
     row=next((r for r in operations(rec) if r['id']==identifier),None)
     if not row:raise ValueError('No such operation.')
     if row['state'] in ('completed','failed','interrupted'):return row
-    if row['kind'] in WORKER_ONLY and not getattr(_WORKER,'depth',0):raise ValueError('Only the operations worker finishes a web operation: what a page or a search returned comes from the engine, never from a client.')
+    if row['kind'] in WORKER_ONLY and not getattr(_WORKER,'depth',0):raise ValueError('Only the operations worker finishes a web or computer operation: what a page, a search or a file step returned comes from the engine, never from a client.')
     rec.append('operation.state',identifier,{'state':'interrupted' if result.get('interrupted') else 'completed' if result.get('ok') else 'failed','result':result})
     return next(r for r in operations(rec) if r['id']==identifier)

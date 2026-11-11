@@ -17,7 +17,7 @@ from ros import api, export, importers, install, research  # noqa: E402
 from ros.store import Record  # noqa: E402
 import support_ros_demo as demo  # noqa: E402
 
-SKILLS = {"learn", "prepare", "research", "audit", "defend", "notes-to-latex"}
+SKILLS = {"learn", "prepare", "research", "audit", "defend", "notes-to-latex", "computer"}
 AGENTS = {"scout", "verifier", "auditor", "adversary", "visual-maker", "video-scout", "librarian"}
 REFERENCES = {"TEACHING", "PREPARATION", "RESEARCH", "EVIDENCE", "DATA_MODEL", "PORTAL", "VOICE", "SAFETY",
               "VAULT", "HANDOUTS", "DIRECTOR"}
@@ -196,7 +196,7 @@ class DocsContractTests(unittest.TestCase):
                             self.assertIn(arg.replace("-", "_"), known, f"{tool} --{arg}")
 
     def test_human_acts_are_marked(self):
-        self.assertEqual({n for n, t in api.TOOLS.items() if t.human}, {"approve", "decide", "waive", "handout_accept", "handout_request_changes", "handout_take_out", "source_register", "source_change", "source_location", "source_engine_root", "source_use_vault", "source_relocate", "provider_configure", "agent_define", "notebook_request", "execution_configure", "compute_request", "transcription_accept", "vision_permission", "organization_create", "organization_rename", "organization_move", "workspace_create", "workspace_rename", "library_add", "library_retry", "library_forget", "organization_archive", "record_repo", "workspace_delete", "workspace_restore", "workspace_ensure", "workspace_member_assign", "capability_equivalence", "run_cancel", "web_engine_configure", "research_control"})
+        self.assertEqual({n for n, t in api.TOOLS.items() if t.human}, {"approve", "decide", "waive", "handout_accept", "handout_request_changes", "handout_take_out", "source_register", "source_change", "source_location", "source_engine_root", "source_use_vault", "source_relocate", "provider_configure", "agent_define", "notebook_request", "execution_configure", "compute_request", "transcription_accept", "vision_permission", "organization_create", "organization_rename", "organization_move", "workspace_create", "workspace_rename", "library_add", "library_retry", "library_forget", "organization_archive", "record_repo", "workspace_delete", "workspace_restore", "workspace_ensure", "workspace_member_assign", "capability_equivalence", "run_cancel", "web_engine_configure", "research_control", "computer_approve", "computer_grant", "computer_revoke", "computer_undo", "computer_cancel", "workspace_migration_apply", "workspace_migration_rollback"})
 
 
 if __name__ == "__main__":

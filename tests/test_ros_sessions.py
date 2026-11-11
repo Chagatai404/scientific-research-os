@@ -47,6 +47,18 @@ class Sessions(unittest.TestCase):
         self.assertEqual({t for t in modes.grant("chat") if api.TOOLS[t].writes}, {"brief", "bundle_plan"}, "a conversation writes nothing else")
         with self.assertRaises(ValueError): modes.mode("wander")
 
+    def test_only_the_computer_mode_plans_and_runs_computer_work_and_it_has_no_built_in_tools(self):
+        computer = {t for t in api.TOOLS if t.startswith("computer_")}
+        agent = {t for t in computer if not api.TOOLS[t].human}
+        self.assertEqual(agent, {"computer_capabilities", "computer_inspect", "computer_plan", "computer_run", "computer_status", "computer_bin"})
+        self.assertLessEqual(agent | {"workspace_identity", "workspace_identity_resolve"}, modes.grant("computer"))
+        self.assertEqual({t for t in modes.grant("computer") if api.TOOLS[t].writes} - {"brief", "skill"}, {"computer_plan", "computer_run"})
+        self.assertFalse(modes.mode("computer").native, "a computer session gets no provider file, shell or computer-use tool")
+        self.assertIsNone(modes.mode("computer").engages)
+        for name in modes.NAMES:
+            if name != "computer":
+                self.assertFalse(modes.grant(name) & computer, name)
+
     def test_learn_resumes_and_keeps_the_graph_while_chat_stays_read_only(self):
         learn = modes.grant("learn")
         for name in ("draft_save", "draft_get", "lesson_state", "prior_evidence", "learning_readiness", "medium_choose",
