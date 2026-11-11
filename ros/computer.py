@@ -1192,6 +1192,57 @@ def bin_list(rec, workspace_id=None):
                 'untrusted': True, 'notice': UNTRUSTED}
 
 
+LIST_STATES = ('proposed', 'approved', 'rejected', 'running', 'done', 'cancelled')
+
+
+def list_work(rec, workspace_id=None, state=None):
+    """What the person can open: the workspace's plans (newest revision and where it stands) and its grants. Derived from the
+    ``computer.*`` fold and the operations fold, both indexed; bounded; never file contents."""
+    if state is not None and state not in LIST_STATES:
+        raise ValueError('state is one of ' + ', '.join(LIST_STATES))
+    where = place(rec, workspace_id)
+    if where['status'] != 'resolved':
+        return {'status': 'missing', 'workspace_id': GENERAL, 'plans': [], 'grants': [], 'reason': MISSING}
+    ident = where['workspace']
+    with _record(rec, ident['record']) as w:
+        st = _state(w)
+        latest_unit = {}
+        for u in execution.operations(w):
+            if u['kind'] == 'computer_exec':
+                key = (u['packet'].get('plan'), u['packet'].get('revision'))
+                if key not in latest_unit or u['packet'].get('attempt', 0) >= latest_unit[key]['packet'].get('attempt', 0):
+                    latest_unit[key] = u
+        plans = []
+        for plan, rows in st['plans'].items():
+            row = rows[-1]
+            if row['workspace_id'] != ident['workspace_id']:
+                continue
+            status, _ = _status(st, row)
+            unit = latest_unit.get((plan, row['revision']))
+            if status == 'rejected':
+                shown = 'rejected'
+            elif unit and unit['state'] in ('queued', 'running'):
+                shown = 'running'
+            elif unit and unit['state'] == 'completed':
+                shown = 'done'
+            elif unit and unit['id'] in st['cancelled']:
+                shown = 'cancelled'
+            elif status == 'authorized':
+                shown = 'approved'
+            else:
+                shown = 'proposed'
+            if state is None or shown == state:
+                plans.append({'plan': plan, 'revision': row['revision'], 'state': shown, 'steps': len(row['steps']), 'workspace_id': row['workspace_id'],
+                              'owner_record': w.root.name, 'request_ref': row['request_ref'], 'unit': unit['id'] if unit else None})
+        plans.sort(key=lambda p: p['plan'], reverse=True)
+        grants = [{'id': gid, 'standing': bool(g.get('standing')), 'via': g.get('via'), 'roots': [{'path': r['path'], 'access': r['access']} for r in g['roots']],
+                   'ops': g['ops'], 'revoked': gid in st['revoked'], 'granted_at': g.get('granted_at'), 'workspace_id': g['workspace_id'], 'owner_record': w.root.name}
+                  for gid, g in st['grants'].items() if g['workspace_id'] == ident['workspace_id'] and g.get('via') != 'approval']
+        grants.sort(key=lambda g: g['granted_at'] or '', reverse=True)
+        return {'workspace_id': ident['workspace_id'], 'plans': plans[:200], 'grants': grants[:100], 'untrusted': True, 'notice': UNTRUSTED,
+                'truncated': len(plans) > 200 or len(grants) > 100}
+
+
 def worker_bin_due(rec, now=None):
     """Bin entries whose retention ended: what the maintenance step purges (``runtime.computer_bin_maintenance``)."""
     _require_worker()

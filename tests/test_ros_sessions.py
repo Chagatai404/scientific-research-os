@@ -50,7 +50,7 @@ class Sessions(unittest.TestCase):
     def test_only_the_computer_mode_plans_and_runs_computer_work_and_it_has_no_built_in_tools(self):
         computer = {t for t in api.TOOLS if t.startswith("computer_")}
         agent = {t for t in computer if not api.TOOLS[t].human}
-        self.assertEqual(agent, {"computer_capabilities", "computer_inspect", "computer_plan", "computer_run", "computer_status", "computer_bin"})
+        self.assertEqual(agent, {"computer_capabilities", "computer_inspect", "computer_plan", "computer_run", "computer_status", "computer_bin", "computer_list"})
         self.assertLessEqual(agent | {"workspace_identity", "workspace_identity_resolve"}, modes.grant("computer"))
         self.assertEqual({t for t in modes.grant("computer") if api.TOOLS[t].writes} - {"brief", "skill"}, {"computer_plan", "computer_run"})
         self.assertFalse(modes.mode("computer").native, "a computer session gets no provider file, shell or computer-use tool")

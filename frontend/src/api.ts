@@ -1,4 +1,4 @@
-import {validateDocument, type DocumentData, type QualifiedRef, type WorkspaceOverview, type WorkspaceCatalog, type OperationRow, type LiteratureCandidates, type LivingGraph, type TeachingSignals} from './contracts';
+import {validateDocument, type DocumentData, type QualifiedRef, type WorkspaceOverview, type WorkspaceCatalog, type OperationRow, type LiteratureCandidates, type LivingGraph, type TeachingSignals, type ComputerStatus, type ComputerBin, type ComputerList} from './contracts';
 let session: Promise<{csrf: string}> | undefined;
 // The link `ros serve` prints pairs this browser for acts that are the person's alone: its token sits in the URL fragment
 // (never sent to a server), is kept in this origin's storage (no other port can read it) and goes with every write.
@@ -99,4 +99,16 @@ export function preference(key: string, fallback: string): string {
 }
 export function savePreference(key: string, value: string) {
   try {localStorage.setItem('ros.workspace.' + key, value);} catch { /* private browser mode */ }
+}
+
+// ---- Do on my computer -----------------------------------------------------------------------------------------------------
+// The record is the only list of plans and grants: `computer_list` reads them; nothing is remembered in the browser.
+export const readComputerList = (record?: string, workspace_id?: string, signal?: AbortSignal) => call<ComputerList>('computer_list', workspace_id ? {workspace_id} : {}, record, false, signal);
+export const readComputerStatus = (plan: string, record?: string, signal?: AbortSignal) => call<ComputerStatus>('computer_status', {plan}, record, false, signal);
+export const readComputerBin = (record?: string, workspace_id?: string, signal?: AbortSignal) => call<ComputerBin>('computer_bin', workspace_id ? {workspace_id} : {}, record, false, signal);
+/** The native file or folder picker: absolute paths of what the person chose, or nothing. Only the desktop app has one. */
+export async function pickComputer(kind: 'folder' | 'file'): Promise<string[]> {
+  const host = window.researchDesktop;
+  if (!host?.pickComputer) throw new Error('Choosing folders needs the Research OS desktop app.');
+  return (await host.pickComputer(kind)) || [];
 }

@@ -70,7 +70,7 @@ _READS = BASE_READS | RETAIN | FIND | GRAPH_READS
 # Computer work (ros/computer.py, docs/core-experience/COMPUTER-ADAPTERS.md): only the `computer` mode gets these. It reads metadata and
 # proposes and runs plans; every effect comes from the fixed executor after a person's grant. Granting, approving, revoking, undoing and
 # cancelling are the person's (human tools), and no other mode infers any filesystem or app grant.
-COMPUTER_READS = frozenset({"computer_capabilities", "computer_inspect", "computer_status", "computer_bin", "workspace_identity", "workspace_identity_resolve"})
+COMPUTER_READS = frozenset({"computer_capabilities", "computer_inspect", "computer_status", "computer_bin", "computer_list", "workspace_identity", "workspace_identity_resolve"})
 COMPUTER_WRITES = frozenset({"computer_plan", "computer_run"})
 
 MODES = {m.name: m for m in (

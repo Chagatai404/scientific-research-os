@@ -24,6 +24,10 @@ class Desktop(unittest.TestCase):
         self.rec = Record(self.root/'projects'/'test'); self.addCleanup(self.rec.close); self.addCleanup(api.release)
         self.source = self.root/'sources'; self.source.mkdir(); (self.source/'paper.md').write_text('# Paper\nA precise result.\nUncertainty matters.\n', encoding='utf-8')
     def connect(self, **args): return api.call('source_register',self.rec,root=str(self.source),kind='folder',**args)
+    def test_desktop_start_recovers_computer_work_and_engage_documents_computer_requests(self):
+        from ros import desktop
+        self.assertIn('computer', api.TOOLS['engage'].help)
+        self.assertEqual(desktop.recover_computer_work(self.rec), [], 'a record with no computer work is not touched')
     def test_native_location_is_resolved_only_inside_the_registered_vault(self):
         connection=api.call('source_register',self.rec,root=str(self.source),kind='vault')
         result=api.call('source_location',self.rec,source=connection['id'],path='paper.md')

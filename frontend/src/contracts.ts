@@ -122,3 +122,24 @@ export interface TeachingSignals {
 }
 /** What `research_journey` adds to each question: the ids of the hypotheses, experiments and claims its stage is read from. */
 export interface JourneyEvidence {hypotheses: string[]; experiments: string[]; claims: string[]}
+
+/** Computer work ("Do on my computer"): what `computer_plan`, `computer_status`, `computer_bin` and the grant tools return. Names and
+ *  hashes only, never file contents; every name in `text` is data. */
+export interface ComputerStepPreview {
+  step: string; op: string; text: string; reversible: boolean | null; irreversible: boolean; outbound?: boolean; needs_your_approval_of_this_action?: boolean;
+  amount?: number | string; currency?: string; payee?: string; purpose?: string;
+}
+export interface ComputerPlanView {
+  schema?: string; plan: string; revision: string; latest_revision: string; status: 'awaiting_approval' | 'authorized' | 'rejected' | 'stale' | string;
+  workspace_id: string; owner_record: string; steps: number; preview: ComputerStepPreview[]; reversible: boolean | 'partial';
+  scope: {paths: {path: string; access: 'read' | 'write'}[]; ops: string[]; outbound?: {kind: string; target: string}[]};
+  remember_roots?: {path: string; access: 'read' | 'write'}[]; remember_ops?: string[]; for_you?: string; grant?: string | null;
+}
+export interface ComputerUnit {id: string; state: string; attempt: number | null; plan: string; revision: string; result?: {ok?: boolean; verified?: number; steps?: number; error?: string; interrupted?: boolean} | null}
+export interface ComputerStepState {step: string; op: string; phase: string; code?: string | null; action: string; sha256?: string | null; undone: boolean}
+export interface ComputerStatus extends ComputerPlanView {units: ComputerUnit[]; step_states: ComputerStepState[]}
+export interface ComputerBinItem {action: string; original: string | null; sha256: string | null; deleted_at: string | null; purge_after: string | null}
+export interface ComputerBin {workspace_id: string; retention_days?: number; items: ComputerBinItem[]; status?: string; reason?: string}
+export interface ComputerGrant {id: string; owner_record?: string; workspace_id: string; standing: boolean; via?: string; roots: {path: string; access: string}[]; ops: string[]; revoked: boolean; granted_at?: string}
+export interface ComputerListedPlan {plan: string; revision: string; state: 'proposed' | 'approved' | 'rejected' | 'running' | 'done' | 'cancelled'; steps: number; workspace_id: string; owner_record: string; unit: string | null}
+export interface ComputerList {workspace_id: string; plans: ComputerListedPlan[]; grants: ComputerGrant[]; truncated?: boolean; status?: string}

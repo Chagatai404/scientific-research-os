@@ -23,8 +23,9 @@ import {WorkspaceOverview} from './WorkspaceOverview';
 import {useResource} from './hooks';
 import {SessionsPane} from './SessionsPane';
 import {Activity, Tools} from './Workbench';
+import {ComputerWork} from './ComputerWork';
 
-const sections: [string, string][] = [['overview', 'Home'], ['learn', 'Learn'], ['research', 'Research'], ['library', 'Library'], ['graph', 'Graph'], ['activity', 'Activity']];
+const sections: [string, string][] = [['overview', 'Home'], ['learn', 'Learn'], ['research', 'Research'], ['library', 'Library'], ['graph', 'Graph'], ['activity', 'Activity'], ['computer', 'Do on my computer']];
 const labels: Record<string, string> = {...Object.fromEntries(sections), settings: 'Settings', knowledge: 'Knowledge', tools: 'Developer tools', chat: 'Session', session: 'Learning session', document: 'Reading', node: 'Evidence', search: 'Search', resolve: 'Reference'};
 const MOBILE = 1000;   // below this width the two columns become one replacing drawer
 const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -131,6 +132,7 @@ function Shell() {
     case 'chat': content = <Conversation key={route.record + workspaceId} id={route.id} record={route.id ? route.record : destination} workspaceId={workspaceId} startMode={route.params.mode}/>; break;
     case 'library': content = <Library record={route.record} selectedId={route.id} workspaceId={workspaceId} tab={route.params.tab || (route.legacy === 'sources' ? 'places' : '')} />; break;
     case 'activity': content = <Activity record={route.record} />; break;
+    case 'computer': content = <ComputerWork record={destination} workspaceId={workspaceId} plan={route.params.plan || ''} />; break;
     case 'tools': content = <Tools record={route.record} />; break;
     case 'document': content = <DocumentView id={route.id} record={route.record} onDocument={changeDocument} />; break;
     case 'node': content = <EntityView id={route.id} record={route.record} />; break;

@@ -24,6 +24,30 @@ class Grants(ComputerFixture, unittest.TestCase):
         super().setUp()
         api.call('workspace_ensure', self.user, kind='general', title='General work', key='general')
 
+    def test_computer_list_shows_plans_by_state_and_grants_with_revocation(self):
+        source = self.write(self.src / 'a.txt', b'a')
+        step = [{'id': 'c', 'op': 'copy', 'src': str(source), 'dst': str(self.dst)}]
+        self.assertFalse(api.TOOLS['computer_list'].human)
+        proposed = self.plan(step)
+        self.assertEqual(proposed['status'], 'awaiting_approval')
+        listed = api.call('computer_list', self.user)
+        self.assertEqual([(p['plan'], p['state']) for p in listed['plans']], [(proposed['plan'], 'proposed')])
+        self.assertEqual(listed['plans'][0]['revision'], proposed['revision'])
+        self.assertEqual(listed['grants'], [])
+        grant = self.grant(standing=True)
+        self.assertEqual(api.call('computer_list', self.user, state='approved')['plans'][0]['plan'], proposed['plan'])
+        self.assertEqual(api.call('computer_list', self.user, state='proposed')['plans'], [])
+        unit = api.call('computer_run', self.user, plan=proposed['plan'], revision=proposed['revision'])
+        self.assertEqual(api.call('computer_list', self.user)['plans'][0]['state'], 'running')
+        runtime.execute_operation(self.gw(), unit['_operation'])
+        self.assertEqual(api.call('computer_list', self.user)['plans'][0]['state'], 'done')
+        got = api.call('computer_list', self.user)['grants']
+        self.assertEqual([(g['id'], g['standing'], g['revoked']) for g in got], [(grant['id'], True, False)])
+        api.call('computer_revoke', self.user, grant=grant['id'])
+        self.assertTrue(api.call('computer_list', self.user)['grants'][0]['revoked'])
+        with self.assertRaises(ValueError):
+            api.call('computer_list', self.user, state='bogus')
+
     def test_only_a_person_grants_and_mcp_offers_no_human_computer_tool(self):
         self.assertTrue(all(api.TOOLS[name].human for name in HUMAN))
         self.assertFalse(any(api.TOOLS[name].human for name in AGENT))

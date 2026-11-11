@@ -10,7 +10,8 @@ from ..registry import P, iso_day, tool
 
 
 @tool("engage", "Start what the person asked for, in their own words: teach me a course or topic, investigate a question, "
-      "review, or continue. Makes the records and the goal, opens the work for agents, and lets lessons, notes, handouts "
+      "review, or continue; or, with kind computer, do something on the person's computer (copy, move, rename, file away: "
+      "it opens a computer conversation where you propose a checked plan, never a shell). Makes the records and the goal, opens the work for agents, and lets lessons, notes, handouts "
       "and literature follow on their own. Saying it again changes nothing.", writes=True,
       intent=P("string", "what the person said, in their words", True),
       kind=P("string", "what it is (default: worked out from the words)", enum=director.KINDS),

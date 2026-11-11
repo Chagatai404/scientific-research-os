@@ -43,6 +43,12 @@ def bin_list(rec, workspace_id=None):
     return computer.bin_list(rec, workspace_id)
 
 
+@tool('computer_list', "The workspace's computer plans (newest revision, state proposed, approved, rejected, running, done or cancelled) and its grants (roots, operations, revoked or not), newest first. Read only.",
+      workspace_id=P('string', 'selected workspace id'), state=P('string', 'only plans in this state', enum=computer.LIST_STATES))
+def list_work(rec, workspace_id=None, state=None):
+    return computer.list_work(rec, workspace_id, state)
+
+
 @tool('computer_approve', "Approve or decline one exact computer plan revision (a person's act). One approval covers every step, retry and resume of it, including its deletes and payments, which nothing else can authorise; remember makes the rest of its scope a standing grant for the workspace.",
       human=True, plan=P('string', 'plan id', True), revision=P('string', 'the revision you reviewed', True),
       decision=P('string', 'approve or reject', True, ('approve', 'reject')),
