@@ -70,6 +70,7 @@ async function main() {
     const recordsBefore = fs.readdirSync(path.join(folder, 'home', 'projects')).sort();
 
     // The selected project opens its own research: goal, next action, questions, agents and outputs; no raw events.
+    await page.goto(app + '#pair=' + server.pairing, {waitUntil: 'domcontentloaded'});  // approving is the person's act: pair this browser first
     await page.goto(app + '#research');
     await page.locator('section[aria-label="Courses and projects"]').getByRole('link', {name: new RegExp(PROJECT.replace(/[()]/g, '\\$&'))}).click();
     const goal = page.locator('section[aria-label="Goal and next step"]');

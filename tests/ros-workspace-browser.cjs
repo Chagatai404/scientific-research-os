@@ -403,7 +403,9 @@ async function main() {
     await page.getByRole('button', {name: 'Select Variance', exact: true}).click();
     await page.getByRole('complementary', {name: 'Selected node', exact: true}).getByRole('heading', {name: 'Variance', exact: true}).waitFor();
     await page.goto(workspace + '#research?r=demo');
-    await page.getByRole('heading', {name: 'Claims ledger'}).waitFor(); await matrix(page, 'research');
+    await page.getByRole('heading', {name: 'Questions', exact: true}).waitFor(); // S7: claims show under their question with author, audit and decision, no separate ledger
+    for (const claim of await page.locator('article.question-card p', {hasText: 'written by'}).allInnerTexts()) assert.match(claim, /awaiting your decision|you decided/, 'a claim shows where it stands with you');
+     await matrix(page, 'research');
     await page.goto(workspace + '#session/' + encodeURIComponent(server.lesson) + '?r=demo');
     await page.getByLabel('Your answer', {exact: true}).waitFor();
     assert.equal(await page.locator('.classroom').count(), 1, 'real learning session uses the classroom shell');

@@ -71,8 +71,8 @@ async function main() {
     const one = await (await browser.newContext({viewport: {width: 1280, height: 900}})).newPage();
     one.on('pageerror', (e) => errors.push(e.message));
     await one.goto(server.pair, {waitUntil: 'domcontentloaded'});
-    await one.goto(server.url + '#learn', {waitUntil: 'domcontentloaded'});
-    await one.getByRole('button', {name: 'Start lesson'}).click();
+    await one.goto(server.url + 'workspace/#learn', {waitUntil: 'domcontentloaded'});
+    await one.getByLabel('Recommended next step').getByRole('button', {name: 'Start lesson'}).click();
     await questionStep(one);
     const lessonUrl = one.url();
     const lesson = decodeURIComponent((lessonUrl.match(/session\/([^?&/]+)/) || lessonUrl.match(/lesson[:%3A]+[\w-]+/) || [])[1] || '');

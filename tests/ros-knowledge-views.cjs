@@ -51,8 +51,12 @@ async function main() {
 
     // Keyboard: Tab reaches the view links; Enter on a disclosure opens it, and the focus order never leaves the page.
     await page.locator('nav[aria-label="Knowledge views"] a').first().focus();
-    await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
-    assert.ok(await page.evaluate(() => document.activeElement && document.activeElement !== document.body), 'Tab lost the focus');
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.closest('nav[aria-label="Knowledge views"]') ? document.activeElement.textContent : ''), 'Map', 'Tab does not reach the next view link');
+    // Past the last control on the page the browser wraps through the document (one stop on body); the focus must come back to a control of the page.
+    let back = false;
+    for (let i = 0; i < 6 && !back; i++) {await page.keyboard.press('Tab'); back = await page.evaluate(() => !!document.activeElement && document.activeElement !== document.body);}
+    assert.ok(back, 'Tab lost the focus');
     const summaries = page.locator('.knowledge-lists summary');
     if (await summaries.count()) {
       await summaries.first().focus(); await page.keyboard.press('Enter');
@@ -92,7 +96,7 @@ async function main() {
     await page.getByText(/no longer available/).waitFor();
 
     assert.deepEqual(writes, [], 'the knowledge views called a graph write or coverage tool');
-    assert.deepEqual(errors.filter(e => !/Failed to load resource/.test(e)), [], 'console or runtime errors'); assert.deepEqual(outside, [], 'requests left the computer'); assert.deepEqual(failed.filter(([, url]) => !/graph_view|graph_teaching|research_journey/.test(url)), [], 'failed requests');
+    assert.deepEqual(errors.filter(e => !/Failed to load resource/.test(e)), [], 'console or runtime errors'); assert.deepEqual(outside, [], 'requests left the computer'); assert.deepEqual(failed.filter(([, url]) => !/graph_view|graph_teaching|research_journey/.test(url) && !(/workspace_overview|workspace_identity/.test(url) && /deleted/.test(url))), [], 'failed requests');
     assert.doesNotMatch(server.stderr.join(''), /Traceback \(most recent call last\)/);
     console.log(JSON.stringify({ok: true, checks: ['five-sections', 'no-editing-controls', 'keyboard', 'list-alternative', 'workspace-scope', 'research-tab', 'narrow-width', 'deleted-workspace']}));
   } catch (error) {
