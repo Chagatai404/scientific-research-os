@@ -78,6 +78,8 @@ async function main() {
     page.on('pageerror', e => errors.push(e.message));
     page.on('console', m => {if (m.type() === 'error') errors.push(m.text());});
     page.on('request', r => {if (r.url().endsWith('/api/workspace_chat_send')) sent.push(r.postDataJSON());});
+    // Courses and projects are created as workspaces now (see ros-workspace-scope.cjs); this journey seeds the two folders its organization steps act on.
+    if (!process.env.ROS_TEST_BASE) await new Promise((res, rej) => spawn(process.env.PYTHON || 'python3', ['-c', 'import sys; from pathlib import Path; from ros.store import Record; r = Record(Path(sys.argv[1]) / "projects" / "demo"); r.put_node("course:quantum-computing", "course", title="Quantum Computing"); r.put_node("project:ams-ecal-qml", "project", title="AMS ECAL QML"); r.close()', folder], {cwd: root, env: {...process.env, ROS_NO_VAULT: '1', PYTHONPATH: root}}).once('exit', c => c ? rej(new Error('seed failed')) : res()));
     const base = server.url + 'workspace/';
     const edgeFile = path.join(process.env.ROS_TEST_FOLDER || folder, 'projects', 'demo', 'graph', 'edges.jsonl');
     const edgesBefore = fs.existsSync(edgeFile) ? fs.readFileSync(edgeFile) : Buffer.alloc(0);
@@ -94,18 +96,14 @@ async function main() {
     await page.reload(); await page.getByTestId('graph-home').waitFor();
     assert.equal(await nav.isVisible(), false, 'navigation choice persists'); assert.equal(await sessions.isVisible(), true, 'sessions choice persists');
     await page.keyboard.press('Control+B'); assert.equal(await nav.isVisible(), true);
-    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('nav[aria-label="Main navigation"] a')].map(a => a.textContent)), ['Home', 'Learn', 'Research', 'Library', 'Graph', 'Activity']);
+    assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('nav[aria-label="Main navigation"] a')].map(a => a.textContent)), ['Home', 'Learn', 'Research', 'Library', 'Graph', 'Activity', 'Do on my computer']);
 
     // 2. Organization: create, rename, move, persist. No ids or slugs are ever typed.
     await page.getByRole('button', {name: 'New course or project', exact: true}).click();
     await page.getByRole('menuitem', {name: 'New course…'}).click();
     assert.equal(await overlays(page), 1, 'a dialog replaces the menu that opened it');
-    await page.getByLabel('Name your course').fill('Quantum Computing'); await page.getByRole('button', {name: 'Save', exact: true}).click();
-    await sessions.getByRole('button', {name: /^Quantum Computing/}).waitFor();
-    await page.getByRole('button', {name: 'New course or project', exact: true}).click();
-    await page.getByRole('menuitem', {name: 'New project…'}).click();
-    await page.getByLabel('Name your project').fill('AMS ECAL QML'); await page.getByRole('button', {name: 'Save', exact: true}).click();
-    await sessions.getByRole('button', {name: /^AMS ECAL QML/}).waitFor();
+    await page.keyboard.press('Escape');
+    await sessions.getByRole('button', {name: /^Quantum Computing/}).waitFor(); await sessions.getByRole('button', {name: /^AMS ECAL QML/}).waitFor();
     await sessions.getByRole('button', {name: 'Actions for Variance', exact: true}).click();
     await page.getByRole('menuitem', {name: 'Move to…'}).click();
     await page.getByLabel('Folder').selectOption({label: 'Course · Quantum Computing'}); await page.getByRole('button', {name: 'Move', exact: true}).click();
@@ -183,7 +181,7 @@ async function main() {
     await page.getByRole('list', {name: 'Research stages'}).waitFor();
     await page.getByRole('button', {name: /^Stop using /}).waitFor(); // Use in research carries the material
     await layout(page, 'research');
-    await page.getByLabel('Start another question').fill('Does the response change with beam energy?');
+    await page.getByLabel(/^(Start another question|What question are you investigating\?)$/).fill('Does the response change with beam energy?');
     await page.getByRole('button', {name: 'Start investigating', exact: true}).click();
     await page.getByRole('status').filter({hasText: /Your investigation is set up/}).waitFor();
     // A plan waiting for approval is decided with named fields, by a person, and says what approving means.
