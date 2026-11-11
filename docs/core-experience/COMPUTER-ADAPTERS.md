@@ -1,5 +1,11 @@
 # Computer work: adapters, grants and evidence (S8C design gate)
 
+> **Status note (2026-11-11).** P1 (file operations, `ros/lib/fileops.py`, with plans, grants and the bin) is
+> implemented and tested with disposable files; the sections below describe its design as written on 2026-11-10.
+> P2 (application UI automation: the c2 row, `CUIAutomation` through `ros/lib/winui.py`) was dropped by the person on
+> 2026-11-11 in favour of the in-app experiment workbench (S8D, [CONTRACTS](CONTRACTS.md)). The c2 row is not planned
+> for this version.
+
 Status: design only, written 2026-11-10 against `a9640da` plus the S7 work then in progress (since committed as `947ca01`). No code
 exists for anything below. Every capability status here is **planned** or, after implementation, starts as
 **declared**. Nothing is tested or live-verified until the tests in the last section pass. Spec:

@@ -23,6 +23,9 @@ document and that test in the same commit.
                modes (what a desktop session is in each mode: its skill, its tool grant, the person's own words)
                dispatch (which agent tasks the desktop takes unattended, the limits and the ledger of what it did)
                workbench (the repository a record studies, and what a Code session changed in it)
+               computer (plans, grants and the executor's checks for work on the person's files; the Research OS bin)
+               workspace_migration (dry run, person-approved apply and exact rollback of owner mappings)
+               usage (tokens reported by runs, person-set prices; unknown is never estimated)
      │
  core          store (the record) · home (where records live)
  engines       lib/ (speech, voice, Manim, papers, scouting, evidence atoms, manifests, walkthrough, old readers)
@@ -142,6 +145,30 @@ reason; `library.removed` hides it without touching the original. Processing is 
 `library_queue` automation on each tick), idempotent and restart-safe, and feeds the disposable lexical index.
 `workspace_map` is a read model: membership lines it returns are navigation, typed `membership`, and are never written
 as record edges.
+
+### A computer action (a change to the person's files, by a plan)
+
+The path is one-way: a model writes a plan, a fixed executor carries it out, and no model holds a handle or a shell.
+
+1. Domain: `ros/computer.py` validates the plan (real paths, operation classes), records `computer.plan` (agent) and
+   `computer.grant` / `computer.rejected` (person), and checks the grant again before every step.
+2. Tools: `ros/tools/computer.py` marks the person's acts `human=True` (`computer_approve`, `computer_grant`,
+   `computer_revoke`, `computer_cancel`); the agent reads and `computer_run` stay unmarked.
+3. Runtime: `ros/runtime.py` runs the queued `computer_exec` unit (id `computer-exec:{plan}@{revision}#{attempt}`) one
+   engine call per step, and recovers unfinished units at startup.
+4. Engine: `ros/lib/fileops.py` does the file work (never overwrite, hash checks), reached through
+   `ros/lib/desktop_operations.py` on the existing worker path. A new operation needs a test with disposable files;
+   `delete_permanent` and `spend` need their own per-action approval (CONTRACTS, "Computer work").
+
+### An experiment run (code an agent writes and runs in the workspace)
+
+1. Domain: `ros/workbench.py` requires a `run` task whose plan approval matches the current revision (`tasks.run_gate`),
+   records the script's hash, and queues the operation under a deterministic id (`experiment.run`).
+2. Tools: `ros/tools/workbench.py` (`experiment_*`); `experiment_stop` is the person's act.
+3. Environment: `ros/lib/environments.py` builds the per-workspace environment under a lock; packages and repositories
+   come only from the approved plan's `environment`, and anything unlisted is refused before download.
+4. Output is written as bounded `experiment.output` chunks and read by offset (`experiment_follow`); provenance is
+   recorded with the run, never as a verified claim.
 
 ### An event type
 

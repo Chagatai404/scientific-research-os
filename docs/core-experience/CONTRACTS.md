@@ -256,6 +256,77 @@ approval matches the plan's current revision (`approved_revision`); a plan chang
 `add_claim` takes `experiment` (a `results` relation) and `question` (an `answers` relation). A claim linked to neither
 counts for no question.
 
+## Computer work (S8C)
+
+Code: `ros/computer.py` (domain), `ros/tools/computer.py` (tools), `ros/lib/fileops.py` (engine, run through
+`ros.lib.desktop_operations`). Events: `computer.plan`, `computer.grant`, `computer.grant.revoked`,
+`computer.rejected`, `computer.cancelled`, `computer.action`, `computer.bin.purged` (see [DATA_MODEL](../../references/DATA_MODEL.md)).
+
+- Agent side: `computer_capabilities`, `computer_inspect` (names, kinds, sizes, dates; never contents), `computer_plan`
+  (proposes or revises a plan of real paths and operations), `computer_run` (queues one unit for an authorised revision),
+  `computer_status`, `computer_bin`, `computer_list`.
+- Person side only: `computer_approve` (one exact plan revision; one approval covers its steps, retries and resumes),
+  `computer_grant` (folders and operations for one request or the workspace; outbound is never implied), `computer_revoke`,
+  `computer_cancel`, `computer_undo` (runs the inverse of one verified action through the same executor).
+- `computer_exec` unit id: `computer-exec:{plan}@{revision}#{attempt}`. One unit per attempt; a retry is a new attempt of the
+  same revision. Steps run in order; before each step the grant is checked again.
+- Bin policy: a delete goes to the Research OS bin, restorable for 30 days (`BIN_RETENTION_DAYS`), then cleared
+  (`computer.bin.purged`). Nothing is overwritten: a taken name gets a new one.
+- Per-action approval: `delete_permanent` and `spend` are allowed only when the person approved that exact action (for
+  `delete_permanent`, the exact paths and bytes; for `spend`, amount, currency, payee and purpose). Neither is implied by a
+  grant or a standing permission.
+- Startup recovery: a unit whose owner stopped is checked against the files step by step (runtime recovery, `computer_recover`) before it is
+  marked interrupted.
+
+## Experiment workbench (S8D)
+
+Code: `ros/workbench.py` (domain), `ros/lib/environments.py` (environment engine), `ros/tools/workbench.py` (tools).
+Tools: `experiment_plan`, `experiment_write`, `experiment_environment`, `experiment_run`, `experiment_follow` (output from a
+cursor), `experiment_stop` (person), `experiment_runs`, `experiment_capabilities`, plus `workbench_status`,
+`workbench_snapshot`, `workbench_record`.
+
+- Run gate: `experiment_run` starts only for a `run` task whose plan approval matches the plan's current revision
+  (`tasks.run_gate`). Scripts are recorded with their hashes.
+- Downloads only from the plan: packages (`index_url` plus pinned requirement specs) and repositories (https or file url
+  plus a full commit) must be listed in the approved plan's `environment`. Anything else is refused before download.
+- Output is bounded and ordered by offset; `experiment.provenance` records where code and inputs came from, never a claim
+  of verification.
+
+## Turn liveness (L2)
+
+Code: `ros/runs.py`, `ros/conversation.py`, `ros/runtime.py`; tools `run_*` (`run_follow`, `run_steer_take`, `run_heartbeat`).
+
+- One active turn per conversation: a send while a reply runs is refused with the active run named. Steering is the way to
+  add to it.
+- Heartbeat: a running worker writes `run.heartbeat` about every 10 s (`runtime.HEARTBEAT_EVERY`). After 120 s
+  (`ROS_TURN_STALE_SECONDS`) with no heartbeat, output, step or state change, the turn reads as `interrupted`, keeping its
+  partial output; the next write commits that.
+- `run_follow(run, after)`: output from a character cursor, with the state, so a reopened client resumes without repeats
+  or gaps.
+- Steer: `run.steer` (at most five waiting). The model's next step takes each one once (`run.steer_delivered`).
+- Retry: `conversation.retry` with the failed reply's key; idempotent, so a repeat writes nothing.
+
+## Usage and prices (L3)
+
+Code: `ros/usage.py`; tools `usage_summary`, `usage_prices`, `usage_prices_configure`.
+
+- `usage_summary(scope, id, since)` sums what each run's provider reported (tokens, requests) per provider and model, with
+  the count of runs reporting nothing (`unknown`). Unknown is never estimated and never zero.
+- Prices (`usage.price`, per million tokens, versioned per model, with currency and effective date) are set by the person
+  only. A run takes the latest price whose effective date is not after its day. Without a price there is no cost.
+- Subscription CLIs (Codex, Claude Code) are shown as "included in subscription", never as a cost.
+
+## Workspace migration (S9)
+
+Code: `ros/workspace_migration.py`; tools `workspace_migration_plan` (dry run, writes nothing), `workspace_migration_apply`
+(person), `workspace_migration_rollback` (person), `workspace_migrations`, `workspace_migration_fingerprint`,
+`workspace_migration_verify`. The full procedure, manifest and rehearsal are in [MIGRATION](MIGRATION.md).
+
+- Apply writes append-only memberships, personal-knowledge markers and archives from a reviewed dry run; nothing is moved
+  or rewritten.
+- Rollback writes compensating events and restores each workspace's earlier view. A write that changed since is skipped and
+  reported, never overwritten.
+
 ## Errors and downstream boundaries
 
 For this registry version, invalid scope/authority, ambiguous creation keys,
@@ -267,8 +338,7 @@ revision as a missing permission or retry a stale ref under a different owner.
 Downstream run/provider/approval/context/computer-action envelopes must carry
 `workspace_id` plus qualified physical refs, and preserve existing persisted
 ids/revisions. Runtime continuity above does not implement the remaining roadmap:
-The S4 provider and credential-reference schemas, and the S7 revision-bound plan
-authorization, are described in the sections above. S8C still owns plan-bound
-filesystem/application grants; its exact additions belong here when implemented
-and reviewed. Human authority never follows from a
+The S4 provider and credential-reference schemas, the S7 revision-bound plan
+authorization, the S8C computer grants and the S8D experiment gate are described in the
+sections above. Human authority never follows from a
 workspace/member/equivalence preference.

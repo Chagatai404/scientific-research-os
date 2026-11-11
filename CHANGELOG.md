@@ -2,6 +2,21 @@
 
 ## Unreleased: persistent workspace continuity
 
+- Added "Do on my computer". You describe the work; the agent writes a plan with the real files and folders it
+  will touch, and nothing happens until you approve that exact plan. Each step is checked against your permission
+  again before it runs. Copies and moves never overwrite: a name that is taken gets a new name. Deleted files go to
+  the Research OS bin and are cleared automatically after 30 days. Permanent delete and any payment happen only when
+  you approve that exact action. Work that is not tied to a course or project goes to the General work area. If the
+  computer stops mid-plan, the next start checks every step against the files and marks what really happened.
+- Added an experiment workbench. Agents write and run scripts in the workspace of the record. Libraries and
+  repositories are downloaded only when your approved plan lists them. Output appears live with a Stop button, and
+  each run records where its code and inputs came from. Geant4, ROOT and Manim remain available.
+- A conversation runs one reply at a time. You can steer a reply that is running, retry one that failed, and reopen
+  a conversation without losing the text you were writing.
+- Added a usage meter for each workspace. It shows tokens from what each run reported. A value that was not reported
+  stays unknown and is never estimated. Costs use prices you set, and subscriptions are shown as included.
+- Added a workspace migration with a dry run. You see every change before it is applied, you approve it, and an
+  exact undo is available afterwards.
 - Added stable course/project workspace identities and one General work area.
   Selected-workspace requests reuse their course or project instead of creating
   a workspace for each prompt. Historical work keeps its original physical owner.

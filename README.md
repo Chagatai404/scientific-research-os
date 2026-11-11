@@ -76,6 +76,16 @@ check the public release feed and download newer stable versions; a pop-up at la
   (`ROS_RENDER_PYTHON` names one). A computer without the sealed container (Windows only) says so there.
   Sessions and the librarian can read the folders you connected (never one marked local-only, with a cloud model), and after reading a
   file a session cannot search the web in that conversation.
+- **Do on my computer** lets you ask for work on your files, such as copying a course's PDFs into a folder you chose. The
+  agent writes a plan that names the real files and folders it will touch. Nothing happens until you approve that exact
+  plan, and each step is checked against your permission again before it runs. Copies and moves never overwrite a file
+  with the same name. Deleted files go to the Research OS bin, which clears them after 30 days. A permanent delete or a
+  payment happens only when you approve that exact action. Work not tied to a course or project goes to the General work
+  area. If the computer stops mid-plan, the next start checks each step against the files and records what really
+  happened. You can review plans, grants and the bin in the app.
+- **Run experiments in the app.** In a session, agents write and run scripts in the workspace of your record, and you see
+  the output live with a Stop button. Packages and repositories are downloaded only when your approved plan lists them,
+  and each run records where its code and inputs came from. Geant4, ROOT and Manim remain available as before.
 
 Codex and Claude use their existing CLI logins; local models use explicit loopback profiles. Connections never scan or
 sync on their own, and nothing runs an experiment on its own. Approvals, decisions and waivers are always your acts. Cloud image/PDF vision needs the
