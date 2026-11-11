@@ -7,7 +7,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from ros import api, runs
+from ros import api, runs, runtime
+from ros.lib import providers
 from ros.store import Record
 
 REF = {"store": "env", "name": "ROS_TEST_KEY"}
@@ -106,6 +107,20 @@ class UsageMeterTests(unittest.TestCase):
         gauge = self.summary(scope="conversation", id="c1")["context"]
         self.assertEqual((gauge["known"], gauge["used"], gauge["limit"], gauge["fraction"]), (True, 2000, 8000, 0.25))
         self.assertFalse(self.summary(scope="conversation", id="none")["context"]["known"])
+
+    def test_sent_turn_records_context_size_and_limit(self):
+        api.call("provider_configure", self.rec, provider="ollama", endpoint="http://127.0.0.1:11434", model="fixture", context_limit=8000)
+        sent = api.call("workspace_chat_send", self.rec, text="What is due?", model="ollama:fixture", mode="chat")
+        seen = {}
+        def provider(request, emit, tool, cancel, own):
+            seen["ctx"] = len(__import__("json").dumps(request["context"], ensure_ascii=False)) + sum(len(m["content"]) for m in request["messages"]); emit("ok")
+        with patch.dict(providers.ADAPTERS, {"ollama": provider}):
+            runtime.execute(self.rec, sent, sent["_engine"])
+        gauge = self.summary(scope="conversation", id=sent["conversation"])["context"]
+        self.assertTrue(gauge["known"])
+        self.assertEqual(gauge["limit"], 8000)
+        self.assertEqual(gauge["used"], seen["ctx"])
+        self.assertGreater(gauge["used"], 0)
 
 
 if __name__ == "__main__":

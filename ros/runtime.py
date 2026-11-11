@@ -902,6 +902,8 @@ def execute(rec, result, request, legacy_engine=None):
                     if messages and total + len(message['content']) > context_limit//2: break
                     messages.insert(0, message); total += len(message['content'])
                 packet['messages'] = messages
+                # Sizes only, never content: what the context gauge reads.
+                rec.append('run.usage', run, {'context_chars': len(json.dumps(context_data, ensure_ascii=False)) + total, 'context_limit': context_limit})
                 provider = packet['model'].split(':', 1)[0]
                 note_profiles(rec)
                 profile = request.get('vision_profile') or next((p for p in api.call('provider_profiles', rec) if p['id'] == packet['model']), None)
