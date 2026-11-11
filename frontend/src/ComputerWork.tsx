@@ -127,9 +127,10 @@ function RequestForm({record, workspaceId, onDone}: {record: string; workspaceId
     setBusy(true); setError('');
     try {
       const access = ops.some(o => WRITES.includes(o)) ? 'write' : 'read', ws = workspaceId ? {workspace_id: workspaceId} : {};
-      // Submitting this form is the person's grant for this request (and for the workspace when they tick remember).
-      const grant = await human<{owner_record: string}>('computer_grant', {roots: all.map(path => ({path, access})), ops, standing, ...ws}, record);
+      // The conversation is created first so a one-request grant can be bound to it; submitting the form is the person's grant.
       const out = await call<{conversation?: string; record?: string}>('engage', {intent: text.trim(), kind: 'computer', ...ws}, record || undefined, true);
+      const request = !standing && out.conversation ? {request: out.conversation} : {};
+      const grant = await human<{owner_record: string}>('computer_grant', {roots: all.map(path => ({path, access})), ops, standing, ...ws, ...request}, out.record || record);
       setDone({conversation: out.conversation, owner: out.record || grant.owner_record}); setPaths([]); setManual(''); setText(''); onDone();
     } catch (e) {setError((e as Error).message);} finally {setBusy(false);}
   }

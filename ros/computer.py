@@ -779,6 +779,12 @@ def _derive_roots(paths):
     return sorted(roots.values(), key=lambda r: _key(r['path']))
 
 
+def _session_ref(request):
+    """The runtime names a session 'conversation:<id>' (or agent:/task:); a bare conversation id from the form means that."""
+    value = request.strip()
+    return value if value.split(':', 1)[0] in ('conversation', 'agent', 'task') and ':' in value else 'conversation:' + value
+
+
 def grant(rec, roots, ops, workspace_id=None, apps=None, outbound=None, standing=False, request=None):
     """The person's structured request from the "Do on my computer" form: submitting it is the grant. The first computer act
     whose workspace is General creates General work (idempotently)."""
@@ -808,7 +814,7 @@ def grant(rec, roots, ops, workspace_id=None, apps=None, outbound=None, standing
     with _record(rec, ident['record']) as w:
         gid = f'computer-grant:{w.root.name}:' + uuid.uuid4().hex[:16]
         data = {'schema': GRANT_SCHEMA, 'id': gid, 'workspace_id': ident['workspace_id'], 'plan': None, 'standing': bool(standing),
-                'request_ref': None if standing else (request.strip() if request else None), 'roots': pinned, 'apps': [], 'ops': ops, 'outbound': targets,
+                'request_ref': None if standing else (_session_ref(request) if request else None), 'roots': pinned, 'apps': [], 'ops': ops, 'outbound': targets,
                 'via': 'standing' if standing else 'form', 'actor': 'person', 'expires_after': STANDING_GRANT_EXPIRES_AFTER}
         w.append_once(make_event('computer.grant', gid, data, actor='person', id=event_id('computer-grant', gid)))
         return dict(data, owner_record=w.root.name,

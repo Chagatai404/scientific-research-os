@@ -64,3 +64,11 @@ test('proposed plans open on their own and a revoked grant shows as revoked with
   assert.match(grants, /revoked/); assert.doesNotMatch(grants, />Revoke</);
   assert.match(renderToStaticMarkup(<PlanList plans={[]} open={() => null}/>), /No plan yet/);
 });
+
+test('the request form engages first and binds a one-request grant to that conversation', async () => {
+  const {readFileSync} = await import('node:fs');
+  const src = readFileSync(new URL('./ComputerWork.tsx', import.meta.url), 'utf8');
+  const engage = src.indexOf("'engage'"), grant = src.indexOf("'computer_grant'");
+  assert.ok(engage > 0 && grant > engage, 'engage must come before computer_grant');
+  assert.match(src, /!standing && out\.conversation \? \{request: out\.conversation\}/);
+});

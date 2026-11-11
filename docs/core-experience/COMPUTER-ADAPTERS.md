@@ -105,6 +105,11 @@ roots, apps, ops and outbound. The result's `status` is `authorized` (a live gra
 covering grant), or `refused` (structural errors, §4). Re-planning after a failure produces a new revision. If it is
 still a subset of the grant it runs without asking; if it widens, it waits. Restarting or retrying never widens.
 
+`request_ref` is bound server-side to the conversation, agent and task of the session; a model cannot choose or
+replace it. A one-request grant is bound to its conversation and is spent after the first plan it covers
+(`computer.grant.claimed`). Standing grants are unchanged. The hidden-folder rule (`AppData`, dot folders, `.git`,
+secrets) applies to every component of a path, not only the first one under a root.
+
 ### The check before every action (executor, not model)
 
 Before each step, the executor checks, inside `runtime._run_action` (cancellation is serialised with effects): the run

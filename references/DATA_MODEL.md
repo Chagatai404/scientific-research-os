@@ -170,6 +170,7 @@ a claim linked to neither counts for no question, and names never imply a link.
 | `dispatch.retry` | task | task. A person asked for a left-alone task to be tried again: its earlier failures and unfinished runs stop counting |
 | `computer.plan` | plan | schema, plan, revision, workspace_id, steps (real paths, operations, classes). Written by the agent (`computer_plan`); each revision is a new event, and an approval binds one revision only |
 | `computer.grant` | grant | plan (or none when standing), roots, ops, apps, outbound, standing, via. Person only (`computer_grant`, `computer_approve`). Covers one exact plan revision, or a standing grant that names its operation classes and roots |
+| `computer.grant.claimed` | grant | conversation, agent, task, plan. Written when the first plan under a one-request grant is made; the grant is then spent and covers no later plan |
 | `computer.grant.revoked` | grant | none. Person only (`computer_revoke`); later steps under the grant are refused |
 | `computer.rejected` | plan | revision. Person declined this exact revision; nothing in it runs |
 | `computer.cancelled` | unit | none. Person stopped a running unit (`computer_cancel`); the executor starts no further step |

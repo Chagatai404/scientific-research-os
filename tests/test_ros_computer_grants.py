@@ -314,6 +314,11 @@ class SessionBoundGrants(ComputerFixture, unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'request'):
             self.grant(standing=True, request='conversation:mine')
 
+    def test_the_form_s_bare_conversation_id_binds_like_the_runtime_s_session_reference(self):
+        self.grant(standing=False, request='mine')
+        with execution.session_scope('conversation:mine'):
+            self.assertEqual(self.copy_plan('a.txt')['status'], 'authorized')
+
     def test_a_remembered_grant_never_carries_outbound(self):
         synced = self.dst / 'OneDrive'
         synced.mkdir()

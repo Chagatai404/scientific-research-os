@@ -2,6 +2,14 @@
 
 ## Unreleased: persistent workspace continuity
 
+### Security
+
+- Experiments run only scripts that were recorded first.
+- Steering and retrying a reply are your actions, not an agent's.
+- One-time computer permissions are bound to their conversation and spent after the first plan.
+- Hidden folders are protected anywhere in a path, not only at its start.
+- Notes an agent writes to the graph and web pages it reads are labelled untrusted for models.
+
 - Added "Do on my computer". You describe the work; the agent writes a plan with the real files and folders it
   will touch, and nothing happens until you approve that exact plan. Each step is checked against your permission
   again before it runs. Copies and moves never overwrite: a name that is taken gets a new name. Deleted files go to
