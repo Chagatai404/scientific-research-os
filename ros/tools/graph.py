@@ -3,6 +3,7 @@ from .. import graph, home, organization, workspaces
 from ..registry import P, iso_day, tool
 
 PERSONAL_WORKSPACES = 60
+MAX_SESSIONS = 500
 
 
 def _hidden(recs):
@@ -122,3 +123,47 @@ def note_retract(rec, note, key, by, reason, work=None, evidence=None, workspace
         if workspace_id and out["workspace_id"] != workspace_id:
             raise ValueError("the note belongs to another workspace")
         return out
+
+
+@tool("graph_coverage", "Agent only: which lessons and conversations of a workspace still have taught capabilities missing from its living "
+      "graph or closing graph_notes not yet recorded, with the ready graph_note_add arguments. It records nothing, opens no task and is "
+      "never shown to the person as work: the graph is kept by agents.",
+      workspace_id=P("string", "the workspace (default: this record's own)"), as_of=P("string", "ISO date (default today)"),
+      limit=P("integer", "at most this many items; default 50, at most 200"))
+def graph_coverage(rec, workspace_id=None, as_of=None, limit=50):
+    from ..learn import tutor
+    limit = max(1, min(int(limit), 200))
+    with workspaces.records(rec) as recs:
+        view = _graph(rec, recs, workspace_id, "workspace", as_of, None)
+        wid = view["workspace_id"]
+        entry = _live(recs)[0][wid]
+        present = {n["id"] for n in view["nodes"] if n["kind"] == "capability"}
+        hidden = _hidden(recs)
+        rows = [r for r in workspaces.overview(rec, wid)["groups"]["sessions"] if r["kind"] in ("lesson", "conversation")]
+        seen = {(r["ref"]["owner_record"], r["ref"]["entity_id"]) for r in rows}
+        for name in sorted({entry["record"], entry["owner_record"]}):   # a lesson names its workspace even when no folder holds it
+            for node in (recs[name].nodes(type="lesson") if name in recs else ()):
+                if node.get("workspace_id") == wid and (name, node["id"]) not in seen:
+                    rows.append({"ref": {"owner_record": name, "entity_id": node["id"]}, "kind": "lesson",
+                                 "title": node.get("title", node["id"])})
+        items, checked = [], 0
+        for row in rows[:MAX_SESSIONS]:
+            owner, entity = row["ref"]["owner_record"], row["ref"]["entity_id"]
+            if owner not in recs or hidden(owner, entity):
+                continue
+            checked += 1
+            r = recs[owner]
+            taught = sorted({e["subject"] for e in r.events(type="teach", lesson=entity) if e["subject"].startswith("capability:")})
+            absent = [c for c in taught if c not in present]
+            closed = row["kind"] == "lesson" and bool(r.events(type="lesson.close", subject=entity, limit=1))
+            notes = [n for n in tutor.suggest_notes(r, entity) if not graph.note_recorded(recs, n["key"])] if closed else []
+            if absent or notes:
+                items.append({"work": {"owner_record": owner, "entity_id": entity}, "kind": row["kind"], "title": row["title"],
+                              "closed": closed, "missing_capabilities": absent, "missing_notes": notes})
+    shown = items[:limit]
+    return {"schema": "ros.graph-coverage.v1", "for": "agent", "workspace_id": wid, "as_of": view["as_of"], "items": shown,
+            "totals": {"items": len(items), "missing_capabilities": sum(len(i["missing_capabilities"]) for i in items),
+                       "missing_notes": sum(len(i["missing_notes"]) for i in items), "sessions_checked": checked,
+                       "sessions_not_checked": max(0, len(rows) - MAX_SESSIONS)},
+            "truncated": {"items": len(items), "shown": len(shown)} if len(items) > len(shown) else None,
+            "call": "graph_note_add"}

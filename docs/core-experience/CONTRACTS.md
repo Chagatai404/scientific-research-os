@@ -208,6 +208,54 @@ model context only: `learn.evidence` never folds it and no grade, claim or appro
 the model — full history kept", expandable to the original turns. A provider-written summary does not exist in this
 codebase; if added it must sit behind an explicit flag and use the same event with another `method`.
 
+## Model providers and custom agents (S4)
+
+`provider_profiles` and `provider_capabilities` read the configured profiles and the evidence matrix; `provider_configure`
+is a human tool. A profile is `codex`, `claude`, `ollama`, `compatible` or `api`, and a remote (`api`) profile carries a
+credential reference `{store: "env" | "os", name}`, never a key. A key is entered only through the person's own paired
+browser route, goes to the operating system store and is not recorded in any event, result or log. `agent_define` (human)
+records a custom agent manifest (`ros.agent-manifest.v1`) whose tools are a subset of its base role's grant and never a
+person-only tool. Full detail, verification status and the live checks still owed: [PROVIDERS](PROVIDERS.md).
+
+## Learning journey (S5)
+
+- `start` takes `workspace_id` (the lesson belongs to it; nothing new is created) and returns the first step from the
+  prior evidence already on the record, so known material is not asked again.
+- `answer` takes `key` (the answer key of the step): the same key sent twice, by a retry or another client, writes one
+  attempt.
+- `draft_save` (`lesson`, `item`, `text`, `client`, `base`) and `draft_get` keep an unsent answer. A draft is never an
+  answer or evidence.
+- `lesson_state(lesson)` gives everything needed to resume from any client: scope, prior evidence, answers so far, the
+  unsent draft, the next step and review dates.
+- `medium_choose(goal, nature, requested, bundle, node)` chooses text, figure, animation or code and says what is ready.
+- `graph_teaching(workspace_id)` reads what to teach next from the living graph. `close` (and `lesson_state` once closed)
+  returns `graph_notes`: ready `graph_note_add` arguments for the tutor agent only.
+- Closing a lesson opens one task of kind `graph` for agents (never in the person's queue). Its notes are written with the
+  `graph_note_*` tools; the learner never manages them.
+
+## Library and web (S6)
+
+Library material has the states `added`, `reading`, `ready` and `attention`, each with a plain reason; a changed file
+returns to `added`. `web_engines` lists the configured search engines (references only); `web_engine_configure` (human)
+saves a Brave, Tavily or Exa profile with a credential reference and can switch it off.
+`web_search(query, engine, limit, workspace_id)` queues an operation whose query is public text built from the request
+and public metadata, never local-only material; without a configured engine it reports `none_configured` and sends
+nothing. `web_read(url, engine, workspace_id)` queues a read of one public https page, finished only by the operations
+worker, and `web_capture(operation)` keeps a finished read as a source with its URL, fetch time, hash and engine. Results
+are discovery, never claims or evidence, and page text is data. Only the `research` mode and the `scout` role are granted
+these tools; clients may not finish them.
+
+## Research journey (S7)
+
+`research_journey(workspace_id, question)` gives each question its stage (question, hypothesis, plan approved,
+experiment, result, claim, independent audit, your decision) from its own explicit `relates` evidence, what needs the
+person's judgement, the agents with their real states and recent outputs. `research_control(task, action, by, note)`
+(human; `action` one of `pause`, `resume`, `cancel`, `retry`) acts on one research task inside what was approved. It
+opens no work and writes no approval, decision or waiver. A `run` task starts, resumes or retries only while its plan
+approval matches the plan's current revision (`approved_revision`); a plan changed since is stale until approved again.
+`add_claim` takes `experiment` (a `results` relation) and `question` (an `answers` relation). A claim linked to neither
+counts for no question.
+
 ## Errors and downstream boundaries
 
 For this registry version, invalid scope/authority, ambiguous creation keys,
@@ -219,8 +267,8 @@ revision as a missing permission or retry a stale ref under a different owner.
 Downstream run/provider/approval/context/computer-action envelopes must carry
 `workspace_id` plus qualified physical refs, and preserve existing persisted
 ids/revisions. Runtime continuity above does not implement the remaining roadmap:
-S4 owns versioned provider capability and
-credential-reference schemas; S7 owns revision-bound plan/claim authorization;
-S8C owns plan-bound filesystem/application grants. Their exact additions belong
-here when implemented and reviewed. Human authority never follows from a
+The S4 provider and credential-reference schemas, and the S7 revision-bound plan
+authorization, are described in the sections above. S8C still owns plan-bound
+filesystem/application grants; its exact additions belong here when implemented
+and reviewed. Human authority never follows from a
 workspace/member/equivalence preference.

@@ -1,4 +1,4 @@
-import {validateDocument, type DocumentData, type QualifiedRef, type WorkspaceOverview, type WorkspaceCatalog, type OperationRow, type LiteratureCandidates} from './contracts';
+import {validateDocument, type DocumentData, type QualifiedRef, type WorkspaceOverview, type WorkspaceCatalog, type OperationRow, type LiteratureCandidates, type LivingGraph, type TeachingSignals} from './contracts';
 let session: Promise<{csrf: string}> | undefined;
 // The link `ros serve` prints pairs this browser for acts that are the person's alone: its token sits in the URL fragment
 // (never sent to a server), is kept in this origin's storage (no other port can read it) and goes with every write.
@@ -37,6 +37,13 @@ export async function readWorkspace(record?: string, workspace_id?: string, sign
 }
 export async function readCatalog(record?: string, signal?: AbortSignal): Promise<WorkspaceCatalog> {
   return call('workspace_catalog', {}, record, false, signal);
+}
+/** The living graph of one workspace, or of everything of the person (no workspace). Bounded; `truncated` says what is left out. */
+export function readLivingGraph(record?: string, workspace_id?: string, limit = 400, signal?: AbortSignal): Promise<LivingGraph> {
+  return call('graph_view', workspace_id ? {workspace_id, limit} : {scope: 'personal', limit}, record, false, signal);
+}
+export function readTeaching(record: string | undefined, workspace_id: string, limit = 50, signal?: AbortSignal): Promise<TeachingSignals> {
+  return call('graph_teaching', {workspace_id, limit}, record, false, signal);
 }
 /** Wait for queued searches or page reads to reach a terminal state; the worker runs them, this only watches. */
 export async function waitForOperations(ids: string[], record: string, signal?: AbortSignal, tries = 40, delay = 1500): Promise<OperationRow[]> {

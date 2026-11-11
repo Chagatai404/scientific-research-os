@@ -23,6 +23,37 @@
 - Long conversations select bounded context with original source/decision
   references and explicit omissions instead of relying only on the newest turns.
   The person's newest message is always sent whole.
+- Added a living knowledge graph that agents keep up to date. It is derived from the record on every read:
+  what you have learned, what is shaky or due, your goals, and the notes agents add with the work that prompted
+  them. A retracted note leaves every view; its history stays in the record, and no note is ever evidence.
+- Added provider profiles: a subscription login (Claude Code or Codex), an API key for a remote service, or a model
+  on this computer. An API key is stored in the operating system's credential store or read from an environment
+  variable you name. Records hold only that reference, never the key. You can define custom agents, which may only
+  narrow what the built-in roles can do. Settings has a guided first run.
+- Credential variables are removed from every child process, so a model CLI or tool cannot read a key meant for
+  another provider.
+- Malformed tool-call arguments are repaired mechanically and the repair is reported. An agent that repeats a rejected
+  call is stopped by a loop breaker and told to change approach.
+- Long conversations are compacted for the model: earlier turns are summarised deterministically, with references to
+  the original messages, and an expandable divider shows where this happened. The full history is kept; a summary is
+  never evidence, a grade or a decision.
+- Math is repaired for display in lessons and answers. Ctrl/Cmd+F finds text on the current page, and ? shows the
+  keyboard shortcut sheet.
+- Adaptive learning: before a lesson asks anything, it reads what earlier evidence and the graph already show, so known
+  material is not asked again. An unsent answer is kept as a draft on the record and appears in any client. A repeated
+  answer (a retry, a second window) is recorded once. The medium (text, figure, animation or code) is chosen for each
+  goal, and the lesson says plainly what is ready. Closing a lesson queues one graph upkeep task for agents; it never
+  appears in your queue.
+- Library materials show their state (added, reading, ready or attention) with a plain reason. Web search engines
+  (Brave, Tavily, Exa) can be configured with a credential reference. A search sends only its public query, never
+  local-only material. A page is kept as a source only when you capture it: it is never a claim or evidence, and its
+  text is treated as data, not instructions.
+- Research journey: each question shows its stage (question, hypothesis, plan approved, experiment, result, claim,
+  independent audit, your decision) from its own recorded evidence. A plan approval is bound to the plan's current
+  revision, so approvals recorded before this version must be given again. The agent board shows each task's real
+  state, and you can pause, resume, cancel or retry a task within what you approved. These controls never approve,
+  decide or waive anything.
+- Deleted workspaces leave the workspace catalog, the Research list and the graph. Restoring one brings it back.
 
 ## 1.7.3: robustness — no silent failures, network loss handled, a sealed figure renderer
 

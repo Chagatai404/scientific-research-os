@@ -136,6 +136,10 @@ first write. A record without the file gets it on its first write.
 requires, teaches, tests, supports, invalidates, implements, cites, supersedes, part-of, about, applied-in,
 addresses, decides, relates.
 
+A `relates` edge may carry `relation`: `results` (a claim to the experiment that produced it, from `add_claim` with `experiment`) or
+`answers` (a claim to the question it answers, from `add_claim` with `question`). The research journey reads only these explicit edges;
+a claim linked to neither counts for no question, and names never imply a link.
+
 ## Event types
 
 | Type | Subject | Data |
@@ -144,12 +148,15 @@ addresses, decides, relates.
 | `lesson.start`, `lesson.close` | lesson | title, scope / summary |
 | `attempt` | item | lesson, response (or `dont_know`) |
 | `confidence` | item | lesson, attempt, level (1 guessing to 5 certain), given before feedback: a self-report for calibration, never learning evidence |
+| `draft` | item | lesson, text, client, attempts. The newest draft of an item wins; saving the same text writes nothing; a stale `base` is reported as a conflict, never lost. An unsent answer: never an answer, grade or evidence |
+| `journey.plan` | lesson | lesson, and the starting plan: what earlier evidence said per capability. Written once (the id derives from the lesson); later evidence never changes it |
 | `grade` | item | lesson, attempt, verdict, feedback, criteria_met |
 | `hint`, `reveal` | item | lesson, index |
 | `teach` | capability | lesson, mode, content |
 | `ask`, `answer` | lesson / ask id | text or mode / text |
 | `policy` | lesson | action, reason, item, capability, mode |
 | `task.open`, `task.claim`, `task.done`, `task.cancel` | task | kind, ref, brief, … / by / result / reason |
+| `task.pause`, `task.resume` | task | note (the person's reason, optional) / none. Only an `open` or `claimed` task can be paused (the person's act, `research_control`). A paused task is neither open nor claimed: it is not handed out or claimed until resumed, and resume restores the state it had. A `run` task resumes only while its plan approval still holds |
 | `dispatch.start`, `dispatch.end` | task | task, role, model / task, record, outcome (`done`, `unfinished`, `interrupted`, `refused`, `failed`), detail. The ledger of unattended agent runs: it bounds how many an hour (`agents_per_hour`, 1 to 100, 0 for none), leaves a task alone after two failures (a `failed` with detail `cancelled` and `interrupted` never count) and after three `unfinished` runs, each of which doubles the next step budget up to 4x |
 | `dispatch.retry` | task | task. A person asked for a left-alone task to be tried again: its earlier failures and unfinished runs stop counting |
 | `dispatch.focus` | hub | hub, conversation. A person asked for this in a session: for six hours its tasks (and those of the capabilities part of it and their bundles) are dispatched first, and up to eight an hour beyond the hourly limit |
@@ -170,7 +177,7 @@ addresses, decides, relates.
 | `inbox.found` | file path | kind, size, hash of a file dropped in the vault's Inbox (an `ingest` task follows) |
 | `graph.note.added`, `graph.note.revised`, `graph.note.retracted` | note (`note:<20 hex>`, from the owner record and the write's key) | Written by agents only (tools `graph_note_add`, `graph_note_revise`, `graph_note_retract`; actor `agent:<name>`, never a person). `added`: `kind` (concept, prerequisite, misconception, goal), `title`, `text`, `workspace_id`, `links` (`{type, target, owner_record}`), `prompted_by` (`work` and `evidence`: the work and the cited learning events that prompted it; at least one). `revised`: the changed `title`, `text` or `links`, `prompted_by`, `reason`. `retracted`: `reason`, `prompted_by`; the note leaves every view, its lines stay. Every event carries `request` (a digest) and has an id derived from (type, owner, note, idempotency key), so a repeated write adds nothing and a changed one is refused. Notes are not nodes or edges and not learning evidence: they may cite a `retrieval`, `attempt`, `grade`, `hint` or `reveal` event but never create one, and they are not in `learn/evidence.TYPES`. The living graph (`graph_view`, `graph_teaching`) is derived from them on every read |
 
-Task kinds: `grade`, `answer`, `visual`, `narration`, `animation`, `video`, `audit`, `verify`, `review`, `item`, `scout`
+Task kinds: `grade`, `answer`, `graph` (agent-only upkeep that a closed lesson opens: it records that lesson's graph notes; never in the person's queue), `visual`, `narration`, `animation`, `video`, `audit`, `verify`, `review`, `item`, `scout`
 (search the literature for a question), `ingest` (read a dropped file), `outline` (plan a course), `bundle` (prepare a
 lesson), `handout` (write one), `run` (run an approved experiment), `job` (a command the runner executes: PDF builds,
 voice). The first claim of a task wins; a claim lapses after 30 minutes.
@@ -194,7 +201,7 @@ retains completed understanding reports. Source roots are host metadata, never p
 `provider.configured` records a model connection profile (subscription CLI, loopback local server or remote HTTPS API; subject
 `<provider>:<model>`) without inference. Its optional `credential` field is a reference, never a key: exactly
 `{"store": "env", "name": "<VARIABLE>"}` or `{"store": "os", "name": "ResearchOS:<label>"}` (a Windows Credential Manager entry).
-A remote (`api`) profile requires it; `codex` and `claude` profiles refuse it. The key is resolved at dispatch and is never stored;
+A remote (`api`) profile requires it; `codex` and `claude` profiles refuse it. `token_param` (`max_tokens` or `max_completion_tokens`) names the request field that bounds an HTTP model's reply; it is stored only when chosen. The key is resolved at dispatch and is never stored;
 no event, result or log holds it. Entering a key writes only to the OS store (`/services/credential`, the person's own act) and
 appends no event. `agent.defined` (subject `agent:<name>@<version>`, actor `person`) records a custom agent manifest
 `ros.agent-manifest.v1`: `id`, `version`, `title`, `instructions`, `base` (`role:<name>` or `mode:<name>`), `tools` (a subset

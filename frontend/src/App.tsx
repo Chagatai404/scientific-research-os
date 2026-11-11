@@ -13,6 +13,7 @@ import {Library} from './Library';
 import {Inspector} from './Inspector';
 import {Learn} from './Learn';
 import {Graph} from './Graph';
+import {KnowledgeView} from './KnowledgeView';
 import {Conversation} from './Conversation';
 import {Settings} from './Settings';
 import {Icon} from './ui';
@@ -24,7 +25,7 @@ import {SessionsPane} from './SessionsPane';
 import {Activity, Tools} from './Workbench';
 
 const sections: [string, string][] = [['overview', 'Home'], ['learn', 'Learn'], ['research', 'Research'], ['library', 'Library'], ['graph', 'Graph'], ['activity', 'Activity']];
-const labels: Record<string, string> = {...Object.fromEntries(sections), settings: 'Settings', tools: 'Developer tools', chat: 'Session', session: 'Learning session', document: 'Reading', node: 'Evidence', search: 'Search', resolve: 'Reference'};
+const labels: Record<string, string> = {...Object.fromEntries(sections), settings: 'Settings', knowledge: 'Knowledge', tools: 'Developer tools', chat: 'Session', session: 'Learning session', document: 'Reading', node: 'Evidence', search: 'Search', resolve: 'Reference'};
 const MOBILE = 1000;   // below this width the two columns become one replacing drawer
 const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const modifier = mac ? '⌘' : 'Ctrl+';
@@ -61,7 +62,7 @@ function Shell() {
   const modalOpen = overlay.active?.kind === 'modal';
   const modalDrawer = mobile && drawer !== null;
   const changeDocument = useCallback((value: DocumentData | null) => setDoc(value), []);
-  const active = route.view === 'chat' ? 'overview' : route.view === 'document' || route.view === 'node' || route.view === 'resolve' || route.view === 'search' ? 'library' : route.view;
+  const active = route.view === 'knowledge' ? 'graph' : route.view === 'chat' ? 'overview' : route.view === 'document' || route.view === 'node' || route.view === 'resolve' || route.view === 'search' ? 'library' : route.view;
   const showNav = mobile ? drawer === 'nav' : navOpen, showSessions = mobile ? drawer === 'sessions' : sessionsOpen;
 
   useEffect(() => {
@@ -138,6 +139,7 @@ function Shell() {
     case 'research': content = <Research record={destination} workspaceId={workspaceId} materialRef={route.params.ref} material={route.params.m || ''} />; break;
     case 'learn': case 'session': content = <Learn id={route.id} record={route.id ? route.record : destination} workspaceId={workspaceId} materialRef={route.params.ref} material={route.params.m || ''} />; break;
     case 'settings': content = <Settings record={route.record} />; break;
+    case 'knowledge': content = <KnowledgeView record={route.record} destination={destination} workspaceId={workspaceId} tab={route.params.tab || ''} />; break;
     case 'graph': content = <Graph focus={route.id} record={route.record} />; break;
     default: content = <><h1>Page not found</h1><p>This workspace link is not recognized.</p><a href={navHref('overview')}>Return to Home</a></>;
   }

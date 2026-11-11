@@ -96,3 +96,29 @@ export interface WebEngines {
   engines: {id: string; engine: string; label: string; endpoint: string; credential: CredentialReference | null; enabled: boolean; evidence: string}[];
 }
 export interface OperationRow {id: string; kind: string; state: string; result?: {ok: boolean; error?: string}}
+
+/** `graph_view`: the living graph, derived on every read. Agents keep its notes; the person only reads it. */
+export interface LivingNode {
+  id: string; kind: string; title: string; ref: QualifiedRef; group?: string; state?: string; status?: string; workspace_kind?: string;
+  signal?: 'known' | 'shaky' | 'new'; due?: boolean; ready?: boolean; frontier?: boolean; blocked_by?: string[]; next_review?: string | null;
+  last_retrieval?: string | null; evidence?: string; reference?: boolean;
+  note_kind?: string; text?: string; revision?: number; added_by?: string; updated_by?: string; updated_at?: string; workspace_id?: string;
+  cites?: {owner_record: string; event: string; type: string}[]; work?: QualifiedRef[];
+}
+export interface LivingEdge {src: string; dst: string; type: string; origin: 'record' | 'note' | string}
+export interface LivingGraph {
+  schema: 'ros.living-graph.v1'; scope: 'workspace' | 'personal'; workspace_id: string | null; as_of: string;
+  nodes: LivingNode[]; edges: LivingEdge[]; counts: Record<string, number>; truncated: {nodes?: number; shown?: number; workspaces_omitted?: number} | null; digest: string;
+}
+export interface TeachingCap {id: string; title: string; state: string; next_review: string | null; ref: QualifiedRef; blocked_by?: string[]; evidence?: string; notes?: {note: string; kind: string; title: string; revision: number; ref: QualifiedRef}[]}
+/** `graph_teaching`: bounded lists with their own totals, so a view can say what it leaves out. */
+export interface TeachingSignals {
+  schema: 'ros.teaching-signals.v1'; workspace_id: string | null; as_of: string;
+  known: TeachingCap[]; shaky: TeachingCap[]; due: TeachingCap[];
+  goal_gaps: {goal: string; title: string; source: 'note' | 'record'; ref: QualifiedRef; targets: number; missing: TeachingCap[]}[];
+  misconceptions: {note: string; title: string; text: string; revision: number; about: string[]; cites: {owner_record: string; event: string; type: string}[]; updated_at: string; ref: QualifiedRef}[];
+  next: {id: string; why: string; ref: QualifiedRef}[]; totals: Record<'known' | 'shaky' | 'due' | 'goal_gaps' | 'misconceptions' | 'next', number>;
+  limits: {per_list: number; graph_truncated: boolean}; digest: string;
+}
+/** What `research_journey` adds to each question: the ids of the hypotheses, experiments and claims its stage is read from. */
+export interface JourneyEvidence {hypotheses: string[]; experiments: string[]; claims: string[]}

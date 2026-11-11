@@ -184,7 +184,7 @@ it with `powershell -File desktop/update-checkout.ps1 -Checkout <folder>` (or se
 
 In the development checkout, `workspace_identity` returns the selected course or
 project's stable `workspace_id`; `workspace_overview` lists its sessions, sources,
-handouts and research. Starting another topic inside a selected course or project
+handouts and research. Every course and project has exactly one workspace. Starting another topic inside a selected course or project
 keeps that workspace. Display renames do not change its identity.
 
 ```bash
@@ -200,6 +200,20 @@ append preferences and can be reversed without moving source files or rewriting
 learning history. [Core contracts](docs/core-experience/CONTRACTS.md) describe the
 CLI/MCP/App fields and their authority boundaries. These checkout changes do not
 update an installed desktop release by themselves.
+
+## Connect your own model
+
+Research OS works with three kinds of model, each set up once in Settings (the guided first run walks through it):
+
+- **A subscription login:** your Claude Code or Codex login on this computer. No API key is involved.
+- **An API key:** a remote service that speaks the OpenAI-compatible protocol. The key is kept in your operating system's
+  credential store, or read from an environment variable whose name you give. You can also point it at a service you run yourself.
+- **A local model:** a model served on this computer (for example Ollama). Local-only sources are never sent to a subscription login
+  or a remote API; only a local model on this machine may read them.
+
+Keys are never stored in records, events or logs: a record holds only the reference (the variable's name, or the store entry's
+name under `ResearchOS:`). Custom agents can be defined in the same place and may only narrow what the built-in roles can do.
+The provider matrix, what is verified and what is not yet is in [PROVIDERS](docs/core-experience/PROVIDERS.md).
 
 ## How the pieces fit
 

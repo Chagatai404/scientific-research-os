@@ -600,6 +600,15 @@ def notes(rec: Record) -> dict:
     return rec.fold("graph.notes.v1", NOTE_EVENTS, dict, step)
 
 
+def note_recorded(recs: dict, key: str) -> bool:
+    """Whether a note with this idempotency key was ever written (added, and maybe since revised or retracted) in any of these
+    records: the same test the graph upkeep uses, so coverage and upkeep never disagree."""
+    for name, rec in recs.items():
+        if "note:" + hashlib.sha256(f"{name}|{key}".encode()).hexdigest()[:20] in notes(rec):
+            return True
+    return False
+
+
 def dead_workspaces(recs: dict) -> tuple[set, set]:
     """(logical workspace ids, hub ids) of workspaces the person deleted that belonged to these records. A deleted workspace
     stays on disk and could be restored, so it is read from its folder's config, never from the lists it has left."""
