@@ -15,6 +15,7 @@ import {RunSteps} from './RunSteps';
 import {PlanCard} from './PlanCard';
 import {RepoPicker} from './RepoPicker';
 import {ModeBadge, QuickStarts, SESSION_MODES, startModeOf} from './sessionModes';
+import {UsageMeter} from './UsageMeter';
 import './classroom.css';
 
 
@@ -297,6 +298,7 @@ export function Conversation({id, record, startMode, workspaceId = ''}: {id: str
         <button type="button" className="voice-toggle" aria-pressed={voiceAuto} disabled={!capabilities.data?.voice.kokoro} onClick={() => {setVoiceAuto(!voiceAuto); savePreference('read-replies', voiceAuto ? 'off' : 'on');}}>♫ {voiceAuto ? 'Read replies on' : capabilities.data?.voice.kokoro ? 'Kokoro ready' : 'Voice unavailable'}</button></div>{pending && <button type="button" onClick={stop} disabled={!turnRun}>Stop</button>}<button className="primary send-message" disabled={(pending ? !canSteer || !text.trim() || steering : !models.selected) || openingMicrophone || recording || transcribing} aria-label={pending && canSteer ? 'Send steering message' : 'Send message'}>{pending ? (canSteer ? 'Steer ↑' : 'Working…') : 'Send ↑'}</button></div>
     </form>
     {note && <p className="notice" role="status">{note} <button type="button" onClick={() => setNote('')}>Dismiss</button></p>}
+    {id && <UsageMeter record={record} conversation={id}/>}
     <p className={'composer-caption' + (!recording && !transcribing && !(capabilities.data && (!capabilities.data.models.length || !models.selected)) ? ' idle' : '')} role="status">{recording ? 'Listening locally. Stop when you’re ready; review the transcript before sending.' : transcribing ? 'Transcribing locally. Review the transcript before sending.' : capabilities.data && !capabilities.data.models.length ? 'No model available. Open Settings to connect a provider.' : capabilities.data && !models.selected ? 'The selected model is unavailable. Choose a model in Settings.' : 'Enter to send · Shift Enter for a new line'}</p>
     {audioUrl && <audio className="reply-audio" ref={audio} src={audioUrl} controls aria-label="Kokoro response playback" />}
     {(error || capabilities.error) && <p className="notice error" role="alert">{error || capabilities.error}</p>}

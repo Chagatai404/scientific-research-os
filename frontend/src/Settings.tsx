@@ -3,6 +3,7 @@ import {ConnectionSettings} from './ConnectionSettings';
 import {VaultActions} from './VaultActions';
 import {AgentSettings} from './AgentSettings';
 import {ProviderSettings} from './ProviderSettings';
+import {UsagePrices} from './UsagePrices';
 import {useEffect, useState, type FormEvent} from 'react';
 import {call, href, service} from './api';
 import {useResource} from './hooks';
@@ -55,7 +56,7 @@ export function Settings({record}: {record: string}) {
       <form onSubmit={connect}><label htmlFor="vault-path">Vault path</label><input id="vault-path" value={path} onChange={event => setPath(event.target.value)} required placeholder="C:/Users/you/Obsidian/Knowledge" /><label htmlFor="vault-folder">Research OS folder inside the vault</label><input id="vault-folder" value={folder} onChange={event => setFolder(event.target.value)} required /><div className="settings-actions"><button disabled={!!busy || !path.trim() || !folder.trim()}>{busy === 'connect' ? 'Connecting…' : 'Connect Vault'}</button><button type="button" onClick={inspectVault} disabled={!!busy || !connection?.vault.configured}>{busy === 'status' ? 'Checking Vault…' : 'Check Vault Status'}</button></div></form>
       {report && <pre className="settings-report" role="status">{report}</pre>}{error && <p className="notice error" role="alert">{error}</p>}
     </section>
-    <VaultActions record={record}/><ConnectionSettings record={record}/>
+    <VaultActions record={record}/><ConnectionSettings record={record}/><UsagePrices record={record}/>
     <section aria-labelledby="settings-developer"><h2 id="settings-developer">Developer tools</h2><p className="muted">Every operation the app can perform, as raw forms. Meant for troubleshooting and for people building on Research OS; normal learning and research never need it.</p><a className="button" href={href('tools', '', record)}>Open developer tools</a></section>
   </div>;
 }
