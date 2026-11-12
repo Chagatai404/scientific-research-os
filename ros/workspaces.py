@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager, ExitStack
 import hashlib
+import re
 
 from . import context, graph, home, organization, workspace_inventory
 from .learn import evidence
@@ -109,7 +110,8 @@ def _title(rec, cfg, state):
         else rec.root.name.replace('-', ' ').replace('_', ' ').title())
 
 
-def _catalog(recs, snapshots=None):
+def _catalog(recs, snapshots=None, listed=False):
+    """Every identity; ``listed`` also drops archived and template hubs (what the person sees)."""
     snapshots = snapshots if snapshots is not None else _snapshots(recs)
     configs = {name: home.config(rec.root) for name, rec in recs.items()}
     titles = {name: _title(rec, configs[name], snapshots[name][2]) for name, rec in recs.items()}
@@ -169,10 +171,58 @@ def _catalog(recs, snapshots=None):
                 'kind': 'general' if cfg.get('workspace_kind') == 'general' else 'record',
                 'hub': None, 'record': name, 'owner_record': name,
                 'title': titles[name], 'aliases': []}
+    # The person's curated name wins: a workspace rename on the record, then the organization display name or the hub
+    # title in the hub's owner, then whatever the entry already carries (the record's bare title).
+    for wid, entry in out.items():
+        hub = entry.get('hub')
+        if not hub or hub.get('owner_record') not in snapshots:
+            continue
+        record = entry['record']
+        if configs.get(record, {}).get('role') == 'project' and snapshots[record][2].get('workspace_title'):
+            continue
+        nodes, _, st = snapshots[hub['owner_record']]
+        node_title = (nodes.get(hub['entity_id']) or {}).get('title')
+        for candidate in (st['names'].get(hub['entity_id']), node_title):
+            if candidate and not _template(candidate):
+                entry['title'] = candidate
+                break
     # A deleted workspace stays on disk (restorable) and its hub stays folded in Knowledge: hide every alias of it.
     dead_ids, dead_hubs = graph.dead_workspaces(recs)
-    return {w: e for w, e in out.items()
+    live = {w: e for w, e in out.items()
             if w not in dead_ids and (e.get('hub') or {}).get('entity_id') not in dead_hubs}
+    if not listed:
+        return live
+    archived = _archived_hubs(snapshots)
+    return {w: e for w, e in live.items()
+            if not _template(e['title']) and not _hub_archived(e.get('hub'), archived)}
+
+
+def _template(title):
+    """An unresolved template placeholder such as ``{{title}}`` is never a workspace name."""
+    return bool(re.search(r'\{\{.*?\}\}', title or ''))
+
+
+def _archived_hubs(snapshots):
+    """Hub ids the person archived, with the parent links needed to see a hub filed inside an archived folder."""
+    archived, parents = set(), {}
+    for _, _, st in snapshots.values():
+        archived |= st['archived']
+        parents.update(st['parents'])
+    return archived, parents
+
+
+def _hub_archived(hub, archived):
+    if not hub:
+        return False
+    marked, parents = archived
+    item = hub['entity_id']
+    for _ in range(20):
+        if not item:
+            return False
+        if item in marked:
+            return True
+        item = parents.get(item, '')
+    return False
 
 
 def catalog(rec):
@@ -180,9 +230,9 @@ def catalog(rec):
 
     ``rec`` is a Record, or the already-open ``records()`` mapping."""
     if isinstance(rec, dict):
-        return {w: dict(e) for w, e in _catalog(rec).items()}
+        return {w: dict(e) for w, e in _catalog(rec, listed=True).items()}
     with records(rec) as recs:
-        return {w: dict(e) for w, e in _catalog(recs).items()}
+        return {w: dict(e) for w, e in _catalog(recs, listed=True).items()}
 
 
 def _selected(rec, catalog, workspace_id=None):

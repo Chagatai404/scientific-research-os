@@ -54,6 +54,30 @@ class WorkspaceIdentityTests(unittest.TestCase):
         api.call('workspace_restore', self.user, workspace='stat303')
         self.assertIn(wid, ids())
 
+    def test_archived_and_template_hubs_are_not_listed_and_restore_on_unarchive(self):
+        self.user.put_node('course:old', 'course', title='Old course')
+        self.user.put_node('project:project', 'project', title='{{title}}')
+        ids = lambda: {w['hub']['entity_id'] for w in api.call('workspace_catalog', self.user)['workspaces']}
+        self.assertIn('course:old', ids())
+        self.assertNotIn('project:project', ids())
+        organization.archive(self.user, 'course:old')
+        self.assertNotIn('course:old', ids())
+        wid = workspaces._id('knowledge', 'course:old')
+        self.assertEqual(workspaces.resolve(self.user, workspace_id=wid)['status'], 'resolved')
+        organization.archive(self.user, 'course:old', False)
+        self.assertIn('course:old', ids())
+
+    def test_curated_hub_title_wins_over_record_name_and_identity_is_unchanged(self):
+        wid = api.call('workspace_identity', self.course)['workspace_id']
+        title = lambda: [w['title'] for w in api.call('workspace_catalog', self.user)['workspaces']
+                         if w['workspace_id'] == wid]
+        self.assertEqual(title(), ['STAT303'])
+        self.user.put_node('course:stat303', 'course', title='STAT303 Mathematical Statistics I')
+        self.assertEqual(title(), ['STAT303 Mathematical Statistics I'])
+        organization.rename(self.user, 'course:stat303', 'Stats One')
+        self.assertEqual(title(), ['Stats One'])
+        self.assertEqual(api.call('workspace_identity', self.course)['workspace_id'], wid)
+
     def test_explicit_assignment_groups_history_and_keeps_owner(self):
         wid = api.call('workspace_identity', self.course)['workspace_id']
         for ident, kind in [('conversation:old', 'conversation'), ('source:old', 'source'), ('handout:old', 'handout')]:
