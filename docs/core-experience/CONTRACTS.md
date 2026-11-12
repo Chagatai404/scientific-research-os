@@ -118,6 +118,14 @@ Research list read it; scope survives navigation, reload and Back. Overview grou
 research, other) collapse two rows into one only when their recorded `source_hash` matches or source and path
 match; other representations appear under the row's details. Equal names never merge files.
 
+The catalog lists only live, named workspaces: a hub the person archived (`organization_archive`, or filed inside
+an archived folder), a deleted workspace and a hub whose title is an unresolved template (`{{title}}`) are not
+listed; archived hubs stay restorable and reachable through the archived list, and unarchiving lists them again.
+Identities (`workspace_id`) never change. Title precedence: the record's own workspace rename, then the
+organization display name, then the Knowledge hub title, then the record title. Explicit lookups by id
+(`workspace_identity`, `engage`, overview) still resolve an archived workspace; only listings and the graph
+scope selector refuse it.
+
 ## Starting work
 
 `engage` adds optional `workspace_id`. An explicitly selected workspace or the

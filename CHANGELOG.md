@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.1: a clean workspace list
+
+- Fixed: the workspace selector and the Research list showed every course and project you had ever archived (and a template
+  leftover named "{{title}}"), so a few real workspaces were buried under empty ones. Archived courses and projects no longer
+  appear there; they stay restorable, and an archived workspace you name explicitly still opens.
+- Fixed: a course or project with its own record showed the record's bare name (for example "Stat303") instead of the name
+  you gave it ("STAT303 Mathematical Statistics I"). The name you set now wins; workspace identities do not change.
+
 ## 1.8.0: one workspace per course and project, a living graph, your own models, research and experiments in the app
 
 ### Security
