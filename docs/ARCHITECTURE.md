@@ -17,10 +17,15 @@ document and that test in the same commit.
                prepare · research · importers · export
                vault · handouts · automation · director · atlas
                organization (display names and membership, independent of scientific edges)
+               workspaces (stable logical scope, qualified physical ownership and explicit legacy membership)
+               context_selection (bounded conversation context with original event references and explicit omissions)
                library (material added by the person: listed at once, read in the background)
                modes (what a desktop session is in each mode: its skill, its tool grant, the person's own words)
                dispatch (which agent tasks the desktop takes unattended, the limits and the ledger of what it did)
                workbench (the repository a record studies, and what a Code session changed in it)
+               computer (plans, grants and the executor's checks for work on the person's files; the Research OS bin)
+               workspace_migration (dry run, person-approved apply and exact rollback of owner mappings)
+               usage (tokens reported by runs, person-set prices; unknown is never estimated)
      │
  core          store (the record) · home (where records live)
  engines       lib/ (speech, voice, Manim, papers, scouting, evidence atoms, manifests, walkthrough, old readers)
@@ -48,6 +53,10 @@ There are no import cycles **(checked)**.
    tombstone. Items are immutable and named by their content hash; an edit is a new item that `supersedes` the old.
 3. **One writer per record at a time.** Writes take a short OS file lock; inside a process every tool call holds
    `registry.LOCK`. There are no leases or lock files to clean up.
+   The derived SQLite schema initializes under a separate `.index.lock`, preventing
+   simultaneous first opens from observing partial schema creation. A writer may
+   acquire the index lock while holding the write lock; index initialization never
+   acquires the write lock in reverse order. Original JSONL remains the truth.
 4. **Deterministic ids for imported facts** (`store.event_id(source, key)`), so importing twice adds nothing.
 5. **People decide.** Approving, deciding and waiving are `human=True` tools: never offered over MCP, confirmed at a
    terminal in the CLI, made in the portal.
@@ -108,10 +117,27 @@ A new domain area gets a new `ros/tools/<area>.py` whose docstring starts "Tools
 `ros/api.py`.
 
 `organization` owns workspace display names, course/project/library folders, and session/material membership.
+`workspace_inventory` is a read-only domain preview of legacy workspace membership across explicitly supplied,
+authorized records. It returns qualified physical references and separates explicit placement from ambiguous
+title candidates; it never discovers source folders, moves files or rewrites learning history.
 Its `organization.*` and `workspace.renamed` events are human preferences; they never rewrite source paths,
 scientific edge meaning, immutable item identities or historical learning evidence. The snapshot caches canonical
 nodes and recorded membership on node/edge stamps and incrementally folds preference events. New workspaces are
 isolated until explicitly linked. UI callers use `workspace_organization` and the human organization tools.
+
+`workspaces` projects one logical course/project over its explicitly linked records. `home.workspace_id` derives
+legacy identities from explicit user/hub links; `context.link` pins identity before later metadata changes. Read
+resolution never creates or assigns by title. Explicit keyed creation holds an OS lock across processes; General
+work is a singleton. `workspace.member.assigned` preferences retain qualified physical owner/entity/revision refs
+and override legacy inference, without moving history or adding scientific edges. `workspace_overview` groups
+sessions, sources, handouts and research; `workspace_work_resolve` returns both physical owner and selected logical
+workspace. Per-work metadata uses indexed node/event lookups, inventory graph reads use cached projections and
+preferences use incremental folds. `engage` reuses the selected linked project/course; unselected legacy calls
+retain their playbooks. Exact schemas are in `docs/core-experience/CONTRACTS.md`.
+
+Capability identity remains qualified and independent of display titles. Human `capability_equivalence` binds
+verified evidence to actual node-content revisions and refuses cycles; a stale definition stops equivalence.
+The read model references canonical-owner learning events once, never copies grades or silently pools assessments.
 
 `library` owns the ingestion queue. `library.added` (one per file, id derived from connection and path) makes material
 visible without reading it; `library.state` moves it Added -> Reading -> Ready or Needs attention with a plain-language
@@ -119,6 +145,30 @@ reason; `library.removed` hides it without touching the original. Processing is 
 `library_queue` automation on each tick), idempotent and restart-safe, and feeds the disposable lexical index.
 `workspace_map` is a read model: membership lines it returns are navigation, typed `membership`, and are never written
 as record edges.
+
+### A computer action (a change to the person's files, by a plan)
+
+The path is one-way: a model writes a plan, a fixed executor carries it out, and no model holds a handle or a shell.
+
+1. Domain: `ros/computer.py` validates the plan (real paths, operation classes), records `computer.plan` (agent) and
+   `computer.grant` / `computer.rejected` (person), and checks the grant again before every step.
+2. Tools: `ros/tools/computer.py` marks the person's acts `human=True` (`computer_approve`, `computer_grant`,
+   `computer_revoke`, `computer_cancel`); the agent reads and `computer_run` stay unmarked.
+3. Runtime: `ros/runtime.py` runs the queued `computer_exec` unit (id `computer-exec:{plan}@{revision}#{attempt}`) one
+   engine call per step, and recovers unfinished units at startup.
+4. Engine: `ros/lib/fileops.py` does the file work (never overwrite, hash checks), reached through
+   `ros/lib/desktop_operations.py` on the existing worker path. A new operation needs a test with disposable files;
+   `delete_permanent` and `spend` need their own per-action approval (CONTRACTS, "Computer work").
+
+### An experiment run (code an agent writes and runs in the workspace)
+
+1. Domain: `ros/workbench.py` requires a `run` task whose plan approval matches the current revision (`tasks.run_gate`),
+   records the script's hash, and queues the operation under a deterministic id (`experiment.run`).
+2. Tools: `ros/tools/workbench.py` (`experiment_*`); `experiment_stop` is the person's act.
+3. Environment: `ros/lib/environments.py` builds the per-workspace environment under a lock; packages and repositories
+   come only from the approved plan's `environment`, and anything unlisted is refused before download.
+4. Output is written as bounded `experiment.output` chunks and read by offset (`experiment_follow`); provenance is
+   recorded with the run, never as a verified claim.
 
 ### An event type
 
@@ -320,6 +370,19 @@ in addition to the legacy browser check. See `docs/portal-redesign/ARCHITECTURE.
 Put it in `ros/lib/` with its own CLI (`python -m ros.lib.<name>`), import it lazily from the domain module that uses
 it, and make its absence a reported problem, not an exception that escapes.
 
+### Malformed tool calls (repair, loop breaker, narration guard)
+
+`Tool.call` in `ros/registry.py` repairs arguments mechanically before validating them: a JSON string for a declared array or
+object, a quoted boolean, integer or number, a string quoted twice. Each repair is logged and returned as
+`repaired: [{param, from_type, to_type}]` (values are never logged; a non-object result is wrapped as `{result, repaired}`).
+Never repaired: any `human=True` tool and the names in `registry.PROTECTED` (grade, verdict, approve, decide, waive, claims,
+learner answers, evidence and record-writing tools); a test checks that the set exists and is untouched. In a provider turn
+(`runtime.execute`, `guarded`) the same call (tool and argument hash) rejected once is not run again: the second time the model
+is told it was rejected twice, the third time the run fails with a readable reason (`TurnHalt`, a `BaseException`, so an
+adapter's `except Exception` cannot turn it into one more tool error). Narration guard: in learn and research turns, if the
+text after the last tool call is empty but the model wrote prose before it, the adapter is run once more with a system note to
+answer in its reply; adapters have no separate thinking channel, so the check is on the `emit`/tool boundary. Chat is not redirected.
+
 ### Supervision, diagnostics and network loss
 
 - **Logs.** `ros/desktop.py` configures the `ros` logger once (`backend.log` in `ROS_LOG_DIR`, rotating 2 MB x 5, every record and
@@ -358,6 +421,17 @@ actions require the desktop credential, or the pairing token from the link `ros 
 a cookie), plus the CSRF token; scientific decisions additionally bind subject revision. Files written by agents or
 documents are served sandboxed (`serve._file(untrusted=True)`), and every path from a request or tool goes through
 `home.local_path`, which refuses network shares before anything touches them.
+
+To connect a model without code (a remote API, a local server or a subscription CLI), add a profile: the human tool
+`provider_configure` appends `provider.configured` with an endpoint (`https://` for `api`, loopback `http://` for `ollama` and
+`compatible`, none for `codex` and `claude`) and, for `api`, a credential reference `{store: env|os, name}` naming where the key
+lives (`ros/lib/credentials.py`). The key is never in a record: `runtime.bind_credential` resolves it at every dispatch and a missing
+one stops the run, with no fallback. Chats, the connection check and `agents_model` accept an `api:<model>` only when that profile
+exists (`conversation.send`); the check passes `ros.lib.dialogue` only the reference, and its worker reads the key. The key itself is
+typed only into the paired browser's `/services/credential` (set, delete, status), which writes the `ResearchOS:` namespace of the
+OS store through that worker's stdin. There is deliberately no tool that takes a key, so it cannot reach the CLI, MCP, a record or a
+log. A custom agent is saved with the human tool `agent_define` (`agent.defined`); `modes.agent_manifest` lets it only narrow a role
+or mode grant. Details: `docs/core-experience/PROVIDERS.md`.
 
 To add a provider, implement its adapter in `ros/lib/providers.py`, advertise verified capabilities,
 register it in `ADAPTERS`, and exercise streaming, tool results, interruption and malformed input

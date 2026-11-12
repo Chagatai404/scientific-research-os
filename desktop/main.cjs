@@ -131,6 +131,13 @@ async function start() {
     // Several files become several connections, in the order the person chose them; the caller handles one or many.
     return payload.kind === 'file' && chosen.filePaths.length > 1 ? Promise.all(chosen.filePaths.slice(0, 20).map(connect)) : connect(chosen.filePaths[0]);
   });
+  // "Do on my computer": the person's native choice of folders or files. Only absolute paths go back; nothing is read or registered here,
+  // and the backend still decides what a path may be used for.
+  ipcMain.handle('computer:pick', async (event, payload) => {
+    sender(event); if (!payload || !['folder', 'file'].includes(payload.kind)) throw new Error('Invalid selection');
+    const chosen = await dialog.showOpenDialog(window, {title: payload.kind === 'file' ? 'Choose files' : 'Choose a folder', properties: payload.kind === 'file' ? ['openFile', 'multiSelections'] : ['openDirectory', 'multiSelections']});
+    return chosen.canceled ? [] : chosen.filePaths.filter(p => path.isAbsolute(p)).slice(0, 20);
+  });
   ipcMain.handle('source:open', async (event, payload) => {
     sender(event); if (!payload || typeof payload.source !== 'string' || typeof payload.relativePath !== 'string' || typeof payload.record !== 'string') throw new Error('Invalid source reference');
     const result = await operation('source_location', {source: payload.source, path: payload.relativePath, record: payload.record});

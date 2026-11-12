@@ -10,16 +10,19 @@ from ..registry import P, iso_day, tool
 
 
 @tool("engage", "Start what the person asked for, in their own words: teach me a course or topic, investigate a question, "
-      "review, or continue. Makes the records and the goal, opens the work for agents, and lets lessons, notes, handouts "
+      "review, or continue; or, with kind computer, do something on the person's computer (copy, move, rename, file away: "
+      "it opens a computer conversation where you propose a checked plan, never a shell). Makes the records and the goal, opens the work for agents, and lets lessons, notes, handouts "
       "and literature follow on their own. Saying it again changes nothing.", writes=True,
       intent=P("string", "what the person said, in their words", True),
       kind=P("string", "what it is (default: worked out from the words)", enum=director.KINDS),
-      target=P("string", "a short key: a course code like stat303, or a topic or question key"),
+      target=P("string", "a short key: a course code, or a topic or question key"),
       title=P("string", "its name"), deadline=P("string", "ISO date to finish by"),
       pace=P("integer", "minutes a week to spend"),
-      materials=P("string", "where the course material is, or what it is (syllabus, textbook, a folder, a link)"))
-def engage(rec, intent, kind="auto", target=None, title=None, deadline=None, pace=None, materials=None):
-    return director.engage(rec, intent, kind, target, title, deadline, pace, materials)
+      materials=P("string", "where the course material is, or what it is (syllabus, textbook, a folder, a link)"),
+      workspace_id=P('string', 'explicit selected logical workspace; a linked project record selects itself'),
+      material_refs=P('array', 'qualified selected workspace materials, preserving owner and actual revision'))
+def engage(rec, intent, kind="auto", target=None, title=None, deadline=None, pace=None, materials=None, workspace_id=None, material_refs=None):
+    return director.engage(rec, intent, kind, target, title, deadline, pace, materials, workspace_id, material_refs)
 
 
 @tool("brief", "The first call of every session: what needs the person's judgement (with the evidence), what is happening, "

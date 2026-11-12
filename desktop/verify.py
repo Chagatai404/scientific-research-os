@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 ROOT=Path(__file__).resolve().parents[1]
 STEPS={
- 'python':([sys.executable,'-m','unittest','discover','-s','tests','-p','test_*.py'],900),
+ 'python':([sys.executable,'-m','unittest','discover','-s','tests','-p','test_*.py'],2400),
  'frontend-tests':(['npm','--prefix','frontend','test'],180),
  'typecheck':(['npm','--prefix','frontend','run','typecheck'],120),
  'frontend-build':(['npm','--prefix','frontend','run','build'],240),
@@ -18,6 +18,12 @@ STEPS={
  'workspace-browser':(['node','tests/ros-workspace-browser.cjs'],180),
  'usability-browser':(['node','tests/ros-desktop-usability.cjs'],300),
  'desktop-browser':(['node','tests/ros-desktop-browser.cjs'],180),
+ 'scope-browser':(['node','tests/ros-workspace-scope.cjs'],300),
+ 'library-browser':(['node','tests/ros-library-journey.cjs'],300),
+ 'learning-browser':(['node','tests/ros-learning-journey.cjs'],300),
+ 'research-browser':(['node','tests/ros-research-journey.cjs'],300),
+ 'knowledge-browser':(['node','tests/ros-knowledge-views.cjs'],300),
+ 'experiment-browser':(['node','tests/ros-experiment-console.cjs'],300),
  'workspace-benchmark':([sys.executable,'tests/bench_workspace.py'],600),
  'desktop-lifecycle':(['npm','--prefix','desktop','test'],120),
 }

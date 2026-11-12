@@ -237,8 +237,14 @@ def main(argv: list[str] | None = None) -> int:
                                  "type yes, or make it in the portal (ros serve)\n")
                 return 3
             # `0 in (None, False)` is true in Python: compare by identity so an answer of 0 is not dropped
-            out = t.call(rec, {k: getattr(args, _dest(k)) for k in t.params
-                               if getattr(args, _dest(k), None) is not None and getattr(args, _dest(k)) is not False})
+            from . import runtime
+            coordinator = runtime.Coordinator()
+            try:
+                out = t.call(rec, {k: getattr(args, _dest(k)) for k in t.params
+                                   if getattr(args, _dest(k), None) is not None and getattr(args, _dest(k)) is not False})
+                out = coordinator.submit(rec, t.name, out, wait=True)
+            finally:
+                coordinator.close()
             if t.writes and t.name not in ("reconcile", "job_done"):
                 try:  # what follows from the change happens now (see ros.automation)
                     api.call("reconcile", rec, mode="call")

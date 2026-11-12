@@ -55,8 +55,15 @@ PROMPTS = {
 
 class Server:
     def __init__(self, project: str | None = None):
+        from . import runtime
         self.default = project
         self.records: dict[str, Record] = {}
+        self.coordinator = runtime.Coordinator()
+
+    def close(self):
+        self.coordinator.close()
+        for rec in self.records.values(): rec.close()
+        self.records.clear()
 
     def record(self, project: str | None) -> Record:
         try:
@@ -151,7 +158,7 @@ class Server:
                         selector = selector or args.pop("project", None)
                     rec = self.record(selector)
                     value = api.TOOLS[name].call(rec, args)
-                    value = api.external_result(value)
+                    value = self.coordinator.submit(rec, name, value)
                     if api.TOOLS[name].writes and name not in ("reconcile", "job_done"):
                         self.follow_up(rec)
                     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
@@ -212,8 +219,7 @@ def serve(project: str | None = None, stdin=None, stdout=None, portal: int | Non
         if httpd is not None:  # the portal lives exactly as long as the agent session
             httpd.shutdown()
             httpd.server_close()
-        for rec in server.records.values():
-            rec.close()
+        server.close()
         api.release()  # the user-wide records kept open for project records
     return 0
 

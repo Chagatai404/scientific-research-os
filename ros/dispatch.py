@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 from . import director, home, modes, prepare, tasks
 from .store import Record
 
-AUTO = ("grade", "answer", "outline", "ingest", "scout", "item", "narration", "bundle", "handout", "review")
+AUTO = ("grade", "answer", "outline", "ingest", "scout", "item", "narration", "bundle", "handout", "review", "graph")
 # Taken only by Codex, with its own shell, working in the bundle's folder under its sandbox: an animation on a computer where ManimGX cannot run in
 # the safe renderer (Manim Community needs ffmpeg and LaTeX as child processes, which the container forbids).
 NATIVE = ("animation",)
@@ -61,13 +61,14 @@ GRANTS = {
     "scout": {"literature_search", "research", "context", "skill", "find", "library", "vault_find"},
     "item": _READ | {"add_item", "capabilities"},
     "narration": _READ | {"bundle_plan", "bundle_file", "bundle_check", "bundle_tasks"},
-    "bundle": _READ | {"bundle_create", "bundle_plan", "bundle_file", "bundle_check", "bundle_tasks", "add_item"},
+    "bundle": _READ | {"bundle_create", "bundle_plan", "bundle_file", "bundle_check", "bundle_tasks", "add_item", "bundle_readiness", "bundle_code"},
+    "graph": _READ | {"graph_view", "graph_teaching", "lesson_state"} | modes.GRAPH_WRITES,  # agent-only upkeep of the living graph
     "handout": _READ | {"handout_create", "handout_write", "handout_file", "handout_check"},
     "review": _READ | {"literature_search"},
     "visual": _READ | {"bundle_plan", "bundle_file", "bundle_check"},  # in the safe renderer `claim` swaps bundle_file for the render tools: `publish` is
     "animation": _READ | {"bundle_plan", "bundle_file", "bundle_check"},  # the only way a picture or video reaches the bundle
 }
-STEPS = {"grade": 6, "answer": 6, "outline": 24, "ingest": 12, "scout": 10, "item": 16, "narration": 24, "bundle": 32, "handout": 24, "review": 12, "visual": 16, "animation": 16}
+STEPS = {"grade": 6, "answer": 6, "outline": 24, "ingest": 12, "scout": 10, "item": 16, "narration": 24, "bundle": 32, "handout": 24, "review": 12, "visual": 16, "animation": 16, "graph": 12}
 DEADLINE = 900  # seconds one task may take
 ROLE_FILES = ("scout", "verifier", "librarian", "visual-maker")
 
@@ -163,6 +164,22 @@ def allowance(rec: Record, now: datetime | None = None) -> dict:
     left = max(0, cfg["per_hour"] - _used(rec, now))
     return {"ok": left > 0, "reason": "" if left else f"The limit of {cfg['per_hour']} tasks an hour is reached.", "model": chosen,
             "left_this_hour": left, "per_hour": cfg["per_hour"], "auto": True}
+
+
+def attempts(rec: Record) -> dict[str, dict]:
+    """What the ledger says about each task's unattended runs: ``{task: {"runs", "model", "role", "started",
+    "ended": {"outcome", "detail", "at"} | None}}``. ``ended`` is None while the newest run has not ended, and a person's
+    retry clears it (the earlier outcome no longer describes the task)."""
+    def step(out, e):
+        task = e["subject"]
+        row = out.setdefault(task, {"runs": 0, "model": None, "role": None, "started": None, "ended": None, "retried": None})
+        if e["type"] == "dispatch.start":
+            row.update(runs=row["runs"] + 1, model=e["data"].get("model"), role=e["data"].get("role"), started=e["ts"], ended=None)
+        elif e["type"] == "dispatch.end":
+            row["ended"] = {"outcome": e["data"].get("outcome"), "detail": e["data"].get("detail", ""), "at": e["ts"]}
+        elif e["type"] == "dispatch.retry":
+            row.update(ended=None, retried=e["ts"])
+    return rec.fold("dispatch-attempts", ("dispatch.start", "dispatch.end", "dispatch.retry"), dict, step)
 
 
 def skipped(rec: Record) -> list[str]:

@@ -1,9 +1,11 @@
 import {CommandMenu} from './CommandMenu';
+import {FindBar} from './FindBar';
+import {ShortcutHelp} from './ShortcutHelp';
 import {UpdatePrompt} from './UpdatePrompt';
 import {InlineTitle} from './InlineTitle';
 import {useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent} from 'react';
 import {call, href, preference, routeOf, savePreference, service} from './api';
-import type {DocumentData, RecordInfo} from './contracts';
+import type {DocumentData, RecordInfo, WorkspaceIdentity} from './contracts';
 import {DocumentView, ResolveView} from './Document';
 import {EntityView, Search} from './views';
 import {Research} from './Research';
@@ -11,16 +13,20 @@ import {Library} from './Library';
 import {Inspector} from './Inspector';
 import {Learn} from './Learn';
 import {Graph} from './Graph';
+import {KnowledgeView} from './KnowledgeView';
 import {Conversation} from './Conversation';
 import {Settings} from './Settings';
 import {Icon} from './ui';
 import {useRecordEvents} from './hooks';
 import {OverlayProvider, useOverlayController} from './overlay';
+import {WorkspaceOverview} from './WorkspaceOverview';
+import {useResource} from './hooks';
 import {SessionsPane} from './SessionsPane';
 import {Activity, Tools} from './Workbench';
+import {ComputerWork} from './ComputerWork';
 
-const sections: [string, string][] = [['overview', 'Home'], ['learn', 'Learn'], ['research', 'Research'], ['library', 'Library'], ['graph', 'Graph'], ['activity', 'Activity']];
-const labels: Record<string, string> = {...Object.fromEntries(sections), settings: 'Settings', tools: 'Developer tools', chat: 'Session', session: 'Learning session', document: 'Reading', node: 'Evidence', search: 'Search', resolve: 'Reference'};
+const sections: [string, string][] = [['overview', 'Home'], ['learn', 'Learn'], ['research', 'Research'], ['library', 'Library'], ['graph', 'Graph'], ['activity', 'Activity'], ['computer', 'Do on my computer']];
+const labels: Record<string, string> = {...Object.fromEntries(sections), settings: 'Settings', knowledge: 'Knowledge', tools: 'Developer tools', chat: 'Session', session: 'Learning session', document: 'Reading', node: 'Evidence', search: 'Search', resolve: 'Reference'};
 const MOBILE = 1000;   // below this width the two columns become one replacing drawer
 const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const modifier = mac ? '⌘' : 'Ctrl+';
@@ -33,6 +39,10 @@ function Shell() {
   const [externalError, setExternalError] = useState('');
   const [route, setRoute] = useState(() => routeOf(location.hash || preference('last-route', '#overview')));
   useRecordEvents(route.record);
+  const workspaceId = route.params.ws || '';
+  const selected = useResource(`selected-workspace:${route.record}:${workspaceId}`, signal => workspaceId ? call<WorkspaceIdentity>('workspace_identity', {workspace_id: workspaceId}, route.record, false, signal) : Promise.resolve(null), route.record);
+  const destination = selected.data?.record || route.record;
+  const navHref = (view: string) => href(view, '', destination, '', {ws: workspaceId});
   const [records, setRecords] = useState<RecordInfo[]>([]);
   const [query, setQuery] = useState('');
   // Both left columns are open on a fresh profile; each remembers its own explicit choice.
@@ -53,7 +63,7 @@ function Shell() {
   const modalOpen = overlay.active?.kind === 'modal';
   const modalDrawer = mobile && drawer !== null;
   const changeDocument = useCallback((value: DocumentData | null) => setDoc(value), []);
-  const active = route.view === 'chat' ? 'overview' : route.view === 'document' || route.view === 'node' || route.view === 'resolve' || route.view === 'search' ? 'library' : route.view;
+  const active = route.view === 'knowledge' ? 'graph' : route.view === 'chat' ? 'overview' : route.view === 'document' || route.view === 'node' || route.view === 'resolve' || route.view === 'search' ? 'library' : route.view;
   const showNav = mobile ? drawer === 'nav' : navOpen, showSessions = mobile ? drawer === 'sessions' : sessionsOpen;
 
   useEffect(() => {
@@ -118,23 +128,26 @@ function Shell() {
   function submitSearch(event: FormEvent) {event.preventDefault(); if (query.trim()) location.hash = href('search', query.trim(), route.record);}
   let content;
   switch (route.view) {
-    case 'overview': case 'chat': content = <Conversation key={route.record} id={route.id} record={route.record} startMode={route.params.mode} />; break;
-    case 'library': content = <Library record={route.record} tab={route.params.tab || (route.legacy === 'sources' ? 'places' : '')} />; break;
+    case 'overview': content = workspaceId ? <WorkspaceOverview record={route.record} workspaceId={workspaceId}/> : <Conversation key={route.record} id={route.id} record={route.record} startMode={route.params.mode}/>; break;
+    case 'chat': content = <Conversation key={route.record + workspaceId} id={route.id} record={route.id ? route.record : destination} workspaceId={workspaceId} startMode={route.params.mode}/>; break;
+    case 'library': content = <Library record={route.record} selectedId={route.id} workspaceId={workspaceId} tab={route.params.tab || (route.legacy === 'sources' ? 'places' : '')} />; break;
     case 'activity': content = <Activity record={route.record} />; break;
+    case 'computer': content = <ComputerWork record={destination} workspaceId={workspaceId} plan={route.params.plan || ''} />; break;
     case 'tools': content = <Tools record={route.record} />; break;
     case 'document': content = <DocumentView id={route.id} record={route.record} onDocument={changeDocument} />; break;
     case 'node': content = <EntityView id={route.id} record={route.record} />; break;
     case 'resolve': content = <ResolveView target={route.id} record={route.record} />; break;
     case 'search': content = <Search query={route.id} record={route.record} />; break;
-    case 'research': content = <Research record={route.record} material={route.params.m || ''} />; break;
-    case 'learn': case 'session': content = <Learn id={route.id} record={route.record} material={route.params.m || ''} />; break;
+    case 'research': content = <Research record={destination} workspaceId={workspaceId} materialRef={route.params.ref} material={route.params.m || ''} />; break;
+    case 'learn': case 'session': content = <Learn id={route.id} record={route.id ? route.record : destination} workspaceId={workspaceId} materialRef={route.params.ref} material={route.params.m || ''} />; break;
     case 'settings': content = <Settings record={route.record} />; break;
+    case 'knowledge': content = <KnowledgeView record={route.record} destination={destination} workspaceId={workspaceId} tab={route.params.tab || ''} />; break;
     case 'graph': content = <Graph focus={route.id} record={route.record} />; break;
-    default: content = <><h1>Page not found</h1><p>This workspace link is not recognized.</p><a href={href('overview', '', route.record)}>Return to Home</a></>;
+    default: content = <><h1>Page not found</h1><p>This workspace link is not recognized.</p><a href={navHref('overview')}>Return to Home</a></>;
   }
   const selectedId = ['node', 'document'].includes(route.view) ? route.id : '';
   const showInspector = !!selectedId && context;
-  const graphSurface = route.view === 'graph' || route.view === 'overview' || route.view === 'chat' && !route.id;
+  const graphSurface = route.view === 'graph' || !workspaceId && (route.view === 'overview' || route.view === 'chat' && !route.id);
   const sessionId = route.view === 'chat' || route.view === 'session' ? route.id : '';
   const workspace = records.find(r => r.name === route.record || (!route.record && r.current));
   const navKeys = `${modifier}B`, sessionKeys = `${modifier}${mac ? '⇧' : 'Shift+'}B`;
@@ -149,25 +162,25 @@ function Shell() {
   };
   return <div data-drawer={drawer || undefined} inert={modalOpen} onClickCapture={event => {const anchor = event.target instanceof Element ? event.target.closest('a') : null; if (event.isTrusted && window.researchDesktop && anchor && anchor.protocol === 'https:' && anchor.origin !== location.origin) {event.preventDefault(); window.researchDesktop.openExternal(anchor.href).catch(e => setExternalError(e.message));}}}
     className={`workspace shell ${showNav ? 'nav-open' : ''} ${showSessions ? 'sessions-open' : ''} ${showInspector ? 'context-open' : ''} ${graphSurface ? 'graph-surface' : ''} ${drawer ? 'drawer-open' : ''}`}>
-    {externalError && <div className="external-error" role="alert">{externalError}<button onClick={() => setExternalError('')}>Dismiss</button></div>}<CommandMenu record={route.record} /><UpdatePrompt />
+    {externalError && <div className="external-error" role="alert">{externalError}<button onClick={() => setExternalError('')}>Dismiss</button></div>}<CommandMenu record={route.record} /><ShortcutHelp /><FindBar root={main} /><UpdatePrompt />
     <a inert={modalDrawer} className="skip-link" href="#main" onClick={e => {e.preventDefault(); main.current?.focus();}}>Skip to content</a>
     <aside ref={navPanel} id="workspace-navigation" className="nav-rail" hidden={!showNav} role={mobile && drawer === 'nav' ? 'dialog' : undefined} aria-modal={mobile && drawer === 'nav' || undefined} aria-label="Workspace navigation" onKeyDown={trap}>
       {mobile && drawer === 'nav' && <button className="drawer-close" onClick={closeDrawer}>Collapse navigation</button>}
-      <a className="brand" href={href('overview', '', route.record)}><span className="brand-symbol" aria-hidden="true">◈</span><span>Research OS<small>A connected workspace</small></span></a>
-      <nav aria-label="Main navigation">{sections.map(([view, label]) => <a key={view} href={href(view, '', route.record)} aria-current={active === view ? 'page' : undefined}><Icon name={view} /><span>{label}</span></a>)}</nav>
-      <nav aria-label="Preferences" className="nav-foot"><a href={href('settings', '', route.record)} aria-current={active === 'settings' ? 'page' : undefined}><Icon name="settings" /><span>Settings</span></a>
+      <a className="brand" href={navHref('overview')}><span className="brand-symbol" aria-hidden="true">◈</span><span>Research OS<small>A connected workspace</small></span></a>
+      <nav aria-label="Main navigation">{sections.map(([view, label]) => <a key={view} href={navHref(view)} aria-current={active === view ? 'page' : undefined}><Icon name={view} /><span>{label}</span></a>)}</nav>
+      <nav aria-label="Preferences" className="nav-foot"><a href={navHref('settings')} aria-current={active === 'settings' ? 'page' : undefined}><Icon name="settings" /><span>Settings</span></a>
         <span className="local-indicator"><span /> Stored on this computer</span></nav>
     </aside>
     <div ref={sessionsPanel} className="sessions-slot" hidden={!showSessions} role={mobile && drawer === 'sessions' ? 'dialog' : undefined} aria-modal={mobile && drawer === 'sessions' || undefined} aria-label={mobile && drawer === 'sessions' ? 'Sessions' : undefined} onKeyDown={trap}>
       {mobile && drawer === 'sessions' && <button className="drawer-close" onClick={closeDrawer}>Collapse sessions</button>}
-      <SessionsPane record={route.record} records={records} active={sessionId} />
+      <SessionsPane workspaceId={workspaceId} destination={destination} record={route.record} records={records} active={sessionId} />
     </div>
     <header inert={modalDrawer} className="top-strip">
       <button ref={navToggle} className="icon-button" aria-expanded={showNav} aria-controls="workspace-navigation" aria-label={showNav ? 'Collapse navigation' : 'Show navigation'} title={`${showNav ? 'Collapse' : 'Show'} navigation (${navKeys})`} onClick={toggleNavigation}><Icon name="panel-nav" /></button>
       <button ref={sessionsToggle} className="icon-button" aria-expanded={showSessions} aria-label={showSessions ? 'Collapse sessions' : 'Show sessions'} title={`${showSessions ? 'Collapse' : 'Show'} sessions (${sessionKeys})`} onClick={toggleSessions}><Icon name="panel-sessions" /></button>
-      <nav className="crumbs" aria-label="Breadcrumb">{workspace?.title ? <InlineTitle title={workspace.title} record={route.record} /> : <span>Workspace</span>}<span aria-hidden="true">›</span><strong aria-current="page">{labels[route.view] || 'Workspace'}</strong></nav>
+      <nav className="crumbs" aria-label="Breadcrumb">{selected.data ? <span>{selected.data.title}</span> : workspace?.title ? <InlineTitle title={workspace.title} record={route.record} /> : <span>Workspace</span>}<span aria-hidden="true">›</span><strong aria-current="page">{labels[route.view] || 'Workspace'}</strong></nav>
       <form role="search" onSubmit={submitSearch}><label className="sr-only" htmlFor="global-search">Search connected records</label><input id="global-search" type="search" ref={search} placeholder="Search your knowledge…" value={query} onChange={e => setQuery(e.target.value)} /><kbd>{modifier}K</kbd></form>
-      <a className="settings-toggle" href={href('settings', '', route.record)} aria-label="Settings" aria-current={route.view === 'settings' ? 'page' : undefined} title="Settings"><Icon name="settings" /></a>
+      <a className="settings-toggle" href={navHref('settings')} aria-label="Settings" aria-current={route.view === 'settings' ? 'page' : undefined} title="Settings"><Icon name="settings" /></a>
       {selectedId && <button className="context-toggle" aria-controls="inspector" aria-expanded={context} onClick={() => {setContext(!context); savePreference('context', context ? 'closed' : 'open');}}>{context ? 'Hide context' : 'Show context'}</button>}
     </header>
     <main inert={modalDrawer} id="main" ref={main} tabIndex={-1} className={(route.view === 'graph' || route.view === 'overview' || route.view === 'chat' ? 'wide ' : '') + (graphSurface ? 'canvas-page' : '')}>{(!online || reachable === false) && <p className="notice" role="status">No internet connection. Model replies, agents and literature searches wait and retry when it is back.</p>}{content}</main>

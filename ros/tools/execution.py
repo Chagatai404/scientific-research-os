@@ -1,12 +1,31 @@
-"""Tools for local provider capability profiles and explicit notebook execution permissions."""
+"""Tools for provider capability profiles, custom agent manifests and explicit notebook execution permissions."""
 from .. import execution, sources
-from ..registry import tool, P
+from ..registry import tool, P, TOOLS
 
-@tool('provider_profiles', 'List explicitly configured local model endpoints and their declared capabilities.')
+def _human():
+    """The person-only tools, which no custom agent manifest may hold (the domain cannot read the registry)."""
+    return frozenset(name for name, row in TOOLS.items() if row.human)
+
+@tool('provider_profiles', 'List explicitly configured model profiles (subscription CLI, local loopback, remote HTTPS API) with their declared capabilities and credential reference, never a key.')
 def profiles(rec): return execution.profiles(rec)
 
-@tool('provider_configure', 'Save an explicit model connection and capability profile without invoking inference.', human=True, provider=P('string', 'provider transport', True, ('ollama', 'compatible','codex','claude')), endpoint=P('string', 'HTTP loopback endpoint, or empty for native CLI', True), model=P('string', 'installed or explicitly configured model id', True), tools=P('boolean', 'user-verified tool calling support'), vision=P('boolean', 'user-verified vision support'), context_limit=P('integer', 'context character budget'))
-def configure(rec, provider, endpoint, model, tools=False, vision=False, context_limit=16000): return execution.configure(rec, provider, endpoint, model, tools, vision, context_limit)
+@tool('provider_configure', 'Save an explicit model connection and capability profile without invoking inference. A remote API profile stores a credential reference (environment variable or OS credential store name), never the key.', human=True, provider=P('string', 'provider transport', True, ('ollama', 'compatible','codex','claude','api')), endpoint=P('string', 'HTTP loopback endpoint, https:// remote API endpoint, or empty for native CLI', True), model=P('string', 'installed or explicitly configured model id', True), tools=P('boolean', 'user-verified tool calling support'), vision=P('boolean', 'user-verified vision support'), context_limit=P('integer', 'context character budget'), credential=P('object', 'credential reference {"store": "env"|"os", "name"}; never the key itself'), token_param=P('string', 'reply-length field the API expects; default chosen from the endpoint', enum=('max_tokens', 'max_completion_tokens')))
+def configure(rec, provider, endpoint, model, tools=False, vision=False, context_limit=16000, credential=None, token_param=None): return execution.configure(rec, provider, endpoint, model, tools, vision, context_limit, credential, token_param)
+
+@tool('provider_capabilities', 'Read what each provider adapter can do and on what evidence (declared, tested, live-verified), and what each configured profile declares.')
+def capabilities(rec): return execution.capabilities(rec)
+
+@tool('agent_list', "List the person's custom agent manifests (id, version, hash, base grant, tools, profile, limits), without their instructions.")
+def agent_list(rec): return execution.agents(rec)
+
+@tool('agent_define', "Save a custom agent manifest (a person's act). It can only narrow a base role or mode grant, never hold a person-only tool or a credential, and a version is immutable.", human=True, manifest=P('object', 'ros.agent-manifest.v1: id agent:<name>, version, title, instructions, base, tools, profile, result_schema, limits, requires', True))
+def agent_define(rec, manifest): return execution.agent_define(rec, manifest, _human())
+
+@tool('agent_get', "Read one custom agent manifest (newest version unless one is named) and whether its hash and rules still verify.", agent=P('string', 'agent:<name>', True), version=P('integer', 'manifest version'))
+def agent_get(rec, agent, version=None): return execution.agent_get(rec, agent, version, _human())
+
+@tool('agent_dispatch', 'The verified manifest of a custom agent with its system prompt and narrowed tools, for the runtime that runs it; refuses a manifest that does not verify.', agent=P('string', 'agent:<name>', True), brief=P('string', 'the work for the agent', True), version=P('integer', 'manifest version'))
+def agent_dispatch(rec, agent, brief, version=None): return execution.agent_dispatch(rec, agent, brief, version, _human())
 
 @tool('notebook_request', 'Request a committed scratch notebook trace or bounded mutation; execution is an explicit human permission.', human=True, source=P('string', 'connected codebase id', True), path=P('string', 'relative notebook path', True), by=P('string', 'your name', True), reason=P('string', 'why this notebook may run', True), mutation=P('object', 'one bounded source or cell mutation'), execute=P('boolean', 'actually execute; false means dry run'), groups=P('array', 'approved dependency groups'), timeout=P('integer', 'per notebook timeout in seconds'))
 def request(rec, source, path, by, reason, mutation=None, execute=False, groups=None, timeout=600): return execution.notebook_request(rec, source, path, by, reason, mutation, execute, groups, timeout)
@@ -56,5 +75,8 @@ def operations(rec):return [{k:v for k,v in r.items() if k!='packet'} for r in e
 @tool('operation_start','Claim a queued operation once and return its bound engine packet.',writes=True,identifier=P('string','operation id',True))
 def operation_start(rec,identifier):return execution.operation_start(rec,identifier)
 
-@tool('operation_finish','Persist an actual engine result, never a model assertion of completion.',writes=True,identifier=P('string','operation id',True),result=P('object','worker result',True))
+@tool('operation_finish','Persist an actual engine result, never a model assertion of completion. A web_search or web_read is finished only by the operations worker; a client call for one is refused.',writes=True,identifier=P('string','operation id',True),result=P('object','worker result',True))
 def operation_finish(rec,identifier,result):return execution.operation_finish(rec,identifier,result)
+
+# The operations worker's scope (ros/execution.py ``worker_scope``): the runtime reaches it through ``api``, never by importing the domain.
+worker_scope=execution.worker_scope

@@ -1,4 +1,4 @@
-import {validateDocument, type DocumentData} from './contracts';
+import {validateDocument, type DocumentData, type QualifiedRef, type WorkspaceOverview, type WorkspaceCatalog, type OperationRow, type LiteratureCandidates, type LivingGraph, type TeachingSignals, type ComputerStatus, type ComputerBin, type ComputerList} from './contracts';
 let session: Promise<{csrf: string}> | undefined;
 // The link `ros serve` prints pairs this browser for acts that are the person's alone: its token sits in the URL fragment
 // (never sent to a server), is kept in this origin's storage (no other port can read it) and goes with every write.
@@ -32,21 +32,58 @@ export async function call<T>(name: string, args: Record<string, unknown> = {}, 
 export async function readDocument(id: string, record?: string, signal?: AbortSignal): Promise<DocumentData> {
   return validateDocument(await call('workspace_document', {subject: id}, record, false, signal));
 }
+export async function readWorkspace(record?: string, workspace_id?: string, signal?: AbortSignal): Promise<WorkspaceOverview> {
+  return call('workspace_overview', {workspace_id}, record, false, signal);
+}
+export async function readCatalog(record?: string, signal?: AbortSignal): Promise<WorkspaceCatalog> {
+  return call('workspace_catalog', {}, record, false, signal);
+}
+/** The living graph of one workspace, or of everything of the person (no workspace). Bounded; `truncated` says what is left out. */
+export function readLivingGraph(record?: string, workspace_id?: string, limit = 400, signal?: AbortSignal): Promise<LivingGraph> {
+  return call('graph_view', workspace_id ? {workspace_id, limit} : {scope: 'personal', limit}, record, false, signal);
+}
+export function readTeaching(record: string | undefined, workspace_id: string, limit = 50, signal?: AbortSignal): Promise<TeachingSignals> {
+  return call('graph_teaching', {workspace_id, limit}, record, false, signal);
+}
+/** Wait for queued searches or page reads to reach a terminal state; the worker runs them, this only watches. */
+export async function waitForOperations(ids: string[], record: string, signal?: AbortSignal, tries = 40, delay = 1500): Promise<OperationRow[]> {
+  for (let i = 0; i < tries; i++) {
+    const rows = (await call<OperationRow[]>('operation_list', {}, record, false, signal)).filter(r => ids.includes(r.id));
+    if (rows.length === ids.length && rows.every(r => ['completed', 'failed', 'interrupted'].includes(r.state))) return rows;
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  return (await call<OperationRow[]>('operation_list', {}, record, false, signal)).filter(r => ids.includes(r.id));
+}
+/** One merged list from the local library, finished scholarly searches and finished web searches. */
+export function readCandidates(query: string, record: string, operations: string[], workspace_id = '', signal?: AbortSignal) {
+  return call<LiteratureCandidates>('literature_candidates', {query, operations, ...(workspace_id ? {workspace_id} : {})}, record, false, signal);
+}
 export async function service<T>(name: string, args?: Record<string, unknown>): Promise<T> {
   const response = await fetch('/services/' + name, args ? {method: 'POST', headers: await mutationHeaders(), body: JSON.stringify(args)} : {});
   const body = await response.json();
   if (!response.ok || body.result?.ok === false) throw new Error(body.error || body.result?.error || 'The local service is unavailable');
   return body.result as T;
 }
+/** The person's key-entry act. The key travels only in this request body to the local worker; it is never returned, stored in the record or logged. */
+export function credential(operation: 'set' | 'delete' | 'status', args: {name?: string; value?: string; reference?: {store: string; name: string}}) {
+  return service<{name: string; store: 'env' | 'os'; status: import('./contracts').CredentialStatus}>('credential', {operation, ...args});
+}
 export const readable = (id: string) => /^(handout|lesson|source|paper|visual):/.test(id) && !id.startsWith('bundle:');
 export function href(view: string, id = '', record = '', anchor = '', extra: Record<string, string> = {}) {
   const params = new URLSearchParams();
   if (record) params.set('r', record);
+  const scope = typeof location !== 'undefined' ? routeOf(location.hash).params.ws : '';
+  if (scope && !Object.hasOwn(extra, 'ws')) params.set('ws', scope);
   if (anchor) params.set('a', anchor);
   for (const [key, value] of Object.entries(extra)) if (value) params.set(key, value);
   return `#${view}${id ? '/' + encodeURIComponent(id) : ''}${params.size ? '?' + params : ''}`;
 }
 export const entityHref = (id: string, record = '', anchor = '') => href(readable(id) ? 'document' : 'node', id, record, anchor);
+/** Open original work in its physical owner while retaining the selected logical scope. */
+export function workHref(ref: QualifiedRef, workspace_id: string) {
+  const view = ref.entity_id.startsWith('material:') ? 'library' : ref.entity_id.startsWith('conversation:') ? 'chat' : ref.entity_id.startsWith('lesson:') ? 'session' : readable(ref.entity_id) ? 'document' : 'node';
+  return href(view, ref.entity_id, ref.owner_record, '', {ws: workspace_id});
+}
 export function routeOf(hash: string) {
   const [path, query = ''] = hash.replace(/^#/, '').split('?');
   const slash = path.indexOf('/');
@@ -62,4 +99,16 @@ export function preference(key: string, fallback: string): string {
 }
 export function savePreference(key: string, value: string) {
   try {localStorage.setItem('ros.workspace.' + key, value);} catch { /* private browser mode */ }
+}
+
+// ---- Do on my computer -----------------------------------------------------------------------------------------------------
+// The record is the only list of plans and grants: `computer_list` reads them; nothing is remembered in the browser.
+export const readComputerList = (record?: string, workspace_id?: string, signal?: AbortSignal) => call<ComputerList>('computer_list', workspace_id ? {workspace_id} : {}, record, false, signal);
+export const readComputerStatus = (plan: string, record?: string, signal?: AbortSignal) => call<ComputerStatus>('computer_status', {plan}, record, false, signal);
+export const readComputerBin = (record?: string, workspace_id?: string, signal?: AbortSignal) => call<ComputerBin>('computer_bin', workspace_id ? {workspace_id} : {}, record, false, signal);
+/** The native file or folder picker: absolute paths of what the person chose, or nothing. Only the desktop app has one. */
+export async function pickComputer(kind: 'folder' | 'file'): Promise<string[]> {
+  const host = window.researchDesktop;
+  if (!host?.pickComputer) throw new Error('Choosing folders needs the Research OS desktop app.');
+  return (await host.pickComputer(kind)) || [];
 }

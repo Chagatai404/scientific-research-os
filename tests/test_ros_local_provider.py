@@ -57,6 +57,19 @@ class ContextTrim(unittest.TestCase):
             runtime.execute(self.rec, sent, sent["_engine"])
         self.assertEqual([m["content"] for m in seen["messages"]], [long.strip()])
 
+    def test_the_usage_event_is_written_under_the_shared_lock(self):
+        # The cancel watcher reads the record from its own thread; an unlocked write raced it into sqlite "API misuse" and ended the run.
+        sent = api.call("workspace_chat_send", self.rec, text="hello", model="ollama:fixture", mode="chat")
+        held = []
+        real = self.rec.append
+        def append(type, *a, **k):
+            if type == "run.usage": held.append(api.LOCK._is_owned())
+            return real(type, *a, **k)
+        def provider(request, emit, tool, cancel, own): emit("ok"); return {}
+        with patch.dict(providers.ADAPTERS, {"ollama": provider}), patch.object(self.rec, "append", append):
+            runtime.execute(self.rec, sent, sent["_engine"])
+        self.assertEqual(held, [True])
+
 
 if __name__ == "__main__":
     unittest.main()

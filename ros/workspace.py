@@ -88,8 +88,12 @@ def lesson_material(rec,lesson,item=None):
     if item:
         if rec.item(item) is None:raise ValueError('unknown item version')
         rec.append('hint',item,{'lesson':lesson,'mode':'prepared-reading'},actor='learner')
-    return {'title':node.get('title','Prepared Reading'),'base':'/media/bundles/'+node['bundle']+'/',
-            'sections':[{'id':n['id'],'title':n.get('title') or n['id'],'segments':n.get('segments',[]),'visuals':n.get('visuals',[]),'animation':n.get('animation'),'clip':None if prepare._clip_left_out(n.get('clip')) else n.get('clip')} for n in plan.get('nodes',[])]}
+    folder=prepare.bundle_dir(rec,node['bundle'])
+    def section(n):
+        try:ready=prepare.media_readiness(folder,n)
+        except (OSError,ValueError,KeyError):ready=None  # readiness is advice: a bundle that cannot say still reads
+        return {'id':n['id'],'title':n.get('title') or n['id'],'segments':n.get('segments',[]),'visuals':n.get('visuals',[]),'animation':n.get('animation'),'clip':None if prepare._clip_left_out(n.get('clip')) else n.get('clip'),'readiness':ready,'code':n.get('code',[])}
+    return {'title':node.get('title','Prepared Reading'),'base':'/media/bundles/'+node['bundle']+'/','sections':[section(n) for n in plan.get('nodes',[])]}
 
 
 def connections(rec: Record) -> dict:
@@ -524,3 +528,16 @@ def activity(rec: Record) -> dict:
     return {"done": done[-8:][::-1], "running": running[:8], "next": waiting[:8],
             "counts": {"done": len(done), "running": len(running), "next": len(waiting)},
             "recent": [{"id": e["id"], "type": e["type"], "subject": e["subject"], "by": e["actor"], "ts": e["ts"]} for e in reversed(events)]}
+
+
+def workspace_catalog(rec: Record) -> dict:
+    """Every course, project and General workspace reachable from this record, one identity each.
+
+    Hub-only courses and projects (a ``course:``/``project:`` node inside Knowledge with no record of their
+    own) are included with the Knowledge record as their destination. Read-only; nothing is created.
+    """
+    from . import workspaces
+    with workspaces.records(rec) as recs:
+        found = [dict(v) for v in workspaces.catalog(recs).values() if v['kind'] != 'record']
+    found.sort(key=lambda v: (v['kind'], v['title'].casefold(), v['workspace_id']))
+    return {'schema': 'ros.workspace-catalog.v1', 'workspaces': found}

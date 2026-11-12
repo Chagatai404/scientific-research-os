@@ -24,6 +24,36 @@ wrote and what it saw: path, size, mtime, hash). Both are rebuildable or re-aska
 
 ### Human organization preferences
 
+Logical scope is separate from physical source ownership: `record.json.workspace_id` pins a linked workspace's
+identity (`ws:<canonical-record>:<hub-id>`; physical scopes use `ws:<record>:workspace`). Old records derive the
+same value from their explicit link until a later link update pins it. Renaming titles does not rekey a workspace.
+`workspace_aliases` retains explicit historic/current qualified hub links so a relink's new hub and older work
+resolve to the same pinned identity; conflicting aliases are refused rather than silently merging workspaces.
+`workspace_kind: general` identifies the reserved home-wide General work record. Explicit keyed course/project
+creation stores `workspace_key`; these metadata fields are identity/organization, never scientific approval.
+
+`workspace.member.assigned` (subject logical workspace id, actor `person`) stores `ref` (`owner_record`,
+`entity_id`, optional real `revision`), `group` (`sessions`, `sources`, `handouts`, `research`, `other`) and
+`assigned` boolean. The newest preference for the qualified entity overrides legacy placement; false compensates
+an earlier assignment. The canonical workspace owner's record holds the preference, while the entity's original
+record/files/history stay intact. This is navigation membership, never a scientific edge or new learning evidence.
+
+`workspace.member.cleared` (subject logical workspace id, actor `person`, append-only) stores `ref`; it removes the
+newest preference for that qualified entity so legacy placement applies again. Older records stay readable.
+
+`workspace.personal` (subject entity id, actor `person`) stores `ref` and `personal` boolean: user-level knowledge
+with no course or project workspace; the inventory reports it under `personal`, not `unassigned`.
+
+`workspace.migration.applied` (subject `migration-...`) is the ledger of one organization migration and its `writes`;
+`workspace.migration.rolled_back` records its rollback with the `skipped` writes that changed since.
+
+`capability.equivalence` (subject alias capability id, actor `person`) stores qualified revision-bound `alias`
+and `canonical` refs, `evidence` and `verified_by`. Revisions are SHA-256 of actual canonical node JSON, independent
+of external display aliases. Only explicit verification establishes equivalence; matching titles do not. A changed
+definition makes the reference stale. Reading shared evidence returns original owner/event refs; attempts, grades,
+retrievals, review dates and physical study ownership are never rewritten or copied. See
+`docs/core-experience/CONTRACTS.md` for public tools and error behavior.
+
 `workspace.renamed` (subject `workspace`, data `title`) records a readable workspace name while the backing record
 name remains stable. `workspace.deleted` and `workspace.restored` (subject and data `name`) record that the person deleted or brought back
 another workspace; the deleted one keeps its folder and gets `deleted` (a UTC time) in its `record.json`, which leaves it out of
@@ -115,6 +145,10 @@ first write. A record without the file gets it on its first write.
 requires, teaches, tests, supports, invalidates, implements, cites, supersedes, part-of, about, applied-in,
 addresses, decides, relates.
 
+A `relates` edge may carry `relation`: `results` (a claim to the experiment that produced it, from `add_claim` with `experiment`) or
+`answers` (a claim to the question it answers, from `add_claim` with `question`). The research journey reads only these explicit edges;
+a claim linked to neither counts for no question, and names never imply a link.
+
 ## Event types
 
 | Type | Subject | Data |
@@ -123,16 +157,38 @@ addresses, decides, relates.
 | `lesson.start`, `lesson.close` | lesson | title, scope / summary |
 | `attempt` | item | lesson, response (or `dont_know`) |
 | `confidence` | item | lesson, attempt, level (1 guessing to 5 certain), given before feedback: a self-report for calibration, never learning evidence |
+| `draft` | item | lesson, text, client, attempts. The newest draft of an item wins; saving the same text writes nothing; a stale `base` is reported as a conflict, never lost. An unsent answer: never an answer, grade or evidence |
+| `journey.plan` | lesson | lesson, and the starting plan: what earlier evidence said per capability. Written once (the id derives from the lesson); later evidence never changes it |
 | `grade` | item | lesson, attempt, verdict, feedback, criteria_met |
 | `hint`, `reveal` | item | lesson, index |
 | `teach` | capability | lesson, mode, content |
 | `ask`, `answer` | lesson / ask id | text or mode / text |
 | `policy` | lesson | action, reason, item, capability, mode |
 | `task.open`, `task.claim`, `task.done`, `task.cancel` | task | kind, ref, brief, … / by / result / reason |
+| `task.pause`, `task.resume` | task | note (the person's reason, optional) / none. Only an `open` or `claimed` task can be paused (the person's act, `research_control`). A paused task is neither open nor claimed: it is not handed out or claimed until resumed, and resume restores the state it had. A `run` task resumes only while its plan approval still holds |
 | `dispatch.start`, `dispatch.end` | task | task, role, model / task, record, outcome (`done`, `unfinished`, `interrupted`, `refused`, `failed`), detail. The ledger of unattended agent runs: it bounds how many an hour (`agents_per_hour`, 1 to 100, 0 for none), leaves a task alone after two failures (a `failed` with detail `cancelled` and `interrupted` never count) and after three `unfinished` runs, each of which doubles the next step budget up to 4x |
 | `dispatch.retry` | task | task. A person asked for a left-alone task to be tried again: its earlier failures and unfinished runs stop counting |
+| `computer.plan` | plan | schema, plan, revision, workspace_id, steps (real paths, operations, classes). Written by the agent (`computer_plan`); each revision is a new event, and an approval binds one revision only |
+| `computer.grant` | grant | plan (or none when standing), roots, ops, apps, outbound, standing, via. Person only (`computer_grant`, `computer_approve`). Covers one exact plan revision, or a standing grant that names its operation classes and roots |
+| `computer.grant.claimed` | grant | conversation, agent, task, plan. Written when the first plan under a one-request grant is made; the grant is then spent and covers no later plan |
+| `computer.grant.revoked` | grant | none. Person only (`computer_revoke`); later steps under the grant are refused |
+| `computer.rejected` | plan | revision. Person declined this exact revision; nothing in it runs |
+| `computer.cancelled` | unit | none. Person stopped a running unit (`computer_cancel`); the executor starts no further step |
+| `computer.action` | key (unit and step) | schema, key, phase (what the executor observed or did, with hashes), unit, plan, revision, workspace_id, step, op, src, dst, reversible, undo_of when it undoes an earlier action. Each phase is written once; a repeated check adds nothing |
+| `computer.bin.purged` | bin entry | retention_days (30). Written by the worker when a Research OS bin entry is cleared after its 30 days; the original file is gone, and the event is the only trace |
+| `experiment.run` | experiment | operation, plus the run header (task, argv, cwd, fingerprint). Written when a run is queued; the id is the operation, so a repeat adds nothing |
+| `experiment.output` | operation | offset, end, lines: one bounded chunk of live output, written by the worker in order. Read with `experiment_follow` from a cursor |
+| `experiment.file` | task | the file the agent wrote into the experiment folder (`experiment_write`): path and hash |
+| `experiment.stop` | operation | task. A person's Stop, written once per operation |
+| `experiment.provenance` | task | the run's code, inputs, environment and capability facts, as recorded by the workbench. Provenance is recorded, never claimed as verified |
+| `run.heartbeat` | run | pid. Written about every ten seconds by the worker of a running turn; 120 s without a heartbeat, output, step or state change makes the turn `interrupted` with its partial output kept |
+| `run.steer` | run | text, message. A person's short message sent into a running reply (at most five waiting at once); the conversation keeps it as a message with `steer` set |
+| `run.steer_delivered` | run | steer (the steer event id). Written once when the model's next step takes that message, so it is never delivered twice across workers or attempts |
+| `conversation.retry` | conversation | request, run (the failed reply's key). The retry is idempotent: the same key sent again writes nothing and starts no second reply |
+| `usage.price` | model | currency, effective (the day it applies from), version, and the per-million-token figures (input, output, cached when given). Written by the person (`usage_prices_configure`); the latest price whose effective date is not after the run's day counts, and a model without one has no cost |
 | `dispatch.focus` | hub | hub, conversation. A person asked for this in a session: for six hours its tasks (and those of the capabilities part of it and their bundles) are dispatched first, and up to eight an hour beyond the hourly limit |
 | `workbench.repo` | record | repo. The person chose the folder a Code session's agent works in (`record_repo`) |
+| `conversation.compacted` | conversation | schema, method (`extractive-v1`), first, last, covered, digest (sha-256 of the covered turns), extends (the earlier compaction it grows), summary, references, local_only. Id is derived from the covered range, so repeating it writes nothing. Written when a send's history exceeds the model budget: the summary is model context only, never evidence, a claim or a decision, and every original turn stays |
 | `code.change` | change | conversation, run, files, commits: a Code session's change, recorded when its run completes |
 | `bundle.ready` | bundle | manifest digest |
 | `verdict` | claim | step, verdict, notes, checklist, evidence |
@@ -146,8 +202,9 @@ addresses, decides, relates.
 | `automation.run` | automation | mode, what each trigger did (only written when something happened) |
 | `note.annotate`, `note.reviewed`, `note.dismiss`, `note.release` | node / note path | the person's text in a vault note / marked reviewed / dismissed a suggestion / took the note over |
 | `inbox.found` | file path | kind, size, hash of a file dropped in the vault's Inbox (an `ingest` task follows) |
+| `graph.note.added`, `graph.note.revised`, `graph.note.retracted` | note (`note:<20 hex>`, from the owner record and the write's key) | Written by agents only (tools `graph_note_add`, `graph_note_revise`, `graph_note_retract`; actor `agent:<name>`, never a person). `added`: `kind` (concept, prerequisite, misconception, goal), `title`, `text`, `workspace_id`, `links` (`{type, target, owner_record}`), `prompted_by` (`work` and `evidence`: the work and the cited learning events that prompted it; at least one). `revised`: the changed `title`, `text` or `links`, `prompted_by`, `reason`. `retracted`: `reason`, `prompted_by`; the note leaves every view, its lines stay. Every event carries `request` (a digest) and has an id derived from (type, owner, note, idempotency key), so a repeated write adds nothing and a changed one is refused. Notes are not nodes or edges and not learning evidence: they may cite a `retrieval`, `attempt`, `grade`, `hint` or `reveal` event but never create one, and they are not in `learn/evidence.TYPES`. The living graph (`graph_view`, `graph_teaching`) is derived from them on every read |
 
-Task kinds: `grade`, `answer`, `visual`, `narration`, `animation`, `video`, `audit`, `verify`, `review`, `item`, `scout`
+Task kinds: `grade`, `answer`, `graph` (agent-only upkeep that a closed lesson opens: it records that lesson's graph notes; never in the person's queue), `visual`, `narration`, `animation`, `video`, `audit`, `verify`, `review`, `item`, `scout`
 (search the literature for a question), `ingest` (read a dropped file), `outline` (plan a course), `bundle` (prepare a
 lesson), `handout` (write one), `run` (run an approved experiment), `job` (a command the runner executes: PDF builds,
 voice). The first claim of a task wins; a claim lapses after 30 minutes.
@@ -168,12 +225,23 @@ opening does not modify existing records. Canonical identity is record identity 
 `source.registered`, `source.removed` and `source.paused` record explicit connection grants;
 `source.revision` references an immutable SHA-256 snapshot and exact passage locator. `source.report`
 retains completed understanding reports. Source roots are host metadata, never provider-selected paths.
-`provider.configured` records local endpoint capability profiles without credentials or inference.
+`provider.configured` records a model connection profile (subscription CLI, loopback local server or remote HTTPS API; subject
+`<provider>:<model>`) without inference. Its optional `credential` field is a reference, never a key: exactly
+`{"store": "env", "name": "<VARIABLE>"}` or `{"store": "os", "name": "ResearchOS:<label>"}` (a Windows Credential Manager entry).
+A remote (`api`) profile requires it; `codex` and `claude` profiles refuse it. `token_param` (`max_tokens` or `max_completion_tokens`) names the request field that bounds an HTTP model's reply; it is stored only when chosen. The key is resolved at dispatch and is never stored;
+no event, result or log holds it. Entering a key writes only to the OS store (`/services/credential`, the person's own act) and
+appends no event. `agent.defined` (subject `agent:<name>@<version>`, actor `person`) records a custom agent manifest
+`ros.agent-manifest.v1`: `id`, `version`, `title`, `instructions`, `base` (`role:<name>` or `mode:<name>`), `tools` (a subset
+of the base grant, never a person-only tool), `profile` (a configured profile id), `result_schema`, `limits`, `requires` and the
+content `hash`. A version is immutable (the first event of a version is authoritative), and a manifest has no authority or credential field.
 `run.queued`, `run.state`, `run.output` and `run.step` preserve lifecycle, batched partial text and
 operation/result references. Usage and cost are unavailable unless reported by the provider.
 `notebook.requested` records explicit human execution permission and source revision;
 `notebook.finished` records the worker's actual result. A scratch clone isolates data, not the OS.
 
+- `web.engine.configured` (subject `<engine>:<label>`, actor `person`): a web search engine profile: `engine` (brave, tavily, exa; adapters are declared, not live-verified), `label`, https `endpoint`, `credential` (a reference `{store, name}`, never a key) and `enabled`. The newest event of a subject wins. With none enabled, web search reports `none_configured` and sends nothing.
+- `web.captured` (subject `web:<hash of the canonical URL>`, actor `system`): a public page kept as a source from a finished `web_read` operation: `url`, `final_url`, `canonical_url`, `fetched_at`, `revision` (SHA-256 of the retained readable text in `source-snapshots/`), `raw_sha256` (of the fetched bytes), `engine` (that found it, or `direct`), `title`, `workspace_id`, `localOnly: false`, `kind: web`. One event per operation; a changed page is a new revision of the same entity. It is a source, never a claim or evidence, and its text is untrusted data.
+- `literature.discovered` (subject `discovery:<id>`): the scope of one discovery (library, scholarly, web and the web engine state), its query, the selected `workspace_id` and the qualified library references it matched. It sends nothing and creates no workspace.
 - `source.derived_private`: destination record contains canonical output derived from a local-only source. Runtime marks it before scoped writes; later cloud turns in this record and linked director context are refused. It is a conservative record restriction, not content classification of manually pasted information.
 - `execution.limits`: explicit human workspace budgets for context characters, output, tool steps, deadline, queued runs and local provider calls. Native CLI internal calls remain provider managed, not a subscription spending ceiling.
 - `run.usage`: provider-reported usage/cost with reported provenance. Missing values mean unavailable, never zero.

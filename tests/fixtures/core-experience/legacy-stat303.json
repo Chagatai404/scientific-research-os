@@ -1,0 +1,34 @@
+{
+  "description": "Synthetic split course: empty dedicated record, historical work in Knowledge. No personal data.",
+  "records": {
+    "stat303": {
+      "config": {"role": "project", "user": "knowledge", "project": "course:stat303"},
+      "nodes": [{"id": "course:stat303", "type": "course", "title": "STAT303"}]
+    },
+    "knowledge": {
+      "config": {"role": "user"},
+      "nodes": [
+        {"id": "course:stat303", "type": "course", "title": "STAT303"},
+        {"id": "course:other", "type": "course", "title": "Another course"},
+        {"id": "lesson:legacy", "type": "lesson", "title": "Expected value"},
+        {"id": "conversation:legacy", "type": "conversation", "title": "Variance", "hub": "course:stat303", "hub_record": "knowledge"},
+        {"id": "lesson:unknown", "type": "lesson", "title": "STAT303 prior lesson"},
+        {"id": "source:unknown", "type": "source", "title": "STAT303 notes", "path": "never-open-this.pdf"},
+        {"id": "lesson:conflict", "type": "lesson", "title": "Conflicting membership"},
+        {"id": "lesson:unrelated", "type": "lesson", "title": "No matching hub"}
+      ],
+      "edges": [
+        ["lesson:legacy", "part-of", "course:stat303"],
+        ["lesson:conflict", "part-of", "course:stat303"],
+        ["lesson:conflict", "part-of", "course:other"]
+      ],
+      "events": [
+        ["source.registered", "connection:legacy", {"root": "never-open-this-root", "kind": "folder", "label": "Course files", "localOnly": true}],
+        ["organization.moved", "connection:legacy", {"parent": "course:stat303"}],
+        ["library.added", "material:legacy", {"source": "connection:legacy", "path": "notes.pdf", "title": "Notes", "format": "pdf"}],
+        ["library.state", "material:legacy", {"state": "ready", "indexed": false}],
+        ["conversation.message", "conversation:legacy", {"text": "Synthetic learner message"}]
+      ]
+    }
+  }
+}

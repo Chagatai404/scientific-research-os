@@ -50,6 +50,22 @@ def configure_logging(folder=None):
     sys.excepthook = main_died
     return folder / 'backend.log'
 
+def recover_computer_work(default):
+    """Recover the other workspace records that hold computer work: General work and every course or project with a computer plan
+    (found by one indexed event lookup per record, never a scan), so a unit whose backend crashed becomes interrupted and resumable.
+    ``default`` was recovered already. Returns the names recovered; one record's failure never stops the rest."""
+    done = []
+    for name in home.projects():
+        if name == default.root.name: continue
+        try:
+            other = Record(home.home() / 'projects' / name)
+            try:
+                if not other.events(type='computer.plan', limit=1): continue
+                runtime.recover(other); done.append(name)
+            finally: other.close()
+        except Exception as exc: LOG.warning('computer recovery skipped %s: %s', name, type(exc).__name__)
+    return done
+
 def main():
     if len(sys.argv) > 2 and sys.argv[1] == '--worker':
         for _s in (sys.stdin, sys.stdout):
@@ -100,6 +116,7 @@ def main():
     server = serve._bind(rec, 0)
     server.desktop_credential = secrets.token_hex(32)
     runtime.recover(rec)
+    recover_computer_work(rec)
     dispatcher = None if os.environ.get('ROS_NO_DISPATCH') else runtime.Dispatcher(rec).start()  # agents take waiting tasks (Settings pauses it)
     # Lesson narration, animation renders and handout PDFs the records queued for themselves run here, one at a time.
     jobs = None if os.environ.get('ROS_NO_JOBS') else runtime.JobWorker(server.pool.all).start()

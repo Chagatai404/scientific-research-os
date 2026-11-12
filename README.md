@@ -76,6 +76,16 @@ check the public release feed and download newer stable versions; a pop-up at la
   (`ROS_RENDER_PYTHON` names one). A computer without the sealed container (Windows only) says so there.
   Sessions and the librarian can read the folders you connected (never one marked local-only, with a cloud model), and after reading a
   file a session cannot search the web in that conversation.
+- **Do on my computer** lets you ask for work on your files, such as copying a course's PDFs into a folder you chose. The
+  agent writes a plan that names the real files and folders it will touch. Nothing happens until you approve that exact
+  plan, and each step is checked against your permission again before it runs. Copies and moves never overwrite a file
+  with the same name. Deleted files go to the Research OS bin, which clears them after 30 days. A permanent delete or a
+  payment happens only when you approve that exact action. Work not tied to a course or project goes to the General work
+  area. If the computer stops mid-plan, the next start checks each step against the files and records what really
+  happened. You can review plans, grants and the bin in the app.
+- **Run experiments in the app.** In a session, agents write and run scripts in the workspace of your record, and you see
+  the output live with a Stop button. Packages and repositories are downloaded only when your approved plan lists them,
+  and each run records where its code and inputs came from. Geant4, ROOT and Manim remain available as before.
 
 Codex and Claude use their existing CLI logins; local models use explicit loopback profiles. Connections never scan or
 sync on their own, and nothing runs an experiment on its own. Approvals, decisions and waivers are always your acts. Cloud image/PDF vision needs the
@@ -179,6 +189,41 @@ between requests, and tells the client the tools may have changed. Nothing needs
 client entry points at the app's own backend program (run as `--worker cli mcp`), so an app update updates it. A record
 also remembers the newest engine that wrote it, and an older engine only reads it. If you run from a source checkout, update
 it with `powershell -File desktop/update-checkout.ps1 -Checkout <folder>` (or set `ROS_CHECKOUT`) after a release.
+
+### Stable course and project workspaces
+
+In the development checkout, `workspace_identity` returns the selected course or
+project's stable `workspace_id`; `workspace_overview` lists its sessions, sources,
+handouts and research. Every course and project has exactly one workspace. Starting another topic inside a selected course or project
+keeps that workspace. Display renames do not change its identity.
+
+```bash
+python -m ros --project stat303 --json workspace_identity
+python -m ros --project stat303 --json workspace_overview
+```
+
+Historical work can remain in Knowledge while appearing in its course workspace.
+Keep the returned `{owner_record, entity_id, revision?}` reference: the physical
+owner identifies the original history, while `workspace_id` identifies the selected
+course or project. Equal titles never merge records. Reviewed membership changes
+append preferences and can be reversed without moving source files or rewriting
+learning history. [Core contracts](docs/core-experience/CONTRACTS.md) describe the
+CLI/MCP/App fields and their authority boundaries. These checkout changes do not
+update an installed desktop release by themselves.
+
+## Connect your own model
+
+Research OS works with three kinds of model, each set up once in Settings (the guided first run walks through it):
+
+- **A subscription login:** your Claude Code or Codex login on this computer. No API key is involved.
+- **An API key:** a remote service that speaks the OpenAI-compatible protocol. The key is kept in your operating system's
+  credential store, or read from an environment variable whose name you give. You can also point it at a service you run yourself.
+- **A local model:** a model served on this computer (for example Ollama). Local-only sources are never sent to a subscription login
+  or a remote API; only a local model on this machine may read them.
+
+Keys are never stored in records, events or logs: a record holds only the reference (the variable's name, or the store entry's
+name under `ResearchOS:`). Custom agents can be defined in the same place and may only narrow what the built-in roles can do.
+The provider matrix, what is verified and what is not yet is in [PROVIDERS](docs/core-experience/PROVIDERS.md).
 
 ## How the pieces fit
 

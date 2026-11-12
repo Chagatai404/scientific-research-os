@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState, type DragEvent, type FormEvent, type ReactNode} from 'react';
-import {call, href, human, preference, savePreference} from './api';
-import type {Folder, Organization, RecordInfo, SessionRow} from './contracts';
+import {call, href, human, preference, savePreference, readWorkspace, readCatalog, workHref} from './api';
+import type {Folder, Organization, RecordInfo, SessionRow, WorkspaceIdentity} from './contracts';
 import {useResource} from './hooks';
 import {Menu, Modal, useOverlayController} from './overlay';
 import {workspaceLabel} from './Settings';
@@ -24,7 +24,7 @@ function Dialogs({record, folders}: {record: string; folders: Folder[]}) {
   return <>
     <Modal id="create" title="New course or project">{(close, data) => {
       const {kind = 'course', parent = ''} = (data || {}) as {kind?: string; parent?: string};
-      return <NameForm label={`Name your ${KIND_LABEL[kind].toLowerCase()}`} onDone={close} action={async title => {await human('organization_create', {kind, title, parent}, record); changed();}}/>;
+      return <NameForm label={`Name your ${KIND_LABEL[kind].toLowerCase()}`} onDone={close} action={async title => {const made = await human<WorkspaceIdentity>('workspace_ensure', {kind, title, key: title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}, record); changed(); location.hash = href('overview', '', made.record, '', {ws: made.workspace_id});}}/>;
     }}</Modal>
     <Modal id="rename" title="Rename">{(close, data) => {
       const {id = '', title = '', owner = ''} = (data || {}) as {id?: string; title?: string; owner?: string};
@@ -91,7 +91,7 @@ function RowMenu({subject, record, folder = false, owner = ''}: {subject: {id: s
   </div>}</Menu>;
 }
 
-export function SessionsPane({record, records, active}: {record: string; records: RecordInfo[]; active: string}) {
+function LegacySessionsPane({record, records, active}: {record: string; records: RecordInfo[]; active: string}) {
   const [version, setVersion] = useState(0), [filter, setFilter] = useState('');
   const treeKey = 'tree-collapsed:' + (record || 'current');
   const [collapsed, setCollapsed] = useState<string[]>(() => {try {const value = JSON.parse(preference(treeKey, '[]')); return Array.isArray(value) ? value : [];} catch {return [];}});
@@ -154,5 +154,20 @@ export function SessionsPane({record, records, active}: {record: string; records
     {data && roots.length > 0 && <p className="hint">Drag a session onto a course or project, or use ⋯ › Move to…</p>}
     {!!data?.archived?.length && <details className="recently-deleted"><summary>Recently deleted ({data.archived.length})</summary><ul>{data.archived.map(a => <li key={(a.record || '') + a.id}><span className="label" title={a.workspace ? a.title + ' · ' + a.workspace : a.title}>{a.title}</span>{a.workspace && <small className="workspace-tag">{a.workspace}</small>}<button onClick={async () => {try {await human('organization_archive', {subject: a.id, archived: false}, a.record || record); changed();} catch { /* the item reports why on the next refresh */ }}}>Restore</button></li>)}</ul></details>}
     <Dialogs record={record} folders={folders}/>
+  </aside>;
+}
+
+export function SessionsPane({record, records, active, workspaceId = '', destination = record}: {record: string; records: RecordInfo[]; active: string; workspaceId?: string; destination?: string}) {
+  return workspaceId ? <ScopedSessions record={record} records={records} active={active} workspaceId={workspaceId} destination={destination}/> : <LegacySessionsPane record={record} records={records} active={active}/>;
+}
+function ScopedSessions({record, records, active, workspaceId, destination}: {record: string; records: RecordInfo[]; active: string; workspaceId: string; destination: string}) {
+  const result = useResource(`scoped-sessions:${record}:${workspaceId}`, signal => readWorkspace(record, workspaceId, signal), record);
+  const catalog = useResource(`workspace-catalog:${record}`, signal => readCatalog(record, signal), record);
+  const [filter, setFilter] = useState('');
+  const data = result.data;
+  return <aside className="sessions-pane" aria-label="Sessions"><div className="pane-head"><Menu kind="workspace" label="Workspaces" buttonLabel={`Workspace: ${data?.workspace.title || 'Loading…'}`} button={<span>{data?.workspace.title || 'Loading…'} ▾</span>}>{close => <div className="menu-list" role="menu">{(catalog.data?.workspaces || []).map(w => <a key={w.workspace_id} role="menuitem" aria-current={w.workspace_id === workspaceId ? 'true' : undefined} href={href('overview', '', w.record, '', {ws: w.workspace_id})} onClick={close}>{w.title}</a>)}<a role="menuitem" href={href('overview', '', records.find(r => r.role === 'user')?.name || '', '', {ws: ''})} onClick={close}>All work</a></div>}</Menu></div>
+    <div className="pane-actions"><a className="button primary" href={href('chat', '', destination, '', {ws: workspaceId})}>＋ New session</a></div>
+    <input type="search" aria-label="Search sessions" placeholder="Search sessions" value={filter} onChange={e => setFilter(e.target.value)}/>
+    {!data ? <p role="status">{result.error || 'Loading sessions…'}</p> : <nav aria-label="Courses, projects and sessions"><ul className="tree">{data.groups.sessions.filter(s => s.title.toLowerCase().includes(filter.toLowerCase())).map(s => <li key={JSON.stringify(s.ref)}><a aria-current={s.ref.entity_id === active && s.owner_record === record ? 'page' : undefined} href={workHref(s.ref, workspaceId)}>{s.title}</a></li>)}</ul>{!data.groups.sessions.length && <p className="hint">Your sessions appear here.</p>}</nav>}
   </aside>;
 }

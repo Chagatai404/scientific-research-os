@@ -86,3 +86,22 @@ def bundle_animate(rec, bundle, node, spec, env=None):
         raise ValueError("the animation was not rendered: " + str(out.get("note") or out.get("error") or out)
                          + " (pass env=<a virtual environment with Manim>; nothing is installed for you)")
     return out
+
+
+@tool("bundle_readiness", "What a bundle can be taught with now: whether words and questions pass (teachable), whether the whole gate "
+      "does (ready), and per node which media are ready, with the reason for each that is not.",
+      bundle=P("string", "bundle id", True))
+def bundle_readiness(rec, bundle):
+    out = prepare.teachable(rec, bundle)
+    plan, d = prepare.load_plan(rec, bundle), prepare.bundle_dir(rec, bundle)
+    out["nodes"] = {n["id"]: prepare.media_readiness(d, n) for n in plan["nodes"]}
+    return out
+
+
+@tool("bundle_code", "Attach a code example (a file already in the bundle) to a node with its hash, and optionally the execution "
+      "somebody reported for exactly that code. Nothing is run; the example shows what was and was not executed.",
+      writes=True, bundle=P("string", "bundle id", True), node=P("string", "node id", True),
+      path=P("string", "path of the code file inside the bundle", True), language=P("string", "language (default python)"),
+      execution=P("object", "what was run: ran_at, runtime, exit_code, ran_by (and optionally output_sha256, seed)"))
+def bundle_code(rec, bundle, node, path, language="python", execution=None):
+    return prepare.attach_code(rec, bundle, node, path, language, execution)

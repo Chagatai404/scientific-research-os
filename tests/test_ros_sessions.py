@@ -31,6 +31,8 @@ class Sessions(unittest.TestCase):
                         **({} if conversation else {"mode": mode}))  # a follow-up inherits its conversation's mode
         with patch.dict(providers.ADAPTERS, {"ollama": provider}):
             runtime.execute(self.rec, sent, sent["_engine"])
+        run = api.call("run_get", self.rec, run=sent["run"])
+        self.assertEqual(run["state"], "completed", run)
         return sent
 
     def test_every_mode_grants_only_real_non_human_tools_and_names_a_real_skill(self):
@@ -44,6 +46,27 @@ class Sessions(unittest.TestCase):
         # `brief` only logs that a briefing was read; `bundle_plan` writes only with a plan, which runtime.execute refuses in chat.
         self.assertEqual({t for t in modes.grant("chat") if api.TOOLS[t].writes}, {"brief", "bundle_plan"}, "a conversation writes nothing else")
         with self.assertRaises(ValueError): modes.mode("wander")
+
+    def test_only_the_computer_mode_plans_and_runs_computer_work_and_it_has_no_built_in_tools(self):
+        computer = {t for t in api.TOOLS if t.startswith("computer_")}
+        agent = {t for t in computer if not api.TOOLS[t].human}
+        self.assertEqual(agent, {"computer_capabilities", "computer_inspect", "computer_plan", "computer_run", "computer_status", "computer_bin", "computer_list"})
+        self.assertLessEqual(agent | {"workspace_identity", "workspace_identity_resolve"}, modes.grant("computer"))
+        self.assertEqual({t for t in modes.grant("computer") if api.TOOLS[t].writes} - {"brief", "skill"}, {"computer_plan", "computer_run"})
+        self.assertFalse(modes.mode("computer").native, "a computer session gets no provider file, shell or computer-use tool")
+        self.assertIsNone(modes.mode("computer").engages)
+        for name in modes.NAMES:
+            if name != "computer":
+                self.assertFalse(modes.grant(name) & computer, name)
+
+    def test_learn_resumes_and_keeps_the_graph_while_chat_stays_read_only(self):
+        learn = modes.grant("learn")
+        for name in ("draft_save", "draft_get", "lesson_state", "prior_evidence", "learning_readiness", "medium_choose",
+                     "graph_note_add", "graph_note_revise", "graph_note_retract", "graph_teaching"):
+            self.assertIn(name, learn, name)
+        self.assertTrue(modes.GRAPH_WRITES <= modes.grant("research"))
+        self.assertFalse(modes.GRAPH_WRITES & modes.grant("chat"), "a conversation never keeps the graph")
+        self.assertFalse(modes.GRAPH_WRITES & modes.grant("defend"))
 
     def test_every_shipped_skill_and_agent_has_a_place_where_it_is_used(self):
         from ros import dispatch, tasks
@@ -82,10 +105,10 @@ class Sessions(unittest.TestCase):
         self.assertEqual(started["next"]["action"], "probe"); self.assertNotIn("answer", started["next"]["question"])
         results = {}
         def second(request, emit, tool, cancel, own):
-            # The model tries to write the answer itself and to claim "I don't know" for the learner.
-            results["answer"] = tool("answer", {"lesson": started["lesson"], "item": started["next"]["item"], "response": "999", "dont_know": True}, "op-answer")
             with self.assertRaisesRegex(ValueError, "current step"):
                 tool("answer", {"lesson": started["lesson"], "item": "not-the-current-item", "response": "8"}, "op-answer-other")
+            # The model tries to write the answer itself and to claim "I don't know" for the learner.
+            results["answer"] = tool("answer", {"lesson": started["lesson"], "item": started["next"]["item"], "response": "999", "dont_know": True}, "op-answer")
             with self.assertRaisesRegex(ValueError, "one answer per message"):
                 tool("answer", {"lesson": started["lesson"], "item": started["next"]["item"], "response": "8"}, "op-answer-2")
             emit("Correct."); return {}

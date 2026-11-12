@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {JSDOM} from 'jsdom';
-import {Classroom, DependencyPlan, type ClassroomMap} from './Classroom';
+import {Classroom, DependencyPlan, DRAFT_DELAY, isTeachable, mediumNotice, newAnswerKey, type ClassroomMap} from './Classroom';
 
 const map: ClassroomMap = {nodes: [
   {id: 'capability:roots', title: 'Roots', state: 'unknown', prerequisites: [], blocked_by: [], ready: false},
@@ -52,4 +52,27 @@ test('a Code session shows each file edit and command the agent made in the repo
   const doc = new JSDOM(renderToStaticMarkup(<RunSteps steps={steps} />)).window.document;
   assert.match(doc.querySelector('.role-step strong')!.textContent!, /In your repository/);
   assert.deepEqual([...doc.querySelectorAll('.native-steps code')].map(c => c.textContent), ['Edit: {"file_path": "fit.py"}', 'command: $ pytest -q (exit 1)']);
+});
+
+test('the medium notice says why a part is taught that way and, when the medium is not ready, that the lesson goes on in words', () => {
+  assert.equal(mediumNotice({}), '');
+  assert.equal(mediumNotice({medium: {chosen: 'text', delivered: 'text', reason: 'Words carry it.'}}), '');
+  assert.match(mediumNotice({medium: {chosen: 'static-visual', delivered: 'static-visual', reason: 'One figure shows the relationship.'}}), /^Shown as a figure\. One figure shows/);
+  const fallback = mediumNotice({medium: {chosen: 'animation', delivered: 'text', reason: 'x', notes: ['animation: no animation renderer found']}});
+  assert.match(fallback, /^An animation would teach this best, but it is not ready \(animation: no animation renderer found\)\. This part is an explanation in words, and the lesson continues\./);
+  assert.doesNotMatch(fallback, /mastery|blocked/i);
+});
+
+test('an answer key is unique per presented question, so a retry can reuse it and a new question cannot', () => {
+  const first = newAnswerKey(), second = newAnswerKey();
+  assert.ok(first.length >= 8);
+  assert.notEqual(first, second);
+  assert.ok(DRAFT_DELAY > 0 && DRAFT_DELAY < 2000);
+});
+
+test('a bundle with ready words and questions can be started while media are still being made', () => {
+  assert.equal(isTeachable({ready: true}), true);
+  assert.equal(isTeachable({ready: false, teachable: true}), true);
+  assert.equal(isTeachable({ready: false}), false);
+  assert.equal(isTeachable({ready: false, teachable: false}), false);
 });

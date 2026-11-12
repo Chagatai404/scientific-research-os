@@ -63,7 +63,12 @@ TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf
 
 def _engine(request: dict, timeout: int = 200) -> dict:
     """Run optional providers outside api.LOCK; no shell or browser-supplied executable/path."""
-    env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTHONPATH=str(STATIC.parents[1]) + os.pathsep + os.environ.get("PYTHONPATH", ""))
+    # The worker gets no paid key and no profile's credential variable, except the one its own request refers to (it reads that key itself).
+    refs = [request.get(name) for name in ("credential", "reference") if isinstance(request.get(name), dict)]
+    keep = [r["name"] for r in refs if r.get("store") == "env" and isinstance(r.get("name"), str)]
+    if str(request.get("model", "")).startswith("compatible:") and not request.get("credential"):
+        keep.append("ROS_LOCAL_API_KEY")  # a local server profile without a reference reads the legacy variable itself
+    env = runtime.child_env(keep=keep, PYTHONUTF8="1", PYTHONIOENCODING="utf-8", PYTHONPATH=str(STATIC.parents[1]) + os.pathsep + os.environ.get("PYTHONPATH", ""))
     try:
         argv = [sys.executable, '--worker', 'dialogue'] if getattr(sys, 'frozen', False) else [sys.executable, '-m', 'ros.lib.dialogue']
         result = subprocess.run(argv, input=json.dumps(request),
@@ -86,6 +91,7 @@ class Pool:
         self.default = default
         self._records = {default.root.name: default}
         self._lock = threading.Lock()
+        self.coordinator = runtime.Coordinator(legacy_engine=lambda request: _engine(request)) if os.environ.get('ROS_WORKSPACE_FAKE') == '1' or getattr(_engine, '__module__', '') != __name__ else runtime.Coordinator()
 
     def get(self, name: str | None = None) -> Record:
         if not name or name == self.default.root.name:
@@ -125,6 +131,7 @@ class Pool:
                 self._records.pop(name).close()
 
     def close(self) -> None:
+        self.coordinator.close()
         with self._lock:
             for r in self._records.values():
                 if r is not self.default:
@@ -320,7 +327,7 @@ def make_handler(rec: "Record | Pool"):
                         if not saved or saved[:3] != (str(target.root), name, fingerprint) or time.monotonic() - saved[3] > 600: raise ValueError('approval expired or subject changed; review the current version')
                         if name == 'workspace_delete' and params.get('workspace') in (pool.default.root.name, target.root.name):
                             raise ValueError('Open another workspace first: this one is open here, or it is the one the app started with.')
-                        done = runtime.launch_operation(target,api.call(name, target, **params))
+                        done = pool.coordinator.submit(target, name, api.call(name, target, **params))
                         if name == 'workspace_delete': pool.forget(params['workspace'])
                         return self._send(200, {'result': done})
                     except (ValueError, KeyError) as exc: return self._send(400, {'error': str(exc)})
@@ -368,13 +375,19 @@ def make_handler(rec: "Record | Pool"):
                     if self.headers.get("Sec-Fetch-Site") != "same-origin":
                         return self._send(HTTPStatus.FORBIDDEN, {"error": "model checks must come from the portal"})
                     model, effort = args.get("model"), args.get("effort", "medium")
-                    if not isinstance(model, str) or not re.fullmatch(r"(codex|claude|ollama|compatible):[A-Za-z0-9_.:/-]{1,100}", model) \
+                    if not isinstance(model, str) or not re.fullmatch(r"(codex|claude|ollama|compatible|api):[A-Za-z0-9_.:/-]{1,100}", model) \
                             or effort not in ("low", "medium", "high", "xhigh", "max") \
                             or (not _takes_effort(model) and effort != "medium"):
                         return self._send(HTTPStatus.BAD_REQUEST, {"error": "choose a supported model and effort"})
                     # A user-requested transport check sends no record, source, file path or transcript.
                     profile=next((p for p in api.call('provider_profiles',pool.get(args.get('record'))) if p['id']==model),None)
+                    if model.startswith('api:') and not (profile and profile.get('credential')):
+                        return self._send(HTTPStatus.BAD_REQUEST, {"error": "Connect this API model in Settings first (endpoint, model and where its key is stored)."})
+                    # Only the credential *reference* goes to the worker; it reads the key itself, in its own process.
+                    runtime.note_profiles(pool.get(args.get('record')))
                     result = _engine({"action": "reply", "model": model, "effort": effort, **({'endpoint':profile['endpoint']} if profile and profile['endpoint'] else {}),
+                                      **({'token_param':profile['token_param']} if profile and profile.get('token_param') else {}),
+                                      **({'credential':profile['credential']} if profile and profile.get('credential') else {}),
                                       "messages": [{"role": "user", "content": "Reply exactly READY."}],
                                       "context": {"purpose": "User-requested model connection check."}}, timeout=60)
                     out = {"ok": bool(result.get("ok")), "model": result.get("model", model),
@@ -384,6 +397,16 @@ def make_handler(rec: "Record | Pool"):
                         out["error"] = result.get("error") or "The model connection check failed."
                     return self._send(HTTPStatus.OK if out["ok"] else HTTPStatus.BAD_REQUEST,
                                       {"result": out, **({"error": out["error"]} if not out["ok"] else {})})
+                if path == '/services/credential':
+                    # Entering, revoking or checking a key is the person's act. The key travels only in this request body and the
+                    # worker's stdin; it is never put in the record, an event, a tool result, an argument list or a log.
+                    if not self._human(): return self._send(403, {'error': HUMAN_ONLY})
+                    operation = args.get('operation', 'status')
+                    if operation not in ('set', 'delete', 'status'): return self._send(400, {'error': 'unknown credential operation'})
+                    result = _engine({'action': 'credential', 'operation': operation, 'name': args.get('name'), 'reference': args.get('reference'),
+                                      **({'value': args.get('value')} if operation == 'set' else {})}, timeout=30)
+                    if not result.get('ok'): return self._send(400, {'error': result.get('error') or 'The credential could not be stored.'})
+                    return self._send(200, {'result': {k: result[k] for k in ('name', 'store', 'status') if k in result}})
                 if path in ("/services/speech", "/services/transcribe"):
                     if self.headers.get("Sec-Fetch-Site") != "same-origin":
                         return self._send(HTTPStatus.FORBIDDEN, {"error": "voice requests must come from the portal"})
@@ -459,8 +482,7 @@ def make_handler(rec: "Record | Pool"):
                 return self._send(HTTPStatus.BAD_REQUEST, {"error": str(exc.args[0] if exc.args else exc)})
             except Exception as exc:
                 return self._send(HTTPStatus.INTERNAL_SERVER_ERROR, {"error": _internal_error(name, exc)})
-            engine = result.pop("_engine", None) if name == "workspace_chat_send" else None
-            runtime.launch_operation(target,result)
+            result = pool.coordinator.submit(target, name, result)
             if name=='handout_build' and result.get('job') and not args.get('wait'):
                 try:runtime.run_job(target,result['job'])
                 except (ValueError,KeyError):pass
@@ -471,8 +493,6 @@ def make_handler(rec: "Record | Pool"):
                     return value
                 result=qualify(result)
             self._send(HTTPStatus.OK, {"result": result})
-            if engine and not result.get('duplicate'):
-                threading.Thread(target=_chat_response, args=(target, result, engine), daemon=True).start()
 
         def _file(self, path: Path, cache: bool, base: Path | None = None, untrusted: bool = False):
             # Decide on the path as written before resolving it: on Windows, resolving a UNC path opens it, which connects
@@ -561,7 +581,12 @@ def make_handler(rec: "Record | Pool"):
                     elif sizes != last:
                         with api.LOCK, target.reading():
                             if getattr(self.server, 'closing', False): break
-                            delta = target.since(cursor, types=('run.queued', 'run.state', 'run.output', 'run.step','run.usage', 'conversation.message', 'conversation.response', 'conversation.error'))
+                            delta = target.since(cursor, types=('run.queued', 'run.state', 'run.output', 'run.step','run.usage', 'run.heartbeat', 'conversation.message', 'conversation.response', 'conversation.error'))
+                        if cursor is not None and not delta['nodes'] and not delta['edges'] and delta['events'] and all(e['type'] == 'run.heartbeat' for e in delta['events']):
+                            # A running turn's proof of life changes nothing a view shows: no view refreshes for it.
+                            cursor = delta['cursor']; last = sizes
+                            self.wfile.write(b": keep-alive\n\n"); self.wfile.flush(); time.sleep(0.5); continue
+                        delta['events'] = [e for e in delta['events'] if e['type'] != 'run.heartbeat']
                         run_only = cursor is not None and not delta['nodes'] and not delta['edges'] and delta['events'] and all(e['type'].startswith('run.') for e in delta['events'])
                         cursor = delta['cursor']
                         if run_only:

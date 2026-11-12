@@ -18,15 +18,16 @@ Approving, deciding and waiving stay the person's own acts (``human`` tools); no
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+import hashlib
 import os
 import re
 import sys
 
-from . import __version__, automation, context, graph, handouts, home, install, prepare, research, roadmap, tasks, vault
+from . import __version__, automation, computer, context, graph, handouts, home, install, prepare, research, roadmap, tasks, vault, workspaces
 from .learn import schedule
 from .store import Record, event_id
 
-KINDS = ("auto", "course", "topic", "research", "review", "continue")
+KINDS = ("auto", "course", "topic", "research", "review", "continue", "computer")
 LEARN = re.compile(r"\b(teach|learn|study|tutor|explain|understand|lecture|course|revise|prepare for|exam|midterm|final)\b", re.I)
 RESEARCH = re.compile(r"\b(investigate|research|find out|is it true|does|do|whether|compare|simulate|experiment|hypothes|"
                       r"literature|measure|why (?:does|do|is)|how (?:does|do|much))\b", re.I)
@@ -131,7 +132,8 @@ def portal_url(path: str = "", record: str | None = None) -> str:
 
 # ---- engage: the playbooks ----------------------------------------------------------------------------------------
 def engage(rec: Record, intent: str, kind: str = "auto", target: str | None = None, title: str | None = None,
-           deadline: str | None = None, pace: int | None = None, materials: str | None = None) -> dict:
+           deadline: str | None = None, pace: int | None = None, materials: str | None = None,
+           workspace_id: str | None = None, material_refs: list[dict] | None = None) -> dict:
     """Start what the person asked for. Returns what was set up, what waits for an agent, what is the person's, and where
     to look. Saying the same thing again changes nothing."""
     if kind not in KINDS:
@@ -147,26 +149,65 @@ def engage(rec: Record, intent: str, kind: str = "auto", target: str | None = No
         raise ValueError(f"say what the {kind} is: pass target or write it in the intent")
     if deadline:
         date.fromisoformat(deadline)
+    if kind == "computer":
+        # Computer work never creates a course, project or user record: it goes where §7 of COMPUTER-ADAPTERS.md places it.
+        return _computer(rec, text, target, title, deadline, pace, materials, workspace_id=workspace_id)
+    selected = None
+    if workspace_id or home.config(rec.root).get('role') == 'project':
+        selected = workspaces.identity(rec, workspace_id)
+    if material_refs is not None and not isinstance(material_refs, list):
+        raise ValueError('material_refs must be an array of qualified references')
+    refs = []
+    for ref in material_refs or []:
+        row = workspaces.work_resolve(rec, ref, selected['workspace_id'] if selected else None)
+        if row['kind'] not in ('source', 'paper', 'material', 'connection', 'handout'):
+            raise ValueError('select a source, material, connection or handout')
+        if row['ref'] not in refs:
+            refs.append(row['ref'])
+    provenance = {'intent': text, 'material_refs': refs}
     user, created = _user_record(rec)
-    note = {"intent": text, "kind": kind, "target": target}
+    note = {"intent": text, "kind": kind, "target": target, "material_refs": refs, "workspace_id": selected["workspace_id"] if selected else None}
     user.append("intent", f"intent:{slug(target or kind)}", note, actor="person",
-                id=event_id("intent", f"{user.root.name}|{kind}|{target}|{text}"))
+                id=event_id("intent", f"{user.root.name}|{kind}|{target}|{text}|{refs}|{selected['workspace_id'] if selected else ''}"))
     play = PLAYBOOKS[kind]
-    out = play(user, text, target, title, deadline, pace, materials)
-    out.update({"kind": kind, "created_user_record": created})
+    if selected and kind in ('course', 'topic', 'research'):
+        with workspaces.records(rec) as records:
+            destination = records[selected['record']]
+            scoped = (destination, selected['hub']['entity_id'] if selected.get('hub') else 'subject:workspace-' + hashlib.sha256(selected['workspace_id'].encode()).hexdigest()[:20])
+            out = (_research if kind == 'research' else _course)(
+                user, text, target, title, deadline, pace, materials, selected=scoped, provenance=provenance)
+    else:
+        out = play(user, text, target, title, deadline, pace, materials, provenance=provenance)
+    out.update({"kind": kind, "created_user_record": created, "material_refs": refs})
     if kind in ("course", "topic", "research"):
         out["agent_tasks"] = [_guide(t, r.root.name) for r, t in out.pop("_tasks")]
         out["for_you"] = out.get("for_you", [])
     else:
         out.pop("_tasks", None)
+    if selected:
+        out.update(workspace_id=selected['workspace_id'], selected_record=selected['record'],
+                   workspace_owner_record=selected['owner_record'], owner_record=out.get('record', selected['record']))
+    elif out.get('record'):
+        made = Record(_root(out['record']))
+        try:
+            scoped = workspaces.identity(made)
+        finally:
+            made.close()
+        out.update(workspace_id=scoped['workspace_id'], selected_record=scoped['record'],
+                   workspace_owner_record=scoped['owner_record'], owner_record=out['record'])
     return out
 
 
-def _course(user: Record, text, target, title, deadline, pace, materials):
-    key = slug(target or title)
-    hub = f"course:{key}"
-    _hub(user, hub, "course", title or key)
-    course = _ensure_record(user, key, hub, title or key)
+def _selection_key(provenance):
+    refs = (provenance or {}).get('material_refs')
+    return ':' + hashlib.sha256(repr(refs).encode()).hexdigest()[:16] if refs else ''
+
+
+def _course(user: Record, text, target, title, deadline, pace, materials, selected=None, provenance=None):
+    key = selected[1].partition(':')[2] if selected else slug(target or title)
+    hub = selected[1] if selected else f"course:{key}"
+    _hub(user, hub, hub.partition(':')[0], title or key)
+    course = selected[0] if selected else _ensure_record(user, key, hub, title or key)
     try:
         roadmap.set_goal(user, f"goal:{key}", title, [hub], deadline, pace)
         tid = tasks.open_task(
@@ -177,11 +218,11 @@ def _course(user: Record, text, target, title, deadline, pace, materials):
             + f", then add the capabilities of the course as capability:<key> nodes each part-of {hub}, with `requires` "
               "edges between them and a short title (add_node, add_edge). Group them in the order the lectures teach "
               "them. The record prepares lessons, notes and handouts from this on its own. Say what you could not source.",
-            data={"hub": hub, "materials": materials, "title": title}, key="outline")
+            data={**(provenance or {}), "hub": hub, "materials": materials, "title": title}, key="outline" + _selection_key(provenance))
         tid_scout = tasks.open_task(
             user, "scout", hub, f"Map the authoritative sources a student of {title or key!r} should learn from "
             "(textbooks, lecture series, standard references) and return them with locators. Do not decide what to teach.",
-            data={"hub": hub}, key="sources")
+            data={**(provenance or {}), "hub": hub}, key="sources" + _selection_key(provenance))
         _sync_vault(course)
         folder = _vault_folder(course)
         automation.reconcile(user, "tick")
@@ -193,24 +234,25 @@ def _course(user: Record, text, target, title, deadline, pace, materials):
                              "automatically."] if folder.get("inbox") else
                             ["Choose your Obsidian vault with `ros vault_set` so notes and handouts have a home."])}
     finally:
-        course.close()
+        if not selected:
+            course.close()
 
 
-def _topic(user: Record, text, target, title, deadline, pace, materials):
+def _topic(user: Record, text, target, title, deadline, pace, materials, provenance=None):
     key = slug(target or title)
     hub = f"subject:{key}"
     _hub(user, hub, "subject", title or key)
     roadmap.set_goal(user, f"goal:{key}", title, [hub], deadline, pace)
     scout = tasks.open_task(user, "scout", hub, f"Map the authoritative sources to learn {title or key!r} from, with locators; "
                             "start from the papers already in the library and the person's notes (`library`, `vault_find`), "
-                            "then fill the gaps; do not decide what to teach.", data={"hub": hub}, key="sources")
+                            "then fill the gaps; do not decide what to teach.", data={**(provenance or {}), "hub": hub}, key="sources" + _selection_key(provenance))
     outline = tasks.open_task(
         user, "outline", hub, f"Outline {title or key!r} for someone learning it: the capabilities as capability:<key> "
         f"nodes each part-of {hub}, with `requires` edges, in the order to learn them (add_node, add_edge)."
         " Build on what the person already has before adding anything: their notes (`vault_find`), the papers in the library "
         "(`library`, `find`) and the linked projects' records, claims, experiments and code (`records`, `research`, `code`); "
         "put what each capability rests on in its node data as `sources`, and say what you could not find."
-        + (f" Materials: {materials}." if materials else ""), data={"hub": hub, "materials": materials}, key="outline")
+        + (f" Materials: {materials}." if materials else ""), data={**(provenance or {}), "hub": hub, "materials": materials}, key="outline" + _selection_key(provenance))
     _sync_vault(user)
     automation.reconcile(user, "tick")
     return {"playbook": "topic", "user_record": user.root.name, "hub": hub, "goal": f"goal:{key}",
@@ -218,13 +260,14 @@ def _topic(user: Record, text, target, title, deadline, pace, materials):
             "_tasks": [(user, tasks.get(user, scout)), (user, tasks.get(user, outline))], "for_you": []}
 
 
-def _research(user: Record, text, target, title, deadline, pace, materials):
+def _research(user: Record, text, target, title, deadline, pace, materials, selected=None, provenance=None):
     key = slug(target or title)
-    hub = f"project:{key}"
-    _hub(user, hub, "project", title or key)
-    proj = _ensure_record(user, key, hub, title or key)
+    hub = selected[1] if selected else f"project:{key}"
+    _hub(user, hub, hub.partition(':')[0], title or key)
+    proj = selected[0] if selected else _ensure_record(user, key, hub, title or key)
     try:
-        qid = f"question:{key}"
+        suffix = '-' + hashlib.sha256((text or title or key).encode()).hexdigest()[:12] if selected else ''
+        qid = f"question:{key}{suffix}"
         node = {"title": (title or key)[:120], "text": text or title, "status": "framed", "asked_by": "person"}
         if proj.node(qid) != {"id": qid, "type": "question", **node}:
             proj.put_nodes([{"id": qid, "type": "question", **node}])
@@ -238,7 +281,7 @@ def _research(user: Record, text, target, title, deadline, pace, materials):
                 proj, "scout", qid, f"Search neutrally for {what}, on the question: {text or title}. Work from this brief "
                 "alone (skill research, agent scout): return a scout report with the searches you ran, candidates with "
                 "locators, and what you read of each. Do not decide what is true.",
-                data={"question": qid, "facet": facet, "brief_spec": spec}, key=facet)
+                data={**(provenance or {}), "question": qid, "facet": facet, "brief_spec": spec}, key=facet + _selection_key(provenance))
             out.append((proj, tasks.get(proj, tid)))
         _sync_vault(proj)
         automation.reconcile(proj, "tick")
@@ -248,10 +291,11 @@ def _research(user: Record, text, target, title, deadline, pace, materials):
                 "for_you": ["You will be asked to judge: the literature brief, the experiment plan to approve, and the "
                             "findings to decide on. Nothing else needs you."]}
     finally:
-        proj.close()
+        if not selected:
+            proj.close()
 
 
-def _review(user: Record, text, target, title, deadline, pace, materials):
+def _review(user: Record, text, target, title, deadline, pace, materials, provenance=None):
     due = schedule.due(user, date.today())
     return {"playbook": "review", "user_record": user.root.name, "due": len(due),
             "start": {"tool": "start", "args": {"scope": "review:due"}} if due else None,
@@ -259,7 +303,7 @@ def _review(user: Record, text, target, title, deadline, pace, materials):
             "portal": portal_url("learn", user.root.name), "_tasks": []}
 
 
-def _continue(user: Record, text, target, title, deadline, pace, materials):
+def _continue(user: Record, text, target, title, deadline, pace, materials, provenance=None):
     with linked(user) as recs:
         for r in recs:
             automation.reconcile(r, "tick")
@@ -267,7 +311,42 @@ def _continue(user: Record, text, target, title, deadline, pace, materials):
             "portal": portal_url("director", user.root.name), "_tasks": []}
 
 
-PLAYBOOKS = {"course": _course, "topic": _topic, "research": _research, "review": _review, "continue": _continue}
+def _computer(user: Record, text, target, title, deadline, pace, materials, workspace_id=None, provenance=None):
+    """Something to do on the person's computer. It goes to the selected workspace, else the course or project the request names,
+    else General work; an ambiguous name returns the choices and General work that does not exist yet returns the portal link:
+    neither creates anything. Otherwise it opens (or, for the same words, reuses) a `computer` conversation in that workspace's
+    record, where the person and the agent make the plan. ``user`` is the record engage was called on."""
+    if not text:
+        raise ValueError("say what to do on the computer")
+    where = computer.place(user, workspace_id, target, text)
+    base = {"playbook": "computer", "kind": "computer", "status": where["status"], "agent_tasks": [], "material_refs": []}
+    if where["status"] == "ambiguous":
+        return dict(base, matches=where["matches"], for_you=["Choose which workspace this is for; nothing was created."])
+    if where["status"] == "missing":
+        return dict(base, workspace_id=computer.GENERAL, portal=portal_url("director"),
+                    for_you=["Start it with \"Do on my computer\" in the app: choosing the folders there creates General work and "
+                             "grants this request. Nothing was created."])
+    ident = where["workspace"]
+    conversation = "conversation:computer-" + hashlib.sha256(f"{ident['workspace_id']}|{text}".encode("utf-8")).hexdigest()[:12]
+    owner = ident["record"]
+    destination = user if owner == user.root.name else Record(home.home() / "projects" / owner)
+    try:
+        if destination.node(conversation) is None:
+            destination.put_node(conversation, "conversation", title=text[:100], mode="computer", workspace_id=ident["workspace_id"])
+        destination.append("intent", conversation, {"intent": text, "kind": "computer", "workspace_id": ident["workspace_id"]}, actor="person",
+                           id=event_id("intent", f"{owner}|computer|{ident['workspace_id']}|{text}"))
+    finally:
+        if destination is not user:
+            destination.close()
+    return dict(base, workspace_id=ident["workspace_id"], record=owner, owner_record=owner, selected_record=owner,
+                workspace_owner_record=ident["owner_record"], conversation=conversation,
+                portal=portal_url(f"conversation/{conversation}", owner),
+                for_you=["Say what to do in this conversation. The agent proposes a plan with the exact files; nothing on your computer "
+                         "changes until you approve it in the app or have granted it there."])
+
+
+PLAYBOOKS = {"course": _course, "topic": _topic, "research": _research, "review": _review, "continue": _continue,
+             "computer": _computer}
 
 
 def _vault_folder(rec: Record) -> dict:

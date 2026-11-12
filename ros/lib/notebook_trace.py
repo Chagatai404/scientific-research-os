@@ -55,9 +55,17 @@ def run_command(args: list, cwd: Path | None = None, timeout: int = DEFAULT_TIME
     return {'code': done.returncode, 'stdout': done.stdout, 'stderr': done.stderr, 'seconds': round(time.monotonic() - started, 2)}
 
 
+def _referenced_names() -> set:
+    """The variables a provider profile takes its key from, when this runs inside Research OS (a copy of this script elsewhere has no profiles)."""
+    try: from . import credentials
+    except ImportError: return set()
+    return set(credentials.referenced_env() | {n.upper() for n in credentials.PAID_ENV})
+
+
 def scrubbed_environment(base: dict | None = None) -> dict:
     """The caller's environment without secrets and without variables that would send a notebook back to the real environment."""
-    env = {k: v for k, v in (base if base is not None else os.environ).items() if not SECRET.search(k) and k.upper() not in POINTS_BACK}
+    hidden = POINTS_BACK | _referenced_names()
+    env = {k: v for k, v in (base if base is not None else os.environ).items() if not SECRET.search(k) and k.upper() not in hidden}
     env['PYTHONDONTWRITEBYTECODE'] = '1'
     env['PYTHONUTF8'] = '1'
     return env

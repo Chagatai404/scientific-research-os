@@ -98,11 +98,31 @@ def compute(packet):
         manifest=computational_manifest.create(packet['experiment'],observed={'exit_code':process.returncode,'seconds':round(time.monotonic()-started,3),'platform':platform.platform(),'executable':executable,'staged_digest':packet['digest'],'bundled_python':bundled},declared={'argv':command,'inputs':[{k:v for k,v in r.items() if k!='snapshot'} for r in packet.get('input_files',[])]},artifacts=[r['path'] for r in artifacts],reproduction_command=json.dumps(command),failure=failure or (None if process.returncode==0 else 'Process exited '+str(process.returncode)))
         return {'ok':process.returncode==0 and not failure,'manifest':manifest,'artifacts':artifacts,'output':output.decode('utf-8',errors='replace')[-60000:],'note':'Original files were not changed. Scratch execution is not an OS security sandbox.'}
 
+def run(kind,packet,hooks=None):
+    """Dispatch by explicit kind; an unknown kind is an error, never a fall-through to running code. ``hooks`` reaches only the
+    file engine and only from Python (tests); a packet never carries one."""
+    if kind=='computer_file':
+        from . import fileops  # one step of a plan the person authorised (docs/core-experience/COMPUTER-ADAPTERS.md §4)
+        return fileops.run(packet,hooks)
+    if kind=='computer_app':
+        try:from . import winui  # app control (P2); optional, absent until it ships
+        except ImportError:return {'ok':False,'phase':'failed','code':'capability_missing','error':'App control is not available on this computer yet.','phases':[{'phase':'failed','code':'capability_missing'}]}
+        return winui.run(packet)
+    if kind=='literature':return search(packet)
+    if kind=='compute':return compute(packet)
+    if kind=='experiment':
+        from . import environments  # the experiment workbench's engine (ros/workbench.py): prepare, run, capabilities
+        return environments.run(packet)
+    if kind in ('web_search','web_read'):
+        from . import web  # public web engines; loopback is never allowed from a packet
+        return web.search(packet) if kind=='web_search' else web.read(packet)
+    raise ValueError('Unknown operation kind.')
+
 def main():
     for _s in (sys.stdin, sys.stdout):
         if hasattr(_s, 'reconfigure'): _s.reconfigure(encoding='utf-8')  # a Windows locale code page would garble or refuse non-ASCII
     try:
-        request=json.load(sys.stdin);result=search(request['packet']) if request['kind']=='literature' else compute(request['packet'])
+        request=json.load(sys.stdin);result=run(request['kind'],request['packet'])
     except Exception as exc:result={'ok':False,'error':str(exc)[:1500]}
     print(json.dumps(result,ensure_ascii=False));return 0 if result['ok'] else 1
 if __name__=='__main__':raise SystemExit(main())

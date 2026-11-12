@@ -96,6 +96,20 @@ def suggest(name: str, choices: list[str]) -> list[str]:
 CONFIG = "record.json"
 
 
+def workspace_id(root: Path) -> str:
+    """Stable logical scope, independent of display title and daily request text.
+
+    Linking pins this id in config; old records derive it from their explicit link
+    until that first update. Physical owner references remain separate.
+    """
+    cfg = config(root)
+    if cfg.get('workspace_id'):
+        return cfg['workspace_id']
+    if cfg.get('role') == 'project' and cfg.get('user') and cfg.get('project'):
+        return f"ws:{cfg['user']}:{cfg['project']}"
+    return f'ws:{Path(root).name}:workspace'
+
+
 def config(root: Path) -> dict:
     """How a record relates to the others: ``{"role": "user"}`` for the user-wide knowledge record, or
     ``{"role": "project", "user": <record name>, "project": "project:<key>"}`` for a project's research record."""
@@ -152,7 +166,7 @@ def set_settings(**fields) -> dict:
     if fields.get("agents_per_hour") is not None and (isinstance(fields["agents_per_hour"], bool) or not isinstance(fields["agents_per_hour"], int)
                                                        or not 0 <= fields["agents_per_hour"] <= 100):
         raise ValueError("agents_per_hour is a whole number from 1 to 100, or 0 for no hourly limit")
-    if fields.get("agents_model") not in (None, "") and not re.fullmatch(r"(codex|claude|ollama|compatible):[A-Za-z0-9_.:/-]{1,100}", str(fields["agents_model"])):
+    if fields.get("agents_model") not in (None, "") and not re.fullmatch(r"(codex|claude|ollama|compatible|api):[A-Za-z0-9_.:/-]{1,100}", str(fields["agents_model"])):
         raise ValueError("agents_model is a provider and model such as claude:sonnet, or empty to use the model you last wrote to")
     root = fields.get("vault_root")
     if root is not None and (not root.strip() or Path(root).is_absolute() or ".." in Path(root).parts):
