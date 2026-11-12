@@ -323,7 +323,7 @@ def codex(request, emit, tool_call, cancel, own):
             if params is not None: message['params'] = params
             process.stdin.write(json.dumps(message) + '\n'); process.stdin.flush(); return sequence
         try:
-            init = send('initialize', {'clientInfo': {'name': 'research_os', 'title': 'Research OS', 'version': '1.7.3'}, 'capabilities': {'experimentalApi': True}})
+            init = send('initialize', {'clientInfo': {'name': 'research_os', 'title': 'Research OS', 'version': '1.8.0'}, 'capabilities': {'experimentalApi': True}})
             start_id = turn_id = None
             usage=None
             for event in lines(process, cancel, request.get('deadline', 180), status, request.get('stall_after', 30)):
