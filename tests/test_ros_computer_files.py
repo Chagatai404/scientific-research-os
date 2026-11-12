@@ -178,7 +178,8 @@ class Files(ComputerFixture, unittest.TestCase):
         # A folder copy that holds a junction is refused when it is expanded.
         refused = self.plan([{'id': 'c', 'op': 'copy', 'src': str(self.src), 'dst': str(self.dst)}])
         self.assertEqual(refused['code'], 'path_link_refused')
-        os.rmdir(self.src / 'door')  # removes the junction itself, never what it points at
+        # removes the link itself, never what it points at (a Windows junction is removed with rmdir, a POSIX symlink with unlink)
+        (os.unlink if (self.src / 'door').is_symlink() else os.rmdir)(self.src / 'door')
         self.assertTrue((outside / 'secret.txt').exists())
         # The granted root is replaced by a junction with the same name after the plan was authorised.
         source = self.write(self.src / 'y.txt', b'y')
