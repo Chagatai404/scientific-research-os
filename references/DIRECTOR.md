@@ -11,9 +11,14 @@ Everything between those two is done by the system and its agents, without anyon
 | "teach me about quantum error correction" | a subject hub and goal in the user-wide record, with the same two tasks |
 | "is it true that protons shower wider than pions?" | makes the project record, frames the question in your words, opens three neutral literature searches (competing models, null results, validity limits) |
 | "quiz me", "continue", or nothing | tells you what is due or what comes next |
+| "copy my STAT303 PDFs into a folder" (`kind computer`) | opens (or reuses, for the same words) a `computer` conversation in the selected workspace, or in the course or project the request names. It creates no task and touches no file: the agent in that conversation proposes a checked plan (skill `computer`) and you approve it. With no course or project it is General work, which you start with "Do on my computer" in the app |
 
-An agent passes your words as `intent`; `kind`, `target` and `title` are worked out from them when it does not say. Saying
-the same thing twice changes nothing. In a client with MCP prompts, `learn`, `investigate`, `continue` and `review` are
+An agent passes your words as `intent`; `kind` (`auto`, `course`, `topic`, `research`, `review`, `continue` or `computer`),
+`target` and `title` are worked out from them when it does not say. `workspace_id` selects a course or project explicitly, and
+`material_refs` passes selected materials with their recorded revisions. A selected workspace, or a linked course or project
+record, wins over a new one made from the prompt: learning preparation and new research questions land in it. Results carry
+`workspace_id`, `selected_record`, `workspace_owner_record` and `owner_record`. `engage` records your exact intent and opens
+agent tasks only; it never answers for you or makes a person-only decision. Saying the same thing twice changes nothing. In a client with MCP prompts, `learn`, `investigate`, `continue` and `review` are
 offered as commands, so you need to remember none.
 
 ## What happens by itself
@@ -32,10 +37,13 @@ portal can show what the system did on its own.
 | `bundle_tasks` | the graph or evidence changes | prepares the next lessons of a goal or of what a project needs |
 | `course_handouts` | the graph changes | a lecture note for each next capability of a course, a recitation once it is ready, a chapter |
 | `bundle_gate` | a bundle's plan changes | runs the readiness gate, opens a task for each missing piece |
-| `handout_gate` | an agent finishes writing a handout | gate, note in the vault, PDF job |
+| `handout_gate` | an agent finishes writing a handout | gate, PDF job; the note reaches the vault only when you accept that version |
+| `graph_upkeep` | a lesson is closed | one `graph` task per lesson (never in your queue) that hands an agent the lesson's `graph_notes` to record; skipped when they are already in the graph |
 | `renders` | narration without audio, voice engine configured | a voice job |
 | `vault_sync` | the record changes | notes follow the record |
 | `vault_scan` | every half minute | what you did in the vault flows back; files dropped in an `Inbox/` are read in |
+| `legacy_sync` | every half minute | what was added to or changed in an old vault after it was migrated is brought in |
+| `library_queue` | material waits to be read | reads a few added files at a time, so adding is instant |
 | `review_note` | once a day | the review note |
 
 What needs a model (outlining, writing, grading, auditing, running experiments) waits as tasks until an agent is attached;

@@ -57,7 +57,7 @@ A failing row opens a `handout` task with the row and its problems, once. To add
 `python -m ros.lib.pdf detect` says what this computer has. A build tries, in order: `xelatex` (MiKTeX or TeX Live; set
 `ROS_MIKTEX_BIN` if it is not on the path), then a headless Chromium-family browser (Chrome, Edge, Chromium, or
 `ROS_BROWSER`) with the vendored KaTeX. With neither, the job reports `PDF needs a toolchain`, the doctor shows it once,
-and the note is still delivered. Nothing is installed for you. Set `pdf_engine` (`ros` settings) to `latex` or
+and the note is still written once you accept the version. Nothing is installed for you. Set `pdf_engine` (`ros` settings) to `latex` or
 `chromium` to fix the choice.
 
 LaTeX is compiled with shell escape off and the package installer off, in a scratch folder, with a timeout; the body is

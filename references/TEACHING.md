@@ -5,8 +5,20 @@ them out and does what only a person or model can: explain, answer, grade.
 
 ## The cycle
 
-Prepare (unattended) → probe → plan → teach each node (motivate, establish, connect, check) → close (free recall
+Prepare (unattended) → read what is already known → probe → plan → teach each node (motivate, establish, connect, check) → close (free recall
 and one transfer item) → review (FSRS, interleaved). A lapse at review reopens that node with a new explanation path.
+
+## Before the first question
+
+A lesson does not start from zero. `start` reads the earlier evidence on the record (`prior_evidence`): per capability of the
+scope, known, due, shaky or new, from graded answers and reviews only. Reading, asking, being told and stating a confidence
+are never evidence. The plan is fixed from it when the lesson starts, so what is known is not probed again, and what is shaky
+or due comes first. The tutor also reads the living graph with `graph_teaching` (what to teach next, the goals, the
+misconceptions agents noted) to choose the first question. That read guides; it is never evidence and never a grade.
+
+`medium_choose` picks, for each goal, text, a figure, an animation or code, with the reason and what is ready
+(`learning_readiness` says which engines this computer has). Words always come first; a medium that is not ready falls back
+to words and the lesson says so plainly. A missing engine never blocks a lesson.
 
 ## Decisions the learner never has to make
 
@@ -34,6 +46,24 @@ field, I don't know, Ask, Continue, Replay, and voice speed in settings.
 States per capability: unknown, learning, demonstrated, retained (a delayed, unaided reconstruction), fragile (a miss
 after success), stale (a positive state past its review). Ready means demonstrated or retained with a review date,
 throughout the prerequisite ancestry. Frontier means every prerequisite is ready and the capability is not retained.
+
+## Answers, drafts and resuming
+
+- Every question carries an `answer_key`. `answer` with that key writes one attempt however often it is sent, so a retry, a
+  second window or another client records the answer once.
+- An unsent answer is kept as a draft (`draft_save`, `draft_get`) on the record, so another client or a restarted app finds it.
+  A draft is never an answer or evidence; the learner sends it.
+- `lesson_state` gives everything needed to resume from any client: scope, prior evidence, answers so far, the draft, the next
+  step and review dates.
+- Confidence (guessing to certain, asked before feedback) is recorded with the attempt and is never learning evidence.
+
+## Closing and the graph
+
+Closing a lesson (`close`) writes the log and returns `graph_notes`: ready `graph_note_add` arguments for the tutor agent. It
+also queues one `graph` task for agents (never in the learner's queue) that records what the lesson showed the learner needs
+(a concept, a prerequisite, a misconception, a goal) with `graph_note_add`, `graph_note_revise` and `graph_note_retract`. The
+learner never manages the graph, and a note is never evidence. The Knowledge view and the next lesson's `graph_teaching` read
+these notes together with the evidence.
 
 ## Items do not break
 

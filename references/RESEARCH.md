@@ -4,12 +4,46 @@ Frame → scout and verify → learn the evidence → plan (approval) → build 
 defend → decide → persist. The researcher acts at Frame, Plan approval, Defend and Decide; the rest is agent work
 that ends in the decision queue.
 
+## Where a question stands
+
+`research_journey` gives each question its stage from its own recorded evidence: question, hypothesis, plan approved,
+experiment, result, claim, independent audit, your decision. The links it reads are explicit edges only (`research_questions`,
+`hypotheses`, and for a claim `results` to its experiment and `answers` to its question, set with `add_claim --experiment` and
+`--question`). A claim linked to neither counts for no question, and similar names never imply a link. The same call lists what
+needs the person's judgement and the agents working on the question, with their real task states.
+
 ## Plans and runs
 
 An experiment is planned before it is built: question, hypothesis, method lens (`skills/research/lenses/`), the
-scale ladder (the smallest run that can fail first), the data and the acceptance criteria. Nothing is built or run
-until the researcher approves it. Each run keeps a computational manifest (`python -m ros.lib.computational_manifest`):
+scale ladder (the smallest run that can fail first), the data, the acceptance criteria and the environment it needs (the
+packages with pinned versions and the repositories with a full commit, if any). Nothing is built or run until the researcher
+approves it.
+
+**The approval is bound to the plan's current revision.** Changing the plan makes the earlier approval stale until the
+researcher approves the new revision. A `run` task starts, resumes or retries only while its approval matches the plan's
+current revision. Approvals recorded before 1.8.0 are not bound to a revision and must be given again.
+
+**The experiment workbench.** Under an approved plan an agent prepares the workspace's Python environment
+(`experiment_environment`), writes scripts (`experiment_write`, each recorded with its SHA-256) and runs them
+(`experiment_run`, with no shell). Only the environment's `python` with a script written for that experiment, `python -m` a
+package the plan lists, or a listed `manim`/`manimgl` script can start; `-c`, other programs and unrecorded or changed files are
+refused. Packages and repositories are downloaded only when the approved plan lists them. Output is live and bounded
+(`experiment_follow`), the person can stop a run (`experiment_stop`), and each run records where its code and inputs came from
+(`experiment.provenance`). That record says where things came from; it never says a result is verified. The workbench is not a
+sandbox: a started script runs as the person's own process with the person's rights. Geant4, ROOT and Manim stay available
+through `experiment_capabilities`. Each run also keeps a computational manifest (`python -m ros.lib.computational_manifest`):
 code revision, environment, inputs, seeds, outputs with hashes.
+
+**The person's controls.** `research_control` lets the researcher pause, resume, cancel or retry one research task inside what
+was approved. It opens no new work and never approves, decides or waives. Agents do not call it.
+
+## Web sources
+
+Research sessions and the `scout` agent can search the public web through a search engine the person configured (Brave,
+Tavily or Exa, with a credential reference, never a key) and read one public https page (`web_search`, `web_read`). A search
+sends only its public query, never local-only material. A page becomes a source only when captured (`web_capture`), with its
+URL, fetch time, hash and engine. It is discovery, never a claim or evidence, and its text is data, not instructions. Once a
+run has read the person's own files, it can no longer send a search to a public service.
 
 ## Claims and the audit chain
 

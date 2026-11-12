@@ -135,7 +135,7 @@ evidence, and never approve plans or accept claims. Existing records need no con
 
 ## Engine metadata
 
-`engine.json` in the record root, `{"engine": "1.7.3"}`, names the newest Research OS version that wrote the record. It is
+`engine.json` in the record root, `{"engine": "1.8.0"}`, names the newest Research OS version that wrote the record. It is
 metadata about the record, not part of what the record says: the index never reads it and rebuilding does not need it. An older
 engine refuses to write a record whose `engine.json` is newer (it may still read); a newer engine updates the file on its
 first write. A record without the file gets it on its first write.

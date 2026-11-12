@@ -1,21 +1,39 @@
 # Portal
 
-An opt-in standalone workspace is available at `/workspace/` (React/TypeScript, committed static build).
-It currently offers a responsive shell, sanitized Markdown/math reading, a no-vault library, canonical
-references/backlinks, a focused canvas graph, and a lesson/research pilot. The original `/` portal remains
-the compatibility route and provides the complete human decision and vault conflict controls.
-See `docs/portal-redesign/REPORT.md` for acceptance evidence and remaining work; this is not a complete
-replacement yet. No record migration or vault rewriting is required to try it.
+The workspace at `/workspace/` (React/TypeScript in `frontend/`, committed static build in `ros/portal/workspace/`) is what the
+desktop app shows and what `ros open` opens. The original `/` portal remains as a compatibility route with the complete
+human decision and vault conflict controls (the section table and rules below describe it). `docs/portal-redesign/REPORT.md`
+holds the redesign's acceptance evidence. No record migration or vault rewriting is needed to use either.
+
+## The workspace views (1.8.0)
+
+The left rail holds Home, Learn, Research, Library, Graph, Activity and Do on my computer, with Settings at its foot. A second
+column lists sessions. The workspace selector chooses a course, a project or General work (`workspace_catalog`, one entry per
+stable `workspace_id`, including hub-only courses); the selection is carried in the link (`ws`) and survives navigation, reload
+and Back. A work item opened from a workspace keeps the physical record that owns it (`r`) and the visible workspace (`ws`).
+
+| View | Contents | Main tools |
+|---|---|---|
+| Home | With no workspace selected, the new-session screen: the question box, a session type (Ask, Learn, Research, Defend, Code), model and effort, dictation. With one selected, its sessions, sources, handouts and research in separate groups; two rows collapse into one only when they are the same file | `workspace_overview`, `workspace_chat_send` |
+| Learn | The recommended next step, the study plan, probed lessons and reviews; a lesson card under the tutor's message | `start`, `next`, `answer`, `lesson_state`, `draft_save` |
+| Research | Per-question stages, what needs your judgement (plan approval bound to the plan's revision, claims), the agent board with pause, resume, cancel and retry | `research_journey`, `research_control`, `approve`, `decide` |
+| Library | Material with its state and reason, search inside it, add a file or folder, "Find sources" (scholarly and, if configured, web), "Read and keep this page" | `library_materials`, `library_status`, `literature_search`, `web_search`, `web_capture` |
+| Graph | The central map (Knowledge, Research, Goals); "What I know, as lists" opens the Knowledge view with a Research graph tab for a workspace. Derived from the record on every read | `workspace_map`, `graph_view` |
+| Activity | What finished, runs and will run, the usage meter, the experiment console (live output, Stop, files changed, provenance), background problems | `workspace_activity`, `usage_summary`, `experiment_follow`, `experiment_stop` |
+| Do on my computer | Plans awaiting approval, the Research OS bin (30 days, undo), standing permissions (revoke) | `computer_list`, `computer_approve`, `computer_grant`, `computer_undo` |
+| Settings | Model and effort, the guided model connection (subscription login, API key, local model), agents and custom agents, the vault, updates and appearance, model prices, Developer tools | `provider_profiles`, `agents_status`, `usage_prices_configure` |
+
+Ctrl/Cmd+F finds text on the current page and ? lists the keyboard shortcuts.
 
 Since 1.4.0 the workspace has two left columns (navigation, then sessions) and one page. Menus, pickers and dialogs share a
-single overlay controller, so only one is open at a time. Home shows the organizational map (`workspace_map`): workspace,
+single overlay controller, so only one is open at a time. The Graph shows the organizational map (`workspace_map`): workspace,
 named courses and projects, topics and material. Its plain lines are filing, not scientific relations. The Library
 (`library_add`, `library_process`) lists material at once and reads it in the background. Organization names and
 folders (`organization_*`, `workspace_organization`) are append-only preferences. Old `#sessions` and `#sources` links open
 Home and the Library.
 
-The workspace opens into a viewport graph with compact point nodes, directed typed links, pan/zoom/fit,
-an equivalent node list and bounded selection context. Its bottom question dock retains model selection,
+The Graph is a viewport graph with compact point nodes, directed typed links, pan/zoom/fit,
+an equivalent node list and bounded selection context. The question box keeps model selection,
 local dictation and Kokoro playback. Navigation is collapsible; draft and camera preferences are local browser
 state. Microphone transcripts remain drafts, and Send is blocked until recording/transcription finishes.
 
@@ -42,7 +60,7 @@ included, and the committed step in the run keeps it.
 says so and opens it), in a browser or Obsidian's core Web Viewer. While it runs, the process is the single writer of
 every record it has open and keeps them in step on its own (`references/DIRECTOR.md`).
 
-Acts that are the person's alone (approve, decide, waive, choose a code folder, delete a workspace) need a paired browser.
+Acts that are the person's alone (approve, decide, waive, choose a code folder, delete a workspace, and the computer, experiment, steer/retry, migration and price acts listed in `references/SAFETY.md`) need a paired browser.
 `ros serve` prints a pairing link (`http://127.0.0.1:8737/workspace/#pair=<token>`, new every start), and `ros serve --open`
 opens it. The token is in the URL's fragment, which a browser never sends to a server or in a Referer. The page keeps it in
 its own storage, which only this exact origin (port included) can read, and sends it as the `X-ROS-Pair` header with every
@@ -54,6 +72,8 @@ Pairing stops programs that reach the portal only over HTTP (another site, anoth
 It is not a boundary against a program or agent that can run commands as you: such a program can start its own `ros serve`
 and read the link it prints, read the stderr log of `ros mcp --portal`, or see the link on the browser's command line after
 `--open`. Keep agents that can run shell commands sandboxed (Codex's sandbox does this for Code sessions).
+
+The compatibility portal at `/` has these sections:
 
 | Section | Contents |
 |---|---|
