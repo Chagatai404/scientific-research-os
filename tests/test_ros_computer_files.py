@@ -39,6 +39,11 @@ def junction(target, path):
         os.symlink(target, path, target_is_directory=True)
 
 
+def unlink_junction(path):
+    """Remove the link itself, never what it points at: rmdir for a Windows junction, unlink for a POSIX symlink."""
+    (os.unlink if os.path.islink(path) else os.rmdir)(path)
+
+
 def append(path, data):
     with open(path, 'ab') as stream:
         stream.write(data)
@@ -178,8 +183,7 @@ class Files(ComputerFixture, unittest.TestCase):
         # A folder copy that holds a junction is refused when it is expanded.
         refused = self.plan([{'id': 'c', 'op': 'copy', 'src': str(self.src), 'dst': str(self.dst)}])
         self.assertEqual(refused['code'], 'path_link_refused')
-        # removes the link itself, never what it points at (a Windows junction is removed with rmdir, a POSIX symlink with unlink)
-        (os.unlink if (self.src / 'door').is_symlink() else os.rmdir)(self.src / 'door')
+        unlink_junction(self.src / 'door')
         self.assertTrue((outside / 'secret.txt').exists())
         # The granted root is replaced by a junction with the same name after the plan was authorised.
         source = self.write(self.src / 'y.txt', b'y')
@@ -191,7 +195,7 @@ class Files(ComputerFixture, unittest.TestCase):
         twin.mkdir()
         self.write(twin / 'y.txt', b'attacker')
         junction(twin, self.src)
-        self.addCleanup(lambda: os.path.lexists(self.src) and os.rmdir(self.src))
+        self.addCleanup(lambda: os.path.lexists(self.src) and unlink_junction(self.src))
         unit = self.go(view)
         row = self.unit(unit['id'])
         self.assertEqual((row['state'], row['result']['code']), ('failed', 'path_link_refused'))
