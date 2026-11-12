@@ -441,6 +441,7 @@ def probe(python: str) -> dict | None:
     try:
         with tempfile.TemporaryDirectory(prefix='ros-probe-') as empty:  # an empty working folder: nothing of ours is first on its path
             env = credentials.child_env(MPLCONFIGDIR=empty)
+            env.pop('PYTHONPATH', None)  # a caller's PYTHONPATH (build tools, tests) must not supply packages the private copy then lacks
             if pack_site(python):
                 env.update(PYTHONPATH=pack_site(python), PYTHONNOUSERSITE='1')
             done = subprocess.run([python, '-c', PROBE], capture_output=True, text=True, timeout=120, cwd=empty,
